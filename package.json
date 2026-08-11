@@ -8,7 +8,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "electron-vite dev",
-    "test": "set ELECTRON_RUN_AS_NODE=1&& electron --test electron/shared/continuation-import.test.mjs electron/main/workspace-types.test.mjs renderer/src/features/workspace/outlineReorder.test.mjs renderer/src/features/ai/taskRegistry.test.mjs renderer/src/features/ai/outlineReferences.test.mjs renderer/src/features/tutorials/tutorials.test.mjs renderer/src/features/knowledge/knowledgeCenter.test.mjs electron/main/story-state-store.test.mjs electron/main/knowledge-document-schema.test.mjs electron/main/ai/settings.test.mjs electron/main/ai/error-message.test.mjs electron/main/ai/generate.test.mjs electron/main/ai/provider.test.mjs electron/main/ai/protocol-adapter.test.mjs electron/main/ai/proxy-fetch.test.mjs electron/main/ai/thought-signature.test.mjs electron/main/ai/transport/models.test.mjs electron/main/ai/knowledge-retrieval.test.mjs electron/main/ai/state-backfill-store.test.mjs electron/main/ai/state-backfill-task-controller.test.mjs electron/main/ai/runtime/background-task-coordinator.test.mjs electron/main/ai/runtime/chapter-processing-store.test.mjs electron/main/ai/tasks/chapter-session-note.test.mjs electron/main/ai/tasks/outline-context.test.mjs electron/main/ai/tasks/story-state-generation.test.mjs electron/main/ai/tasks/worldview-type.test.mjs electron/main/ai/runtime-v2/conversation-manager.test.mjs electron/main/ai/runtime-v2/staged-changes-store.test.mjs electron/main/ai/runtime-v2/agent-memory-store.test.mjs electron/main/ai/runtime-v2/context-builder.test.mjs electron/main/ai/runtime-v2/agent-loop.test.mjs electron/main/ai/agent/tools/chapter-data-access.test.mjs electron/main/ai/agent/tools/chapter-html-edit.test.mjs electron/main/ai/runtime-v2/tools/stage-chapter-edit-core.test.mjs",
+    "test": "set ELECTRON_RUN_AS_NODE=1&& electron --test electron/shared/continuation-import.test.mjs electron/main/workspace-types.test.mjs renderer/src/features/workspace/outlineReorder.test.mjs renderer/src/features/ai/taskRegistry.test.mjs renderer/src/features/ai/outlineReferences.test.mjs renderer/src/features/tutorials/tutorials.test.mjs renderer/src/features/knowledge/knowledgeCenter.test.mjs electron/main/story-state-store.test.mjs electron/main/knowledge-document-schema.test.mjs electron/main/ai/settings.test.mjs electron/main/ai/custom-providers.test.mjs electron/main/ai/error-message.test.mjs electron/main/ai/generate.test.mjs electron/main/ai/provider.test.mjs electron/main/ai/protocol-adapter.test.mjs electron/main/ai/proxy-fetch.test.mjs electron/main/ai/thought-signature.test.mjs electron/main/ai/transport/models.test.mjs electron/main/ai/knowledge-retrieval.test.mjs electron/main/ai/state-backfill-store.test.mjs electron/main/ai/state-backfill-task-controller.test.mjs electron/main/ai/runtime/background-task-coordinator.test.mjs electron/main/ai/runtime/chapter-processing-store.test.mjs electron/main/ai/tasks/chapter-session-note.test.mjs electron/main/ai/tasks/outline-context.test.mjs electron/main/ai/tasks/story-state-generation.test.mjs electron/main/ai/tasks/worldview-type.test.mjs electron/main/ai/runtime-v2/conversation-manager.test.mjs electron/main/ai/runtime-v2/staged-changes-store.test.mjs electron/main/ai/runtime-v2/agent-memory-store.test.mjs electron/main/ai/runtime-v2/context-builder.test.mjs electron/main/ai/runtime-v2/agent-loop.test.mjs electron/main/ai/agent/tools/chapter-data-access.test.mjs electron/main/ai/agent/tools/chapter-html-edit.test.mjs electron/main/ai/runtime-v2/tools/stage-chapter-edit-core.test.mjs",
     "typecheck": "vue-tsc --noEmit",
     "build": "pnpm run typecheck && electron-vite build",
     "preview": "electron-vite preview",
@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.78",
+    "@ai-sdk/google": "^3.0.106",
     "@ai-sdk/openai": "^3.0.64",
     "@ai-sdk/openai-compatible": "^2.0.63",
     "@node-rs/jieba": "^2.0.1",
@@ -139,9 +140,9 @@
   "optionalDependencies": {
     "@node-rs/jieba-darwin-arm64": "2.0.1",
     "@node-rs/jieba-darwin-x64": "2.0.1",
-    "@node-rs/jieba-win32-x64-msvc": "2.0.1",
-    "@node-rs/jieba-win32-arm64-msvc": "2.0.1",
+    "@node-rs/jieba-linux-arm64-gnu": "2.0.1",
     "@node-rs/jieba-linux-x64-gnu": "2.0.1",
-    "@node-rs/jieba-linux-arm64-gnu": "2.0.1"
+    "@node-rs/jieba-win32-arm64-msvc": "2.0.1",
+    "@node-rs/jieba-win32-x64-msvc": "2.0.1"
   }
 }

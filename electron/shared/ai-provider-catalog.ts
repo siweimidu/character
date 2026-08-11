@@ -1,4 +1,14 @@
-export type AiProviderProtocol = 'openai-responses' | 'openai-chat' | 'anthropic'
+export type AiProviderProtocol =
+  | 'openai-responses'
+  | 'openai-chat'
+  | 'openai-completions'
+  | 'anthropic'
+  | 'anthropic-complete'
+  | 'gemini'
+  | 'kobold'
+  | 'novelai'
+  | 'dashscope-native'
+  | 'volcengine-native'
 export type AiProtocolPreference = 'auto' | AiProviderProtocol
 
 export interface AiProviderCatalogEntry {
@@ -115,10 +125,21 @@ export function normalizeAiBaseUrl(provider: string, rawBaseUrl: string): string
   return !path && !/\/v\d+$/i.test(baseUrl) ? `${baseUrl}/v1` : baseUrl
 }
 
+const AI_PROTOCOL_VALUES: readonly AiProviderProtocol[] = [
+  'openai-responses',
+  'openai-chat',
+  'openai-completions',
+  'anthropic',
+  'anthropic-complete',
+  'gemini',
+  'kobold',
+  'novelai',
+  'dashscope-native',
+  'volcengine-native'
+]
+
 export function normalizeAiProtocolPreference(value: unknown): AiProtocolPreference {
-  return value === 'openai-responses' || value === 'openai-chat' || value === 'anthropic'
-    ? value
-    : 'auto'
+  return AI_PROTOCOL_VALUES.includes(value as AiProviderProtocol) ? (value as AiProviderProtocol) : 'auto'
 }
 
 export function resolveAiProviderProtocol(

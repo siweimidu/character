@@ -91,9 +91,16 @@ const uiScaleOptions = [
 ]
 const apiProtocolOptions = [
   { label: '自动（按厂商模型目录）', value: 'auto' },
-  { label: 'OpenAI Responses', value: 'openai-responses' },
-  { label: 'Anthropic Messages', value: 'anthropic' },
-  { label: 'OpenAI Chat Completions', value: 'openai-chat' }
+  { label: 'OpenAI Responses (/v1/responses)', value: 'openai-responses' },
+  { label: 'OpenAI Chat Completions (/v1/chat/completions)', value: 'openai-chat' },
+  { label: 'OpenAI 文本补全 (/v1/completions 旧版)', value: 'openai-completions' },
+  { label: 'Anthropic Messages (/v1/messages)', value: 'anthropic' },
+  { label: 'Anthropic 旧版 (/v1/complete 已废弃)', value: 'anthropic-complete' },
+  { label: 'Gemini 原生 (generateContent)', value: 'gemini' },
+  { label: 'KoboldCpp (/api/v1/generate)', value: 'kobold' },
+  { label: 'NovelAI (/v1/generate)', value: 'novelai' },
+  { label: '阿里通义百炼原生', value: 'dashscope-native' },
+  { label: '火山方舟原生 (/ark/v1/chat/completions)', value: 'volcengine-native' }
 ]
 
 const draftSettings = reactive<AppSettings>({

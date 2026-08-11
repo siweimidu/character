@@ -29,7 +29,7 @@ export type AppSettings = {
   apiKey: string
   baseUrl: string
   /** API 线协议；auto 时按供应商和模型目录解析 */
-  apiProtocol?: 'auto' | 'openai-responses' | 'openai-chat' | 'anthropic'
+  apiProtocol?: 'auto' | 'openai-responses' | 'openai-chat' | 'openai-completions' | 'anthropic' | 'anthropic-complete' | 'gemini' | 'kobold' | 'novelai' | 'dashscope-native' | 'volcengine-native'
   /** 可选：AI 请求使用的 HTTP/HTTPS 代理地址 */
   proxyUrl?: string
   /** 可选：模型采样温度，留空时使用服务端默认值 */

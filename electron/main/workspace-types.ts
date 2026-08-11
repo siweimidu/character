@@ -335,7 +335,7 @@ export type WorkspacePayload = {
     model: string
     apiKey: string
     baseUrl: string
-    apiProtocol?: 'auto' | 'openai-responses' | 'openai-chat' | 'anthropic'
+    apiProtocol?: 'auto' | 'openai-responses' | 'openai-chat' | 'openai-completions' | 'anthropic' | 'anthropic-complete' | 'gemini' | 'kobold' | 'novelai' | 'dashscope-native' | 'volcengine-native'
     proxyUrl: string
     temperature?: number
     topP?: number
@@ -346,7 +346,7 @@ export type WorkspacePayload = {
       baseUrl: string
       apiKey: string
       model: string
-      apiProtocol?: 'auto' | 'openai-responses' | 'openai-chat' | 'anthropic'
+      apiProtocol?: 'auto' | 'openai-responses' | 'openai-chat' | 'openai-completions' | 'anthropic' | 'anthropic-complete' | 'gemini' | 'kobold' | 'novelai' | 'dashscope-native' | 'volcengine-native'
       temperature?: number
       topP?: number
     }>
@@ -484,8 +484,11 @@ export type LegacyWorkspacePayload = Omit<WorkspacePayload, 'workspaces' | 'aiRu
 
 function normalizeApiProtocol(
   value: unknown
-): 'auto' | 'openai-responses' | 'openai-chat' | 'anthropic' {
-  return value === 'openai-responses' || value === 'openai-chat' || value === 'anthropic'
+): 'auto' | 'openai-responses' | 'openai-chat' | 'openai-completions' | 'anthropic' | 'anthropic-complete' | 'gemini' | 'kobold' | 'novelai' | 'dashscope-native' | 'volcengine-native' {
+  return value === 'openai-responses' || value === 'openai-chat' || value === 'openai-completions'
+    || value === 'anthropic' || value === 'anthropic-complete' || value === 'gemini'
+    || value === 'kobold' || value === 'novelai' || value === 'dashscope-native'
+    || value === 'volcengine-native'
     ? value
     : 'auto'
 }

@@ -15,11 +15,11 @@ export interface AppSettingsPayload {
   model: string
   apiKey: string
   baseUrl: string
-  apiProtocol?: 'auto' | 'openai-responses' | 'openai-chat' | 'anthropic'
+  apiProtocol?: 'auto' | 'openai-responses' | 'openai-chat' | 'openai-completions' | 'anthropic' | 'anthropic-complete' | 'gemini' | 'kobold' | 'novelai' | 'dashscope-native' | 'volcengine-native'
   proxyUrl: string
   temperature?: number
   topP?: number
-  aiProfiles: Array<{ id: string; name: string; provider: string; baseUrl: string; apiKey: string; model: string; models?: string[]; apiProtocol?: 'auto' | 'openai-responses' | 'openai-chat' | 'anthropic'; temperature?: number; topP?: number }>
+  aiProfiles: Array<{ id: string; name: string; provider: string; baseUrl: string; apiKey: string; model: string; models?: string[]; apiProtocol?: 'auto' | 'openai-responses' | 'openai-chat' | 'openai-completions' | 'anthropic' | 'anthropic-complete' | 'gemini' | 'kobold' | 'novelai' | 'dashscope-native' | 'volcengine-native'; temperature?: number; topP?: number }>
   activeAiProfileId: string
   imageProvider: string
   imageModel: string
