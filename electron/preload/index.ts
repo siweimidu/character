@@ -237,6 +237,11 @@ contextBridge.exposeInMainWorld('characterArc', {
   fetchFanqieTrends: (path: string, force = false) =>
     ipcRenderer.invoke('characterarc:fanqie-trends-fetch', { path, force }),
 
+  // ── 七猫扫榜：一键自动抓取 ──
+  /** 抓取七猫排行榜数据（主进程用隐藏浏览器通过 WAF，免手动粘贴） */
+  fetchQimaoRank: (options?: { sex?: string; type?: string; period?: 'date' | 'month' }) =>
+    ipcRenderer.invoke('characterarc:qimao-scrape', options || {}),
+
   // ── Assistant Runtime v2 ──
   /**
    * 全新一代 AI 助手运行时。命名空间 `characterarc:assistant:*`，

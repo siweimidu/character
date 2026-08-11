@@ -14,6 +14,7 @@ import { getProjectSkillsDirPath as getSkillsDirPath } from './ai/skills/discove
 import { extractReferenceNovelContext, type ReferenceNovelLocalContext } from './referenceAnalysis'
 import { fetchWithCache } from './github-mirror'
 import { fetchFanqieTrends } from './fanqie-trends'
+import { fetchQimaoRank, type QimaoScrapeOptions } from './qimao-scraper'
 import { getWorkspaceDirPath } from './workspace-store'
 import { inspectContinuationNovelFile } from './continuation-import'
 import {
@@ -1665,6 +1666,15 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     const remotePath = typeof payload?.path === 'string' ? payload.path : ''
     const force = payload?.force === true
     return fetchFanqieTrends(remotePath, force)
+  })
+
+  // ── 七猫扫榜：一键自动抓取（主进程用隐藏 BrowserWindow 通过 WAF） ──
+  ipcMain.handle('characterarc:qimao-scrape', async (_event, payload: QimaoScrapeOptions) => {
+    return fetchQimaoRank({
+      sex: payload?.sex,
+      type: payload?.type,
+      period: payload?.period
+    })
   })
 
   // ── AI 助手会话持久化 ──
