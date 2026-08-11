@@ -33,10 +33,14 @@ const emit = defineEmits<{
 const appStore = useAppStore()
 const message = useMessage()
 
-const FONT_LEVELS = [14, 15, 16, 17, 18, 20, 22]
-const fontIdx = ref(3)
-const fontSize = computed(() => FONT_LEVELS[fontIdx.value])
+// 正文字号：默认 17px，范围 14~35px，支持 +- 按钮与 Ctrl+滚轮 调节
+const MIN_FONT = 14
+const MAX_FONT = 35
+const DEFAULT_FONT = 17
+const fontSize = ref(DEFAULT_FONT)
 const versionDialogVisible = ref(false)
+// 章节摘要默认折叠，点击目标字数右侧按钮展开
+const summaryExpanded = ref(false)
 
 const currentEditorFont = computed(() => getEditorFontOption(appStore.appSettings.editorFont))
 const editorFontMenuOptions = computed<DropdownOption[]>(() =>
@@ -73,8 +77,15 @@ function selectEditorFont(key: string | number): void {
 }
 
 function stepFont(delta: number): void {
-  const next = Math.max(0, Math.min(FONT_LEVELS.length - 1, fontIdx.value + delta))
-  fontIdx.value = next
+  fontSize.value = Math.max(MIN_FONT, Math.min(MAX_FONT, fontSize.value + delta))
+}
+
+function handleEditorWheel(e: WheelEvent): void {
+  // Ctrl(或 Cmd)+滚轮 调整正文字号，避免触发页面/浏览器缩放
+  if (!e.ctrlKey && !e.metaKey) return
+  e.preventDefault()
+  const delta = e.deltaY > 0 ? -1 : 1
+  stepFont(delta)
 }
 
 const currentChapter = computed(() => appStore.selectedChapter)
@@ -390,11 +401,13 @@ onMounted(() => {
   document.addEventListener('selectionchange', handleSelectionChange)
   document.addEventListener('mousedown', handleMouseDown)
   document.addEventListener('keydown', handleGlobalKeydown)
+  scrollRef.value?.addEventListener('wheel', handleEditorWheel, { passive: false })
 })
 onBeforeUnmount(() => {
   document.removeEventListener('selectionchange', handleSelectionChange)
   document.removeEventListener('mousedown', handleMouseDown)
   document.removeEventListener('keydown', handleGlobalKeydown)
+  scrollRef.value?.removeEventListener('wheel', handleEditorWheel)
 })
 </script>
 
@@ -483,8 +496,23 @@ onBeforeUnmount(() => {
 
           <div class="ep-meta-row">
             <n-tag size="small" :bordered="false">{{ wordCount.toLocaleString() }} 字</n-tag>
-            <n-tag size="small" :bordered="false">目标 {{ formatChapterWordTargetLabel(currentChapter.wordTarget) }}</n-tag>
-            <span v-if="currentChapter.summary" class="meta-summary">大纲：{{ currentChapter.summary }}</span>
+            <div class="target-words-group">
+              <n-tag size="small" :bordered="false">目标 {{ formatChapterWordTargetLabel(currentChapter.wordTarget) }}</n-tag>
+              <button
+                v-if="currentChapter.summary"
+                class="summary-toggle"
+                :class="{ expanded: summaryExpanded }"
+                type="button"
+                :title="summaryExpanded ? '收起章节摘要' : '展开章节摘要'"
+                @click="summaryExpanded = !summaryExpanded"
+              >
+                <ChevronDown :size="13" />
+              </button>
+            </div>
+          </div>
+          <div v-if="currentChapter.summary && summaryExpanded" class="meta-summary">
+            <span class="meta-summary-label">章节摘要</span>
+            {{ currentChapter.summary }}
           </div>
 
           <n-alert
@@ -866,10 +894,56 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
 }
 
-.meta-summary {
+.target-words-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.summary-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--arc-border);
+  border-radius: 4px;
+  background: transparent;
   color: var(--arc-text-hint);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, transform 0.2s;
+}
+
+.summary-toggle:hover {
+  color: var(--arc-text-primary);
+  border-color: var(--arc-border-strong);
+}
+
+.summary-toggle.expanded {
+  transform: rotate(180deg);
+  color: var(--arc-primary);
+  border-color: color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border));
+}
+
+.meta-summary {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border-left: 3px solid color-mix(in srgb, var(--arc-primary) 45%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--arc-primary) 5%, var(--arc-bg-surface));
+  color: var(--arc-text-secondary);
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.meta-summary-label {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--arc-primary);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .ep-editor {

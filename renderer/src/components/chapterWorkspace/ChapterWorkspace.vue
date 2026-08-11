@@ -279,9 +279,11 @@ onBeforeUnmount(() => {
 }
 
 /* ── Focus Exit ── */
+/* 应用顶部有一条 40px 的系统标题栏（含窗口最小化/关闭按钮），
+   按钮若 fixed 在 top:16px 会被原生窗口按钮遮挡，因此下移避开标题栏区域 */
 .focus-exit {
   position: fixed;
-  top: 16px;
+  top: 56px;
   right: 16px;
   z-index: 100;
   display: inline-flex;
