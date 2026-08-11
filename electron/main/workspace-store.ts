@@ -339,7 +339,8 @@ export async function ensureWorkspaceDb(): Promise<DatabaseSync> {
       editor_font TEXT NOT NULL DEFAULT 'clear-mono',
       ui_scale REAL NOT NULL DEFAULT 1,
       dark_mode INTEGER NOT NULL DEFAULT 0,
-      dark_mode_style TEXT NOT NULL DEFAULT 'standard'
+      dark_mode_style TEXT NOT NULL DEFAULT 'standard',
+      deleted_builtin_agent_ids_json TEXT NOT NULL DEFAULT '[]'
     ) STRICT;
 
     CREATE TABLE IF NOT EXISTS cover_workbench_history (
@@ -478,6 +479,10 @@ function ensureAppSettingsColumns(db: DatabaseSync): void {
 
   if (!columnNames.has('editor_font')) {
     db.exec(`ALTER TABLE app_settings ADD COLUMN editor_font TEXT NOT NULL DEFAULT 'clear-mono';`)
+  }
+
+  if (!columnNames.has('deleted_builtin_agent_ids_json')) {
+    db.exec(`ALTER TABLE app_settings ADD COLUMN deleted_builtin_agent_ids_json TEXT NOT NULL DEFAULT '[]';`)
   }
 }
 
@@ -1881,8 +1886,29 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
     }
 
     db.prepare(`
-    INSERT OR REPLACE INTO app_settings (id, theme, selected_project_id, provider, model, api_key, base_url, proxy_url, temperature, top_p, ai_profiles_json, active_ai_profile_id, image_provider, image_model, image_api_key, image_base_url, auto_save_interval, editor_font, ui_scale, dark_mode, dark_mode_style)
-    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO app_settings (id, theme, selected_project_id, provider, model, api_key, base_url, proxy_url, temperature, top_p, ai_profiles_json, active_ai_profile_id, image_provider, image_model, image_api_key, image_base_url, auto_save_interval, editor_font, ui_scale, dark_mode, dark_mode_style, deleted_builtin_agent_ids_json)
+    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT deleted_builtin_agent_ids_json FROM app_settings WHERE id = 1), '[]'))
+    ON CONFLICT(id) DO UPDATE SET
+      theme = excluded.theme,
+      selected_project_id = excluded.selected_project_id,
+      provider = excluded.provider,
+      model = excluded.model,
+      api_key = excluded.api_key,
+      base_url = excluded.base_url,
+      proxy_url = excluded.proxy_url,
+      temperature = excluded.temperature,
+      top_p = excluded.top_p,
+      ai_profiles_json = excluded.ai_profiles_json,
+      active_ai_profile_id = excluded.active_ai_profile_id,
+      image_provider = excluded.image_provider,
+      image_model = excluded.image_model,
+      image_api_key = excluded.image_api_key,
+      image_base_url = excluded.image_base_url,
+      auto_save_interval = excluded.auto_save_interval,
+      editor_font = excluded.editor_font,
+      ui_scale = excluded.ui_scale,
+      dark_mode = excluded.dark_mode,
+      dark_mode_style = excluded.dark_mode_style
     `).run(
       payload.theme,
       payload.selectedProjectId,

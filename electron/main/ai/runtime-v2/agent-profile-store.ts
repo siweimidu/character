@@ -332,6 +332,31 @@ function rowToAgent(row: AgentProfileRow): AgentProfile {
 /** 已删除的内置智能体 id，防止 seed 时重新插回。 */
 const deletedBuiltinIds = new Set<string>()
 
+/** 从 app_settings 表读取已删除的内置智能体 ID（持久化）。 */
+function loadDeletedBuiltinIds(db: DatabaseSync): string[] {
+  try {
+    const row = db
+      .prepare(`SELECT deleted_builtin_agent_ids_json AS json FROM app_settings WHERE id = 1`)
+      .get() as { json?: string } | undefined
+    if (!row) return []
+    const parsed = JSON.parse(row.json ?? '[]') as unknown
+    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+/** 将已删除的内置智能体 ID 列表写回 app_settings 表（持久化）。 */
+function saveDeletedBuiltinIds(db: DatabaseSync, ids: Set<string>): void {
+  try {
+    db.prepare(`UPDATE app_settings SET deleted_builtin_agent_ids_json = ? WHERE id = 1`).run(
+      JSON.stringify([...ids])
+    )
+  } catch {
+    // app_settings 无记录或列不存在时静默失败，不影响主要逻辑
+  }
+}
+
 /** 被用户删除的内置智能体 id（用于 seed 跳过）。 */
 export function markBuiltinDeleted(id: string): void {
   deletedBuiltinIds.add(id)
@@ -351,6 +376,9 @@ export function isBuiltinDeleted(id: string): boolean {
  * 被用户手动删除的内置智能体不会重新插入（尊重用户删除意愿）。
  */
 export function seedBuiltinAgents(db: DatabaseSync): void {
+  // 从数据库加载已删除的内置智能体 ID（跨重启持久化）
+  loadDeletedBuiltinIds(db).forEach((id) => deletedBuiltinIds.add(id))
+
   const insert = db.prepare(`
     INSERT OR IGNORE INTO agent_profiles
       (id, name, description, system_prompt, avatar, avatar_type, is_builtin, preset_index, scope, skill_ids, created_at, updated_at)
@@ -553,8 +581,11 @@ export class AgentProfileStore {
         now,
         id
       )
-    // 编辑了内置智能体则取消其删除标记
-    if (existing.isBuiltin) unmarkBuiltinDeleted(id)
+    // 编辑了内置智能体则取消其删除标记（持久化）
+    if (existing.isBuiltin) {
+      unmarkBuiltinDeleted(id)
+      saveDeletedBuiltinIds(this.db, deletedBuiltinIds)
+    }
     return this.get(id)
   }
 
@@ -562,8 +593,11 @@ export class AgentProfileStore {
     const existing = this.get(id)
     if (!existing) return false
     this.db.prepare(`DELETE FROM agent_profiles WHERE id = ?`).run(id)
-    // 内置智能体被删除后记入标记，防止下次启动 seed 重新插回
-    if (existing.isBuiltin) markBuiltinDeleted(id)
+    // 内置智能体被删除后记入标记，防止下次启动 seed 重新插回（持久化）
+    if (existing.isBuiltin) {
+      markBuiltinDeleted(id)
+      saveDeletedBuiltinIds(this.db, deletedBuiltinIds)
+    }
     return true
   }
 
