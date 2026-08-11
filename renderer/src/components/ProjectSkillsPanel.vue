@@ -162,7 +162,8 @@ async function importProjectSkillsPackage(): Promise<void> {
     }
 
     await scanProjectSkills()
-    message.success(`已导入 ${result.importedSkillIds?.length ?? 0} 个 skills`)
+    const count = result.importedSkillIds?.length ?? 0
+    message.success(result.error ? `已导入 ${count} 个 skills。${result.error}` : `已批量导入 ${count} 个 skills`)
   } catch (error) {
     message.error(error instanceof Error ? error.message : '项目技能导入失败')
   } finally {
@@ -320,7 +321,7 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
         </div>
         <div class="skills-panel-actions">
           <n-button round strong :disabled="isImportingProjectSkills" @click="importProjectSkillsPackage">
-            {{ isImportingProjectSkills ? '导入中...' : '导入 Skill 包（目录 / .zip）' }}
+            {{ isImportingProjectSkills ? '批量导入中...' : '批量导入 Skill 包（目录 / .zip，可多选）' }}
           </n-button>
           <n-button round strong secondary :disabled="isScanningProjectSkills" @click="scanProjectSkills">
             {{ isScanningProjectSkills ? '扫描中...' : '重新扫描' }}

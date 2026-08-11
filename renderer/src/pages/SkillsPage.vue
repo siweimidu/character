@@ -101,6 +101,33 @@ function backToProjectCenter(): void {
   padding: 0 clamp(16px, 2vw, 24px) clamp(16px, 2vw, 24px);
 }
 
+/* 右侧滑动条：更明显、更易识别，始终置顶显示 */
+.skills-body::-webkit-scrollbar {
+  width: 10px;
+}
+
+.skills-body::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--arc-text-hint) 45%, transparent);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.skills-body::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--arc-text-secondary) 70%, transparent);
+  background-clip: content-box;
+  border: 2px solid transparent;
+}
+
+.skills-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.skills-body {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--arc-text-hint) 45%, transparent) transparent;
+}
+
 @media (max-width: 860px) {
   .skills-header {
     flex-direction: column;

@@ -1492,76 +1492,42 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
       // 注意：Windows 下 properties 同时包含 openFile 与 openDirectory 时，文件类型过滤
       // 会导致文件管理器只显示文件夹、隐藏 .zip 压缩包。因此这里去掉 filters，
       // 让目录和 .zip 包都可见，选择后代码再按扩展名分别处理。
+      // 开启 multiSelections 以支持一次批量导入多个目录 / .zip 压缩包。
       const dialogOptions: Electron.OpenDialogOptions = {
-        title: '选择要导入的 Skill 包（目录或压缩包）',
-        properties: ['openFile', 'openDirectory']
+        title: '批量导入 Skill 包（可选择多个目录或 .zip 压缩包）',
+        properties: ['openFile', 'openDirectory', 'multiSelections']
       }
       const ownerWindow = deps.windowManager.getMainWindow() ?? BrowserWindow.getFocusedWindow()
       const result = ownerWindow
         ? await dialog.showOpenDialog(ownerWindow, dialogOptions)
         : await dialog.showOpenDialog(dialogOptions)
 
-      if (result.canceled || !result.filePaths[0]) {
+      if (result.canceled || !result.filePaths.length) {
         return { success: true, canceled: true, importedSkillIds: [] }
       }
 
-      const selectedPath = result.filePaths[0]
       const skillsRoot = getSkillsDirPath(resolvedProjectId)
       await mkdir(skillsRoot, { recursive: true })
 
-      // 支持压缩包(.zip)格式的 skills 导入：解压后按 SKILL.md 目录结构扫描
-      if (selectedPath.toLowerCase().endsWith('.zip')) {
-        const JSZip = (await import('jszip')).default
-        const zip = await JSZip.loadAsync(await readFile(selectedPath))
-        const tempRoot = join(getWorkspaceDirPath(), '.skills-extract-' + Date.now())
-        await mkdir(tempRoot, { recursive: true })
-        try {
-          const entries = Object.values(zip.files)
-          for (const entry of entries) {
-            if (entry.dir) continue
-            const safePath = join(tempRoot, entry.name.replace(/^[./]+/, ''))
-            // 防止路径穿越
-            if (!safePath.startsWith(tempRoot)) continue
-            await mkdir(join(safePath, '..'), { recursive: true })
-            await writeFile(safePath, await entry.async('nodebuffer'))
-          }
-          const findSkillDirsZip = async (root: string): Promise<string[]> => {
-            const found: string[] = []
-            if (!existsSync(root)) return found
-            const nestedRoot = existsSync(join(root, 'skills')) ? join(root, 'skills') : root
-            if (existsSync(join(nestedRoot, 'SKILL.md'))) {
-              found.push(nestedRoot)
-              return found
-            }
-            const entries = await readdir(nestedRoot, { withFileTypes: true })
-            for (const entry of entries) {
-              if (entry.isDirectory() && existsSync(join(nestedRoot, entry.name, 'SKILL.md'))) {
-                found.push(join(nestedRoot, entry.name))
-              }
-            }
-            return found
-          }
-          const sourceDirs = await findSkillDirsZip(tempRoot)
-          if (!sourceDirs.length) {
-            return { success: false, canceled: false, error: '压缩包中没有识别到可导入的 SKILL.md。' }
-          }
-          const importedSkillIds: string[] = []
-          for (const sourceDir of sourceDirs) {
-            const targetDir = join(skillsRoot, basename(sourceDir))
-            await cp(sourceDir, targetDir, { recursive: true, force: true })
-            importedSkillIds.push(basename(sourceDir))
-          }
-          await refreshSkillRegistry(resolvedProjectId)
-          return {
-            success: true,
-            canceled: false,
-            importedSkillIds: importedSkillIds.sort((a, b) => a.localeCompare(b, 'zh-CN'))
-          }
-        } finally {
-          await rm(tempRoot, { recursive: true, force: true }).catch(() => undefined)
+      // 从 zip 压缩包解压后的目录里，递归找出包含 SKILL.md 的 skill 目录
+      const findSkillDirsZip = async (root: string): Promise<string[]> => {
+        const found: string[] = []
+        if (!existsSync(root)) return found
+        const nestedRoot = existsSync(join(root, 'skills')) ? join(root, 'skills') : root
+        if (existsSync(join(nestedRoot, 'SKILL.md'))) {
+          found.push(nestedRoot)
+          return found
         }
+        const entries = await readdir(nestedRoot, { withFileTypes: true })
+        for (const entry of entries) {
+          if (entry.isDirectory() && existsSync(join(nestedRoot, entry.name, 'SKILL.md'))) {
+            found.push(join(nestedRoot, entry.name))
+          }
+        }
+        return found
       }
 
+      // 从目录里找出包含 SKILL.md 的 skill 目录
       const findSkillDirs = async (root: string): Promise<string[]> => {
         if (existsSync(join(root, 'SKILL.md'))) return [root]
         if (!existsSync(root)) return []
@@ -1573,23 +1539,66 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
           .map((entry) => join(searchRoot, entry.name))
       }
 
-      const sourceDirs = await findSkillDirs(selectedPath)
-      if (!sourceDirs.length) {
-        return { success: false, canceled: false, error: '所选目录中没有识别到可导入的 SKILL.md。' }
+      // 将解压后的 zip 内容临时落地，返回其中识别到的 skill 目录
+      const importFromZip = async (zipPath: string): Promise<string[]> => {
+        const JSZip = (await import('jszip')).default
+        const zip = await JSZip.loadAsync(await readFile(zipPath))
+        const tempRoot = join(getWorkspaceDirPath(), '.skills-extract-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8))
+        await mkdir(tempRoot, { recursive: true })
+        try {
+          const entries = Object.values(zip.files)
+          for (const entry of entries) {
+            if (entry.dir) continue
+            const safePath = join(tempRoot, entry.name.replace(/^[./]+/, ''))
+            // 防止路径穿越
+            if (!safePath.startsWith(tempRoot)) continue
+            await mkdir(join(safePath, '..'), { recursive: true })
+            await writeFile(safePath, await entry.async('nodebuffer'))
+          }
+          return await findSkillDirsZip(tempRoot)
+        } finally {
+          await rm(tempRoot, { recursive: true, force: true }).catch(() => undefined)
+        }
       }
 
       const importedSkillIds: string[] = []
-      for (const sourceDir of sourceDirs) {
-        const targetDir = join(skillsRoot, basename(sourceDir))
-        await cp(sourceDir, targetDir, { recursive: true, force: true })
-        importedSkillIds.push(basename(sourceDir))
+      let failedCount = 0
+      for (const selectedPath of result.filePaths) {
+        let sourceDirs: string[] = []
+        if (selectedPath.toLowerCase().endsWith('.zip')) {
+          sourceDirs = await importFromZip(selectedPath)
+          if (!sourceDirs.length) {
+            failedCount++
+            continue
+          }
+        } else {
+          sourceDirs = await findSkillDirs(selectedPath)
+          if (!sourceDirs.length) {
+            failedCount++
+            continue
+          }
+        }
+        for (const sourceDir of sourceDirs) {
+          const targetDir = join(skillsRoot, basename(sourceDir))
+          await cp(sourceDir, targetDir, { recursive: true, force: true })
+          importedSkillIds.push(basename(sourceDir))
+        }
+      }
+
+      if (!importedSkillIds.length) {
+        return {
+          success: false,
+          canceled: false,
+          error: '所选内容中没有识别到可导入的 SKILL.md。请选择包含 SKILL.md 的目录或 .zip 压缩包。'
+        }
       }
 
       await refreshSkillRegistry(resolvedProjectId)
       return {
         success: true,
         canceled: false,
-        importedSkillIds: importedSkillIds.sort((a, b) => a.localeCompare(b, 'zh-CN'))
+        importedSkillIds: importedSkillIds.sort((a, b) => a.localeCompare(b, 'zh-CN')),
+        error: failedCount ? `${failedCount} 个所选内容未识别到 SKILL.md，已跳过。` : undefined
       }
     } catch (error) {
       return { success: false, canceled: false, error: error instanceof Error ? error.message : '项目技能导入失败' }
