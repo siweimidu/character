@@ -224,6 +224,8 @@ export function useChapterFirstDraft(): {
   elapsedSeconds: Ref<number>
   isStreaming: Ref<boolean>
   start: (config: FirstDraftConfig) => Promise<void>
+  /** 围绕已有初稿在保留剧情与文风基础上扩充续写，直到达到目标字数 */
+  expandDraftToTarget: (existingDraft: string, targetWordCount: number) => Promise<void>
   stop: () => Promise<void>
   closeModal: () => void
   registerStreamListener: () => void
@@ -945,6 +947,124 @@ export function useChapterFirstDraft(): {
     }
   }
 
+  /**
+   * 字数扩充续写：围绕已有初稿（保留剧情与文风）继续扩充，直到整章达到目标字数。
+   * 复用 chapter-first-draft 的流式通道，通过 expandMode + chapterContent 指示模型扩写。
+   */
+  async function expandDraftToTarget(existingDraft: string, targetWordCount: number): Promise<void> {
+    const chapter = appStore.selectedChapter
+    const project = appStore.currentProject
+    const chapterVolume = appStore.selectedChapterVolume
+    if (!chapter || !project || !chapterVolume) return
+    if (isGenerating.value) return
+    const normalizedDraft = finalCleanGeneratedChapterText(existingDraft).trim()
+    if (!normalizedDraft) return
+
+    registerStreamListener()
+    isGenerating.value = true
+    isStopping.value = false
+    isStreaming.value = false
+    streamingContent.value = ''
+    activeTargetWordCount.value = Math.max(targetWordCount, normalizedDraft.length + 1)
+    progressFloor.value = 0
+    progressPercent.value = 0
+    progressText.value = ''
+    auditResult.value = null
+    executionLabel.value = '准备围绕初稿扩充续写...'
+    previewTitle.value = '字数扩充实时输出'
+    previewContent.value = ''
+    modalVisible.value = true
+    startElapsedTimer()
+    recompute()
+    let finalLabel = '本次字数扩充已完成'
+
+    try {
+      await appStore.runTrackedAiTask(
+        {
+          key: TASK_KEY,
+          kind: 'chapter-draft',
+          label: 'AI 扩充续写章节',
+          description: `围绕《${chapter.title}》已有初稿扩充至目标字数`,
+          panel: 'chapters',
+          onCancel: () => { void stop() }
+        },
+        async () => {
+          const currentChapterIndex = appStore.chapters.findIndex((item) => item.id === chapter.id)
+          const precedingChapters = appStore.chapters.slice(0, currentChapterIndex)
+          const relatedChapters = precedingChapters
+            .slice(-4)
+            .map((item) => ({
+              title: item.title,
+              summary: item.summary,
+              preview: getChapterPreviewText(item.content ?? '').slice(0, 800)
+            }))
+          const volumeOutlineItems = appStore.outlineItems.filter((item) => item.volumeId === chapter.volumeId)
+          const currentOutlineItem = chapter.outlineItemId
+            ? volumeOutlineItems.find((item) => item.id === chapter.outlineItemId)
+            : volumeOutlineItems.find((item) => item.title.trim() === chapter.title.trim())
+
+          const context = buildChapterFirstDraftContext({
+            project,
+            chapter,
+            chapterIndex: Math.max(currentChapterIndex, 0),
+            chapterVolume,
+            relatedChapters,
+            volumeChapterSummaries: precedingChapters
+              .filter((c) => c.volumeId === chapter.volumeId && !relatedChapters.some((r) => r.title === c.title))
+              .map((c) => ({ title: c.title, summary: c.summary })),
+            worldviewEntries: appStore.worldviewEntries,
+            characters: appStore.characters,
+            organizations: appStore.organizations,
+            characterRelationships: appStore.characterRelationships,
+            organizationMemberships: appStore.organizationMemberships,
+            inspirationEntries: appStore.inspirationEntries,
+            currentOutlineItem: buildOutlineItemContext(currentOutlineItem, {
+              characters: appStore.characters,
+              organizations: appStore.organizations,
+              worldviewEntries: appStore.worldviewEntries
+            }),
+            outlineItems: volumeOutlineItems,
+            plotThreads: appStore.plotThreads,
+            knowledgeDocuments: appStore.projectConstraints,
+            // 扩充模式：把已有初稿作为正文，指示模型围绕其续写扩写
+            chapterContent: normalizedDraft,
+            targetWordCount,
+            userPrompt: `当前章节已有正文约 ${normalizedDraft.length} 字，目标 ${targetWordCount} 字。请围绕已有正文扩充续写，保留原有剧情走向、人物与文风，补充细节、动作、对白和场景过程，最终输出扩写后的整章完整正文。`
+          })
+          // 扩充模式标记由主进程读取
+          context.expandMode = 'expand'
+          context.expandTarget = targetWordCount
+
+          executionLabel.value = '正在围绕初稿扩充续写...'
+          isStreaming.value = true
+          recompute()
+
+          const draftStream = await streamTask('chapter-first-draft', context)
+          const fullText = finalCleanGeneratedChapterText(draftStream.text)
+          if (fullText) {
+            executionLabel.value = '正在写入扩充后的章节'
+            updateProgress(95, '正在写入扩充后的章节...')
+            appStore.updateChapterContent(ensureEditorHtmlContent(fullText), chapter.id)
+            await appStore.persistWorkspace()
+            if (appStore.persistenceError) {
+              throw new Error(`扩充内容已生成，但保存失败：${appStore.persistenceError}`)
+            }
+          }
+        }
+      )
+    } catch (error) {
+      const isCanceled = error instanceof Error && error.message === 'canceled'
+      if (isCanceled) {
+        finalLabel = '本次字数扩充已停止'
+        return
+      }
+      finalLabel = '本次字数扩充失败'
+      throw error
+    } finally {
+      reset(finalLabel)
+    }
+  }
+
   async function stop(): Promise<void> {
     if (!streamId.value || isStopping.value) return
     isStopping.value = true
@@ -984,6 +1104,7 @@ export function useChapterFirstDraft(): {
     elapsedSeconds,
     isStreaming,
     start,
+    expandDraftToTarget,
     stop,
     closeModal,
     registerStreamListener,

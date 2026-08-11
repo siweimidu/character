@@ -8,6 +8,7 @@ import {
   ChevronRight,
   CircleAlert,
   ClipboardCheck,
+  Copy,
   Layers3,
   SearchCheck,
   Sparkles,
@@ -105,6 +106,25 @@ function isNearBottom(el: HTMLDivElement): boolean {
 function handleScroll(): void {
   const el = scrollRef.value
   if (el) shouldFollowOutput.value = isNearBottom(el)
+}
+
+const copiedPromptTurnId = ref<string | null>(null)
+async function copyUserPrompt(msg: AssistantMessageView): Promise<void> {
+  const text = msg.userMessage || ''
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    document.body.appendChild(ta)
+    ta.select()
+    document.execCommand('copy')
+    document.body.removeChild(ta)
+  }
+  copiedPromptTurnId.value = msg.turnId
+  setTimeout(() => {
+    if (copiedPromptTurnId.value === msg.turnId) copiedPromptTurnId.value = null
+  }, 1600)
 }
 
 async function scrollToBottom(): Promise<void> {
@@ -288,6 +308,15 @@ const hasContent = computed(() => props.messages.length > 0)
           <UserRound :size="14" :stroke-width="1.9" />
         </div>
         <div class="user-content">{{ msg.userMessage }}</div>
+        <button
+          type="button"
+          class="copy-prompt-btn"
+          :title="'复制这条提示词'"
+          @click="copyUserPrompt(msg)"
+        >
+          <Copy v-if="copiedPromptTurnId !== msg.turnId" :size="13" />
+          <ClipboardCheck v-else :size="13" />
+        </button>
       </div>
 
       <div class="assistant-block">
@@ -514,6 +543,31 @@ const hasContent = computed(() => props.messages.length > 0)
   display: flex;
   align-items: flex-start;
   gap: 10px;
+}
+.copy-prompt-btn {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-top: 2px;
+  border: 1px solid var(--arc-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--arc-text-hint);
+  cursor: pointer;
+  padding: 0;
+  opacity: 0;
+  transition: color 0.16s ease, border-color 0.16s ease, opacity 0.16s ease;
+}
+.user-entry:hover .copy-prompt-btn,
+.copy-prompt-btn:focus-visible {
+  opacity: 1;
+}
+.copy-prompt-btn:hover {
+  border-color: var(--arc-primary);
+  color: var(--arc-primary);
 }
 .user-avatar {
   display: inline-flex;

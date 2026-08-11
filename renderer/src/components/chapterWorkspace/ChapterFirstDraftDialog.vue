@@ -17,12 +17,30 @@ const props = defineProps<{
   progressText: string
   auditResult: ChapterAuditPayload | null
   elapsedSeconds: number
+  /** 目标字数（用于判断字数是否不足并展示扩充按钮） */
+  targetWordCount?: number
+  /** 当前已生成正文（用于计算实际字数） */
+  currentDraft?: string
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   stop: []
   close: []
+  /** 点击"达到设定目标字数"按钮，围绕已有初稿扩充续写 */
+  expand: [targetWordCount: number]
 }>()
+
+const currentWordCount = computed(() => {
+  const content = props.currentDraft ?? ''
+  return content.trim().length
+})
+
+const isWordCountInsufficient = computed(() => {
+  const target = props.targetWordCount ?? 0
+  if (!target) return false
+  const min = Math.round(target * 0.9)
+  return currentWordCount.value > 0 && currentWordCount.value < min
+})
 
 const elapsedDisplay = computed(() => {
   const s = props.elapsedSeconds
@@ -132,6 +150,9 @@ const auditSummary = computed(() => {
 
     <template #footer>
       <div class="actions">
+        <div v-if="!isGenerating && isWordCountInsufficient" class="expand-hint">
+          当前 {{ currentWordCount }} 字，未达到目标 {{ props.targetWordCount }} 字
+        </div>
         <n-button
           v-if="isGenerating"
           round
@@ -143,9 +164,21 @@ const auditSummary = computed(() => {
         >
           停止生成
         </n-button>
-        <n-button v-else round strong type="primary" @click="$emit('close')">
-          关闭
-        </n-button>
+        <template v-else>
+          <n-button
+            v-if="isWordCountInsufficient"
+            round
+            strong
+            secondary
+            type="primary"
+            @click="emit('expand', props.targetWordCount ?? 0)"
+          >
+            达到设定目标字数（扩充续写）
+          </n-button>
+          <n-button round strong type="primary" @click="$emit('close')">
+            关闭
+          </n-button>
+        </template>
       </div>
     </template>
   </n-modal>
@@ -338,8 +371,16 @@ const auditSummary = computed(() => {
 
 .actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 12px;
+}
+
+.expand-hint {
+  flex: 1;
+  color: var(--arc-warning, #d08b00);
+  font-size: 12px;
+  text-align: left;
 }
 
 .audit-loading {

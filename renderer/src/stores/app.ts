@@ -2021,7 +2021,7 @@ export const useAppStore = defineStore('app', () => {
 
   function deleteOutlineVolume(volumeId: string): void {
     const volumeIndex = outlineVolumes.value.findIndex((volume) => volume.id === volumeId)
-    if (volumeIndex === -1 || outlineVolumes.value.length <= 1) {
+    if (volumeIndex === -1) {
       return
     }
 
@@ -2555,7 +2555,7 @@ export const useAppStore = defineStore('app', () => {
 
   /** 删除章节（至少保留一章），自动切换到相邻章节 */
   function deleteChapter(chapterId: string): void {
-    if (chapters.value.length <= 1) {
+    if (chapters.value.length === 0) {
       return
     }
 

@@ -135,6 +135,8 @@ contextBridge.exposeInMainWorld('characterArc', {
   fetchModels: (settings: unknown) => ipcRenderer.invoke('characterarc:ai-fetch-models', toIpcPayload(settings)),
   /** 获取图片生成接口的可用模型列表 */
   fetchImageModels: (settings: unknown) => ipcRenderer.invoke('characterarc:ai-fetch-image-models', toIpcPayload(settings)),
+  /** 对当前配置的模型执行性能基准测试（延迟与每秒 token） */
+  benchmarkModel: (settings: unknown) => ipcRenderer.invoke('characterarc:ai-benchmark-model', toIpcPayload(settings)),
   /** 生成封面图片 */
   generateImage: (payload: unknown) => ipcRenderer.invoke('characterarc:ai-generate-image', toIpcPayload(payload)),
   /** 读取当前项目的结构化世界状态（角色状态、伏笔、关系、时间线、世界规则、倒计时） */

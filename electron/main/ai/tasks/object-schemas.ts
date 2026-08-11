@@ -197,6 +197,25 @@ const taskObjectSchemas: Partial<Record<AiTaskName, z.ZodTypeAny>> = {
       tags: stringList
     }))
   }),
+  'plot-thread-batch': z.object({
+    entries: z.array(z.object({
+      title: stringField,
+      description: stringField,
+      tags: stringList
+    }))
+  }),
+  'fanqie-seed': z.object({
+    entries: z.array(z.object({
+      title: stringField,
+      concept: stringField,
+      genre: stringField,
+      hook: stringField,
+      protagonist: stringField,
+      goldFinger: stringField,
+      first3Hooks: stringList,
+      outline: stringField
+    }))
+  }),
   'workflow-documents': z.object({
     task_plan: stringField.optional(),
     findings: stringField.optional(),

@@ -748,11 +748,6 @@ function submitVolume(): void {
 }
 
 function handleDeleteVolume(volume: OutlineVolume): void {
-  if (appStore.outlineVolumes.length <= 1) {
-    message.warning('至少需要保留一个分卷')
-    return
-  }
-
   const volumeIndex = appStore.outlineVolumes.findIndex((item) => item.id === volume.id)
   const remainingVolumes = appStore.outlineVolumes.filter((item) => item.id !== volume.id)
   const fallbackVolume = remainingVolumes[Math.max(0, volumeIndex - 1)] ?? remainingVolumes[0]

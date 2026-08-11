@@ -54,7 +54,7 @@ const chapterMenuOptions: DropdownOption[] = [
 
 const volumeMenuOptions = computed<DropdownOption[]>(() => [
   { key: 'edit', label: '编辑分卷信息' },
-  { key: 'delete', label: '删除分卷', disabled: appStore.outlineVolumes.length <= 1 }
+  { key: 'delete', label: '删除分卷' }
 ])
 
 const filteredGroups = computed(() => {
@@ -489,11 +489,6 @@ function submitVolume(): void {
 }
 
 function handleDeleteVolume(volume: OutlineVolume): void {
-  if (appStore.outlineVolumes.length <= 1) {
-    message.warning('至少需要保留一个分卷')
-    return
-  }
-
   const volumeIndex = appStore.outlineVolumes.findIndex((item) => item.id === volume.id)
   const remainingVolumes = appStore.outlineVolumes.filter((item) => item.id !== volume.id)
   const fallbackVolume = remainingVolumes[Math.max(0, volumeIndex - 1)] ?? remainingVolumes[0]
@@ -621,7 +616,6 @@ function handleMenuSelect(key: string | number, chapter: ChapterDraft): void {
     return
   }
   if (key === 'delete') {
-    if (appStore.chapters.length <= 1) return
     dialog.warning({
       title: '确认删除章节',
       content: `确定要删除"${chapter.title}"吗？删除后当前章节草稿将无法恢复。`,

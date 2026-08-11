@@ -6,7 +6,7 @@ export type ThemeName =
   | 'rose'
   | 'apple'
   | 'google'
-  | 'miuix'
+  | 'minimalist'
   | 'claude'
   | 'doubao'
   | 'traework'

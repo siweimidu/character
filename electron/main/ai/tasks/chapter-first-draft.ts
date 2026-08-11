@@ -112,6 +112,18 @@ const handler: TaskHandler = {
     const writingStylePrompt = String(context.writingStylePrompt ?? '暂无')
     const chapterContent = String(context.chapterContent ?? '').trim()
     const chapterHasExistingContent = Boolean(context.chapterHasExistingContent)
+    const expandMode = String(context.expandMode ?? '') === 'expand'
+    const expandTarget = Math.max(Number(context.expandTarget ?? 0) || 0, 0)
+    const existingWordCount = chapterContent.length
+    const expandBlock = expandMode
+      ? `
+
+【本次为字数扩充模式】
+- 这不是重新起稿，而是围绕下方「当前章节现有正文」在原有剧情与文风基础上继续扩充续写，使整章达到目标字数 ${targetWordCount} 字（建议控制在 ${targetWordCountMin}-${targetWordCountMax} 字）。
+- 现有正文约 ${existingWordCount} 字，需围绕已有内容自然延展：在保留原有人物、冲突、伏笔与风格的前提下，补充更丰满的细节、动作、对白、内心活动与场景过程，但不得改变已发生的事实或推翻既有剧情走向。
+- 扩充后的完整正文将直接替换章节内容，因此必须输出扩写之后的**整章完整正文**（包含原有内容与新增部分），不要只输出新增片段。
+- 保持叙述连续、衔接自然，避免生硬插入；扩充要有实际信息量，不能用重复描写或空泛抒情凑字数。`
+      : ''
     const retrievalBlock = knowledgeBlock ? `\n\n检索到的项目记忆与参考资料：\n${knowledgeBlock}` : ''
     const semanticBlock = String(context.semanticSegmentsBlock ?? '').trim()
     const semanticSegmentBlock = semanticBlock ? `\n\n${semanticBlock}` : ''
@@ -131,7 +143,7 @@ const handler: TaskHandler = {
 - 这是"章节初稿生成"，不是润色，不是续写建议，不是分析。
 - 内部构思必须简短，收到请求后尽快开始输出正文，不要长时间停留在分析或规划阶段。
 - 当前章节是否已有正文：${chapterHasExistingContent ? '有，但本次要整章重写' : '没有，本次从零起稿'}。
-- 输出会直接覆盖当前章节全部内容。
+- 输出会直接覆盖当前章节全部内容。${expandBlock}
 - **目标字数硬约束：${targetWordCount} 字，建议控制在 ${targetWordCountMin}-${targetWordCountMax} 字之间**。按中文正文字符估算，低于下限不得提前收尾，高于上限必须主动收束，不要用额外环境描写填满篇幅。
 - 项目默认风格：${writingStyleLabel}；风格要求：${writingStylePrompt}。
 

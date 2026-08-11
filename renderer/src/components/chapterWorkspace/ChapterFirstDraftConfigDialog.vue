@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { CircleHelp } from 'lucide-vue-next'
-import { NButton, NCheckbox, NCheckboxGroup, NInputNumber, NInput, NModal, NSelect, NSwitch, NTag, NTooltip } from 'naive-ui'
+import { CircleHelp, Search, Save, History, Trash2 } from 'lucide-vue-next'
+import { NButton, NCheckbox, NCheckboxGroup, NInputNumber, NInput, NModal, NSelect, NSwitch, NTag, NTooltip, NPopover } from 'naive-ui'
 import { buildChapterReferencePreview, buildOutlineItemContext } from '@/features/ai/chapterAssistantContext'
 import { getChapterPreviewText, getPlainTextFromEditorContent } from '@/features/chapters/editorContent'
 import { useAppStore } from '@/stores/app'
@@ -31,6 +31,90 @@ const project = computed(() => appStore.currentProject)
 const targetWordCount = ref(3000)
 const selectedRefIds = ref<string[]>([])
 const userPrompt = ref('')
+
+// ── 全局补充指令：预设保存 / 历史（最多200条）/ 搜索 ──
+const GLOBAL_PROMPT_STORAGE_KEY = 'characterarc:global-supplement-prompts'
+const GLOBAL_PROMPT_HISTORY_LIMIT = 200
+const savedGlobalPrompts = ref<Array<{ id: string; text: string; at: string }>>(
+  loadSavedGlobalPrompts()
+)
+const globalPromptSearch = ref('')
+const globalPromptSearchMode = ref<'keyword' | 'fuzzy' | 'exact'>('keyword')
+const showGlobalPromptHistory = ref(false)
+
+function loadSavedGlobalPrompts(): Array<{ id: string; text: string; at: string }> {
+  try {
+    const raw = localStorage.getItem(GLOBAL_PROMPT_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((item) => item && typeof item.text === 'string' && item.text.trim())
+      .slice(0, GLOBAL_PROMPT_HISTORY_LIMIT)
+  } catch {
+    return []
+  }
+}
+
+function persistSavedGlobalPrompts(): void {
+  try {
+    const payload = savedGlobalPrompts.value.slice(0, GLOBAL_PROMPT_HISTORY_LIMIT)
+    localStorage.setItem(GLOBAL_PROMPT_STORAGE_KEY, JSON.stringify(payload))
+  } catch {
+    /* localStorage 不可用时静默忽略 */
+  }
+}
+
+function saveCurrentGlobalPrompt(): void {
+  const text = userPrompt.value.trim()
+  if (!text) return
+  savedGlobalPrompts.value = [
+    { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text, at: new Date().toISOString() },
+    ...savedGlobalPrompts.value.filter((item) => item.text !== text)
+  ].slice(0, GLOBAL_PROMPT_HISTORY_LIMIT)
+  persistSavedGlobalPrompts()
+  showGlobalPromptHistory.value = true
+}
+
+function applyGlobalPrompt(item: { text: string }): void {
+  userPrompt.value = item.text
+}
+
+function deleteGlobalPrompt(id: string): void {
+  savedGlobalPrompts.value = savedGlobalPrompts.value.filter((item) => item.id !== id)
+  persistSavedGlobalPrompts()
+}
+
+function clearGlobalPromptHistory(): void {
+  savedGlobalPrompts.value = []
+  persistSavedGlobalPrompts()
+}
+
+const filteredGlobalPrompts = computed(() => {
+  const query = globalPromptSearch.value.trim().toLowerCase()
+  if (!query) return savedGlobalPrompts.value
+  switch (globalPromptSearchMode.value) {
+    case 'exact':
+      return savedGlobalPrompts.value.filter((item) => item.text.trim().toLowerCase() === query)
+    case 'fuzzy': {
+      const chars = Array.from(query)
+      return savedGlobalPrompts.value.filter((item) => {
+        const haystack = item.text.toLowerCase()
+        let pos = -1
+        for (const ch of chars) {
+          pos = haystack.indexOf(ch, pos + 1)
+          if (pos < 0) return false
+        }
+        return true
+      })
+    }
+    case 'keyword':
+    default:
+      return savedGlobalPrompts.value.filter((item) =>
+        Array.from(query).every((ch) => item.text.toLowerCase().includes(ch))
+      )
+  }
+})
 const expandedStepId = ref<FirstDraftStepId | null>('draft')
 const discoveredProjectSkills = ref<ProjectSkillItem[]>([])
 const hasScannedProjectSkills = ref(false)
@@ -338,7 +422,22 @@ function handleConfirm(): void {
         </section>
 
         <section class="config-section prompt-panel">
-          <label class="section-label">全局补充指令（可选）</label>
+          <div class="section-title-row">
+            <div>
+              <label class="section-label">全局补充指令（可选）</label>
+              <p class="section-hint">可保存为预设，历史最多保留 200 条，支持搜索复用。</p>
+            </div>
+            <div class="prompt-toolbar">
+              <n-button size="tiny" secondary @click="saveCurrentGlobalPrompt">
+                <template #icon><Save :size="14" /></template>
+                保存预设
+              </n-button>
+              <n-button size="tiny" secondary @click="showGlobalPromptHistory = !showGlobalPromptHistory">
+                <template #icon><History :size="14" /></template>
+                {{ showGlobalPromptHistory ? '收起历史' : '历史' }}
+              </n-button>
+            </div>
+          </div>
           <n-input
             v-model:value="userPrompt"
             type="textarea"
@@ -346,6 +445,54 @@ function handleConfirm(): void {
             :rows="3"
             size="small"
           />
+
+          <div v-if="showGlobalPromptHistory" class="global-prompt-history">
+            <div class="history-search-row">
+              <n-input
+                v-model:value="globalPromptSearch"
+                size="tiny"
+                placeholder="搜索已保存的全局指令..."
+                clearable
+              >
+                <template #prefix><Search :size="13" /></template>
+              </n-input>
+              <div class="search-mode-switch">
+                <button
+                  v-for="mode in [{ value: 'keyword', label: '关键字' }, { value: 'fuzzy', label: '模糊' }, { value: 'exact', label: '完整匹配' }] as const"
+                  :key="mode.value"
+                  type="button"
+                  class="search-mode-btn"
+                  :class="{ active: globalPromptSearchMode === mode.value }"
+                  @click="globalPromptSearchMode = mode.value"
+                >
+                  {{ mode.label }}
+                </button>
+              </div>
+            </div>
+            <div class="history-list arc-scrollbar">
+              <div v-if="filteredGlobalPrompts.length === 0" class="history-empty">
+                {{ savedGlobalPrompts.length === 0 ? '暂无保存的全局指令' : '未搜索到匹配的指令' }}
+              </div>
+              <div v-for="item in filteredGlobalPrompts" :key="item.id" class="history-item">
+                <button type="button" class="history-item-apply" @click="applyGlobalPrompt(item)">
+                  <span class="history-item-text">{{ item.text }}</span>
+                  <span class="history-item-time">{{ new Date(item.at).toLocaleString() }}</span>
+                </button>
+                <button
+                  type="button"
+                  class="history-item-delete"
+                  title="删除该条预设"
+                  @click="deleteGlobalPrompt(item.id)"
+                >
+                  <Trash2 :size="13" />
+                </button>
+              </div>
+            </div>
+            <div class="history-footer">
+              <span class="history-count">已保存 {{ savedGlobalPrompts.length }} / {{ GLOBAL_PROMPT_HISTORY_LIMIT }} 条</span>
+              <n-button v-if="savedGlobalPrompts.length > 0" size="tiny" quaternary type="error" @click="clearGlobalPromptHistory">清空全部</n-button>
+            </div>
+          </div>
         </section>
       </div>
 
@@ -656,6 +803,144 @@ function handleConfirm(): void {
   grid-template-columns: minmax(0, 1fr);
   align-content: space-between;
   gap: 14px;
+}
+
+.prompt-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.global-prompt-history {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--arc-border, rgba(120, 120, 120, 0.18));
+  border-radius: 8px;
+  background: var(--arc-bg-body, rgba(248, 248, 248, 0.72));
+  padding: 8px;
+}
+
+.history-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-search-row .n-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-mode-switch {
+  display: inline-flex;
+  flex: 0 0 auto;
+  border: 1px solid var(--arc-border, rgba(120, 120, 120, 0.22));
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.search-mode-btn {
+  border: 0;
+  background: transparent;
+  color: var(--arc-text-hint, #999);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  padding: 6px 10px;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.search-mode-btn.active {
+  background: color-mix(in srgb, var(--arc-primary, #6a8cff) 12%, transparent);
+  color: var(--arc-primary, #4f6edb);
+  font-weight: 600;
+}
+
+.history-list {
+  display: flex;
+  max-height: 190px;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.history-item {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  border: 1px solid var(--arc-border, rgba(120, 120, 120, 0.16));
+  border-radius: 6px;
+  background: var(--arc-bg-surface, #fff);
+}
+
+.history-item-apply {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 7px 9px;
+  text-align: left;
+}
+
+.history-item-apply:hover .history-item-text {
+  color: var(--arc-primary, #4f6edb);
+}
+
+.history-item-text {
+  overflow: hidden;
+  color: var(--arc-text-primary, #222);
+  font-size: 12px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-item-time {
+  color: var(--arc-text-hint, #999);
+  font-size: 11px;
+}
+
+.history-item-delete {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--arc-text-hint, #999);
+  cursor: pointer;
+  transition: color 0.16s ease;
+}
+
+.history-item-delete:hover {
+  color: var(--arc-danger, #d03050);
+}
+
+.history-empty {
+  color: var(--arc-text-hint, #999);
+  font-size: 12px;
+  padding: 14px;
+  text-align: center;
+}
+
+.history-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.history-count {
+  color: var(--arc-text-hint, #999);
+  font-size: 11px;
 }
 
 .section-title-row {

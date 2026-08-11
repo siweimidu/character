@@ -22,7 +22,19 @@ const appStore = useAppStore()
 const message = useMessage()
 const isTestingAiConnection = ref(false)
 const isBenchmarkingModel = ref(false)
-const benchmarkResult = ref<{ latencyMs: number; tokensPerSec: number; completionTokens: number; promptTokens: number } | null>(null)
+interface BenchmarkHistoryItem {
+  model: string
+  latencyMs: number
+  tokensPerSec: number
+  completionTokens: number
+  promptTokens: number
+  /** 记录时间（ISO 字符串） */
+  at: string
+}
+
+/** 保留最近 N 条基准测试历史记录 */
+const BENCHMARK_HISTORY_LIMIT = 5
+const benchmarkHistory = ref<BenchmarkHistoryItem[]>([])
 const isTestingProxyConnection = ref(false)
 const proxyTestIp = ref('')
 const isFetchingModels = ref(false)
@@ -382,7 +394,6 @@ async function handleTestAiConnection(): Promise<void> {
 async function handleBenchmarkModel(): Promise<void> {
   if (isBenchmarkingModel.value) return
   isBenchmarkingModel.value = true
-  benchmarkResult.value = null
   try {
     const payload = buildProfilePayload()
     if (!payload.model.trim()) throw new Error('请先填写模型名称后再进行性能测试。')
@@ -390,15 +401,17 @@ async function handleBenchmarkModel(): Promise<void> {
     if (!result.success) throw new Error(result.error ?? '模型性能测试失败')
     const res = result.result
     if (!res) throw new Error('模型性能测试未返回有效数据')
-    benchmarkResult.value = {
+    const record: BenchmarkHistoryItem = {
+      model: payload.model,
       latencyMs: res.latencyMs,
       tokensPerSec: res.tokensPerSec,
       completionTokens: res.completionTokens,
-      promptTokens: res.promptTokens
+      promptTokens: res.promptTokens,
+      at: new Date().toISOString()
     }
+    benchmarkHistory.value = [record, ...benchmarkHistory.value].slice(0, BENCHMARK_HISTORY_LIMIT)
     message.success('模型性能测试完成')
   } catch (error) {
-    benchmarkResult.value = null
     message.error(error instanceof Error ? error.message : '模型性能测试失败')
   } finally {
     isBenchmarkingModel.value = false
@@ -630,18 +643,25 @@ async function saveSettings(): Promise<void> {
                 {{ isBenchmarkingModel ? '测试中...' : '测试模型性能' }}
               </n-button>
             </div>
-            <div v-if="benchmarkResult" class="benchmark-result">
-              <div class="benchmark-item">
-                <span class="benchmark-label">延迟</span>
-                <strong>{{ benchmarkResult.latencyMs.toFixed(0) }} ms</strong>
-              </div>
-              <div class="benchmark-item">
-                <span class="benchmark-label">测速</span>
-                <strong>{{ benchmarkResult.tokensPerSec.toFixed(1) }} tokens/s</strong>
-              </div>
-              <div class="benchmark-item">
-                <span class="benchmark-label">本次输出</span>
-                <strong>{{ benchmarkResult.completionTokens }} tokens</strong>
+            <div v-if="benchmarkHistory.length" class="benchmark-history">
+              <div class="benchmark-history-title">最近 {{ benchmarkHistory.length }} 次性能测试（最多保留 {{ BENCHMARK_HISTORY_LIMIT }} 条，新测试覆盖最旧）</div>
+              <div v-for="(item, idx) in benchmarkHistory" :key="item.at + idx" class="benchmark-result">
+                <div class="benchmark-model">
+                  <strong>{{ item.model }}</strong>
+                  <span class="benchmark-time">{{ new Date(item.at).toLocaleTimeString() }}</span>
+                </div>
+                <div class="benchmark-item">
+                  <span class="benchmark-label">延迟</span>
+                  <strong>{{ item.latencyMs.toFixed(0) }} ms</strong>
+                </div>
+                <div class="benchmark-item">
+                  <span class="benchmark-label">测速</span>
+                  <strong>{{ item.tokensPerSec.toFixed(1) }} tokens/s</strong>
+                </div>
+                <div class="benchmark-item">
+                  <span class="benchmark-label">本次输出</span>
+                  <strong>{{ item.completionTokens }} tokens</strong>
+                </div>
               </div>
             </div>
           </template>
@@ -1034,11 +1054,40 @@ async function saveSettings(): Promise<void> {
   margin-top: 4px;
 }
 
+.benchmark-history {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.benchmark-history-title {
+  font-size: 12px;
+  color: var(--arc-text-muted);
+}
+
 .benchmark-result {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
   margin-top: 10px;
+}
+
+.benchmark-model {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+}
+
+.benchmark-model strong {
+  font-size: 13px;
+  color: var(--arc-text);
+}
+
+.benchmark-time {
+  font-size: 12px;
+  color: var(--arc-text-muted);
 }
 
 .benchmark-item {

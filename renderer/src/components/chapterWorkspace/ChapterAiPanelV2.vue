@@ -24,6 +24,9 @@ const props = defineProps<{
   assistant: ReturnType<typeof useAssistant>
 }>()
 
+/** 最近一次初稿的目标字数，用于字数不足时展示"达到设定目标字数"扩充按钮 */
+const draftTargetWordCount = ref(3000)
+
 const emit = defineEmits<{
   close: []
   'generate-draft': []
@@ -173,7 +176,19 @@ function triggerDraft(config?: FirstDraftConfig): void {
 
 async function handleDraft(config?: FirstDraftConfig): Promise<void> {
   if (!config) return
+  draftTargetWordCount.value = config.targetWordCount || 3000
   try { await draft.start(config) } catch (error) { message.error(error instanceof Error ? error.message : 'AI 初稿生成失败') }
+}
+
+/** 围绕已有初稿扩充续写，直到达到设定目标字数 */
+async function handleExpandDraft(targetWordCount: number): Promise<void> {
+  const existingDraft = draft.previewContent.value.trim() || draft.streamingContent.value.trim()
+  if (!existingDraft) {
+    message.warning('暂无可扩充的初稿内容')
+    return
+  }
+  const target = Math.max(targetWordCount, draftTargetWordCount.value)
+  try { await draft.expandDraftToTarget(existingDraft, target) } catch (error) { message.error(error instanceof Error ? error.message : 'AI 扩充续写失败') }
 }
 
 function handlePanelMouseDown(event: MouseEvent): void {
@@ -370,8 +385,11 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft })
       :progress-text="draft.progressText.value"
       :audit-result="draft.auditResult.value"
       :elapsed-seconds="draft.elapsedSeconds.value"
+      :target-word-count="draftTargetWordCount"
+      :current-draft="draft.previewContent.value"
       @stop="async () => { try { await draft.stop() } catch (e) { message.error(e instanceof Error ? e.message : '停止失败') } }"
       @close="draft.closeModal()"
+      @expand="(target) => handleExpandDraft(target)"
     />
   </section>
 </template>
