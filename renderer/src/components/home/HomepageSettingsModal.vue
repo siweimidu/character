@@ -18,6 +18,22 @@ const emit = defineEmits<{
   (e: 'update:show', value: boolean): void
 }>()
 
+// 根据主题主色亮度自动选择对比度更高的文字颜色（深色主色用白字，浅色主色用深字）
+function themeTextColor(color: string): string {
+  const match = color.match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/')
+  if (!match) return '#ffffff'
+  let hex = match[1]
+  if (hex.length === 3) {
+    hex = hex.split('').map((c) => c + c).join('')
+  }
+  const n = parseInt(hex, 16)
+  const r = (n >> 16) & 255
+  const g = (n >> 8) & 255
+  const b = n & 255
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+  return luminance > 0.55 ? '#1f1f1f' : '#ffffff'
+}
+
 const appStore = useAppStore()
 const message = useMessage()
 const isTestingAiConnection = ref(false)
@@ -791,11 +807,10 @@ async function saveSettings(): Promise<void> {
               :key="preset.name"
               class="theme-card"
               :class="{ active: draftTheme === preset.name }"
-              :style="{ background: preset.light.bgSurface, borderColor: preset.light.borderStrong }"
+              :style="{ background: preset.primary, color: themeTextColor(preset.primary) }"
               @click="draftTheme = preset.name"
             >
-              <span class="theme-card__dot" :style="{ background: preset.primary }"></span>
-              <span class="theme-card__label" :style="{ color: preset.light.textPrimary }">{{ preset.label }}</span>
+              <span class="theme-card__label">{{ preset.label }}</span>
             </button>
           </div>
         </section>
@@ -1287,10 +1302,9 @@ async function saveSettings(): Promise<void> {
 .theme-card {
   display: flex;
   min-height: 56px;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: space-between;
-  border: 1px solid var(--arc-border);
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
   border-radius: 10px;
   cursor: pointer;
   font-size: 11.5px;
@@ -1299,25 +1313,22 @@ async function saveSettings(): Promise<void> {
   transition:
     transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
     box-shadow 0.18s,
-    border-color 0.18s;
-}
-
-.theme-card__dot {
-  width: 20px;
-  height: 20px;
-  border-radius: 6px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    border-color 0.18s,
+    filter 0.18s;
 }
 
 .theme-card__label {
   font-size: 11.5px;
   font-weight: 650;
   line-height: 1.2;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 
 .theme-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+  filter: brightness(1.06);
 }
 
 .theme-card:active {
