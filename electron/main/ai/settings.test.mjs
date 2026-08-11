@@ -26,6 +26,33 @@ test('OpenCode Go 厂商预设使用官方 Go 地址并保持模型为空', () =
   assert.equal(preset?.supportsEmbedding, false)
 })
 
+test('OmniRouter 预设使用 20128 端口，归一化后剥离 /models 得到 /v1', () => {
+  const preset = getAiProviderCatalogEntry('omnirouter')
+  assert.equal(preset?.baseUrl, 'http://localhost:20128/v1/models')
+  assert.equal(preset?.customBaseUrl, true)
+  // normalizeAiBaseUrl 会剥离已知的 /models 端点，得到 /v1
+  assert.equal(normalizeAiBaseUrl('omnirouter', preset?.baseUrl ?? ''), 'http://localhost:20128/v1')
+})
+
+test('FreeLLMAPI 预设使用 3001 端口', () => {
+  const preset = getAiProviderCatalogEntry('freellmapi')
+  assert.equal(preset?.baseUrl, 'http://localhost:3001/v1')
+})
+
+test('新增主流厂商预设具备默认 Base URL', () => {
+  assert.equal(getAiProviderCatalogEntry('hunyuan')?.baseUrl, 'https://api.hunyuan.cloud.tencent.com/v1')
+  assert.equal(getAiProviderCatalogEntry('minimax')?.baseUrl, 'https://api.minimax.chat/v1')
+  assert.equal(getAiProviderCatalogEntry('stepfun')?.baseUrl, 'https://api.stepfun.com/v1')
+  assert.equal(getAiProviderCatalogEntry('together')?.baseUrl, 'https://api.together.xyz/v1')
+  assert.equal(getAiProviderCatalogEntry('one-api')?.baseUrl, 'http://localhost:3000')
+})
+
+test('新增厂商地址归一化正确', () => {
+  assert.equal(normalizeAiBaseUrl('perplexity', 'https://api.perplexity.ai'), 'https://api.perplexity.ai/v1')
+  assert.equal(normalizeAiBaseUrl('one-api', 'http://localhost:3000'), 'http://localhost:3000/v1')
+  assert.equal(normalizeAiBaseUrl('qianfan', 'https://qianfan.baidubce.com/v2'), 'https://qianfan.baidubce.com/v2')
+})
+
 test('自定义接口保留明确填写的路径前缀', () => {
   assert.equal(
     normalizeAiBaseUrl('anthropic-compatible', 'https://relay.example.com/anthropic'),

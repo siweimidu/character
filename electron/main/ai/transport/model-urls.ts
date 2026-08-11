@@ -7,15 +7,23 @@
 const KNOWN_COMPAT_SUFFIXES = [
   '/api/claudecode', '/api/anthropic', '/apps/anthropic',
   '/api/coding', '/claudecode', '/anthropic',
-  '/step_plan', '/coding', '/claude'
+  '/step_plan', '/coding', '/claude',
+  // 第三方中转 / 镜像站常见路径
+  '/api/openai', '/openai/v1', '/v1/openai',
+  '/api/chat', '/api/inference', '/inference',
+  '/api/v1/chat/completions', '/api/chat/completions',
+  '/api/anthropic/chat', '/anthropic/chat'
 ]
 
 const KNOWN_ENDPOINT_SUFFIXES = [
   '/chat/completions',
+  '/api/chat/completions',
+  '/api/v1/chat/completions',
   '/messages',
   '/responses',
   '/embeddings',
   '/models',
+  '/v1/models',
   '/images/generations'
 ]
 
@@ -41,6 +49,7 @@ function stripCompatSuffix(baseUrl: string): string | null {
  */
 const KNOWN_OPENAI_COMPAT_SUFFIXES = [
   '/openai', // Google Gemini OpenAI 兼容入口 .../v1beta/openai
+  '/v1',     // 常见中转站以 /v1 作为 OpenAI 兼容入口
   '/api/v1',
   '/api'
 ]
@@ -58,21 +67,32 @@ function stripOpenAiCompatSuffix(baseUrl: string): string | null {
   return null
 }
 
+/** 从 baseUrl 中提取版本段（如 /v1、/v2、/v1beta），无则返回 null */
+function extractVersionPath(baseUrl: string): string | null {
+  const match = baseUrl.match(/(\/v\d+(?:beta)?)(?:\/|$)/i)
+  return match ? match[1] : null
+}
+
+/** 归一化候选 URL 尾部的重复斜杠 */
+function normUrl(u: string): string {
+  return u.replace(/\/+$/, '')
+}
+
 /** 根据 baseUrl 构建候选的模型列表请求 URL，自动尝试多种路径格式 */
 export function buildModelsUrlCandidates(baseUrl: string): string[] {
   const trimmed = stripKnownEndpointSuffix(baseUrl.trim().replace(/\/+$/, ''))
   if (!trimmed) return []
   const candidates: string[] = []
   if (/(^|\.)open\.bigmodel\.cn(\/|$)/i.test(trimmed) || trimmed.endsWith('/api/paas/v4')) {
-    candidates.push(`${trimmed.replace(/\/v1$/i, '')}/models`)
+    candidates.push(normUrl(`${trimmed.replace(/\/v1$/i, '')}/models`))
   }
   if (/\/v\d+$/i.test(trimmed)) {
     // 已有版本段（如 /v1、/v3、/v4），直接追加 /models
-    candidates.push(`${trimmed}/models`)
+    candidates.push(normUrl(`${trimmed}/models`))
   } else {
-    candidates.push(`${trimmed}/v1/models`)
+    candidates.push(normUrl(`${trimmed}/v1/models`))
     // 不带版本段的地址同时尝试根路径 /models（兼容本地网关与部分聚合）
-    candidates.push(`${trimmed}/models`)
+    candidates.push(normUrl(`${trimmed}/models`))
   }
 
   // Google Gemini OpenAI 兼容入口：/v1beta/openai → 剥离 /openai 后探测 /v1beta/models
@@ -80,8 +100,8 @@ export function buildModelsUrlCandidates(baseUrl: string): string[] {
   if (openAiStripped) {
     const root = openAiStripped.replace(/\/+$/, '')
     if (root.includes('://') && root.length > root.indexOf('://') + 3) {
-      candidates.push(`${root}/models`)
-      candidates.push(`${root}/v1/models`)
+      candidates.push(normUrl(`${root}/models`))
+      candidates.push(normUrl(`${root}/v1/models`))
     }
   }
 
@@ -89,9 +109,21 @@ export function buildModelsUrlCandidates(baseUrl: string): string[] {
   if (stripped) {
     const root = stripped.replace(/\/+$/, '')
     if (root.includes('://') && root.length > root.indexOf('://') + 3) {
-      candidates.push(`${root}/v1/models`)
-      candidates.push(`${root}/models`)
+      candidates.push(normUrl(`${root}/v1/models`))
+      candidates.push(normUrl(`${root}/models`))
     }
   }
+
+  // 兜底：若 baseUrl 本身含版本段但探测结果仍未覆盖，则尝试 /v{版本}/models 与根 /models
+  const versionPath = extractVersionPath(trimmed)
+  if (versionPath && !candidates.some((c) => c.endsWith(`${versionPath}/models`))) {
+    const idx = trimmed.indexOf(versionPath)
+    if (idx > 0) {
+      const prefix = normUrl(trimmed.slice(0, idx))
+      candidates.push(normUrl(`${prefix}${versionPath}/models`))
+      candidates.push(normUrl(`${prefix}/models`))
+    }
+  }
+
   return [...new Set(candidates)]
 }

@@ -8,6 +8,9 @@
 
 ### Added
 
+- **AI 接口配置兼容性增强**：新增腾讯混元、百度千帆、MiniMax、阶跃星辰、零一万物、百川智能、昆仑万维天工、NVIDIA NIM、Together AI、Fireworks AI、Cerebras、Perplexity、Midjourney 中转、One-API/New-API 等主流模型厂商预设；OmniRouter 本地路由默认端口更新为 20128（`http://localhost:20128/v1/models`），FreeLLMAPI 本地路由默认端口更新为 3001（`http://localhost:3001/v1`）。
+- **第三方中转站兼容性增强**：模型列表探测支持更多常见中转路径（`/api/v1`、`/v1`、`/api/openai`、完整 `/chat/completions` 端点等），并对携带版本段的地址自动补全 `/v1/models` 与根 `/models` 候选。
+
 - **多品牌主题**：新增 8 款完整风格主题（苹果、谷歌、MIUI、Claude、豆包、Trae办公、Trae代码、火山引擎），每款主题自带独立的浅色/深色配色（背景、文字、边框、主色），可在首页设置 → 界面主题中切换。
 
 ## [1.17.0] - 2026-08-11
