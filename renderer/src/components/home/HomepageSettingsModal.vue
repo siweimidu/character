@@ -271,6 +271,7 @@ function handleAddProfile(): void {
     baseUrl: defaults.baseUrl,
     apiKey: '',
     model: defaults.model,
+    models: defaults.model ? [defaults.model] : [],
     apiProtocol: 'auto',
     temperature: undefined,
     topP: undefined
@@ -291,6 +292,7 @@ function handleCopyProfile(): void {
     baseUrl: source.baseUrl,
     apiKey: source.apiKey,
     model: source.model,
+    models: Array.isArray(source.models) ? [...source.models] : (source.model ? [source.model] : []),
     apiProtocol: source.apiProtocol ?? 'auto',
     temperature: source.temperature,
     topP: source.topP
@@ -403,6 +405,46 @@ async function handleFetchModels(): Promise<void> {
   } finally {
     isFetchingModels.value = false
   }
+}
+
+function profileModels(): string[] {
+  return editingProfile.value?.models ?? []
+}
+
+/** 把当前模型加入该接口配置的已保存模型列表 */
+function handleSaveProfileModel(): void {
+  const profile = editingProfile.value
+  if (!profile) return
+  const model = profile.model?.trim()
+  if (!model) {
+    message.warning('请先填写模型名称后再保存。')
+    return
+  }
+  const models = Array.isArray(profile.models) ? [...profile.models] : []
+  if (!models.includes(model)) {
+    models.push(model)
+    updateEditingProfile({ models: models.slice(0, 50) })
+    message.success(`已保存模型：${model}`)
+  } else {
+    message.info(`模型 ${model} 已在列表中。`)
+  }
+}
+
+/** 从已保存列表移除某个模型（若为当前模型则同时清空当前模型） */
+function handleRemoveProfileModel(model: string): void {
+  const profile = editingProfile.value
+  if (!profile) return
+  const models = (profile.models ?? []).filter((m) => m !== model)
+  updateEditingProfile({ models })
+  if (profile.model === model) {
+    updateEditingProfile({ model: '' })
+  }
+}
+
+/** 点击已保存的模型，切换到该模型作为当前模型 */
+function handleApplyProfileModel(model: string): void {
+  updateEditingProfile({ model })
+  message.success(`已切换模型：${model}`)
 }
 
 async function handleTestAiConnection(): Promise<void> {
@@ -694,6 +736,45 @@ async function saveSettings(): Promise<void> {
                   </n-button>
                 </div>
               </n-form-item>
+            </div>
+            <div class="saved-models-block">
+              <div class="saved-models-head">
+                <span class="saved-models-title">已保存的模型</span>
+                <span class="saved-models-count">{{ profileModels().length }} 个</span>
+                <button
+                  class="saved-models-add"
+                  type="button"
+                  title="把当前模型保存到列表"
+                  :disabled="!editingProfile.model.trim()"
+                  @click="handleSaveProfileModel"
+                >
+                  <Plus :size="13" />
+                  保存当前模型
+                </button>
+              </div>
+              <div v-if="profileModels().length === 0" class="saved-models-empty">
+                暂无已保存的模型。输入模型名称后点击「保存当前模型」，即可在同一接口下维护多个模型 ID 并快速切换。
+              </div>
+              <div v-else class="saved-models-list">
+                <button
+                  v-for="model in profileModels()"
+                  :key="model"
+                  class="saved-model-chip"
+                  :class="{ 'is-current': model === editingProfile.model }"
+                  type="button"
+                  :title="`切换到 ${model}`"
+                  @click="handleApplyProfileModel(model)"
+                >
+                  <span class="saved-model-name">{{ model }}</span>
+                  <span
+                    class="saved-model-remove"
+                    title="移除该模型"
+                    @click.stop="handleRemoveProfileModel(model)"
+                  >
+                    <Trash2 :size="12" />
+                  </span>
+                </button>
+              </div>
             </div>
             <div class="provider-hint-block">
               <p>{{ activeProviderPreset.hint }}</p>
@@ -1178,6 +1259,119 @@ async function saveSettings(): Promise<void> {
 
 .provider-hint-block p {
   margin: 0;
+}
+
+.saved-models-block {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  background: var(--arc-bg-weak);
+}
+
+.saved-models-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.saved-models-title {
+  color: var(--arc-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.saved-models-count {
+  color: var(--arc-text-hint);
+  font-size: 11px;
+}
+
+.saved-models-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid color-mix(in srgb, var(--arc-primary) 30%, var(--arc-border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--arc-primary) 8%, var(--arc-bg-surface));
+  color: var(--arc-primary);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.saved-models-add:hover {
+  border-color: var(--arc-primary);
+  background: color-mix(in srgb, var(--arc-primary) 14%, var(--arc-bg-surface));
+}
+
+.saved-models-add:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.saved-models-empty {
+  color: var(--arc-text-hint);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.saved-models-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.saved-model-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 8px 4px 10px;
+  border: 1px solid var(--arc-border);
+  border-radius: 999px;
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.saved-model-chip:hover {
+  border-color: var(--arc-primary);
+  color: var(--arc-text-primary);
+}
+
+.saved-model-chip.is-current {
+  border-color: var(--arc-primary);
+  background: color-mix(in srgb, var(--arc-primary) 12%, var(--arc-bg-surface));
+  color: var(--arc-primary);
+  font-weight: 600;
+}
+
+.saved-model-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-model-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: var(--arc-text-hint);
+  transition: background 0.15s, color 0.15s;
+}
+
+.saved-model-remove:hover {
+  background: color-mix(in srgb, #ef4444 18%, transparent);
+  color: #ef4444;
 }
 
 .advanced-settings {

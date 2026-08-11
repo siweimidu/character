@@ -886,6 +886,8 @@ export interface AiProfile {
   baseUrl: string
   apiKey: string
   model: string
+  /** 该接口配置下保存的多个模型 ID，方便在同一接口下快速切换 */
+  models?: string[]
   apiProtocol?: 'auto' | 'openai-responses' | 'openai-chat' | 'anthropic'
   temperature?: number
   topP?: number

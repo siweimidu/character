@@ -18,9 +18,19 @@ const profileOptions = computed(() =>
 )
 
 const modelOptions = computed(() => {
+  // 优先使用当前接口配置下已保存的模型列表，方便在同一接口内快速切换
+  const activeProfile = appStore.appSettings.aiProfiles.find(
+    (p) => p.id === appStore.appSettings.activeAiProfileId
+  )
+  const savedModels = activeProfile?.models?.filter(Boolean) ?? []
+  const baseOptions = savedModels.map((m) => ({ label: m, value: m }))
   if (fetchedModels.value.length > 0) {
-    return fetchedModels.value.map(m => ({ label: m.id, value: m.id }))
+    const merged = new Map<string, { label: string; value: string }>()
+    for (const m of fetchedModels.value) merged.set(m.id, { label: m.id, value: m.id })
+    for (const opt of baseOptions) if (!merged.has(opt.value)) merged.set(opt.value, opt)
+    return Array.from(merged.values())
   }
+  if (baseOptions.length > 0) return baseOptions
   const current = appStore.appSettings.model
   return current ? [{ label: current, value: current }] : []
 })

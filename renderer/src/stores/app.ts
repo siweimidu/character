@@ -145,6 +145,17 @@ function uniqueId(prefix: string): string {
   return `${prefix}-${Date.now()}-${++nextIdCounter}`
 }
 
+/** 把模型合并进已保存模型列表：去空、去重、最多保留 50 条 */
+function mergeProfileModel(current: string[] | undefined, model: string): string[] {
+  const trimmed = model?.trim()
+  if (!trimmed) return current ?? []
+  const next = Array.isArray(current) ? [...current] : []
+  if (!next.includes(trimmed)) {
+    next.push(trimmed)
+  }
+  return next.slice(0, 50)
+}
+
 function normalizeKnowledgeKeywords(value: unknown): string[] {
   return Array.isArray(value)
     ? value.map((item) => String(item).trim()).filter(Boolean).slice(0, 20)
@@ -2798,7 +2809,38 @@ export const useAppStore = defineStore('app', () => {
   function updateActiveAiProfileModel(model: string): void {
     appSettings.value.model = model
     const profile = appSettings.value.aiProfiles.find(p => p.id === appSettings.value.activeAiProfileId)
-    if (profile) profile.model = model
+    if (profile) {
+      profile.model = model
+      // 同步把当前模型加入已保存模型列表，方便同一接口下快速切换
+      profile.models = mergeProfileModel(profile.models, model)
+    }
+    scheduleSettingsPersist({ flushWorkspace: false })
+  }
+
+  /** 把某个模型加入指定接口配置的已保存列表（去空、去重、限量） */
+  function addProfileModel(profileId: string, model: string): void {
+    const profile = appSettings.value.aiProfiles.find(p => p.id === profileId)
+    if (!profile) return
+    profile.models = mergeProfileModel(profile.models, model)
+    scheduleSettingsPersist({ flushWorkspace: false })
+  }
+
+  /** 从指定接口配置的已保存列表中移除某个模型 */
+  function removeProfileModel(profileId: string, model: string): void {
+    const profile = appSettings.value.aiProfiles.find(p => p.id === profileId)
+    if (!profile) return
+    profile.models = (profile.models ?? []).filter(m => m !== model)
+    scheduleSettingsPersist({ flushWorkspace: false })
+  }
+
+  /** 把某接口配置下已保存的某个模型设为该配置的当前模型 */
+  function applyProfileModel(profileId: string, model: string): void {
+    const profile = appSettings.value.aiProfiles.find(p => p.id === profileId)
+    if (!profile) return
+    profile.model = model
+    if (profile.id === appSettings.value.activeAiProfileId) {
+      appSettings.value.model = model
+    }
     scheduleSettingsPersist({ flushWorkspace: false })
   }
 
@@ -3523,6 +3565,9 @@ export const useAppStore = defineStore('app', () => {
     flushAppSettings,
     switchAiProfile,
     updateActiveAiProfileModel,
+    addProfileModel,
+    removeProfileModel,
+    applyProfileModel,
     addAiProfile,
     deleteAiProfile,
     updateAiProfile,

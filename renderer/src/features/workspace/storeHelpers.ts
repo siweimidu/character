@@ -340,6 +340,7 @@ function normalizeAiProfile(profile: AiProfile): AiProfile {
     baseUrl: String(profile.baseUrl ?? '').trim(),
     apiKey: String(profile.apiKey ?? '').trim(),
     model: String(profile.model ?? '').trim(),
+    models: normalizeProfileModels(profile.models),
     apiProtocol:
       profile.apiProtocol === 'openai-responses'
       || profile.apiProtocol === 'openai-chat'
@@ -349,6 +350,22 @@ function normalizeAiProfile(profile: AiProfile): AiProfile {
     temperature: normalizeOptionalNumber(profile.temperature, 0, 2),
     topP: normalizeOptionalNumber(profile.topP, 0, 1)
   }
+}
+
+/** 规范化模型列表：trim、去空、去重、限制条数 */
+function normalizeProfileModels(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const item of value) {
+    if (typeof item !== 'string') continue
+    const trimmed = item.trim()
+    if (!trimmed || seen.has(trimmed)) continue
+    seen.add(trimmed)
+    result.push(trimmed)
+    if (result.length >= 50) break
+  }
+  return result
 }
 
 export function normalizeAppSettings(settings?: Partial<AppSettings> | null): AppSettings {
