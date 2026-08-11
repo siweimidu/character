@@ -7,10 +7,15 @@
 
 import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
-import type { AgentProfile } from '@shared/assistant-runtime'
+import type { AgentProfile, AgentScope } from '@shared/assistant-runtime'
 
 /**
  * 初始化 agent_profiles 表。幂等。
+ *
+ * 表结构说明：
+ *  - scope：'global' | 'local'。local 智能体绑定到单个 project_id（每项目/小说隔离）。
+ *  - project_id：scope=local 时所属项目 ID；global 为空。
+ *  - skill_ids：绑定的 skill id 列表（JSON 数组）。每次调用该智能体自动注入这些 skill。
  */
 export function initAgentProfilesSchema(db: DatabaseSync): void {
   db.exec(`
@@ -23,13 +28,36 @@ export function initAgentProfilesSchema(db: DatabaseSync): void {
       avatar_type TEXT NOT NULL DEFAULT 'none',
       is_builtin INTEGER NOT NULL DEFAULT 0,
       preset_index INTEGER NOT NULL DEFAULT -1,
+      scope TEXT NOT NULL DEFAULT 'global',
+      project_id TEXT,
+      skill_ids TEXT NOT NULL DEFAULT '[]',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     ) STRICT;
 
     CREATE INDEX IF NOT EXISTS idx_agent_profiles_updated
       ON agent_profiles (updated_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_agent_profiles_scope_project
+      ON agent_profiles (scope, project_id);
   `)
+
+  ensureAgentProfileColumns(db)
+}
+
+/** 迁移：为旧表补齐 scope / project_id / skill_ids 列。 */
+function ensureAgentProfileColumns(db: DatabaseSync): void {
+  const cols = db.prepare(`PRAGMA table_info(agent_profiles)`).all() as Array<{ name: string }>
+  const names = new Set(cols.map((c) => c.name))
+  if (!names.has('scope')) {
+    db.exec(`ALTER TABLE agent_profiles ADD COLUMN scope TEXT NOT NULL DEFAULT 'global';`)
+  }
+  if (!names.has('project_id')) {
+    db.exec(`ALTER TABLE agent_profiles ADD COLUMN project_id TEXT;`)
+  }
+  if (!names.has('skill_ids')) {
+    db.exec(`ALTER TABLE agent_profiles ADD COLUMN skill_ids TEXT NOT NULL DEFAULT '[]';`)
+  }
 }
 
 // ============================================================================
@@ -240,8 +268,21 @@ interface AgentProfileRow {
   avatar_type: string
   is_builtin: number
   preset_index: number
+  scope: string
+  project_id: string | null
+  skill_ids: string
   created_at: string
   updated_at: string
+}
+
+function parseSkillIds(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : []
+  } catch {
+    return []
+  }
 }
 
 function rowToAgent(row: AgentProfileRow): AgentProfile {
@@ -254,27 +295,45 @@ function rowToAgent(row: AgentProfileRow): AgentProfile {
     avatarType: (row.avatar_type || 'none') as AgentProfile['avatarType'],
     isBuiltin: row.is_builtin === 1,
     presetIndex: row.preset_index >= 0 ? row.preset_index : undefined,
+    scope: (row.scope || 'global') as AgentScope,
+    projectId: row.project_id || undefined,
+    skillIds: parseSkillIds(row.skill_ids),
     createdAt: row.created_at,
     updatedAt: row.updated_at
   }
 }
 
+/** 已删除的内置智能体 id，防止 seed 时重新插回。 */
+const deletedBuiltinIds = new Set<string>()
+
+/** 被用户删除的内置智能体 id（用于 seed 跳过）。 */
+export function markBuiltinDeleted(id: string): void {
+  deletedBuiltinIds.add(id)
+}
+
+/** 清除已删除内置智能体标记（内置智能体被重新创建/编辑时调用）。 */
+export function unmarkBuiltinDeleted(id: string): void {
+  deletedBuiltinIds.delete(id)
+}
+
+export function isBuiltinDeleted(id: string): boolean {
+  return deletedBuiltinIds.has(id)
+}
+
 /**
  * 确保内置智能体已插入（幂等）。
+ * 被用户手动删除的内置智能体不会重新插入（尊重用户删除意愿）。
  */
 export function seedBuiltinAgents(db: DatabaseSync): void {
-  const stmt = db.prepare('SELECT COUNT(*) as cnt FROM agent_profiles WHERE is_builtin = 1')
-  const { cnt } = stmt.get() as { cnt: number }
-  if (cnt >= BUILTIN_AGENTS.length) return
-
   const insert = db.prepare(`
     INSERT OR IGNORE INTO agent_profiles
-      (id, name, description, system_prompt, avatar, avatar_type, is_builtin, preset_index, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, name, description, system_prompt, avatar, avatar_type, is_builtin, preset_index, scope, skill_ids, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
   const now = new Date().toISOString()
 
   for (const agent of BUILTIN_AGENTS) {
+    if (deletedBuiltinIds.has(agent.id)) continue
     insert.run(
       agent.id,
       agent.name,
@@ -284,14 +343,27 @@ export function seedBuiltinAgents(db: DatabaseSync): void {
       'svg',
       1,
       agent.presetIndex,
+      'global',
+      '[]',
       now,
       now
     )
   }
 }
 
+export interface AgentListFilter {
+  builtinOnly?: boolean
+  scope?: AgentScope
+  projectId?: string
+}
+
 /**
  * AgentProfileStore 类：负责智能体的 CRUD。
+ *
+ * 作用范围（scope）：
+ *  - global：所有项目共享。
+ *  - local：绑定到单个 projectId，仅该项目内可见、使用，不同局部智能体数据完全隔离。
+ * 内置智能体（is_builtin=1）默认 scope=global，且现在允许编辑与删除。
  */
 export class AgentProfileStore {
   private db: DatabaseSync
@@ -300,14 +372,27 @@ export class AgentProfileStore {
     this.db = db
   }
 
-  list(builtinOnly = false): AgentProfile[] {
+  list(filter: AgentListFilter | boolean = {}): AgentProfile[] {
+    const f: AgentListFilter = typeof filter === 'boolean' ? { builtinOnly: filter } : (filter ?? {})
+    const conds: string[] = []
+    const args: Array<string | number | null> = []
+
+    if (f.builtinOnly) {
+      conds.push('is_builtin = 1')
+    }
+    if (f.scope === 'local') {
+      conds.push(`scope = 'local'`)
+      // 局部智能体必须同时匹配项目，实现每项目/小说隔离
+      conds.push('project_id = ?')
+      args.push(f.projectId ?? '')
+    } else if (f.scope === 'global') {
+      conds.push(`scope = 'global'`)
+    }
+
+    const where = conds.length ? `WHERE ${conds.join(' AND ')}` : ''
     const rows = this.db
-      .prepare(
-        builtinOnly
-          ? `SELECT * FROM agent_profiles WHERE is_builtin = 1 ORDER BY preset_index, updated_at DESC`
-          : `SELECT * FROM agent_profiles ORDER BY is_builtin DESC, preset_index, updated_at DESC`
-      )
-      .all() as unknown as AgentProfileRow[]
+      .prepare(`SELECT * FROM agent_profiles ${where} ORDER BY is_builtin DESC, preset_index, updated_at DESC`)
+      .all(...args) as unknown as AgentProfileRow[]
     return rows.map(rowToAgent)
   }
 
@@ -325,17 +410,23 @@ export class AgentProfileStore {
     avatar?: string
     avatarType?: string
     presetIndex?: number
+    scope?: AgentScope
+    projectId?: string
+    skillIds?: string[]
   }): AgentProfile {
     const id = randomUUID()
     const now = new Date().toISOString()
     const avatarType = input.avatarType ?? (input.avatar ? 'image' : 'none')
     const presetIndex = input.presetIndex ?? -1
+    const scope: AgentScope = input.scope ?? 'global'
+    const projectId = scope === 'local' ? (input.projectId ?? null) : null
+    const skillIds = JSON.stringify(Array.isArray(input.skillIds) ? input.skillIds : [])
 
     this.db
       .prepare(`
         INSERT INTO agent_profiles
-          (id, name, description, system_prompt, avatar, avatar_type, is_builtin, preset_index, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+          (id, name, description, system_prompt, avatar, avatar_type, is_builtin, preset_index, scope, project_id, skill_ids, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         id,
@@ -345,6 +436,9 @@ export class AgentProfileStore {
         input.avatar ?? '',
         avatarType,
         presetIndex,
+        scope,
+        projectId,
+        skillIds,
         now,
         now
       )
@@ -358,15 +452,31 @@ export class AgentProfileStore {
     avatar?: string
     avatarType?: string
     presetIndex?: number
+    scope?: AgentScope
+    projectId?: string
+    skillIds?: string[]
   }): AgentProfile | null {
     const existing = this.get(id)
     if (!existing) return null
-    if (existing.isBuiltin) {
-      // 内置智能体不允许修改 name / systemPrompt / avatar / description
-      return existing
+
+    // 内置智能体现在也允许编辑（去掉 is_builtin 限制）
+    const now = new Date().toISOString()
+
+    // 若显式提供了 scope 或 projectId，则做范围迁移
+    let scope: AgentScope | undefined
+    let projectId: string | null | undefined
+    if (input.scope === 'local') {
+      scope = 'local'
+      projectId = input.projectId ?? existing.projectId ?? null
+    } else if (input.scope === 'global') {
+      scope = 'global'
+      projectId = null
+    }
+    let skillIdsJson: string | undefined
+    if (Array.isArray(input.skillIds)) {
+      skillIdsJson = JSON.stringify(input.skillIds)
     }
 
-    const now = new Date().toISOString()
     this.db
       .prepare(`
         UPDATE agent_profiles SET
@@ -376,8 +486,11 @@ export class AgentProfileStore {
           avatar = COALESCE(?, avatar),
           avatar_type = COALESCE(?, avatar_type),
           preset_index = COALESCE(?, preset_index),
+          scope = COALESCE(?, scope),
+          project_id = COALESCE(?, project_id),
+          skill_ids = COALESCE(?, skill_ids),
           updated_at = ?
-        WHERE id = ? AND is_builtin = 0
+        WHERE id = ?
       `)
       .run(
         input.name?.trim() ?? null,
@@ -386,22 +499,33 @@ export class AgentProfileStore {
         input.avatar ?? null,
         input.avatarType ?? null,
         input.presetIndex ?? null,
+        scope ?? null,
+        projectId === undefined ? null : projectId,
+        skillIdsJson ?? null,
         now,
         id
       )
+    // 编辑了内置智能体则取消其删除标记
+    if (existing.isBuiltin) unmarkBuiltinDeleted(id)
     return this.get(id)
   }
 
   delete(id: string): boolean {
     const existing = this.get(id)
-    if (!existing || existing.isBuiltin) return false
-    this.db.prepare(`DELETE FROM agent_profiles WHERE id = ? AND is_builtin = 0`).run(id)
+    if (!existing) return false
+    this.db.prepare(`DELETE FROM agent_profiles WHERE id = ?`).run(id)
+    // 内置智能体被删除后记入标记，防止下次启动 seed 重新插回
+    if (existing.isBuiltin) markBuiltinDeleted(id)
     return true
   }
 
-  /** 获取当前激活的智能体 ID（存 localStorage 由前端管理）。 */
-  getDefaultAgent(): AgentProfile {
-    const builtin = this.list(true)
-    return builtin[0] ?? this.list()[0]
+  /** 获取当前默认智能体（按作用域与项目过滤）。 */
+  getDefaultAgent(scope?: AgentScope, projectId?: string): AgentProfile {
+    if (scope === 'local' && projectId) {
+      const local = this.list({ scope: 'local', projectId })
+      if (local.length) return local[0]
+    }
+    const builtin = this.list({ builtinOnly: true, scope: 'global' })
+    return builtin[0] ?? this.list({ scope: 'global' })[0]
   }
 }

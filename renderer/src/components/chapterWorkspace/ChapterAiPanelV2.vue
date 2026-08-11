@@ -14,6 +14,7 @@ import { useAppStore } from '@/stores/app'
 import { getPlainTextFromEditorContent } from '@/features/chapters/editorContent'
 import { type useAssistant } from '@/composables/useAssistant'
 import type { TurnTruncateResult } from '@shared/assistant-runtime'
+import AgentSelector from '@/components/assistantV2/AgentSelector.vue'
 import AssistantSessionList from '@/components/assistantV2/AssistantSessionList.vue'
 import AssistantMessages from '@/components/assistantV2/AssistantMessages.vue'
 import AssistantComposer from '@/components/assistantV2/AssistantComposer.vue'
@@ -40,6 +41,20 @@ const message = useMessage()
 
 // 使用父级传入的实例
 const assistant = props.assistant
+
+// ============ 智能体选择（取代原章节助理）============
+// 章节默认使用本项目局部智能体，用户可手动切到全局智能体。
+const selectedAgentId = ref<string | undefined>(undefined)
+const selectedAgentScope = ref<'local' | 'global'>('local')
+
+/** 发送时携带当前选中的智能体 ID 与作用范围。 */
+function agentSendOptions() {
+  return {
+    agentId: selectedAgentId.value || undefined,
+    agentScope: selectedAgentScope.value,
+    agentProjectId: appStore.selectedProjectId
+  }
+}
 
 const composerValue = computed({
   get: () => assistant.composerValue.value,
@@ -124,7 +139,8 @@ function sendWithMode(): void {
   }
 
   void assistant.send({
-    intentHint: `chapter-assistant-v2:${activeMode.value}${selectionHintSuffix}`
+    intentHint: `chapter-assistant-v2:${activeMode.value}${selectionHintSuffix}`,
+    ...agentSendOptions()
   })
 }
 
@@ -138,7 +154,8 @@ function handleAttachFile(): void {
   composerValue.value = `【引用文件】章节《${chapter.title}》\n${composerValue.value}`
   void assistant.send({
     intentHint: `chapter-assistant-v2:attach:chapter`,
-    attachments: [{ kind: 'chapter', ref: chapter.id, label: chapter.title }]
+    attachments: [{ kind: 'chapter', ref: chapter.id, label: chapter.title }],
+    ...agentSendOptions()
   })
 }
 
@@ -193,7 +210,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
 
 function sendPrompt(prompt: string): void {
   composerValue.value = prompt
-  void assistant.send()
+  void assistant.send(agentSendOptions())
 }
 
 // 悬浮工具栏调用：携带完整选区文本和动作类型发送
@@ -203,7 +220,8 @@ function sendPromptWithAction(action: string, selectionText: string): void {
   // 用完后清除选区，避免后续发送时重复携带
   appStore.updateChapterSelection(null)
   void assistant.send({
-    intentHint: `chapter-assistant-v2:polish:with-selection`
+    intentHint: `chapter-assistant-v2:polish:with-selection`,
+    ...agentSendOptions()
   })
 }
 
@@ -315,6 +333,28 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
         </button>
       </div>
     </header>
+
+    <div class="agent-strip">
+      <AgentSelector v-model="selectedAgentId" :project-id="appStore.selectedProjectId" />
+      <div class="agent-scope-switch">
+        <button
+          type="button"
+          :class="{ active: selectedAgentScope === 'local' }"
+          @click="selectedAgentScope = 'local'"
+          title="使用本项目局部智能体"
+        >
+          本小说
+        </button>
+        <button
+          type="button"
+          :class="{ active: selectedAgentScope === 'global' }"
+          @click="selectedAgentScope = 'global'"
+          title="切换到全局智能体"
+        >
+          全局
+        </button>
+      </div>
+    </div>
 
     <div class="session-strip">
       <span>{{ activeSessionTitle }}</span>
@@ -595,6 +635,38 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
   padding: 0 14px;
   border-bottom: 1px solid var(--arc-border);
   background: var(--arc-bg-surface);
+}
+.agent-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--arc-border);
+  background: var(--arc-bg-surface);
+}
+.agent-scope-switch {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--arc-bg-weak);
+}
+.agent-scope-switch button {
+  padding: 4px 9px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  font-size: 11.5px;
+}
+.agent-scope-switch button.active {
+  background: var(--arc-primary-soft);
+  color: var(--arc-primary);
+  font-weight: 600;
 }
 
 .session-strip span {

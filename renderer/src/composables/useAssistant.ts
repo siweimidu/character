@@ -89,6 +89,10 @@ export interface AssistantSendOptions {
   attachments?: TurnAttachment[]
   /** 智能体 ID。不传时使用当前会话绑定的智能体。 */
   agentId?: string
+  /** 智能体作用范围：'local' 项目局部智能体 / 'global' 全局智能体。缺省由 Runtime 决定。 */
+  agentScope?: 'local' | 'global'
+  /** 局部智能体归属项目（每项目/小说隔离）。缺省取 options.projectId()。 */
+  agentProjectId?: string
 }
 
 export function useAssistant(options: UseAssistantOptions) {
@@ -608,7 +612,9 @@ export function useAssistant(options: UseAssistantOptions) {
         userMessage: trimmedText,
         intentHint: sendOptions.intentHint,
         attachments: sendOptions.attachments,
-        agentId: sendOptions.agentId
+        agentId: sendOptions.agentId,
+        agentScope: sendOptions.agentScope,
+        agentProjectId: sendOptions.agentProjectId ?? options.projectId()
       })
       // 事件流已经在 handler 里做了乐观 turn 的替换 + 状态更新，
       // 这里只兜底：若乐观 turn 依然存在（没有任何事件推来），清理掉。

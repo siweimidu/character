@@ -239,10 +239,16 @@ export interface ContextBuildRequest {
 /** 智能体头像类型。 */
 export type AgentAvatarType = 'svg' | 'image' | 'none'
 
+/** 智能体作用范围：全局（所有项目共享）或局部（仅绑定到单个项目/小说）。 */
+export type AgentScope = 'global' | 'local'
+
 /**
  * 智能体定义。
  * 用户可创建自定义智能体（不同的 systemPrompt 即不同的角色），
  * 也可选择预设的 SVG 头像或上传图片作为头像。
+ *
+ * scope=global 的智能体在所有项目/小说间共享；scope=local 的智能体
+ * 绑定到单个 projectId，仅在该项目内可用，不同局部智能体之间数据完全隔离。
  */
 export interface AgentProfile {
   id: string
@@ -256,10 +262,16 @@ export interface AgentProfile {
   avatar: string
   /** 头像类型。 */
   avatarType: AgentAvatarType
-  /** 是否内置智能体（不可删除）。 */
+  /** 是否内置智能体。内置智能体现在也可编辑、删除。 */
   isBuiltin: boolean
   /** 预设头像索引（仅内置智能体使用）。 */
   presetIndex?: number
+  /** 作用范围。local 时该智能体仅属于绑定项目。 */
+  scope: AgentScope
+  /** 绑定项目 ID（scope=local 时有效，用于每项目/小说隔离）。 */
+  projectId?: string
+  /** 绑定的 skill id 列表。每次调用该智能体时会自动注入这些 skill。 */
+  skillIds: string[]
   createdAt: string
   updatedAt: string
 }
@@ -391,6 +403,10 @@ export interface TurnSendRequest {
   resumeOfTurnId?: string
   /** 智能体 ID：使用指定智能体的 systemPrompt。缺省时使用默认智能体。 */
   agentId?: string
+  /** 智能体作用范围偏好：'local' 用项目局部智能体，'global' 用全局智能体。缺省由 Runtime 决定。 */
+  agentScope?: 'local' | 'global'
+  /** 局部智能体归属的项目 ID（通常等于 session.projectId，用于每项目/小说隔离）。 */
+  agentProjectId?: string
 }
 
 export interface TurnAttachment {
@@ -455,6 +471,10 @@ export interface StageBindTargetRequest {
 export interface AgentListRequest {
   /** 只列出内置智能体。 */
   builtinOnly?: boolean
+  /** 作用范围过滤。缺省列出全部。 */
+  scope?: AgentScope
+  /** scope=local 时的项目 ID；配合 scope 过滤局部智能体。 */
+  projectId?: string
 }
 
 export interface AgentGetRequest {
@@ -468,6 +488,12 @@ export interface AgentCreateRequest {
   avatar?: string
   avatarType?: AgentAvatarType
   presetIndex?: number
+  /** 作用范围，缺省 global。 */
+  scope?: AgentScope
+  /** scope=local 时必须提供，用于每项目/小说隔离。 */
+  projectId?: string
+  /** 绑定的 skill id 列表。 */
+  skillIds?: string[]
 }
 
 export interface AgentUpdateRequest {
@@ -478,6 +504,10 @@ export interface AgentUpdateRequest {
   avatar?: string
   avatarType?: AgentAvatarType
   presetIndex?: number
+  scope?: AgentScope
+  projectId?: string
+  /** 绑定的 skill id 列表。 */
+  skillIds?: string[]
 }
 
 export interface AgentDeleteRequest {

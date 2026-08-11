@@ -276,7 +276,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
     </header>
 
     <div class="agent-strip">
-      <AgentSelector v-model="selectedAgentId" @update:model-value="persistAgentSelection" />
+      <AgentSelector v-model="selectedAgentId" :project-id="selectedProjectId" @update:model-value="persistAgentSelection" />
     </div>
 
     <div class="session-strip">

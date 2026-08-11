@@ -76,19 +76,44 @@ export function createExecutionPlanner(
     const settings = normalizeSettings(rawSettings)
     validateSettings(settings)
 
-    // 0. 获取智能体（Agent）的 system prompt。
-    //    如果请求指定了 agentId，用它；否则用默认（第一个内置）智能体。
+    // 0. 获取智能体（Agent）的 system prompt 与绑定 skill。
+    //    章节场景（chapter-panel / inline-selection）默认使用项目局部智能体，
+    //    用户可显式 agentScope='global' 手动切到全局智能体；
+    //    全局场景默认使用全局智能体。
     let agentSystemPrompt = ''
     let agentName = ''
+    let agentBoundSkills: string[] = []
     try {
       const { getSharedAgentStore } = await import('./state')
       const store = await getSharedAgentStore()
-      const agent = request.agentId
-        ? store.get(request.agentId)
-        : store.getDefaultAgent()
+      const projectId = request.agentProjectId ?? session.projectId
+      // 章节默认切到局部智能体；全局页面默认全局
+      const isChapterSurface =
+        surface.id === 'chapter-panel' || surface.id === 'inline-selection'
+      const preferLocal =
+        request.agentScope === 'local' ||
+        (request.agentScope === undefined && isChapterSurface)
+      const preferGlobal =
+        request.agentScope === 'global' ||
+        (request.agentScope === undefined && !isChapterSurface)
+
+      let agent = null
+      if (request.agentId) {
+        agent = store.get(request.agentId)
+      } else if (preferLocal && projectId) {
+        const local = store.list({ scope: 'local', projectId })
+        agent = local[0] ?? null
+        if (!agent) {
+          // 项目无局部智能体时回落到全局默认
+          agent = store.getDefaultAgent('global')
+        }
+      } else if (preferGlobal) {
+        agent = store.getDefaultAgent('global')
+      }
       if (agent) {
         agentSystemPrompt = agent.systemPrompt
         agentName = agent.name
+        agentBoundSkills = agent.skillIds ?? []
       }
     } catch {
       // 智能体 store 未就绪时忽略，回落到默认 core system prompt
@@ -126,7 +151,19 @@ export function createExecutionPlanner(
     const matchedSkillDefs = selectedSkills
       .map((sel) => getSkillById(sel.id, projectId || undefined))
       .filter((skill): skill is SkillDefinition => Boolean(skill))
-    const skillPromptBlock = buildV2SkillPromptBlock(matchedSkillDefs, surface)
+
+    // 智能体绑定的 skill 每次调用时自动注入（视为强制生效）。
+    // 从已导入的 skill 中按 id 解析，绑定的 skill 一定进入候选池。
+    const agentBoundSkillDefs = agentBoundSkills
+      .map((skillId) => getSkillById(skillId, projectId || undefined))
+      .filter((skill): skill is SkillDefinition => Boolean(skill))
+    // 合并去重：绑定 skill 优先，普通匹配 skill 补齐
+    const boundIds = new Set(agentBoundSkillDefs.map((s) => s.id))
+    const mergedSkillDefs = [
+      ...agentBoundSkillDefs.map((s) => ({ ...s, manifest: { ...s.manifest, required: true } })),
+      ...matchedSkillDefs.filter((s) => !boundIds.has(s.id))
+    ]
+    const skillPromptBlock = buildV2SkillPromptBlock(mergedSkillDefs, surface)
 
     // 2. 拼 system prompt
     const systemPrompt = buildAssistantSystemPrompt({

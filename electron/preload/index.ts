@@ -294,7 +294,7 @@ contextBridge.exposeInMainWorld('characterArc', {
     stageBindTarget: (payload: unknown) =>
       ipcRenderer.invoke('characterarc:assistant:stage:bind-target', toIpcPayload(payload)),
     // Agent（智能体）
-    agentList: (payload?: { builtinOnly?: boolean }) =>
+    agentList: (payload?: { builtinOnly?: boolean; scope?: string; projectId?: string }) =>
       ipcRenderer.invoke('characterarc:assistant:agent:list', toIpcPayload(payload ?? {})),
     agentGet: (payload: { id: string }) =>
       ipcRenderer.invoke('characterarc:assistant:agent:get', toIpcPayload(payload)),
@@ -305,6 +305,9 @@ contextBridge.exposeInMainWorld('characterArc', {
       avatar?: string
       avatarType?: string
       presetIndex?: number
+      scope?: string
+      projectId?: string
+      skillIds?: string[]
     }) =>
       ipcRenderer.invoke('characterarc:assistant:agent:create', toIpcPayload(payload)),
     agentUpdate: (payload: {
@@ -315,6 +318,9 @@ contextBridge.exposeInMainWorld('characterArc', {
       avatar?: string
       avatarType?: string
       presetIndex?: number
+      scope?: string
+      projectId?: string
+      skillIds?: string[]
     }) =>
       ipcRenderer.invoke('characterarc:assistant:agent:update', toIpcPayload(payload)),
     agentDelete: (payload: { id: string }) =>

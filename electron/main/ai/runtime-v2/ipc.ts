@@ -531,7 +531,11 @@ function registerAgentHandlers(): void {
     ASSISTANT_IPC_CHANNELS.AGENT_LIST,
     async (_event, payload: AgentListRequest) => {
       const store = await getSharedAgentStore()
-      return store.list(payload?.builtinOnly ?? false)
+      return store.list({
+        builtinOnly: payload?.builtinOnly ?? false,
+        scope: payload?.scope,
+        projectId: payload?.projectId
+      })
     }
   )
 
@@ -553,7 +557,10 @@ function registerAgentHandlers(): void {
         systemPrompt: payload.systemPrompt,
         avatar: payload.avatar,
         avatarType: payload.avatarType,
-        presetIndex: payload.presetIndex
+        presetIndex: payload.presetIndex,
+        scope: payload.scope,
+        projectId: payload.projectId,
+        skillIds: payload.skillIds
       })
     }
   )
@@ -568,7 +575,10 @@ function registerAgentHandlers(): void {
         systemPrompt: payload.systemPrompt,
         avatar: payload.avatar,
         avatarType: payload.avatarType,
-        presetIndex: payload.presetIndex
+        presetIndex: payload.presetIndex,
+        scope: payload.scope,
+        projectId: payload.projectId,
+        skillIds: payload.skillIds
       })
     }
   )

@@ -9,6 +9,8 @@ import AgentManagerDialog from './AgentManagerDialog.vue'
 const props = defineProps<{
   /** 当前选中的智能体 ID。 */
   modelValue?: string
+  /** 当前项目 ID（局部智能体归属）。 */
+  projectId?: string
 }>()
 
 const emit = defineEmits<{
@@ -21,11 +23,16 @@ const isOpen = ref(false)
 const isLoaded = ref(false)
 const showManager = ref(false)
 const editingAgent = ref<AgentProfile | null>(null)
+/** 当前查看的作用范围：'local' 只显示本项目局部智能体，'global' 只显示全局智能体。 */
+const activeScope = ref<'local' | 'global'>('global')
 
-async function loadAgents(): Promise<void> {
+async function loadAgents(scope?: 'local' | 'global'): Promise<void> {
   try {
     const A = window.characterArc.assistant
-    const list = await A.agentList()
+    const list = await A.agentList({
+      scope: scope ?? activeScope.value,
+      projectId: scope === 'local' ? props.projectId : (activeScope.value === 'local' ? props.projectId : undefined)
+    })
     agents.value = list as unknown as AgentProfile[]
     isLoaded.value = true
     // 如果没有选中智能体，默认选第一个
@@ -36,6 +43,11 @@ async function loadAgents(): Promise<void> {
     console.error('加载智能体失败:', err)
     isLoaded.value = true
   }
+}
+
+function switchScope(scope: 'local' | 'global'): void {
+  activeScope.value = scope
+  void loadAgents(scope)
 }
 
 const currentAgent = computed(() =>
@@ -89,7 +101,6 @@ function handleEdit(agent: AgentProfile): void {
 }
 
 async function handleDelete(agent: AgentProfile): Promise<void> {
-  if (agent.isBuiltin) return
   if (!confirm(`确定删除智能体"${agent.name}"吗？此操作不可恢复。`)) return
   try {
     const A = window.characterArc.assistant
@@ -140,6 +151,22 @@ watch(() => props.modelValue, () => {
             管理
           </button>
         </div>
+        <div v-if="projectId" class="scope-tabs">
+          <button
+            type="button"
+            :class="{ active: activeScope === 'local' }"
+            @click="switchScope('local')"
+          >
+            本小说智能体
+          </button>
+          <button
+            type="button"
+            :class="{ active: activeScope === 'global' }"
+            @click="switchScope('global')"
+          >
+            全局智能体
+          </button>
+        </div>
         <div class="agent-list">
           <div
             v-for="agent in agents"
@@ -160,7 +187,7 @@ watch(() => props.modelValue, () => {
                 <div class="item-desc">{{ agent.description }}</div>
               </div>
             </button>
-            <div v-if="!agent.isBuiltin" class="item-actions">
+            <div class="item-actions">
               <button type="button" class="action-btn" title="编辑" @click.stop="handleEdit(agent)">
                 <Pencil :size="13" />
               </button>
@@ -180,6 +207,7 @@ watch(() => props.modelValue, () => {
     <AgentManagerDialog
       :visible="showManager"
       :agent="editingAgent"
+      :project-id="projectId"
       @close="showManager = false; editingAgent = null"
       @saved="handleSaved"
     />
@@ -294,6 +322,29 @@ watch(() => props.modelValue, () => {
 }
 .manage-btn:hover {
   background: var(--arc-primary-soft);
+}
+.scope-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--arc-border);
+  background: var(--arc-bg-surface);
+}
+.scope-tabs button {
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+}
+.scope-tabs button.active {
+  border-color: var(--arc-primary);
+  background: var(--arc-primary-soft);
+  color: var(--arc-primary);
+  font-weight: 600;
 }
 .agent-list {
   overflow-y: auto;

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { Upload, X } from 'lucide-vue-next'
-import { NButton, NModal, NInput, NForm, NFormItem } from 'naive-ui'
+import { NButton, NModal, NInput, NForm, NFormItem, NCheckboxGroup, NCheckbox } from 'naive-ui'
 import type { AgentProfile } from '@shared/assistant-runtime'
 import { PRESET_AGENT_AVATARS } from '@shared/agent-avatars'
+import type { ProjectSkillItem } from '@/types/app'
 import { useMessage } from 'naive-ui'
 
 const message = useMessage()
@@ -16,6 +17,8 @@ const props = defineProps<{
   visible: boolean
   /** 编辑模式：传入已有智能体。 */
   agent?: AgentProfile | null
+  /** 当前项目 ID（局部智能体归属）。 */
+  projectId?: string
 }>()
 
 // ============ 表单状态 ============
@@ -25,6 +28,10 @@ const systemPrompt = ref('')
 const avatarType = ref<'svg' | 'image' | 'none'>('svg')
 const presetIndex = ref(0)
 const avatarDataUri = ref('')
+const scope = ref<'local' | 'global'>('global')
+const selectedSkillIds = ref<string[]>([])
+const availableSkills = ref<ProjectSkillItem[]>([])
+const skillsLoading = ref(false)
 const isSaving = ref(false)
 
 // ============ 头像上传 ============
@@ -101,13 +108,21 @@ async function handleSave(): Promise<void> {
     message.error('请输入系统提示词')
     return
   }
+  if (scope.value === 'local' && !props.projectId) {
+    message.error('当前项目不存在，无法创建局部智能体')
+    return
+  }
 
   isSaving.value = true
   try {
     const A = window.characterArc.assistant
     const avatar = buildAvatarData()
+    const scopeArg = scope.value
+    const projectIdArg = scope.value === 'local' ? props.projectId : undefined
+    const skillIds = [...selectedSkillIds.value]
 
-    if (props.agent && !props.agent.isBuiltin) {
+    if (props.agent) {
+      // 内置智能体现在也允许编辑
       const updated = await A.agentUpdate({
         id: props.agent.id,
         name: name.value,
@@ -115,7 +130,10 @@ async function handleSave(): Promise<void> {
         systemPrompt: systemPrompt.value,
         avatar,
         avatarType: avatarType.value,
-        presetIndex: avatarType.value === 'svg' ? presetIndex.value : undefined
+        presetIndex: avatarType.value === 'svg' ? presetIndex.value : undefined,
+        scope: scopeArg,
+        projectId: projectIdArg,
+        skillIds
       })
       if (updated) emit('saved', updated as unknown as AgentProfile)
     } else {
@@ -125,7 +143,10 @@ async function handleSave(): Promise<void> {
         systemPrompt: systemPrompt.value,
         avatar,
         avatarType: avatarType.value,
-        presetIndex: avatarType.value === 'svg' ? presetIndex.value : undefined
+        presetIndex: avatarType.value === 'svg' ? presetIndex.value : undefined,
+        scope: scopeArg,
+        projectId: projectIdArg,
+        skillIds
       })
       if (created) emit('saved', created as unknown as AgentProfile)
     }
@@ -138,12 +159,33 @@ async function handleSave(): Promise<void> {
   }
 }
 
+/** 加载已导入的 skills 供智能体勾选绑定。 */
+async function loadAvailableSkills(): Promise<void> {
+  const projectId = props.projectId
+  if (!projectId) {
+    availableSkills.value = []
+    return
+  }
+  skillsLoading.value = true
+  try {
+    const result = await window.characterArc.scanProjectSkills(projectId)
+    availableSkills.value = (result?.skills ?? []) as ProjectSkillItem[]
+  } catch {
+    availableSkills.value = []
+  } finally {
+    skillsLoading.value = false
+  }
+}
+
 // 编辑时填充表单
 function fillForm(agent: AgentProfile | null): void {
-  if (agent && !agent.isBuiltin) {
+  if (agent) {
+    // 内置智能体现在也可编辑
     name.value = agent.name
     description.value = agent.description
     systemPrompt.value = agent.systemPrompt
+    scope.value = agent.scope ?? 'global'
+    selectedSkillIds.value = [...(agent.skillIds ?? [])]
     if (agent.avatarType === 'svg') {
       avatarType.value = 'svg'
       presetIndex.value = agent.presetIndex ?? 0
@@ -163,6 +205,8 @@ function fillForm(agent: AgentProfile | null): void {
     avatarType.value = 'svg'
     presetIndex.value = 0
     avatarDataUri.value = ''
+    scope.value = 'global'
+    selectedSkillIds.value = []
   }
 }
 
@@ -170,7 +214,10 @@ function fillForm(agent: AgentProfile | null): void {
 watch(
   () => [props.visible, props.agent],
   () => {
-    if (props.visible) fillForm(props.agent ?? null)
+    if (props.visible) {
+      fillForm(props.agent ?? null)
+      void loadAvailableSkills()
+    }
   }
 )
 </script>
@@ -186,7 +233,7 @@ watch(
     <template #header>
       <div class="agent-dialog-title">
         <span class="title-icon">✦</span>
-        {{ agent && !agent.isBuiltin ? '编辑智能体' : '创建智能体' }}
+        {{ agent ? '编辑智能体' : '创建智能体' }}
       </div>
     </template>
 
@@ -194,6 +241,30 @@ watch(
       <NForm label-placement="top" size="small">
         <NFormItem label="智能体名称" required>
           <NInput v-model:value="name" placeholder="例如：大纲师、设定校对、去AI味专家" :maxlength="30" />
+        </NFormItem>
+
+        <NFormItem label="作用范围">
+          <div class="scope-toggle">
+            <button
+              type="button"
+              class="scope-opt"
+              :class="{ active: scope === 'global' }"
+              @click="scope = 'global'"
+            >
+              <strong>全局智能体</strong>
+              <span>所有项目/小说共享</span>
+            </button>
+            <button
+              type="button"
+              class="scope-opt"
+              :class="{ active: scope === 'local' }"
+              @click="scope = 'local'"
+            >
+              <strong>局部智能体</strong>
+              <span>仅当前这本小说可用</span>
+            </button>
+          </div>
+          <p v-if="scope === 'local'" class="scope-hint">局部智能体仅服务于当前项目/小说，与其它小说的局部智能体数据完全隔离。</p>
         </NFormItem>
 
         <NFormItem label="描述">
@@ -211,6 +282,18 @@ watch(
             placeholder="写出这个智能体的角色设定、行为准则与专长领域……"
             :autosize="{ minRows: 5, maxRows: 12 }"
           />
+        </NFormItem>
+
+        <NFormItem label="绑定 Skills（每次调用自动生效）">
+          <div class="skill-bind">
+            <div v-if="skillsLoading" class="skill-hint">正在加载已导入的 Skills…</div>
+            <div v-else-if="availableSkills.length === 0" class="skill-hint">
+              暂无已导入的 Skill。可先在「内置 Skills 与项目扩展」页面导入后再绑定。
+            </div>
+            <NCheckboxGroup v-else v-model:value="selectedSkillIds" class="skill-grid">
+              <NCheckbox v-for="skill in availableSkills" :key="skill.id" :value="skill.id" :label="skill.name" />
+            </NCheckboxGroup>
+          </div>
         </NFormItem>
 
         <NFormItem label="头像">
@@ -286,6 +369,61 @@ watch(
 }
 .agent-form {
   padding: 4px 0;
+}
+.scope-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+}
+.scope-opt {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--arc-border);
+  border-radius: 10px;
+  background: var(--arc-bg-surface);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+.scope-opt strong {
+  font-size: 13px;
+  color: var(--arc-text-primary);
+}
+.scope-opt span {
+  font-size: 11px;
+  color: var(--arc-text-hint);
+}
+.scope-opt:hover {
+  border-color: var(--arc-primary);
+}
+.scope-opt.active {
+  border-color: var(--arc-primary);
+  background: var(--arc-primary-soft);
+}
+.scope-opt.active strong {
+  color: var(--arc-primary);
+}
+.scope-hint {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--arc-text-hint);
+  line-height: 1.4;
+}
+.skill-bind {
+  width: 100%;
+}
+.skill-hint {
+  font-size: 12px;
+  color: var(--arc-text-hint);
+}
+.skill-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 12px;
+  width: 100%;
 }
 .avatar-section {
   display: flex;

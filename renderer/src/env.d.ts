@@ -820,7 +820,7 @@ declare global {
         stageBindTarget: (payload: import('@shared/assistant-runtime').StageBindTargetRequest) =>
           Promise<import('@shared/assistant-runtime').StagedChange | null>
         // Agent（智能体）
-        agentList: (payload?: { builtinOnly?: boolean }) =>
+        agentList: (payload?: import('@shared/assistant-runtime').AgentListRequest) =>
           Promise<import('@shared/assistant-runtime').AgentProfile[]>
         agentGet: (payload: { id: string }) =>
           Promise<import('@shared/assistant-runtime').AgentProfile | null>

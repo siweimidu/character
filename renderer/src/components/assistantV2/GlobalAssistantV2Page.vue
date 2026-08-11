@@ -455,7 +455,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
 
       <!-- 智能体选择器 + 创作记忆 -->
       <div class="agent-toolbar">
-        <AgentSelector v-model="selectedAgentId" @update:model-value="persistAgentSelection" />
+        <AgentSelector v-model="selectedAgentId" :project-id="selectedProjectId" @update:model-value="persistAgentSelection" />
         <button
           class="memory-toggle"
           title="创作记忆（学习闭环）"
