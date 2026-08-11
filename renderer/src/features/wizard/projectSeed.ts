@@ -191,13 +191,26 @@ export function createProjectWorkspaceSeedFromSpiral(
     updatedAt: createdAt
   }))
 
+  const now = new Date().toISOString()
   const protagonistCard: CharacterCard = {
     id: createSeedId('char', 0, timestamp),
     name: spiral.seed.protagonist.name,
     role: '主角',
     description: `核心欲望：${spiral.seed.protagonist.coreDesire}\n核心缺陷：${spiral.seed.protagonist.coreFlaw}\n内在矛盾：${spiral.seed.protagonist.innerConflict}`,
+    appearance: '',
+    personality: '',
+    background: '',
+    scenario: '',
+    greeting: '',
+    dialogueExamples: '',
     avatar: '',
-    tags: mapCharacterTags(spiral.seed.protagonist.tags, '主角')
+    tags: mapCharacterTags(spiral.seed.protagonist.tags, '主角'),
+    customTags: [],
+    projectBinding: 'local',
+    relatedChapterIds: [],
+    versions: [],
+    createdAt: now,
+    updatedAt: now
   }
 
   const supportingCards: CharacterCard[] = spiral.expand.supportingCharacters.map((c, index) => ({
@@ -205,8 +218,20 @@ export function createProjectWorkspaceSeedFromSpiral(
     name: c.name,
     role: c.role,
     description: `与主角关系：${c.relationToProtagonist}\n动机：${c.motivation}`,
+    appearance: '',
+    personality: '',
+    background: '',
+    scenario: '',
+    greeting: '',
+    dialogueExamples: '',
     avatar: '',
-    tags: mapCharacterTags(c.tags, c.role)
+    tags: mapCharacterTags(c.tags, c.role),
+    customTags: [],
+    projectBinding: 'local',
+    relatedChapterIds: [],
+    versions: [],
+    createdAt: now,
+    updatedAt: now
   }))
 
   const characters = [protagonistCard, ...supportingCards]

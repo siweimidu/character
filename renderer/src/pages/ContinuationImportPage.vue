@@ -677,17 +677,39 @@ function createContinuationProject(): void {
   })
 
   const acceptedNames = new Set(includedCharacterNames.value)
+  const now0 = new Date().toISOString()
   const characters: CharacterCard[] = projectForm.aiCharacters
     ? (aggregateAnalysis.value?.characters ?? [])
         .filter((character) => acceptedNames.has(character.name))
-        .map((character) => ({
-          id: entityId('character'),
-          name: character.name,
-          role: character.role || '待确认角色定位',
-          description: character.description,
-          avatar: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
-          tags: character.tags.map((label) => ({ label, tone: 'default' as const }))
-        }))
+        .map((raw) => {
+          const character = raw as typeof raw & {
+            appearance?: string
+            personality?: string
+            background?: string
+            firstMes?: string
+            mesExample?: string
+          }
+          return {
+            id: entityId('character'),
+            name: character.name,
+            role: character.role || '待确认角色定位',
+            description: character.description,
+            appearance: character.appearance ?? '',
+            personality: character.personality ?? '',
+            background: character.background ?? '',
+            scenario: '',
+            greeting: character.firstMes ?? '',
+            dialogueExamples: character.mesExample ?? '',
+            avatar: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
+            tags: character.tags.map((label) => ({ label, tone: 'default' as const })),
+            customTags: character.tags.map((label) => String(label)),
+            projectBinding: 'local' as const,
+            relatedChapterIds: [],
+            versions: [],
+            createdAt: now0,
+            updatedAt: now0
+          }
+        })
     : []
 
   const now = new Date().toISOString()

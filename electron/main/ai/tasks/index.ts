@@ -3,6 +3,7 @@ import type { AiTaskName } from '../shared-types'
 
 import worldviewEntry from './worldview-entry'
 import characterCard from './character-card'
+import characterCardFull from './character-card-full'
 import outlineItem from './outline-item'
 import outlineBatch from './outline-batch'
 import outlineChain from './outline-chain'
@@ -63,6 +64,7 @@ function register(handler: TaskHandler): void {
 
 register(worldviewEntry)
 register(characterCard)
+register(characterCardFull)
 register(outlineItem)
 register(outlineBatch)
 register(outlineChain)

@@ -1514,6 +1514,7 @@ export const useAppStore = defineStore('app', () => {
   /** 创建新角色卡，追加到列表末尾，保持旧角色优先展示 */
   function createCharacter(payload?: Partial<CharacterCard>): string {
     const characterId = uniqueId('char')
+    const now = new Date().toISOString()
     updateCurrentWorkspace((workspace) => {
       const character: CharacterCard = {
         id: characterId,
@@ -1523,10 +1524,24 @@ export const useAppStore = defineStore('app', () => {
         description:
           payload?.description?.trim() ||
           '这是一名新加入项目的角色草稿。你可以继续补充身份、背景、动机与冲突。',
+        appearance: payload?.appearance?.trim() || '',
+        personality: payload?.personality?.trim() || '',
+        background: payload?.background?.trim() || '',
+        scenario: payload?.scenario?.trim() || '',
+        greeting: payload?.greeting?.trim() || '',
+        dialogueExamples: payload?.dialogueExamples || '',
         tags:
           payload?.tags?.length
             ? payload.tags
-            : [{ label: '待完善', tone: 'warning' }]
+            : [{ label: '待完善', tone: 'warning' }],
+        customTags: payload?.customTags?.length
+          ? payload.customTags
+          : (payload?.tags ?? []).map((tag) => tag.label),
+        projectBinding: payload?.projectBinding ?? 'local',
+        relatedChapterIds: payload?.relatedChapterIds ?? [],
+        versions: payload?.versions ?? [],
+        createdAt: now,
+        updatedAt: now
       }
       return {
         ...workspace,
@@ -1541,6 +1556,7 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function updateCharacter(characterId: string, payload: Partial<CharacterCard>): void {
+    const now = new Date().toISOString()
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       characters: workspace.characters.map((character) =>
@@ -1550,8 +1566,114 @@ export const useAppStore = defineStore('app', () => {
               name: payload.name?.trim() || character.name,
               role: payload.role?.trim() ?? character.role,
               avatar: payload.avatar || character.avatar,
-              description: payload.description?.trim() || character.description,
-              tags: payload.tags?.length ? payload.tags : character.tags
+              description: payload.description?.trim() ?? character.description,
+              appearance: payload.appearance ?? character.appearance,
+              personality: payload.personality ?? character.personality,
+              background: payload.background ?? character.background,
+              scenario: payload.scenario ?? character.scenario,
+              greeting: payload.greeting ?? character.greeting,
+              dialogueExamples: payload.dialogueExamples ?? character.dialogueExamples,
+              tags: payload.tags?.length ? payload.tags : character.tags,
+              customTags: payload.customTags?.length ? payload.customTags : character.customTags,
+              projectBinding: payload.projectBinding ?? character.projectBinding,
+              relatedChapterIds: payload.relatedChapterIds ?? character.relatedChapterIds,
+              versions: payload.versions ?? character.versions,
+              updatedAt: now
+            }
+          : character
+      )
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 保存角色卡版本快照（防止误改） */
+  function snapshotCharacter(characterId: string, note = '手动快照'): void {
+    const now = new Date().toISOString()
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      characters: workspace.characters.map((character) =>
+        character.id === characterId
+          ? {
+              ...character,
+              versions: [
+                ...character.versions,
+                {
+                  id: uniqueId('ver'),
+                  note,
+                  createdAt: now,
+                  data: {
+                    name: character.name,
+                    role: character.role,
+                    description: character.description,
+                    appearance: character.appearance,
+                    personality: character.personality,
+                    background: character.background,
+                    scenario: character.scenario,
+                    greeting: character.greeting,
+                    dialogueExamples: character.dialogueExamples,
+                    avatar: character.avatar,
+                    tags: character.tags,
+                    customTags: character.customTags,
+                    projectBinding: character.projectBinding,
+                    relatedChapterIds: character.relatedChapterIds
+                  }
+                }
+              ].slice(-50),
+              updatedAt: now
+            }
+          : character
+      )
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 回滚角色卡到某个版本快照 */
+  function restoreCharacterVersion(characterId: string, versionId: string): boolean {
+    let restored = false
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      characters: workspace.characters.map((character) => {
+        if (character.id !== characterId) return character
+        const version = character.versions.find((v) => v.id === versionId)
+        if (!version) return character
+        restored = true
+        const data = version.data as Partial<CharacterCard>
+        return {
+          ...character,
+          ...data,
+          versions: character.versions,
+          updatedAt: new Date().toISOString()
+        }
+      })
+    }))
+    schedulePersist('fast')
+    return restored
+  }
+
+  /** 删除角色卡版本快照 */
+  function deleteCharacterVersion(characterId: string, versionId: string): void {
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      characters: workspace.characters.map((character) =>
+        character.id === characterId
+          ? { ...character, versions: character.versions.filter((v) => v.id !== versionId) }
+          : character
+      )
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 关联/取消关联某章节到角色（用于查看出场章节） */
+  function toggleCharacterChapterLink(characterId: string, chapterId: string): void {
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      characters: workspace.characters.map((character) =>
+        character.id === characterId
+          ? {
+              ...character,
+              relatedChapterIds: character.relatedChapterIds.includes(chapterId)
+                ? character.relatedChapterIds.filter((id) => id !== chapterId)
+                : [...character.relatedChapterIds, chapterId]
             }
           : character
       )
@@ -3517,6 +3639,7 @@ export const useAppStore = defineStore('app', () => {
     isPersistencePending,
     deleteChapter,
     deleteCharacter,
+    deleteCharacterVersion,
     deleteCharacterRelationship,
     deleteCharacters,
     deleteCharacterRelationships,
@@ -3624,6 +3747,9 @@ export const useAppStore = defineStore('app', () => {
     updateChapterSelection,
     updateChapterSummary,
     updateChapterTitle,
+    snapshotCharacter,
+    restoreCharacterVersion,
+    toggleCharacterChapterLink,
     updateCharacter,
     updateCharacterRelationship,
     updateInspirationEntry,

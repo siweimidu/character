@@ -31,6 +31,7 @@ const PROMPT_CAPABILITY_DEFINITIONS: Record<PromptCapabilityId, PromptCapability
 const TASK_DEFAULT_CAPABILITIES: Record<AiTaskName, PromptCapabilityId[]> = {
   'worldview-entry': ['settings', 'worldview', 'writing-style'],
   'character-card': ['settings', 'characters', 'relations', 'worldview', 'writing-style'],
+  'character-card-full': ['settings', 'characters', 'relations', 'worldview', 'writing-style'],
   'outline-item': ['settings', 'outline', 'worldview', 'characters', 'relations', 'writing-style'],
   'outline-batch': ['settings', 'outline', 'worldview', 'characters', 'relations', 'writing-style', 'project-skills'],
   'outline-chain': ['settings', 'outline', 'chapters', 'worldview', 'characters', 'relations', 'writing-style', 'project-skills'],

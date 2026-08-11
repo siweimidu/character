@@ -375,20 +375,56 @@ export interface CharacterTag {
   tone?: 'default' | 'danger' | 'success' | 'warning'
 }
 
-/** 角色卡数据结构 */
+/** 角色卡版本快照 */
+export interface CharacterCardVersion {
+  /** 快照唯一标识 */
+  id: string
+  /** 快照标题/说明 */
+  note: string
+  /** 快照时间 ISO 时间戳 */
+  createdAt: string
+  /** 快照时的完整角色卡数据（不含版本列表） */
+  data: Record<string, unknown>
+}
+
+/** 角色卡数据结构（兼容 SillyTavern 酒馆角色卡 V2 规范） */
 export interface CharacterCard {
   /** 角色唯一标识 */
   id: string
-  /** 角色姓名 */
+  /** 角色姓名（ST v2: name） */
   name: string
   /** 角色定位短语，如"叛逆黑客 / 小队领袖" */
   role: string
-  /** 角色详细描述 */
+  /** 角色详细描述（ST v2: description） */
   description: string
-  /** 头像 URL 或 CSS 渐变色值 */
+  /** 外貌描述（ST v2: appearance） */
+  appearance: string
+  /** 性格（ST v2: personality） */
+  personality: string
+  /** 背景故事（ST v2: background/mes_example） */
+  background: string
+  /** 开局场景（ST v2: scenario） */
+  scenario: string
+  /** 开场白（ST v2: first_mes） */
+  greeting: string
+  /** 对话示例（ST v2: mes_example） */
+  dialogueExamples: string
+  /** 头像 URL 或 CSS 渐变色值（ST v2: avatar） */
   avatar: string
-  /** 角色标签列表 */
+  /** 角色标签列表（系统/展示标签） */
   tags: CharacterTag[]
+  /** 自定义标签（ST v2: tags，用户自由打标） */
+  customTags: string[]
+  /** 项目归属：local=仅当前项目可见，global=全局共享 */
+  projectBinding: 'local' | 'global'
+  /** 出场章节 ID 列表（用于快速查看该角色出场章节） */
+  relatedChapterIds: string[]
+  /** 角色卡版本快照 */
+  versions: CharacterCardVersion[]
+  /** 创建时间 ISO 时间戳 */
+  createdAt: string
+  /** 最后更新时间 ISO 时间戳 */
+  updatedAt: string
 }
 
 /** 组织/势力条目 */

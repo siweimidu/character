@@ -91,6 +91,7 @@ export type AiTaskName =
   | 'story-deep-audit'
   | 'state-backfill'
   | 'character-enhance'
+  | 'character-card-full'
   | 'worldview-enhance'
   | 'outline-enhance'
   | 'relation-enhance'
@@ -213,6 +214,20 @@ export type WorldviewResult = {
 export type CharacterResult = {
   name: string
   role: string
+  description: string
+  tags: string[]
+}
+
+/** 完整酒馆角色卡生成结果（ST V2 全部字段） */
+export type CharacterCardFullResult = {
+  name: string
+  role: string
+  appearance: string
+  personality: string
+  background: string
+  scenario: string
+  greeting: string
+  dialogueExamples: string
   description: string
   tags: string[]
 }

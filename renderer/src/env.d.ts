@@ -615,6 +615,41 @@ declare global {
         }
         error?: string
       }>
+      pickCharacterCards: () => Promise<{
+        success: boolean
+        canceled: boolean
+        cards?: Array<{
+          name: string
+          role: string
+          description: string
+          appearance: string
+          personality: string
+          background: string
+          scenario: string
+          greeting: string
+          dialogueExamples: string
+          tags: string[]
+          avatar?: string
+          sourceFile: string
+        }>
+        errors?: string[]
+      }>
+      exportCharacterCards: (payload: {
+        cards: Array<Record<string, unknown>>
+        format: 'png' | 'json'
+      }) => Promise<{
+        success: boolean
+        canceled: boolean
+        filePath?: string
+        error?: string
+      }>
+      pickCharacterAvatar: () => Promise<{
+        success: boolean
+        canceled: boolean
+        dataUrl?: string
+        fileName?: string
+        error?: string
+      }>
       scanProjectSkills: (projectId: string) => Promise<{
         success: boolean
         skills?: Array<import('@/types/app').ProjectSkillItem>

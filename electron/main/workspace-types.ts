@@ -196,8 +196,25 @@ export type WorkspacePayload = {
         name: string
         role: string
         description: string
+        appearance: string
+        personality: string
+        background: string
+        scenario: string
+        greeting: string
+        dialogueExamples: string
         avatar: string
         tags: Array<{ label: string; tone?: string }>
+        customTags: string[]
+        projectBinding: 'local' | 'global'
+        relatedChapterIds: string[]
+        versions: Array<{
+          id: string
+          note: string
+          createdAt: string
+          data: Record<string, unknown>
+        }>
+        createdAt: string
+        updatedAt: string
       }>
       organizations: Array<{
         id: string
@@ -587,6 +604,37 @@ export function normalizeProjectRecord(
   }
 }
 
+/** 将角色卡规范化为完整字段（兼容旧存档与新建角色卡），补齐 ST V2 扩展字段默认值 */
+export function normalizeCharacterRecord(
+  character: Partial<WorkspacePayload['workspaces'][string]['characters'][number]> & { id: string }
+): WorkspacePayload['workspaces'][string]['characters'][number] {
+  const now = new Date().toISOString()
+  return {
+    id: character.id,
+    name: character.name?.trim() || '未命名角色',
+    role: character.role?.trim() || '待设定',
+    description: character.description || '',
+    appearance: character.appearance || '',
+    personality: character.personality || '',
+    background: character.background || '',
+    scenario: character.scenario || '',
+    greeting: character.greeting || '',
+    dialogueExamples: character.dialogueExamples || '',
+    avatar: character.avatar || 'linear-gradient(135deg, #9be15d 0%, #00e3ae 100%)',
+    tags: Array.isArray(character.tags) ? character.tags : [],
+    customTags: Array.isArray(character.customTags)
+      ? character.customTags.map((tag) => String(tag).trim()).filter(Boolean)
+      : [],
+    projectBinding: character.projectBinding === 'global' ? 'global' : 'local',
+    relatedChapterIds: Array.isArray(character.relatedChapterIds)
+      ? character.relatedChapterIds.map((id) => String(id)).filter(Boolean)
+      : [],
+    versions: Array.isArray(character.versions) ? character.versions : [],
+    createdAt: character.createdAt || now,
+    updatedAt: character.updatedAt || character.createdAt || now
+  }
+}
+
 export function normalizeCoverWorkbenchHistory(
   items?: unknown
 ): WorkspacePayload['coverWorkbenchHistory'] {
@@ -625,13 +673,17 @@ export function normalizeWorkspacePayload(payload: WorkspacePayload | LegacyWork
     return {
       ...payload,
       aiRuns: globalAiRuns,
+      projects: payload.projects.map((project) => normalizeProjectRecord(project)),
       workspaces: Object.fromEntries(
         Object.entries(payload.workspaces).map(([projectId, workspace]) => [
           projectId,
-          { ...workspace, aiRuns: [] }
+          {
+            ...workspace,
+            characters: (workspace.characters ?? []).map((c) => normalizeCharacterRecord(c)),
+            aiRuns: []
+          }
         ])
       ),
-      projects: payload.projects.map((project) => normalizeProjectRecord(project)),
       knowledgeDocuments: Array.isArray((payload as WorkspacePayload).knowledgeDocuments)
         ? (payload as WorkspacePayload).knowledgeDocuments
         : [],
@@ -668,7 +720,10 @@ export function normalizeWorkspacePayload(payload: WorkspacePayload | LegacyWork
                 updatedAt: entry.updatedAt || entry.createdAt || normalizedTimestamp
               }))
             : [],
-        characters: project.id === selectedProjectId ? legacyPayload.characters ?? [] : [],
+        characters:
+          project.id === selectedProjectId
+            ? (legacyPayload.characters ?? []).map((c) => normalizeCharacterRecord(c))
+            : [],
         organizations:
           project.id === selectedProjectId
             ? (legacyPayload.organizations ?? []).map((entry, index) => ({

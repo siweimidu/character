@@ -17,6 +17,14 @@ import { fetchFanqieTrends } from './fanqie-trends'
 import { getWorkspaceDirPath } from './workspace-store'
 import { inspectContinuationNovelFile } from './continuation-import'
 import {
+  embedCharaJsonIntoPng,
+  isPngBuffer,
+  parsePngCharacterCard,
+  parseCardJson,
+  buildV2CardJson,
+  resolveAvatarBuffer
+} from '@shared/character-card'
+import {
   exportProjectArchive,
   getProjectArchiveDefaultName,
   importProjectArchiveInWorker,
@@ -156,6 +164,13 @@ type ProjectArchiveImportRequest = {
   mode?: ProjectArchiveImportMode
   targetProjectId?: string
   modules?: ProjectArchiveModule[]
+}
+
+/** 生成一张最小的 1x1 PNG，用于无头像时导出 PNG 角色卡 */
+function createFallbackPng(): Buffer {
+  // 1x1 红色像素 PNG
+  const base64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+  return Buffer.from(base64, 'base64')
 }
 
 async function cleanupOrphanReferenceNovelFiles(payload: unknown): Promise<void> {
@@ -503,6 +518,140 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
       payload: validation.payload,
       meta: validation.meta
     }
+  })
+
+  // ── 人物卡片导入导出（兼容酒馆 SillyTavern 角色卡 V2） ──
+  ipcMain.handle('characterarc:character-card-pick', async () => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) return { success: false, canceled: true, cards: [] }
+    const result = await dialog.showOpenDialog(window, {
+      title: '导入人物卡片（PNG / JSON）',
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: '角色卡片', extensions: ['png', 'json'] },
+        { name: '全部文件', extensions: ['*'] }
+      ]
+    })
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, canceled: true, cards: [] }
+    }
+
+    const cards: Array<{
+      name: string
+      description: string
+      appearance: string
+      personality: string
+      scenario: string
+      greeting: string
+      dialogueExamples: string
+      tags: string[]
+      avatar?: string
+      sourceFile: string
+    }> = []
+    const errors: string[] = []
+
+    for (const filePath of result.filePaths) {
+      try {
+        const buffer = await readFile(filePath)
+        let parsed = null
+        let avatar: string | undefined
+
+        if (isPngBuffer(buffer)) {
+          parsed = parsePngCharacterCard(buffer)
+          // 从 PNG 中提取头像（角色卡封面图）
+          if (parsed) {
+            avatar = buffer.toString('base64')
+          }
+        } else {
+          parsed = parseCardJson(buffer.toString('utf-8'))
+        }
+
+        if (!parsed) {
+          errors.push(`${basename(filePath)}：无法解析为有效角色卡`)
+          continue
+        }
+        if (!parsed.name) {
+          errors.push(`${basename(filePath)}：角色卡缺少名称`)
+          continue
+        }
+        cards.push({ ...parsed, avatar, sourceFile: basename(filePath) })
+      } catch {
+        errors.push(`${basename(filePath)}：读取失败`)
+      }
+    }
+
+    return { success: true, canceled: false, cards, errors }
+  })
+
+  ipcMain.handle('characterarc:character-card-export', async (_event, payload: unknown) => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) return { success: false, canceled: true }
+    const req = payload as { cards: Array<Record<string, unknown>>; format: 'png' | 'json' }
+    const cards = Array.isArray(req.cards) ? req.cards : []
+    if (!cards.length) return { success: false, canceled: true }
+
+    const result = await dialog.showSaveDialog(window, {
+      title: '导出人物卡片',
+      defaultPath: `${String(cards[0]?.name ?? '角色卡')}.${req.format === 'png' ? 'png' : 'json'}`,
+      filters: req.format === 'png'
+        ? [{ name: 'PNG 角色卡', extensions: ['png'] }]
+        : [{ name: 'JSON 角色卡', extensions: ['json'] }]
+    })
+    if (result.canceled || !result.filePath) return { success: false, canceled: true }
+
+    try {
+      const first = cards[0] as Record<string, unknown>
+      const card = {
+        name: String(first.name ?? ''),
+        description: String(first.description ?? ''),
+        appearance: String(first.appearance ?? ''),
+        personality: String(first.personality ?? ''),
+        scenario: String(first.scenario ?? ''),
+        greeting: String(first.greeting ?? ''),
+        dialogueExamples: String(first.dialogueExamples ?? ''),
+        tags: Array.isArray(first.tags) ? first.tags.map((t) => String(t)) : []
+      }
+      const cardJson = buildV2CardJson(card)
+
+      if (req.format === 'json') {
+        await writeFile(result.filePath, cardJson, 'utf-8')
+      } else {
+        // 优先使用角色头像作为底图，否则生成最小 PNG
+        const avatarBase = typeof first.avatar === 'string' ? first.avatar : ''
+        const avatarBuf = resolveAvatarBuffer(avatarBase)
+        let pngBuffer = avatarBuf
+        if (!pngBuffer || !isPngBuffer(pngBuffer)) {
+          pngBuffer = createFallbackPng()
+        }
+        await writeFile(result.filePath, embedCharaJsonIntoPng(pngBuffer, cardJson))
+      }
+      return { success: true, canceled: false, filePath: result.filePath }
+    } catch (error) {
+      return {
+        success: false,
+        canceled: false,
+        error: error instanceof Error ? error.message : '导出角色卡失败'
+      }
+    }
+  })
+
+  ipcMain.handle('characterarc:pick-character-avatar', async () => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) return { success: false, canceled: true, dataUrl: '' }
+    const result = await dialog.showOpenDialog(window, {
+      title: '选择人物头像',
+      properties: ['openFile'],
+      filters: [
+        { name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] },
+        { name: '全部文件', extensions: ['*'] }
+      ]
+    })
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, canceled: true, dataUrl: '' }
+    }
+    const buffer = await readFile(result.filePaths[0])
+    const mime = result.filePaths[0].toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg'
+    return { success: true, canceled: false, dataUrl: `data:${mime};base64,${buffer.toString('base64')}`, fileName: basename(result.filePaths[0]) }
   })
 
   ipcMain.handle('characterarc:import-outline-spreadsheet', async () => {

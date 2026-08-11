@@ -59,6 +59,12 @@ contextBridge.exposeInMainWorld('characterArc', {
   exportOutlineTemplate: () => ipcRenderer.invoke('characterarc:export-outline-template'),
   /** 将当前项目大纲导出为 Excel */
   exportOutlineSpreadsheet: (payload: unknown) => ipcRenderer.invoke('characterarc:export-outline-spreadsheet', toIpcPayload(payload)),
+  /** 选择并解析人物卡片（PNG / JSON 酒馆角色卡 V2），支持多选 */
+  pickCharacterCards: () => ipcRenderer.invoke('characterarc:character-card-pick'),
+  /** 导出人物卡片（PNG / JSON 酒馆角色卡 V2） */
+  exportCharacterCards: (payload: unknown) => ipcRenderer.invoke('characterarc:character-card-export', toIpcPayload(payload)),
+  /** 选择人物头像图片并返回 dataUrl */
+  pickCharacterAvatar: () => ipcRenderer.invoke('characterarc:pick-character-avatar'),
   /** 导入参考小说并执行拆书分析 */
   importReferenceNovelAnalysis: (payload: unknown) => ipcRenderer.invoke('characterarc:import-reference-novel-analysis', toIpcPayload(payload)),
   /** 批量导入多本参考小说并发拆书分析 */
