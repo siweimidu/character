@@ -155,13 +155,30 @@ export function formatVolumeLabel(volume: OutlineVolume, index: number, mode: 'f
 }
 
 // 将条目按分卷分组，返回每个分卷及其对应的条目列表，用于分卷视图渲染
+// 当分卷被全部删除后，遗留的“未分卷”条目会归入一个内置的未分卷组，避免数据丢失不可见
 export function buildVolumeGroups<T extends { volumeId: string }>(
   outlineVolumes: OutlineVolume[],
   items: T[]
 ): Array<{ volume: OutlineVolume; index: number; items: T[] }> {
-  return outlineVolumes.map((volume, index) => ({
+  const groups = outlineVolumes.map((volume, index) => ({
     volume,
     index,
     items: items.filter((item) => item.volumeId === volume.id)
   }))
+
+  const orphaned = items.filter((item) => !outlineVolumes.some((volume) => volume.id === item.volumeId))
+  if (orphaned.length > 0) {
+    groups.push({
+      volume: {
+        id: '__unassigned__',
+        title: '未分卷',
+        wordTarget: '',
+        summary: ''
+      },
+      index: outlineVolumes.length,
+      items: orphaned
+    })
+  }
+
+  return groups
 }

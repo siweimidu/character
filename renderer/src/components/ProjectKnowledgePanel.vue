@@ -24,6 +24,7 @@ import { loadEnabledProjectSkillsContext } from '@/features/projectSkills/contex
 import { formatKnowledgeDateTime, isProjectKnowledgeSource, resolveKnowledgeSourceTypeLabel } from '@/features/knowledge/knowledgeCenter'
 import { useAppStore } from '@/stores/app'
 import { toIpcPayload } from '@/utils/ipcPayload'
+import BatchDeleteBar from '@/components/BatchDeleteBar.vue'
 import type { KnowledgeDocument } from '@/types/app'
 import { useIncrementalList } from '@/composables/useIncrementalList'
 
@@ -523,10 +524,68 @@ function deleteKnowledgeDocument(document: KnowledgeDocument): void {
     negativeText: '取消',
     onPositiveClick: () => {
       appStore.removeKnowledgeDocuments([document.id])
+      selectedKnowledgeDocumentIds.value.delete(document.id)
+      selectedKnowledgeDocumentIds.value = new Set(selectedKnowledgeDocumentIds.value)
       if (selectedKnowledgeDocument.value?.id === document.id) {
         selectedKnowledgeDocument.value = null
       }
       message.success('已删除知识文档')
+    }
+  })
+}
+
+// ── 知识文档批量删除 ──
+const selectedKnowledgeDocumentIds = ref<Set<string>>(new Set())
+const isKnowledgeBatchSelecting = ref(false)
+const visibleKnowledgeDocumentIds = computed(() => visibleKnowledgeDocuments.value.map((doc) => doc.id))
+const knowledgeAllSelected = computed(() =>
+  visibleKnowledgeDocumentIds.value.length > 0 &&
+  visibleKnowledgeDocumentIds.value.every((id) => selectedKnowledgeDocumentIds.value.has(id))
+)
+
+function toggleKnowledgeBatchSelect(): void {
+  isKnowledgeBatchSelecting.value = !isKnowledgeBatchSelecting.value
+  if (!isKnowledgeBatchSelecting.value) {
+    selectedKnowledgeDocumentIds.value = new Set()
+  }
+}
+
+function toggleKnowledgeAll(): void {
+  const next = new Set(selectedKnowledgeDocumentIds.value)
+  if (knowledgeAllSelected.value) {
+    visibleKnowledgeDocumentIds.value.forEach((id) => next.delete(id))
+  } else {
+    visibleKnowledgeDocumentIds.value.forEach((id) => next.add(id))
+  }
+  selectedKnowledgeDocumentIds.value = next
+}
+
+function toggleKnowledgeSelect(id: string): void {
+  const next = new Set(selectedKnowledgeDocumentIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selectedKnowledgeDocumentIds.value = next
+}
+
+function clearKnowledgeSelection(): void {
+  selectedKnowledgeDocumentIds.value = new Set()
+}
+
+function handleDeleteSelectedKnowledgeDocuments(): void {
+  const ids = Array.from(selectedKnowledgeDocumentIds.value)
+  if (!ids.length) return
+  dialog.warning({
+    title: '批量删除知识文档',
+    content: `确认删除选中的 ${ids.length} 份知识文档吗？此操作无法撤销。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: () => {
+      appStore.removeKnowledgeDocuments(ids)
+      if (selectedKnowledgeDocument.value && ids.includes(selectedKnowledgeDocument.value.id)) {
+        selectedKnowledgeDocument.value = null
+      }
+      selectedKnowledgeDocumentIds.value = new Set()
+      message.success(`已删除 ${ids.length} 份知识文档`)
     }
   })
 }
@@ -914,7 +973,28 @@ watch(
           <strong>知识文档</strong>
           <n-tag size="tiny" :bordered="false">{{ assistantKnowledgeDocuments.length }} 份</n-tag>
         </div>
+        <n-button
+          v-if="assistantKnowledgeDocuments.length"
+          size="tiny"
+          secondary
+          :type="isKnowledgeBatchSelecting ? 'error' : 'default'"
+          @click="toggleKnowledgeBatchSelect"
+        >
+          {{ isKnowledgeBatchSelecting ? '取消选择' : '批量删除' }}
+        </n-button>
       </div>
+
+      <BatchDeleteBar
+        v-if="isKnowledgeBatchSelecting && visibleKnowledgeDocuments.length"
+        :selected-count="selectedKnowledgeDocumentIds.size"
+        :total-count="assistantKnowledgeDocuments.length"
+        item-label="知识文档"
+        :all-selected="knowledgeAllSelected"
+        class="pk-batch-bar"
+        @toggle-all="toggleKnowledgeAll"
+        @delete-selected="handleDeleteSelectedKnowledgeDocuments"
+        @clear="clearKnowledgeSelection"
+      />
 
       <n-empty v-if="!assistantKnowledgeDocuments.length" description="全局助理保存的知识文档会出现在这里。" />
       <n-space v-else vertical size="small">
@@ -923,11 +1003,20 @@ watch(
           :key="document.id"
           size="small"
           hoverable
+          :class="{ 'pk-history-item--selected': isKnowledgeBatchSelecting && selectedKnowledgeDocumentIds.has(document.id) }"
           class="pk-history-item"
-          @click="openKnowledgeDocument(document)"
+          @click="isKnowledgeBatchSelecting ? toggleKnowledgeSelect(document.id) : openKnowledgeDocument(document)"
         >
           <template #header>
             <div class="pk-history-item-title">
+              <input
+                v-if="isKnowledgeBatchSelecting"
+                type="checkbox"
+                class="pk-select-checkbox"
+                :checked="selectedKnowledgeDocumentIds.has(document.id)"
+                @click.stop
+                @change="toggleKnowledgeSelect(document.id)"
+              />
               <strong>{{ document.title }}</strong>
               <n-tag size="tiny" :bordered="false" type="success">
                 {{ resolveKnowledgeSourceTypeLabel(document.sourceType) }}
@@ -938,7 +1027,20 @@ watch(
             </div>
           </template>
           <template #header-extra>
-            <n-button size="tiny" quaternary type="error" @click.stop="deleteKnowledgeDocument(document)">删除</n-button>
+            <n-button
+              v-if="!isKnowledgeBatchSelecting"
+              size="tiny"
+              quaternary
+              type="error"
+              @click.stop="deleteKnowledgeDocument(document)"
+            >删除</n-button>
+            <n-button
+              v-else
+              size="tiny"
+              quaternary
+              type="error"
+              @click.stop="toggleKnowledgeSelect(document.id)"
+            >{{ selectedKnowledgeDocumentIds.has(document.id) ? '已选' : '选择' }}</n-button>
           </template>
           <p class="pk-history-summary">{{ document.summary || document.content.slice(0, 160) }}</p>
         </n-card>
@@ -1199,8 +1301,31 @@ watch(
   gap: 8px;
 }
 
+/* 知识文档批量删除 */
+.pk-history-head {
+  gap: 12px;
+}
+
+.pk-batch-bar {
+  margin-bottom: 10px;
+}
+
 .pk-history-item {
   cursor: pointer;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.pk-history-item--selected {
+  border-color: color-mix(in srgb, var(--arc-danger) 45%, var(--arc-border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--arc-danger) 12%, transparent);
+}
+
+.pk-select-checkbox {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--arc-danger);
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .pk-history-item-title {

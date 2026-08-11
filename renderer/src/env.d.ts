@@ -573,6 +573,18 @@ declare global {
         content?: string
         error?: string
       }>
+      pickChapterImportFile: () => Promise<{
+        success: boolean
+        canceled: boolean
+        file?: {
+          filePath: string
+          fileName: string
+          title: string
+          content: string
+          charCount: number
+        }
+        error?: string
+      }>
       scanProjectSkills: (projectId: string) => Promise<{
         success: boolean
         skills?: Array<import('@/types/app').ProjectSkillItem>

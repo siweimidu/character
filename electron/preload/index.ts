@@ -63,6 +63,8 @@ contextBridge.exposeInMainWorld('characterArc', {
   cancelReferenceNovelBook: (bookId?: string) => ipcRenderer.invoke('characterarc:cancel-reference-novel-book', bookId ?? ''),
   /** 读取已保存的参考小说原文（用于风格指纹提取等） */
   readReferenceNovelText: (refId: string) => ipcRenderer.invoke('characterarc:read-reference-novel-text', refId),
+  /** 章节/分卷本地文件导入：弹窗选择 txt/md 并读取内容 */
+  pickChapterImportFile: () => ipcRenderer.invoke('characterarc:pick-chapter-import-file'),
   /** 加载当前项目可用的 skills（软件内置 + 项目扩展） */
   scanProjectSkills: (projectId: string) => ipcRenderer.invoke('characterarc:project-skills-scan', projectId),
   /** 从本地目录导入一组项目扩展 skills 到应用数据目录 */

@@ -101,6 +101,15 @@ function handleDraftConfigConfirm(config: FirstDraftConfig): void {
   })
 }
 
+/** 按目标字数控制当前章节正文：超出则精简、不足则扩充 */
+function handleApplyTargetWords(targetWordCount: number): void {
+  draftConfigVisible.value = false
+  aiOpen.value = true
+  nextTick(() => {
+    aiPanelRef.value?.applyTargetWords(targetWordCount)
+  })
+}
+
 function startPanelDrag(e: MouseEvent): void {
   e.preventDefault()
   isDraggingPanel.value = true
@@ -210,6 +219,7 @@ onBeforeUnmount(() => {
       :show="draftConfigVisible"
       @confirm="handleDraftConfigConfirm"
       @cancel="draftConfigVisible = false"
+      @apply-target-words="handleApplyTargetWords"
     />
   </section>
 </template>

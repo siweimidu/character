@@ -1,10 +1,20 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { Archive, FileJson, FileStack, FileText, Lightbulb, Moon, Network, PenTool, Save, Upload, Users } from 'lucide-vue-next'
 import { NButton, NCard, NFormItem, NInput, NSelect, NSwitch, useMessage } from 'naive-ui'
 import { getPlainTextFromEditorContent } from '@/features/chapters/editorContent'
 import { autoSaveOptions } from '@/features/settings/autoSave'
-import { buildProjectWritingStyleContext, writingStylePresets } from '@/features/writingStyles/presets'
+import { buildProjectWritingStyleContext, defaultWritingStylePresetId } from '@/features/writingStyles/presets'
+import {
+  WRITING_STYLE_LIMIT,
+  filterWritingStyles,
+  loadCustomWritingStyles,
+  nextCustomColor,
+  persistCustomWritingStyles,
+  resolveAllWritingStyles,
+  type WritingStyleEntry,
+  type WritingStyleSearchMode
+} from '@/features/writingStyles/styles'
 import ProjectArchiveImportModal from '@/components/ProjectArchiveImportModal.vue'
 import { useAppStore } from '@/stores/app'
 import { toIpcPayload } from '@/utils/ipcPayload'
@@ -61,6 +71,127 @@ function saveWritingStyleSettings(): void {
     writingStylePrompt: draftWritingStylePrompt.value
   })
   message.success('写作风格设置已保存')
+}
+
+// ── 自定义写作风格系统 ──
+const customWritingStyles = ref<WritingStyleEntry[]>(loadCustomWritingStyles())
+const allWritingStyles = computed(() => resolveAllWritingStyles(customWritingStyles.value))
+const writingStyleSearch = ref('')
+const writingStyleSearchMode = ref<WritingStyleSearchMode>('keyword')
+const filteredWritingStyles = computed(() =>
+  filterWritingStyles(allWritingStyles.value, writingStyleSearch.value, writingStyleSearchMode.value)
+)
+
+// 新建自定义风格表单
+const styleEditorVisible = ref(false)
+const styleForm = reactive({
+  label: '',
+  description: '',
+  prompt: '',
+  colorIndex: 0
+})
+const isImportingStyleSkill = ref(false)
+
+function openStyleEditor(): void {
+  styleForm.label = ''
+  styleForm.description = ''
+  styleForm.prompt = ''
+  styleForm.colorIndex = customWritingStyles.value.length % 8
+  styleEditorVisible.value = true
+}
+
+function saveCustomStyle(): void {
+  if (!styleForm.label.trim()) {
+    message.warning('请填写风格名称')
+    return
+  }
+  if (!styleForm.prompt.trim()) {
+    message.warning('请填写风格指令文本')
+    return
+  }
+  if (customWritingStyles.value.length >= WRITING_STYLE_LIMIT) {
+    message.warning(`写作风格最多支持 ${WRITING_STYLE_LIMIT} 条，请先删除一些再添加`)
+    return
+  }
+  const colors = nextCustomColor(styleForm.colorIndex)
+  customWritingStyles.value = [
+    {
+      id: `custom-${Date.now()}`,
+      label: styleForm.label.trim(),
+      description: styleForm.description.trim() || styleForm.label.trim(),
+      prompt: styleForm.prompt.trim(),
+      accent: colors.accent,
+      accentDark: colors.accentDark,
+      source: 'custom',
+      updatedAt: new Date().toISOString()
+    },
+    ...customWritingStyles.value
+  ]
+  persistCustomWritingStyles(customWritingStyles.value)
+  styleEditorVisible.value = false
+  message.success('自定义写作风格已保存')
+}
+
+function removeCustomStyle(style: WritingStyleEntry): void {
+  if (style.source === 'builtin') return
+  customWritingStyles.value = customWritingStyles.value.filter((item) => item.id !== style.id)
+  persistCustomWritingStyles(customWritingStyles.value)
+  if (draftWritingStylePresetId.value === style.id) {
+    draftWritingStylePresetId.value = defaultWritingStylePresetId
+  }
+  message.success('已删除该写作风格')
+}
+
+/** 从本地 skill 目录导入写作风格 */
+async function importStyleFromSkill(): Promise<void> {
+  if (isImportingStyleSkill.value) return
+  if (customWritingStyles.value.length >= WRITING_STYLE_LIMIT) {
+    message.warning(`写作风格最多支持 ${WRITING_STYLE_LIMIT} 条，请先删除一些再导入`)
+    return
+  }
+  isImportingStyleSkill.value = true
+  try {
+    const projectId = appStore.currentProject?.id ?? ''
+    const result = await window.characterArc.importProjectSkillsPackage(projectId)
+    if (result.canceled) return
+    if (!result.success) {
+      message.error(result.error ?? 'Skill 导入失败')
+      return
+    }
+    const skills = await window.characterArc.getProjectSkillsContext(projectId)
+    const skillList = skills.success ? skills.skills ?? [] : []
+    let imported = 0
+    const now = new Date().toISOString()
+    const nextStyles = [...customWritingStyles.value]
+    for (const skill of skillList) {
+      if (nextStyles.length >= WRITING_STYLE_LIMIT) break
+      if (!skill.description) continue
+      if (nextStyles.some((s) => s.label === skill.name)) continue
+      const colors = nextCustomColor(nextStyles.length)
+      nextStyles.push({
+        id: `skill-${skill.id}-${Date.now()}`,
+        label: `技能·${skill.name}`,
+        description: skill.description,
+        prompt: skill.content || skill.description,
+        accent: colors.accent,
+        accentDark: colors.accentDark,
+        source: 'skill',
+        updatedAt: now
+      })
+      imported++
+    }
+    if (imported > 0) {
+      customWritingStyles.value = nextStyles
+      persistCustomWritingStyles(customWritingStyles.value)
+      message.success(`已从 Skill 导入 ${imported} 个写作风格`)
+    } else {
+      message.info('未找到可用于写作风格的新 Skill 描述')
+    }
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : 'Skill 导入失败')
+  } finally {
+    isImportingStyleSkill.value = false
+  }
 }
 
 function buildExportStem(suffix: string): string {
@@ -385,9 +516,38 @@ watch(
           </div>
           <span class="style-hero-badge">项目默认风格</span>
         </div>
+        <div class="style-toolbar">
+          <n-input
+            v-model:value="writingStyleSearch"
+            size="small"
+            placeholder="搜索写作风格（名称 / 描述 / 指令）"
+            clearable
+            class="style-search-input"
+          />
+          <div class="style-search-mode">
+            <button
+              v-for="mode in (['keyword', 'fuzzy', 'exact'] as const)"
+              :key="mode"
+              class="style-mode-btn"
+              :class="{ active: writingStyleSearchMode === mode }"
+              @click="writingStyleSearchMode = mode"
+            >{{ mode === 'keyword' ? '关键字' : mode === 'fuzzy' ? '模糊匹配' : '完整匹配' }}</button>
+          </div>
+          <n-button size="small" secondary @click="openStyleEditor">
+            <template #icon><PenTool :size="13" /></template>
+            自定义风格
+          </n-button>
+          <n-button size="small" secondary :loading="isImportingStyleSkill" @click="importStyleFromSkill">
+            <template #icon><Upload :size="13" /></template>
+            导入 Skill
+          </n-button>
+        </div>
+        <div class="style-count-hint">
+          共 {{ allWritingStyles.length }} 个风格（内置 + 自定义），自定义与导入上限 {{ WRITING_STYLE_LIMIT }} 条。
+        </div>
         <div class="style-preset-grid">
           <button
-            v-for="preset in writingStylePresets"
+            v-for="preset in filteredWritingStyles"
             :key="preset.id"
             class="style-preset-card"
             :class="{ active: draftWritingStylePresetId === preset.id }"
@@ -396,8 +556,15 @@ watch(
           >
             <strong>{{ preset.label }}</strong>
             <span>{{ preset.description }}</span>
+            <span class="style-source-tag" :class="`source-${preset.source}`">
+              {{ preset.source === 'builtin' ? '内置' : preset.source === 'skill' ? 'Skill' : '自定义' }}
+            </span>
+            <span v-if="preset.source !== 'builtin'" class="style-delete-tag" @click.stop="removeCustomStyle(preset)">
+              ✕
+            </span>
           </button>
         </div>
+        <p v-if="!filteredWritingStyles.length" class="style-empty-tip">没有匹配的写作风格，试试更换搜索词或搜索模式。</p>
         <n-form-item label="补充风格要求">
           <n-input
             type="textarea"
@@ -422,6 +589,53 @@ watch(
           当前章节助理、灵感生成、大纲扩写和角色/设定生成都会优先参考这里的项目风格。
         </div>
       </n-card>
+
+      <!-- 自定义写作风格弹窗 -->
+      <n-modal
+        v-model:show="styleEditorVisible"
+        preset="card"
+        title="添加自定义写作风格"
+        :style="{ width: 'min(520px, 92vw)' }"
+        :bordered="false"
+      >
+        <n-form label-placement="top">
+          <n-form-item label="风格名称">
+            <n-input v-model:value="styleForm.label" placeholder="例如：霓虹冷硬派" />
+          </n-form-item>
+          <n-form-item label="风格描述">
+            <n-input v-model:value="styleForm.description" placeholder="一句话说明适用场景（可选）" />
+          </n-form-item>
+          <n-form-item label="风格指令文本">
+            <n-input
+              v-model:value="styleForm.prompt"
+              type="textarea"
+              :autosize="{ minRows: 4, maxRows: 8 }"
+              placeholder="输入要保存为预设的风格指令，例如：对话克制、多用雨幕与霓虹意象、情绪内敛…"
+            />
+          </n-form-item>
+          <n-form-item label="按钮颜色">
+            <div class="style-color-picker">
+              <button
+                v-for="(c, i) in 8"
+                :key="i"
+                class="style-color-dot"
+                :class="{ active: styleForm.colorIndex === i }"
+                :style="{ background: nextCustomColor(i).accent }"
+                @click="styleForm.colorIndex = i"
+              />
+            </div>
+          </n-form-item>
+        </n-form>
+        <template #footer>
+          <div class="style-editor-actions">
+            <n-button round strong @click="styleEditorVisible = false">取消</n-button>
+            <n-button type="primary" round strong @click="saveCustomStyle">
+              <template #icon><Save :size="14" /></template>
+              保存风格
+            </n-button>
+          </div>
+        </template>
+      </n-modal>
     </div>
 
     <ProjectArchiveImportModal ref="archiveImportRef" />
@@ -502,6 +716,113 @@ watch(
   font-weight: 800;
   padding: 7px 10px;
   white-space: nowrap;
+}
+
+/* ── 写作风格系统：自定义 / 导入 / 搜索 ── */
+.style-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.style-search-input {
+  flex: 1 1 200px;
+  min-width: 160px;
+}
+.style-search-mode {
+  display: inline-flex;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.style-mode-btn {
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: var(--arc-text-hint);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, color 0.15s;
+}
+.style-mode-btn.active {
+  background: color-mix(in srgb, var(--arc-primary) 12%, var(--arc-bg-surface));
+  color: var(--arc-primary);
+  font-weight: 600;
+}
+.style-count-hint {
+  color: var(--arc-text-hint);
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+.style-empty-tip {
+  color: var(--arc-text-hint);
+  font-size: 13px;
+  text-align: center;
+  padding: 12px 0;
+}
+.style-preset-card {
+  position: relative;
+}
+.style-source-tag {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.28);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+}
+.style-source-tag.source-custom {
+  background: rgba(22, 163, 74, 0.75);
+}
+.style-source-tag.source-skill {
+  background: rgba(99, 102, 241, 0.8);
+}
+.style-delete-tag {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.85);
+  color: #fff;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.style-preset-card:hover .style-delete-tag {
+  opacity: 1;
+}
+.style-color-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.style-color-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s;
+}
+.style-color-dot.active {
+  border-color: var(--arc-text-primary);
+  transform: scale(1.1);
+}
+.style-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .style-preset-grid {

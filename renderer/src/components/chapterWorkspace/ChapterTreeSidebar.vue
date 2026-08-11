@@ -46,6 +46,118 @@ const volumeForm = reactive({
   summary: ''
 })
 
+// ── 本地文件导入（新建章节 / 新建分卷）──
+const importingVolumeFile = ref(false)
+const importingChapterFile = ref(false)
+// 新建章节时导入的文件内容缓存（用于创建后写入正文与生成摘要）
+const importedChapterContent = ref('')
+const importedChapterCharCount = ref(0)
+const isGeneratingImportedSummary = ref(false)
+
+/** 读取本地文件并做基本解析（标题取文件名，若为数字则按第 X 章命名） */
+async function pickImportFile(): Promise<{
+  fileName: string
+  title: string
+  content: string
+  charCount: number
+} | null> {
+  const result = await window.characterArc.pickChapterImportFile()
+  if (result.canceled || !result.file) {
+    return null
+  }
+  if (!result.success) {
+    message.error(result.error ?? '读取文件失败')
+    return null
+  }
+  return result.file
+}
+
+/** 根据文件名推断标题：纯数字名视为“第X章”，否则用文件名 */
+function resolveImportedTitle(fileName: string, content: string, fallbackIndex: number): string {
+  const base = fileName.replace(/\.[^.]+$/, '').trim() || fileName.trim()
+  if (/^\d+$/.test(base)) {
+    return `第${base}章：导入章节`
+  }
+  return base || `第${fallbackIndex}章：导入章节`
+}
+
+/** 调用 AI 为导入文本生成摘要 */
+async function generateImportSummary(content: string, title: string): Promise<string> {
+  const plainContent = content.trim()
+  if (!plainContent) {
+    return ''
+  }
+  try {
+    const result = await appStore.runTrackedAiTask(
+      {
+        key: 'import-file-summary',
+        kind: 'chapter-summary',
+        label: 'AI 生成导入摘要',
+        description: `正在为《${title}》提炼摘要`,
+        panel: 'chapters',
+      },
+      () =>
+        window.characterArc.generateAi(toIpcPayload({
+          task: 'chapter-summarize',
+          settings: appStore.appSettings,
+          context: {
+            chapterTitle: title,
+            chapterContent: plainContent.slice(0, 12000)
+          }
+        }))
+    )
+    if (!result.success || !result.result) {
+      return ''
+    }
+    const text = String(
+      result.result && typeof result.result === 'object'
+        ? (result.result as Record<string, unknown>).content ?? ''
+        : ''
+    ).trim()
+    return text || ''
+  } catch {
+    return ''
+  }
+}
+
+/** 新建分卷：从本地文件导入标题与摘要 */
+async function handleImportVolumeFile(): Promise<void> {
+  if (importingVolumeFile.value) return
+  importingVolumeFile.value = true
+  try {
+    const file = await pickImportFile()
+    if (!file) return
+    volumeForm.title = resolveImportedTitle(file.fileName, file.content, appStore.outlineVolumes.length + 1)
+    volumeForm.wordTarget = String(file.charCount)
+    isGeneratingImportedSummary.value = true
+    try {
+      const summary = await generateImportSummary(file.content, volumeForm.title)
+      volumeForm.summary = summary || file.content.slice(0, 120)
+      message.success('已从文件导入，并生成摘要')
+    } finally {
+      isGeneratingImportedSummary.value = false
+    }
+  } finally {
+    importingVolumeFile.value = false
+  }
+}
+
+/** 新建章节：从本地文件导入标题与正文，创建时写入正文与摘要 */
+async function handleImportChapterFile(): Promise<void> {
+  if (importingChapterFile.value) return
+  importingChapterFile.value = true
+  try {
+    const file = await pickImportFile()
+    if (!file) return
+    importedChapterContent.value = file.content
+    importedChapterCharCount.value = file.charCount
+    createForm.title = resolveImportedTitle(file.fileName, file.content, appStore.chapters.length + 1)
+    message.success(`已从文件导入（${file.charCount.toLocaleString()} 字），创建章节时将自动写入正文并生成摘要`)
+  } finally {
+    importingChapterFile.value = false
+  }
+}
+
 const chapterMenuOptions: DropdownOption[] = [
   { key: 'edit', label: '编辑章节信息' },
   { key: 'export-txt', label: '导出 TXT' },
@@ -495,10 +607,12 @@ function handleDeleteVolume(volume: OutlineVolume): void {
   const chapterCount = appStore.chapters.filter((chapter) => chapter.volumeId === volume.id).length
   const outlineCount = appStore.outlineItems.filter((item) => item.volumeId === volume.id).length
   const fallbackTitle = fallbackVolume?.title ? `「${fallbackVolume.title}」` : '相邻分卷'
+  const isLastVolume = remainingVolumes.length === 0
+  const moveTarget = isLastVolume ? '转为未分卷' : `移至${fallbackTitle}`
 
   dialog.warning({
     title: '确认删除分卷',
-    content: `确定要删除"${volume.title}"吗？该分卷下的 ${chapterCount} 个章节和 ${outlineCount} 个大纲节点会移至${fallbackTitle}，分卷级创作记忆将一并删除。`,
+    content: `确定要删除"${volume.title}"吗？该分卷下的 ${chapterCount} 个章节和 ${outlineCount} 个大纲节点会${moveTarget}，分卷级创作记忆将一并删除。${isLastVolume ? '删除后分卷将清空。' : ''}`,
     positiveText: '确认删除',
     negativeText: '取消',
     autoFocus: false,
@@ -541,6 +655,35 @@ function submitCreateChapter(): void {
     message.warning('请先选择所属分卷')
     return
   }
+
+  // 从本地文件导入的章节：创建独立章节并写入正文与摘要
+  const hasImportedContent = importedChapterContent.value.trim().length > 0
+  if (hasImportedContent) {
+    if (!createForm.title.trim()) {
+      message.warning('请填写章节标题')
+      return
+    }
+    appStore.createChapter(createForm.volumeId)
+    const chapterId = appStore.selectedChapterId
+    appStore.updateChapter(chapterId, {
+      title: createForm.title.trim(),
+      content: importedChapterContent.value,
+      summary: importedChapterContent.value.slice(0, 120)
+    })
+    void (async () => {
+      const summary = await generateImportSummary(importedChapterContent.value, createForm.title.trim())
+      if (summary) {
+        appStore.updateChapter(chapterId, { summary })
+      }
+    })()
+    importedChapterContent.value = ''
+    importedChapterCharCount.value = 0
+    message.success('已从文件新建章节')
+    closeCreateDialog()
+    emit('navigate')
+    return
+  }
+
   const item = selectedCreateOutline.value
   if (!item) {
     message.warning('请先选择要绑定的大纲节点')
@@ -796,6 +939,18 @@ function handleMenuSelect(key: string | number, chapter: ChapterDraft): void {
         </NFormItem>
         <NFormItem label="分卷标题">
           <NInput v-model:value="volumeForm.title" placeholder="例如：霓虹下的老鼠" />
+          <template #feedback>
+            <NButton
+              size="tiny"
+              secondary
+              :loading="importingVolumeFile"
+              @click="handleImportVolumeFile"
+            >
+              <template #icon><FilePlus :size="12" /></template>
+              从本地文件导入（txt / md）
+            </NButton>
+            <span v-if="isGeneratingImportedSummary" class="import-summary-hint">正在用 AI 生成摘要…</span>
+          </template>
         </NFormItem>
         <NFormItem label="目标字数">
           <NInput v-model:value="volumeForm.wordTarget" placeholder="例如：50000" :allow-input="allowDigitsOnly">
@@ -847,13 +1002,28 @@ function handleMenuSelect(key: string | number, chapter: ChapterDraft): void {
         </NFormItem>
         <NFormItem label="章节标题">
           <NInput v-model:value="createForm.title" placeholder="选择大纲后自动带入标题" />
+          <template #feedback>
+            <NButton size="tiny" secondary :loading="importingChapterFile" @click="handleImportChapterFile">
+              <template #icon><FilePlus :size="12" /></template>
+              从本地文件导入（txt / md）
+            </NButton>
+            <span v-if="importedChapterCharCount" class="import-summary-hint">
+              已导入文件，共 {{ importedChapterCharCount.toLocaleString() }} 字，创建时将写入正文并生成摘要
+            </span>
+          </template>
         </NFormItem>
       </NForm>
 
       <template #footer>
         <div class="create-actions">
           <NButton round strong @click="closeCreateDialog">取消</NButton>
-          <NButton type="primary" round strong :disabled="!createForm.volumeId || !selectedCreateOutline" @click="submitCreateChapter">
+          <NButton
+            type="primary"
+            round
+            strong
+            :disabled="!createForm.volumeId || (!importedChapterContent.trim() && !selectedCreateOutline)"
+            @click="submitCreateChapter"
+          >
             创建章节
           </NButton>
         </div>
@@ -863,6 +1033,12 @@ function handleMenuSelect(key: string | number, chapter: ChapterDraft): void {
 </template>
 
 <style scoped>
+.import-summary-hint {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--arc-text-hint);
+}
 .tree-sidebar {
   display: flex;
   flex-direction: column;

@@ -21,6 +21,8 @@ const props = defineProps<{ show: boolean }>()
 const emit = defineEmits<{
   (e: 'confirm', config: FirstDraftConfig): void
   (e: 'cancel'): void
+  /** 按目标字数控制当前章节正文（超出则精简、不足则扩充） */
+  (e: 'apply-target-words', targetWordCount: number): void
 }>()
 
 const appStore = useAppStore()
@@ -410,7 +412,7 @@ function handleConfirm(): void {
         <section class="config-section compact-panel">
           <div>
             <label class="section-label">目标字数</label>
-            <p class="section-hint">正文生成会按这个目标控制篇幅。</p>
+            <p class="section-hint">正文生成会按这个目标控制篇幅。可一键按目标调整当前章节：超出则精简、不足则扩充。</p>
           </div>
           <n-input-number
             v-model:value="targetWordCount"
@@ -419,6 +421,16 @@ function handleConfirm(): void {
             :step="500"
             size="small"
           />
+          <n-button
+            class="apply-target-btn"
+            size="small"
+            secondary
+            type="primary"
+            @click="emit('apply-target-words', targetWordCount)"
+          >
+            <template #icon><Save :size="13" /></template>
+            按目标字数调整当前章节
+          </n-button>
         </section>
 
         <section class="config-section prompt-panel">
@@ -766,6 +778,10 @@ function handleConfirm(): void {
 </template>
 
 <style scoped>
+.apply-target-btn {
+  align-self: flex-start;
+  margin-top: 2px;
+}
 .config-form {
   display: flex;
   max-height: min(76vh, 760px);

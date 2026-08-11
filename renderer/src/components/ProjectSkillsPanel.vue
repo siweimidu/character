@@ -225,11 +225,11 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
         <div>
           <span class="skills-kicker">Skills</span>
           <h2>内置 Skills 与项目扩展</h2>
-          <p>软件内置 skills 来自 `resources/skills`。项目导入的 skills 会按当前项目叠加在其上，打包版和开发版都走同一套结构。</p>
+          <p>软件内置 skills 来自 `resources/skills`。项目导入的 skills 会按当前项目叠加在其上，打包版和开发版都走同一套结构。支持扫描本地文件夹，或导入 .zip 压缩包格式的 skills。</p>
         </div>
         <div class="skills-panel-actions">
           <n-button round strong :disabled="isImportingProjectSkills" @click="importProjectSkillsPackage">
-            {{ isImportingProjectSkills ? '导入中...' : '导入 Skill 包' }}
+            {{ isImportingProjectSkills ? '导入中...' : '导入 Skill 包（目录 / .zip）' }}
           </n-button>
           <n-button round strong secondary :disabled="isScanningProjectSkills" @click="scanProjectSkills">
             {{ isScanningProjectSkills ? '扫描中...' : '重新扫描' }}
@@ -324,7 +324,7 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
       <div v-else class="skills-empty-state">
         <BookOpenText :size="18" />
         <strong>还没有识别到项目级 skills</strong>
-        <p>你可以直接导入 `oh-story-claudecode` 仓库根目录、其中的 `skills/` 目录，或任意单个 skill 目录。</p>
+        <p>你可以直接导入 `oh-story-claudecode` 仓库根目录、其中的 `skills/` 目录、任意单个 skill 目录，或 .zip 压缩包。</p>
       </div>
     </section>
   </section>

@@ -38,6 +38,86 @@ function isExpandingVolume(volumeId: string): boolean {
 const isAnyVolumeExpanding = computed(() =>
   appStore.outlineVolumes.some((volume) => isExpandingVolume(volume.id))
 )
+
+// ── AI 自动新建大纲（大纲为空时）──
+const AI_TASK_AUTO_OUTLINE = 'outline-auto-create'
+const isAutoCreatingOutline = computed(() => appStore.isAiTaskRunning(AI_TASK_AUTO_OUTLINE))
+const autoOutlineVisible = ref(false)
+const autoOutlinePrompt = ref('')
+
+function openAutoOutlineDialog(): void {
+  autoOutlinePrompt.value = ''
+  autoOutlineVisible.value = true
+}
+
+async function handleAutoCreateOutline(): Promise<void> {
+  if (isAutoCreatingOutline.value) {
+    return
+  }
+
+  const project = appStore.currentProject
+  try {
+    const result = await appStore.runTrackedAiTask(
+      {
+        key: AI_TASK_AUTO_OUTLINE,
+        kind: 'outline',
+        label: 'AI 自动新建大纲',
+        description: '正在根据项目简介生成初始剧情大纲',
+        panel: 'outline',
+      },
+      () =>
+        window.characterArc.generateAi(toIpcPayload({
+          task: 'project-bootstrap',
+          settings: appStore.appSettings,
+          context: {
+            projectTitle: project?.title,
+            projectGenre: project?.genre,
+            projectNovelLength: project?.novelLength,
+            projectPremise: autoOutlinePrompt.value.trim() || project?.genre || '',
+            projectId: project?.id,
+            writingStyleLabel: writingStyle.value.label,
+            writingStylePrompt: writingStyle.value.prompt
+          }
+        }))
+    )
+
+    if (!result.success || !result.result) {
+      throw new Error(result.error ?? 'AI 生成大纲失败，请检查模型配置')
+    }
+
+    const data = result.result as { outlineItems?: Array<{ title?: string; wordTarget?: string; conflict?: string; summary?: string }> }
+    const items = Array.isArray(data.outlineItems) ? data.outlineItems : []
+    if (!items.length) {
+      throw new Error('AI 未返回有效的大纲节点')
+    }
+
+    // 若当前没有分卷，先新建一个分卷承载生成的节点
+    let volumeId = appStore.outlineVolumes[0]?.id ?? ''
+    if (!volumeId) {
+      volumeId = appStore.createOutlineVolume({
+        title: '故事开端',
+        wordTarget: '50000',
+        summary: autoOutlinePrompt.value.trim() || 'AI 自动生成的故事开端分卷'
+      })
+    }
+
+    items.forEach((item, index) => {
+      appStore.createOutlineItem({
+        volumeId,
+        title: item.title?.trim() || `第${index + 1}章：新剧情节点`,
+        wordTarget: normalizeVolumeWordTarget(item.wordTarget) || '3000',
+        conflict: item.conflict?.trim() || '新的冲突正在酝酿。',
+        summary: item.summary?.trim() || '待补充剧情摘要。',
+        status: 'planned'
+      })
+    })
+
+    autoOutlineVisible.value = false
+    message.success(`AI 已自动生成 ${items.length} 个大纲节点`)
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : 'AI 生成大纲失败，请检查模型配置')
+  }
+}
 const editorVisible = ref(false) // 控制大纲节点编辑弹窗
 const volumeEditorVisible = ref(false) // 控制分卷编辑弹窗
 const editingOutlineId = ref<string | null>(null) // 当前编辑的大纲节点 ID
@@ -1930,7 +2010,59 @@ watch(
       </template>
     </div>
 
+    <!-- 大纲为空：显示 no data 与 AI 自动新建大纲入口 -->
+    <div v-else-if="appStore.outlineItems.length === 0" class="outline-empty-state">
+      <div class="outline-empty-icon">
+        <FolderTree :size="22" />
+      </div>
+      <strong class="outline-empty-title">no data</strong>
+      <p class="outline-empty-desc">
+        当前项目还没有任何剧情大纲节点。你可以手动新增分卷与节点，或让 AI 根据项目信息自动生成初始大纲。
+      </p>
+      <div class="outline-empty-actions">
+        <n-button round strong @click="openVolumeEditor()">
+          <template #icon><Plus :size="14" /></template>
+          手动新增分卷
+        </n-button>
+        <n-button type="primary" round strong :loading="isAutoCreatingOutline" @click="openAutoOutlineDialog">
+          <template #icon><Sparkles :size="14" /></template>
+          AI 自动新建大纲
+        </n-button>
+      </div>
+    </div>
+
+    <!-- 搜索无结果 -->
     <div v-else class="arc-empty-state">没有匹配"{{ props.searchQuery }}"的大纲节点。</div>
+
+    <!-- AI 自动新建大纲弹窗（可填写描述） -->
+    <n-modal
+      :show="autoOutlineVisible"
+      preset="card"
+      title="AI 自动新建大纲"
+      :style="{ width: 'min(480px, 92vw)' }"
+      :bordered="false"
+      @update:show="(v) => { if (!v) autoOutlineVisible = false }"
+    >
+      <n-form label-placement="top">
+        <n-form-item label="描述（可选）">
+          <n-input
+            v-model:value="autoOutlinePrompt"
+            type="textarea"
+            :autosize="{ minRows: 4, maxRows: 7 }"
+            placeholder="补充你希望 AI 围绕展开的剧情方向，例如：主角是落魄刑警，在一座雨城追查连环失踪案… 留空则仅依据项目题材自动生成。"
+          />
+        </n-form-item>
+      </n-form>
+      <template #footer>
+        <div class="outline-empty-actions">
+          <n-button round strong @click="autoOutlineVisible = false">取消</n-button>
+          <n-button type="primary" round strong :loading="isAutoCreatingOutline" @click="handleAutoCreateOutline">
+            <template #icon><Sparkles :size="14" /></template>
+            生成大纲
+          </n-button>
+        </div>
+      </template>
+    </n-modal>
 
     <n-modal
       :show="importVisible"
@@ -3187,6 +3319,52 @@ watch(
   to {
     opacity: 1;
   }
+}
+
+/* ── 大纲为空状态 ── */
+.outline-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 320px;
+  margin: 0 auto;
+  max-width: 480px;
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--arc-text-secondary);
+}
+
+.outline-empty-icon {
+  display: inline-flex;
+  width: 56px;
+  height: 56px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--arc-primary) 10%, var(--arc-bg-surface));
+  color: var(--arc-primary);
+}
+
+.outline-empty-title {
+  color: var(--arc-text-primary);
+  font-size: 18px;
+  letter-spacing: 0.02em;
+}
+
+.outline-empty-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.outline-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 6px;
 }
 
 /* ── 时间线 ── */

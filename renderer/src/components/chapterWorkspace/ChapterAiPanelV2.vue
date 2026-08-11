@@ -11,6 +11,7 @@ import {
   X
 } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/app'
+import { getPlainTextFromEditorContent } from '@/features/chapters/editorContent'
 import { type useAssistant } from '@/composables/useAssistant'
 import AssistantSessionList from '@/components/assistantV2/AssistantSessionList.vue'
 import AssistantMessages from '@/components/assistantV2/AssistantMessages.vue'
@@ -191,6 +192,39 @@ async function handleExpandDraft(targetWordCount: number): Promise<void> {
   try { await draft.expandDraftToTarget(existingDraft, target) } catch (error) { message.error(error instanceof Error ? error.message : 'AI 扩充续写失败') }
 }
 
+/** 将已有初稿精简压缩到目标字数 */
+async function handleReduceDraft(targetWordCount: number): Promise<void> {
+  const existingDraft = draft.previewContent.value.trim() || draft.streamingContent.value.trim()
+  if (!existingDraft) {
+    message.warning('暂无可精简的初稿内容')
+    return
+  }
+  const target = Math.max(targetWordCount, 1)
+  try { await draft.reduceDraftToTarget(existingDraft, target) } catch (error) { message.error(error instanceof Error ? error.message : 'AI 精简章节失败') }
+}
+
+/**
+ * 按目标字数控制当前章节正文：
+ * 测量当前正文字数，超出目标则精简，少于目标则扩充。
+ */
+async function applyTargetWords(targetWordCount: number): Promise<void> {
+  const chapter = appStore.selectedChapter
+  const plain = chapter?.content ? getPlainTextFromEditorContent(chapter.content).trim() : ''
+  const currentCount = plain.length
+  if (!currentCount) {
+    message.warning('当前章节还没有正文，无法按目标字数调整')
+    return
+  }
+  const target = Math.max(targetWordCount, 1)
+  if (currentCount > target * 1.1) {
+    await handleReduceDraft(target)
+  } else if (currentCount < target * 0.9) {
+    await handleExpandDraft(target)
+  } else {
+    message.info(`当前正文约 ${currentCount} 字，已在目标 ${target} 字的合理范围内，无需调整`)
+  }
+}
+
 function handlePanelMouseDown(event: MouseEvent): void {
   // 点击面板时保留编辑器选区
   const target = event.target as HTMLElement
@@ -220,7 +254,7 @@ function handlePanelMouseDown(event: MouseEvent): void {
   event.preventDefault()
 }
 
-defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft })
+defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords, handleReduceDraft })
 </script>
 
 <template>
@@ -390,6 +424,7 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft })
       @stop="async () => { try { await draft.stop() } catch (e) { message.error(e instanceof Error ? e.message : '停止失败') } }"
       @close="draft.closeModal()"
       @expand="(target) => handleExpandDraft(target)"
+      @reduce="(target) => handleReduceDraft(target)"
     />
   </section>
 </template>

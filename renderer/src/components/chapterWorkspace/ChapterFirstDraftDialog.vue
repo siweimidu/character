@@ -28,6 +28,8 @@ const emit = defineEmits<{
   close: []
   /** 点击"达到设定目标字数"按钮，围绕已有初稿扩充续写 */
   expand: [targetWordCount: number]
+  /** 点击"超出目标字数"按钮，将初稿精简压缩到目标字数 */
+  reduce: [targetWordCount: number]
 }>()
 
 const currentWordCount = computed(() => {
@@ -40,6 +42,13 @@ const isWordCountInsufficient = computed(() => {
   if (!target) return false
   const min = Math.round(target * 0.9)
   return currentWordCount.value > 0 && currentWordCount.value < min
+})
+
+const isWordCountExcessive = computed(() => {
+  const target = props.targetWordCount ?? 0
+  if (!target) return false
+  const max = Math.round(target * 1.1)
+  return currentWordCount.value > 0 && currentWordCount.value > max
 })
 
 const elapsedDisplay = computed(() => {
@@ -153,6 +162,9 @@ const auditSummary = computed(() => {
         <div v-if="!isGenerating && isWordCountInsufficient" class="expand-hint">
           当前 {{ currentWordCount }} 字，未达到目标 {{ props.targetWordCount }} 字
         </div>
+        <div v-else-if="!isGenerating && isWordCountExcessive" class="expand-hint">
+          当前 {{ currentWordCount }} 字，超出目标 {{ props.targetWordCount }} 字
+        </div>
         <n-button
           v-if="isGenerating"
           round
@@ -174,6 +186,16 @@ const auditSummary = computed(() => {
             @click="emit('expand', props.targetWordCount ?? 0)"
           >
             达到设定目标字数（扩充续写）
+          </n-button>
+          <n-button
+            v-if="isWordCountExcessive"
+            round
+            strong
+            secondary
+            type="warning"
+            @click="emit('reduce', props.targetWordCount ?? 0)"
+          >
+            超出目标字数（精简压缩）
           </n-button>
           <n-button round strong type="primary" @click="$emit('close')">
             关闭

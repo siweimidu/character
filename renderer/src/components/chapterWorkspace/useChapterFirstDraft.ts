@@ -226,6 +226,8 @@ export function useChapterFirstDraft(): {
   start: (config: FirstDraftConfig) => Promise<void>
   /** 围绕已有初稿在保留剧情与文风基础上扩充续写，直到达到目标字数 */
   expandDraftToTarget: (existingDraft: string, targetWordCount: number) => Promise<void>
+  /** 将已有初稿在保留剧情主干的前提下精简压缩到目标字数 */
+  reduceDraftToTarget: (existingDraft: string, targetWordCount: number) => Promise<void>
   stop: () => Promise<void>
   closeModal: () => void
   registerStreamListener: () => void
@@ -1065,6 +1067,124 @@ export function useChapterFirstDraft(): {
     }
   }
 
+  /**
+   * 字数精简压缩：当已有初稿明显超出目标字数时，在保留剧情主干与文风的前提下压缩到目标字数。
+   * 复用 chapter-first-draft 的流式通道，通过 condenseMode + chapterContent 指示模型精简。
+   */
+  async function reduceDraftToTarget(existingDraft: string, targetWordCount: number): Promise<void> {
+    const chapter = appStore.selectedChapter
+    const project = appStore.currentProject
+    const chapterVolume = appStore.selectedChapterVolume
+    if (!chapter || !project || !chapterVolume) return
+    if (isGenerating.value) return
+    const normalizedDraft = finalCleanGeneratedChapterText(existingDraft).trim()
+    if (!normalizedDraft) return
+
+    registerStreamListener()
+    isGenerating.value = true
+    isStopping.value = false
+    isStreaming.value = false
+    streamingContent.value = ''
+    activeTargetWordCount.value = Math.max(targetWordCount, 1)
+    progressFloor.value = 0
+    progressPercent.value = 0
+    progressText.value = ''
+    auditResult.value = null
+    executionLabel.value = '准备按目标字数精简初稿...'
+    previewTitle.value = '字数精简实时输出'
+    previewContent.value = ''
+    modalVisible.value = true
+    startElapsedTimer()
+    recompute()
+    let finalLabel = '本次字数精简已完成'
+
+    try {
+      await appStore.runTrackedAiTask(
+        {
+          key: TASK_KEY,
+          kind: 'chapter-draft',
+          label: 'AI 精简章节到目标字数',
+          description: `将《${chapter.title}》从 ${normalizedDraft.length} 字精简至目标 ${targetWordCount} 字`,
+          panel: 'chapters',
+          onCancel: () => { void stop() }
+        },
+        async () => {
+          const currentChapterIndex = appStore.chapters.findIndex((item) => item.id === chapter.id)
+          const precedingChapters = appStore.chapters.slice(0, currentChapterIndex)
+          const relatedChapters = precedingChapters
+            .slice(-4)
+            .map((item) => ({
+              title: item.title,
+              summary: item.summary,
+              preview: getChapterPreviewText(item.content ?? '').slice(0, 800)
+            }))
+          const volumeOutlineItems = appStore.outlineItems.filter((item) => item.volumeId === chapter.volumeId)
+          const currentOutlineItem = chapter.outlineItemId
+            ? volumeOutlineItems.find((item) => item.id === chapter.outlineItemId)
+            : volumeOutlineItems.find((item) => item.title.trim() === chapter.title.trim())
+
+          const context = buildChapterFirstDraftContext({
+            project,
+            chapter,
+            chapterIndex: Math.max(currentChapterIndex, 0),
+            chapterVolume,
+            relatedChapters,
+            volumeChapterSummaries: precedingChapters
+              .filter((c) => c.volumeId === chapter.volumeId && !relatedChapters.some((r) => r.title === c.title))
+              .map((c) => ({ title: c.title, summary: c.summary })),
+            worldviewEntries: appStore.worldviewEntries,
+            characters: appStore.characters,
+            organizations: appStore.organizations,
+            characterRelationships: appStore.characterRelationships,
+            organizationMemberships: appStore.organizationMemberships,
+            inspirationEntries: appStore.inspirationEntries,
+            currentOutlineItem: buildOutlineItemContext(currentOutlineItem, {
+              characters: appStore.characters,
+              organizations: appStore.organizations,
+              worldviewEntries: appStore.worldviewEntries
+            }),
+            outlineItems: volumeOutlineItems,
+            plotThreads: appStore.plotThreads,
+            knowledgeDocuments: appStore.projectConstraints,
+            // 精简模式：把已有初稿作为正文，指示模型按目标字数压缩
+            chapterContent: normalizedDraft,
+            targetWordCount,
+            userPrompt: `当前章节已有正文约 ${normalizedDraft.length} 字，目标 ${targetWordCount} 字。请在保留完整剧情主干、人物关系、关键对白与伏笔的前提下，将正文精简压缩到目标字数，输出精简后的整章完整正文。`
+          })
+          // 精简模式标记由主进程读取
+          context.condenseMode = 'condense'
+          context.condenseTarget = targetWordCount
+
+          executionLabel.value = '正在按目标字数精简初稿...'
+          isStreaming.value = true
+          recompute()
+
+          const draftStream = await streamTask('chapter-first-draft', context)
+          const fullText = finalCleanGeneratedChapterText(draftStream.text)
+          if (fullText) {
+            executionLabel.value = '正在写入精简后的章节'
+            updateProgress(95, '正在写入精简后的章节...')
+            appStore.updateChapterContent(ensureEditorHtmlContent(fullText), chapter.id)
+            await appStore.persistWorkspace()
+            if (appStore.persistenceError) {
+              throw new Error(`精简内容已生成，但保存失败：${appStore.persistenceError}`)
+            }
+          }
+        }
+      )
+    } catch (error) {
+      const isCanceled = error instanceof Error && error.message === 'canceled'
+      if (isCanceled) {
+        finalLabel = '本次字数精简已停止'
+        return
+      }
+      finalLabel = '本次字数精简失败'
+      throw error
+    } finally {
+      reset(finalLabel)
+    }
+  }
+
   async function stop(): Promise<void> {
     if (!streamId.value || isStopping.value) return
     isStopping.value = true
@@ -1105,6 +1225,7 @@ export function useChapterFirstDraft(): {
     isStreaming,
     start,
     expandDraftToTarget,
+    reduceDraftToTarget,
     stop,
     closeModal,
     registerStreamListener,

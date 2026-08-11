@@ -85,6 +85,31 @@ export function resolveWritingStylePreset(presetId?: string | null): WritingStyl
 // 构建项目写作风格上下文：
 // 将预设 prompt 与用户自定义 prompt 合并，供 AI 章节助理使用
 // 自定义 prompt 会追加在预设 prompt 之后，实现风格微调
+const CUSTOM_STYLE_STORAGE_KEY = 'characterarc:writing-styles'
+
+/** 读取本地自定义/导入的写作风格，用于解析项目选中的非内置风格 */
+function loadLocalCustomStylePreset(presetId?: string | null): WritingStylePreset | null {
+  if (!presetId) return null
+  try {
+    const raw = localStorage.getItem(CUSTOM_STYLE_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return null
+    const match = parsed.find((item) => item && item.id === presetId)
+    if (!match || typeof match.prompt !== 'string') return null
+    return {
+      id: String(match.id),
+      label: String(match.label ?? '自定义风格'),
+      description: String(match.description ?? ''),
+      prompt: String(match.prompt),
+      accent: String(match.accent ?? 'linear-gradient(135deg, #dbeafe, #e0f2fe)'),
+      accentDark: String(match.accentDark ?? 'linear-gradient(135deg, #1e3a5f, #1a3550)')
+    }
+  } catch {
+    return null
+  }
+}
+
 export function buildProjectWritingStyleContext(project?: Pick<ProjectSummary, 'writingStylePresetId' | 'writingStylePrompt'> | null): {
   presetId: string
   label: string
@@ -93,7 +118,8 @@ export function buildProjectWritingStyleContext(project?: Pick<ProjectSummary, '
   accent: string
   accentDark: string
 } {
-  const preset = resolveWritingStylePreset(project?.writingStylePresetId)
+  const preset = loadLocalCustomStylePreset(project?.writingStylePresetId)
+    ?? resolveWritingStylePreset(project?.writingStylePresetId)
   const customPrompt = project?.writingStylePrompt?.trim() || ''
 
   return {

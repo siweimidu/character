@@ -19,6 +19,12 @@ const emit = defineEmits<{
 }>()
 
 // 根据主题主色亮度自动选择对比度更高的文字颜色（深色主色用白字，浅色主色用深字）
+/** 点击主题色卡即立即切换并持久化，无需再点保存设置 */
+function applyThemeImmediately(themeName: ThemeName): void {
+  draftTheme.value = themeName
+  appStore.setTheme(themeName)
+}
+
 function themeTextColor(color: string): string {
   const match = color.match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/)
   if (!match) return '#ffffff'
@@ -986,7 +992,7 @@ async function saveSettings(): Promise<void> {
               class="theme-card"
               :class="{ active: draftTheme === preset.name }"
               :style="{ background: preset.primary, color: themeTextColor(preset.primary) }"
-              @click="draftTheme = preset.name"
+              @click="applyThemeImmediately(preset.name)"
             >
               <span class="theme-card__label">{{ preset.label }}</span>
             </button>

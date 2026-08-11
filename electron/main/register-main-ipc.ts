@@ -1,6 +1,6 @@
 import { BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { existsSync } from 'node:fs'
-import { cp, mkdir, readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, readdir, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
@@ -956,6 +956,43 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     return { success: true, canceled: false, files }
   })
 
+  // ── 章节/分卷本地文件导入（支持 txt / md） ──
+  ipcMain.handle('characterarc:pick-chapter-import-file', async () => {
+    const window = deps.windowManager.getActiveWindow() ?? BrowserWindow.getFocusedWindow()
+    const dialogOptions: Electron.OpenDialogOptions = {
+      title: '选择要导入的章节/分卷文件',
+      properties: ['openFile'],
+      filters: [
+        { name: '文本文件', extensions: ['txt', 'md', 'markdown'] },
+        { name: '全部文件', extensions: ['*'] }
+      ]
+    }
+    const result = window
+      ? await dialog.showOpenDialog(window, dialogOptions)
+      : await dialog.showOpenDialog(dialogOptions)
+
+    if (result.canceled || !result.filePaths[0]) {
+      return { success: true, canceled: true }
+    }
+
+    const filePath = result.filePaths[0]
+    try {
+      const buffer = await readFile(filePath)
+      const content = buffer.toString('utf8')
+      const fileName = basename(filePath)
+      // 标题优先取文件去掉扩展名的名字
+      const title = fileName.replace(/\.[^.]+$/, '').trim() || fileName
+      const charCount = content.replace(/\s/g, '').length
+      return {
+        success: true,
+        canceled: false,
+        file: { filePath, fileName, title, content, charCount }
+      }
+    } catch (error) {
+      return { success: false, canceled: false, error: error instanceof Error ? error.message : '读取文件失败' }
+    }
+  })
+
   // ── 批量导入参考小说（支持多选、并发控制） ──
   ipcMain.handle('characterarc:import-reference-novel-batch', async (_event, payload: ReferenceNovelImportRequest & { filePaths?: string[]; concurrency?: number }) => {
     const window = deps.windowManager.getActiveWindow()
@@ -1416,8 +1453,9 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
       const resolvedProjectId = String(projectId ?? '').trim() || undefined
 
       const dialogOptions: Electron.OpenDialogOptions = {
-        title: '选择要导入的 Skill 包目录',
-        properties: ['openDirectory']
+        title: '选择要导入的 Skill 包（目录或压缩包）',
+        properties: ['openFile', 'openDirectory'],
+        filters: [{ name: 'Skill 包', extensions: ['zip'] }]
       }
       const ownerWindow = deps.windowManager.getMainWindow() ?? BrowserWindow.getFocusedWindow()
       const result = ownerWindow
@@ -1431,6 +1469,59 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
       const selectedPath = result.filePaths[0]
       const skillsRoot = getSkillsDirPath(resolvedProjectId)
       await mkdir(skillsRoot, { recursive: true })
+
+      // 支持压缩包(.zip)格式的 skills 导入：解压后按 SKILL.md 目录结构扫描
+      if (selectedPath.toLowerCase().endsWith('.zip')) {
+        const JSZip = (await import('jszip')).default
+        const zip = await JSZip.loadAsync(await readFile(selectedPath))
+        const tempRoot = join(getWorkspaceDirPath(), '.skills-extract-' + Date.now())
+        await mkdir(tempRoot, { recursive: true })
+        try {
+          const entries = Object.values(zip.files)
+          for (const entry of entries) {
+            if (entry.dir) continue
+            const safePath = join(tempRoot, entry.name.replace(/^[./]+/, ''))
+            // 防止路径穿越
+            if (!safePath.startsWith(tempRoot)) continue
+            await mkdir(join(safePath, '..'), { recursive: true })
+            await writeFile(safePath, await entry.async('nodebuffer'))
+          }
+          const findSkillDirsZip = async (root: string): Promise<string[]> => {
+            const found: string[] = []
+            if (!existsSync(root)) return found
+            const nestedRoot = existsSync(join(root, 'skills')) ? join(root, 'skills') : root
+            if (existsSync(join(nestedRoot, 'SKILL.md'))) {
+              found.push(nestedRoot)
+              return found
+            }
+            const entries = await readdir(nestedRoot, { withFileTypes: true })
+            for (const entry of entries) {
+              if (entry.isDirectory() && existsSync(join(nestedRoot, entry.name, 'SKILL.md'))) {
+                found.push(join(nestedRoot, entry.name))
+              }
+            }
+            return found
+          }
+          const sourceDirs = await findSkillDirsZip(tempRoot)
+          if (!sourceDirs.length) {
+            return { success: false, canceled: false, error: '压缩包中没有识别到可导入的 SKILL.md。' }
+          }
+          const importedSkillIds: string[] = []
+          for (const sourceDir of sourceDirs) {
+            const targetDir = join(skillsRoot, basename(sourceDir))
+            await cp(sourceDir, targetDir, { recursive: true, force: true })
+            importedSkillIds.push(basename(sourceDir))
+          }
+          await refreshSkillRegistry(resolvedProjectId)
+          return {
+            success: true,
+            canceled: false,
+            importedSkillIds: importedSkillIds.sort((a, b) => a.localeCompare(b, 'zh-CN'))
+          }
+        } finally {
+          await rm(tempRoot, { recursive: true, force: true }).catch(() => undefined)
+        }
+      }
 
       const findSkillDirs = async (root: string): Promise<string[]> => {
         if (existsSync(join(root, 'SKILL.md'))) return [root]

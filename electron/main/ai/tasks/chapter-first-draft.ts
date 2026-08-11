@@ -113,6 +113,7 @@ const handler: TaskHandler = {
     const chapterContent = String(context.chapterContent ?? '').trim()
     const chapterHasExistingContent = Boolean(context.chapterHasExistingContent)
     const expandMode = String(context.expandMode ?? '') === 'expand'
+    const condenseMode = String(context.condenseMode ?? '') === 'condense'
     const expandTarget = Math.max(Number(context.expandTarget ?? 0) || 0, 0)
     const existingWordCount = chapterContent.length
     const expandBlock = expandMode
@@ -124,6 +125,16 @@ const handler: TaskHandler = {
 - 扩充后的完整正文将直接替换章节内容，因此必须输出扩写之后的**整章完整正文**（包含原有内容与新增部分），不要只输出新增片段。
 - 保持叙述连续、衔接自然，避免生硬插入；扩充要有实际信息量，不能用重复描写或空泛抒情凑字数。`
       : ''
+    const condenseBlock = condenseMode
+      ? `
+
+【本次为字数精简模式】
+- 这不是重新起稿，而是将下方「当前章节现有正文」在保留完整剧情主干、人物关系、关键对白与伏笔的前提下精简压缩，使整章控制在目标字数 ${targetWordCount} 字（建议控制在 ${targetWordCountMin}-${targetWordCountMax} 字）。
+- 现有正文约 ${existingWordCount} 字，明显超出目标字数，需要大幅精简：删除冗余的景物铺陈、重复的内心独白、拖沓的过渡段落与空泛抒情，保留推动剧情的动作、对话和关键信息。
+- 精简后的完整正文将直接替换章节内容，因此必须输出精简之后的**整章完整正文**，不要只输出删减说明。
+- 确保剧情推进、角色逻辑与前后文衔接完整，不能因删减而出现信息断裂或逻辑漏洞；不要用关键词替换或机械截断，要自然改写。`
+      : ''
+    const effectiveModeBlock = [expandBlock, condenseBlock].filter(Boolean).join('\n')
     const retrievalBlock = knowledgeBlock ? `\n\n检索到的项目记忆与参考资料：\n${knowledgeBlock}` : ''
     const semanticBlock = String(context.semanticSegmentsBlock ?? '').trim()
     const semanticSegmentBlock = semanticBlock ? `\n\n${semanticBlock}` : ''
@@ -143,7 +154,7 @@ const handler: TaskHandler = {
 - 这是"章节初稿生成"，不是润色，不是续写建议，不是分析。
 - 内部构思必须简短，收到请求后尽快开始输出正文，不要长时间停留在分析或规划阶段。
 - 当前章节是否已有正文：${chapterHasExistingContent ? '有，但本次要整章重写' : '没有，本次从零起稿'}。
-- 输出会直接覆盖当前章节全部内容。${expandBlock}
+- 输出会直接覆盖当前章节全部内容。${effectiveModeBlock}
 - **目标字数硬约束：${targetWordCount} 字，建议控制在 ${targetWordCountMin}-${targetWordCountMax} 字之间**。按中文正文字符估算，低于下限不得提前收尾，高于上限必须主动收束，不要用额外环境描写填满篇幅。
 - 项目默认风格：${writingStyleLabel}；风格要求：${writingStylePrompt}。
 

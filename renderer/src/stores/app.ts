@@ -2037,8 +2037,20 @@ export const useAppStore = defineStore('app', () => {
       const fallbackVolume = nextVolumes[Math.max(0, volumeIndex - 1)] ?? nextVolumes[0]
       fallbackVolumeId = fallbackVolume?.id ?? ''
 
+      // 删除最后一个分卷时仍允许删除：原分卷下的章节与大纲节点改为“未分卷”状态
       if (!fallbackVolumeId) {
-        return workspace
+        return {
+          ...workspace,
+          outlineVolumes: nextVolumes,
+          outlineItems: reindexOutlineItems(
+            workspace.outlineItems.map((item) =>
+              item.volumeId === volumeId ? { ...item, volumeId: '' } : item
+            )
+          ),
+          chapters: workspace.chapters.map((chapter) =>
+            chapter.volumeId === volumeId ? { ...chapter, volumeId: '' } : chapter
+          )
+        }
       }
 
       return {
