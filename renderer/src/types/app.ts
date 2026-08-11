@@ -1,5 +1,17 @@
 /** 主题名称，决定应用的视觉色调 */
-export type ThemeName = 'ocean' | 'jade' | 'amber' | 'rose'
+export type ThemeName =
+  | 'ocean'
+  | 'jade'
+  | 'amber'
+  | 'rose'
+  | 'apple'
+  | 'google'
+  | 'miuix'
+  | 'claude'
+  | 'doubao'
+  | 'traework'
+  | 'traecode'
+  | 'volcengine'
 
 /** 深色模式风格预设 */
 export type DarkModeStyle = 'nord'

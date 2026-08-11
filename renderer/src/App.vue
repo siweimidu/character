@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { Moon, Sun } from 'lucide-vue-next'
 import { createDiscreteApi, NConfigProvider, NDialogProvider, NGlobalStyle, NMessageProvider, NSpin, darkTheme } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
-import { createNaiveThemeOverrides, getDarkModePreset } from '@/theme/presets'
+import { createNaiveThemeOverrides, getThemeColorScheme } from '@/theme/presets'
 import ProjectCenter from '@/pages/ProjectCenter.vue'
 import ProjectWizardPage from '@/pages/ProjectWizardPage.vue'
 import ContinuationImportPage from '@/pages/ContinuationImportPage.vue'
@@ -39,43 +39,40 @@ const naiveTheme = computed(() => appStore.appSettings.darkMode ? darkTheme : nu
 // 应用级 CSS 自定义变量集合，供全局样式引用
 const appStyleVars = computed(() => {
   const dark = appStore.appSettings.darkMode
-  const darkPreset = getDarkModePreset(appStore.appSettings.darkModeStyle)
-  const primary = dark ? appStore.currentTheme.darkPrimary : appStore.currentTheme.primary
-  const primaryHover = dark ? appStore.currentTheme.darkPrimaryHover : appStore.currentTheme.primaryHover
-  const primaryPressed = dark ? appStore.currentTheme.darkPrimaryPressed : appStore.currentTheme.primaryPressed
+  const themeColors = getThemeColorScheme(appStore.theme, dark)
   return {
-    '--arc-bg-body': dark ? darkPreset.bgBody : '#f8f8f9',
-    '--arc-bg-weak': dark ? darkPreset.bgWeak : '#fafafb',
-    '--arc-bg-surface': dark ? darkPreset.bgSurface : '#ffffff',
-    '--arc-bg-surface-hover': dark ? darkPreset.bgSurfaceHover : '#eef0f3',
-    '--arc-bg-sidebar': dark ? darkPreset.bgSidebar : '#ececef',
-    '--arc-sidebar-border': dark ? darkPreset.sidebarBorder : '#dcdce0',
-    '--arc-text-primary': dark ? darkPreset.textPrimary : '#18181b',
-    '--arc-text-secondary': dark ? darkPreset.textSecondary : '#52525b',
-    '--arc-text-hint': dark ? darkPreset.textHint : '#a1a1aa',
-    '--arc-primary': primary,
-    '--arc-primary-hover': primaryHover,
-    '--arc-primary-pressed': primaryPressed,
-    '--arc-primary-soft': dark
-      ? `color-mix(in srgb, ${primary} 18%, ${darkPreset.primarySoftBase})`
-      : appStore.currentTheme.softBackground,
-    '--arc-border': dark ? darkPreset.border : '#e4e4e7',
-    '--arc-border-strong': dark ? darkPreset.borderStrong : '#d4d4d8',
-    '--arc-shadow-sm': dark ? darkPreset.shadowSm : '0 1px 3px rgba(0, 0, 0, 0.06)',
-    '--arc-shadow-md': dark ? darkPreset.shadowMd : '0 2px 8px rgba(0, 0, 0, 0.07)',
-    '--arc-shadow-lg': dark ? darkPreset.shadowLg : '0 4px 16px rgba(0, 0, 0, 0.09)',
-    '--arc-bg-mix': dark ? darkPreset.bgMix : '#ffffff',
+    '--arc-bg-body': themeColors.bgBody,
+    '--arc-bg-weak': themeColors.bgWeak,
+    '--arc-bg-surface': themeColors.bgSurface,
+    '--arc-bg-surface-hover': themeColors.bgSurfaceHover,
+    '--arc-bg-sidebar': themeColors.bgSidebar,
+    '--arc-sidebar-border': themeColors.sidebarBorder,
+    '--arc-text-primary': themeColors.textPrimary,
+    '--arc-text-secondary': themeColors.textSecondary,
+    '--arc-text-hint': themeColors.textHint,
+    '--arc-primary': themeColors.primary,
+    '--arc-primary-hover': themeColors.primaryHover,
+    '--arc-primary-pressed': themeColors.primaryPressed,
+    '--arc-primary-soft': themeColors.primarySoft,
+    '--arc-border': themeColors.border,
+    '--arc-border-strong': themeColors.borderStrong,
+    '--arc-shadow-sm': themeColors.shadowSm,
+    '--arc-shadow-md': themeColors.shadowMd,
+    '--arc-shadow-lg': themeColors.shadowLg,
+    '--arc-bg-mix': themeColors.bgMix,
     '--arc-glass-04': dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
     '--arc-glass-06': dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.03)',
     '--arc-glass-08': dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
     '--arc-glass-10': dark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.05)',
     '--arc-glass-12': dark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)',
-    '--arc-success': dark ? '#49c98a' : '#15803d',
-    '--arc-warning': dark ? '#dda94f' : '#a16207',
-    '--arc-danger': dark ? '#ec7272' : '#dc2626',
-    '--arc-selection-bg': dark ? `color-mix(in srgb, ${primary} 48%, ${darkPreset.bgBody})` : '#b4d5fe',
-    '--arc-selection-text': dark ? darkPreset.textPrimary : '#1c1917',
-    '--arc-caret-color': primary,
+    '--arc-success': themeColors.success,
+    '--arc-warning': themeColors.warning,
+    '--arc-danger': themeColors.danger,
+    '--arc-selection-bg': dark
+      ? `color-mix(in srgb, ${themeColors.primary} 48%, ${themeColors.bgBody})`
+      : 'color-mix(in srgb, ' + themeColors.primary + ' 20%, transparent)',
+    '--arc-selection-text': themeColors.textPrimary,
+    '--arc-caret-color': themeColors.primary,
     '--arc-radius-sm': '4px',
     '--arc-radius-md': '6px',
     '--arc-radius-lg': '10px',

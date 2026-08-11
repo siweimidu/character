@@ -762,19 +762,20 @@ async function saveSettings(): Promise<void> {
             <Palette :size="18" />
             <div>
               <strong>界面主题</strong>
-              <p>统一首页与工作台的主色体验。</p>
+              <p>多套完整风格主题，覆盖主色、背景与文字配色。</p>
             </div>
           </div>
           <div class="theme-swatches">
             <button
               v-for="preset in themePresets"
               :key="preset.name"
-              class="theme-dot"
+              class="theme-card"
               :class="{ active: draftTheme === preset.name }"
-              :style="{ background: preset.primary }"
+              :style="{ background: preset.light.bgSurface, borderColor: preset.light.borderStrong }"
               @click="draftTheme = preset.name"
             >
-              <span>{{ preset.label }}</span>
+              <span class="theme-card__dot" :style="{ background: preset.primary }"></span>
+              <span class="theme-card__label" :style="{ color: preset.light.textPrimary }">{{ preset.label }}</span>
             </button>
           </div>
         </section>
@@ -1230,18 +1231,18 @@ async function saveSettings(): Promise<void> {
 
 .theme-swatches {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
 }
 
-.theme-dot {
+.theme-card {
   display: flex;
-  min-height: 64px;
-  align-items: flex-end;
-  justify-content: center;
-  border: 2px solid transparent;
+  min-height: 56px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  border: 1px solid var(--arc-border);
   border-radius: 10px;
-  color: white;
   cursor: pointer;
   font-size: 11.5px;
   font-weight: 650;
@@ -1252,17 +1253,30 @@ async function saveSettings(): Promise<void> {
     border-color 0.18s;
 }
 
-.theme-dot:hover {
+.theme-card__dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.theme-card__label {
+  font-size: 11.5px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.theme-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
 }
 
-.theme-dot:active {
+.theme-card:active {
   transform: scale(0.97);
 }
 
-.theme-dot.active {
-  border-color: white;
+.theme-card.active {
+  border-color: color-mix(in srgb, var(--arc-primary) 70%, var(--arc-border));
   box-shadow: 0 0 0 2px var(--arc-bg-surface), 0 0 0 4px color-mix(in srgb, var(--arc-primary) 34%, transparent);
 }
 

@@ -4,6 +4,12 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### Added
+
+- **多品牌主题**：新增 8 款完整风格主题（苹果、谷歌、MIUI、Claude、豆包、Trae办公、Trae代码、火山引擎），每款主题自带独立的浅色/深色配色（背景、文字、边框、主色），可在首页设置 → 界面主题中切换。
+
 ## [1.16.0] - 2026-08-04
 
 ### Added
