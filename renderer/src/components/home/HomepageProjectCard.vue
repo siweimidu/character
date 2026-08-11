@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Clock4, MoreHorizontal } from 'lucide-vue-next'
+import { Check, Clock4, MoreHorizontal } from 'lucide-vue-next'
 import type { DropdownOption } from 'naive-ui'
 import { NDropdown } from 'naive-ui'
 import { isImageCover, resolveCoverStyle } from '@/features/cover/display'
@@ -12,21 +12,33 @@ const props = defineProps<{
   menuOptions: DropdownOption[]
   featured?: boolean
   animationDelay?: string
+  selectMode?: boolean
+  selected?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'open', projectId: string): void
   (e: 'menuSelect', action: string | number, projectId: string): void
+  (e: 'toggleSelect', projectId: string): void
 }>()
 </script>
 
 <template>
   <article
     class="homepage-project-card"
+    :class="{ 'is-select-mode': selectMode, 'is-selected': selected }"
     :style="animationDelay ? { animationDelay } : undefined"
-    @click="emit('open', project.id)"
+    @click="selectMode ? emit('toggleSelect', project.id) : emit('open', project.id)"
   >
     <div class="card-main">
+      <button
+        v-if="selectMode"
+        class="card-select-checkbox"
+        :class="{ 'is-checked': selected }"
+        @click.stop="emit('toggleSelect', project.id)"
+      >
+        <Check v-if="selected" :size="12" />
+      </button>
       <div v-if="isImageCover(project.cover)" class="card-cover" :style="resolveCoverStyle(project.cover)"></div>
       <div v-else class="card-cover card-cover--empty">
         <span class="card-cover-placeholder">暂无封面</span>
@@ -38,6 +50,7 @@ const emit = defineEmits<{
           <span class="card-tag">{{ resolveNovelLengthLabel(project.novelLength) }}</span>
         </div>
         <p class="card-meta">最近编辑：{{ formatProjectEditedAt(project.lastEdited) }}</p>
+        <p v-if="project.createdAt" class="card-meta card-meta-created">建立时间：{{ formatProjectEditedAt(project.createdAt) }}</p>
       </div>
 
       <n-dropdown
@@ -54,7 +67,8 @@ const emit = defineEmits<{
     </div>
 
     <div class="card-footer">
-      <span><Clock4 :size="14" />{{ project.wordCount }}</span>
+      <Clock4 class="card-footer-icon" :size="14" />
+      <span class="card-footer-count">{{ project.wordCount }}</span>
     </div>
   </article>
 </template>
@@ -86,6 +100,38 @@ const emit = defineEmits<{
 
 .homepage-project-card:active {
   transform: translateY(-1px) scale(0.995);
+}
+
+.homepage-project-card.is-select-mode {
+  border-color: color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border));
+}
+
+.homepage-project-card.is-selected {
+  border-color: var(--arc-primary);
+  background: color-mix(in srgb, var(--arc-primary) 6%, var(--arc-bg-surface));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--arc-primary) 18%, transparent);
+}
+
+.card-select-checkbox {
+  display: flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+  border: 1.5px solid var(--arc-border-strong);
+  border-radius: 6px;
+  background: var(--arc-bg-surface);
+  color: white;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.card-select-checkbox.is-checked {
+  background: var(--arc-primary);
+  border-color: var(--arc-primary);
 }
 
 .card-main {
@@ -173,6 +219,12 @@ const emit = defineEmits<{
   line-height: 1.5;
 }
 
+.card-meta-created {
+  margin-top: 3px;
+  color: var(--arc-text-hint);
+  opacity: 0.82;
+}
+
 .card-menu {
   display: inline-flex;
   width: 30px;
@@ -205,9 +257,8 @@ const emit = defineEmits<{
 }
 
 .card-footer {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 5px;
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px solid var(--arc-bg-surface-hover);
@@ -215,6 +266,15 @@ const emit = defineEmits<{
   font-size: 12px;
   font-weight: 520;
   font-variant-numeric: tabular-nums;
+}
+
+.card-footer-icon {
+  flex-shrink: 0;
+  margin-right: 6px;
+}
+
+.card-footer-count {
+  line-height: 1;
 }
 
 @keyframes card-enter {

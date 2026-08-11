@@ -137,6 +137,7 @@ export type WorkspacePayload = {
     novelLength: 'short' | 'long'
     wordCount: string
     lastEdited: string
+    createdAt?: string
     cover: string
     targetPlatform: string
     coverHistory: Array<{
@@ -590,6 +591,7 @@ export function normalizeProjectRecord(
     novelLength: project.novelLength === 'short' ? 'short' : 'long',
     wordCount: project.wordCount || '待统计',
     lastEdited: project.lastEdited || '',
+    createdAt: project.createdAt || '',
     cover: project.cover || 'linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%)',
     targetPlatform: project.targetPlatform || '',
     coverHistory: Array.isArray(project.coverHistory) ? project.coverHistory : [],

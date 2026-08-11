@@ -7,8 +7,7 @@ const appStore = useAppStore()
 const message = useMessage()
 
 const archiveImportModalVisible = ref(false)
-const archiveImportPreview = ref<CharacterArcProjectArchivePreview | null>(null)
-const archiveImportFilePath = ref('')
+const archiveImportPreviews = ref<Array<{ filePath: string; preview: CharacterArcProjectArchivePreview }>>([])
 const archiveImportMode = ref<CharacterArcProjectArchiveImportMode>('new-project')
 const archiveTargetProjectId = ref('')
 const archiveSelectedModules = ref<CharacterArcProjectArchiveModule[]>([])
@@ -82,12 +81,24 @@ async function pickArchive(): Promise<void> {
     if (result.canceled) {
       return
     }
-    if (!result.success || !result.preview || !result.filePath) {
+    if (!result.success) {
       message.error(result.error ?? '无法读取项目归档包')
       return
     }
-    archiveImportPreview.value = result.preview
-    archiveImportFilePath.value = result.filePath
+
+    // Handle both single-file (legacy) and multi-file (new) response formats
+    const files = result.files && result.files.length > 0
+      ? result.files
+      : (result.filePath && result.preview
+          ? [{ filePath: result.filePath, preview: result.preview }]
+          : [])
+
+    if (files.length === 0) {
+      message.error('无法读取项目归档包')
+      return
+    }
+
+    archiveImportPreviews.value = files
     archiveImportMode.value = 'new-project'
     archiveTargetProjectId.value = appStore.currentProject?.id ?? appStore.projects[0]?.id ?? ''
     resetArchiveModules()
@@ -98,7 +109,7 @@ async function pickArchive(): Promise<void> {
 }
 
 async function confirmArchiveImport(): Promise<void> {
-  if (!archiveImportFilePath.value) {
+  if (archiveImportPreviews.value.length === 0) {
     return
   }
   if (archiveSelectedModules.value.length === 0) {
@@ -117,8 +128,9 @@ async function confirmArchiveImport(): Promise<void> {
   }
   isImportingArchive.value = true
   try {
+    const filePaths = archiveImportPreviews.value.map((item) => item.filePath)
     const result = await window.characterArc.importProjectArchive({
-      filePath: archiveImportFilePath.value,
+      filePaths,
       mode: archiveImportMode.value,
       targetProjectId: archiveImportMode.value === 'overwrite-project' ? archiveTargetProjectId.value : undefined,
       modules: [...archiveSelectedModules.value]
@@ -136,7 +148,8 @@ async function confirmArchiveImport(): Promise<void> {
       appStore.openProject(result.selectedProjectId)
     }
     archiveImportModalVisible.value = false
-    message.success('项目归档包已导入')
+    archiveImportPreviews.value = []
+    message.success(`已导入 ${filePaths.length} 个项目归档包`)
   } finally {
     isImportingArchive.value = false
   }
@@ -147,8 +160,7 @@ function closeArchiveImportModal(): void {
     return
   }
   archiveImportModalVisible.value = false
-  archiveImportPreview.value = null
-  archiveImportFilePath.value = ''
+  archiveImportPreviews.value = []
 }
 
 defineExpose({
@@ -172,11 +184,17 @@ defineExpose({
     <div class="import-modal-body">
       <div class="archive-import-top">
         <div class="storage-status">
-          <strong>{{ archiveImportPreview?.projectTitle || '等待读取归档包' }}</strong>
-          <span>
-            归档版本 {{ archiveImportPreview?.archiveVersion || '--' }} · 导出于
-            {{ archiveImportPreview?.exportedAt ? new Date(archiveImportPreview.exportedAt).toLocaleString() : '--' }}
-          </span>
+          <template v-if="archiveImportPreviews.length === 1">
+            <strong>{{ archiveImportPreviews[0].preview.projectTitle || '等待读取归档包' }}</strong>
+            <span>
+              归档版本 {{ archiveImportPreviews[0].preview.archiveVersion || '--' }} · 导出于
+              {{ archiveImportPreviews[0].preview.exportedAt ? new Date(archiveImportPreviews[0].preview.exportedAt).toLocaleString() : '--' }}
+            </span>
+          </template>
+          <template v-else>
+            <strong>批量导入 {{ archiveImportPreviews.length }} 个项目归档包</strong>
+            <span>将按照以下设置依次导入所有归档包</span>
+          </template>
         </div>
 
         <div class="archive-import-controls">
@@ -204,12 +222,26 @@ defineExpose({
         </div>
       </div>
 
+      <div v-if="archiveImportPreviews.length > 1" class="archive-batch-list">
+        <div
+          v-for="(item, index) in archiveImportPreviews"
+          :key="item.filePath"
+          class="archive-batch-item"
+        >
+          <span class="archive-batch-index">{{ index + 1 }}</span>
+          <div class="archive-batch-info">
+            <strong>{{ item.preview.projectTitle || '未命名项目' }}</strong>
+            <span>{{ item.preview.archiveVersion || '--' }} · 导出于 {{ item.preview.exportedAt ? new Date(item.preview.exportedAt).toLocaleString() : '--' }}</span>
+          </div>
+        </div>
+      </div>
+
       <div class="archive-module-panel">
         <div class="setting-name">导入模块</div>
         <div class="setting-hint">
           {{
             archiveImportMode === 'new-project'
-              ? '新建项目也可以只导入部分模块；关系、章节版本等会自动带入必要依赖。'
+              ? '批量导入时，每个归档包都会新建独立项目；关系、章节版本等会自动带入必要依赖。'
               : '只覆盖所选模块；关系、章节版本等会自动带入必要依赖，未选择的模块保持不变。'
           }}
         </div>
@@ -231,7 +263,7 @@ defineExpose({
               "
             />
             <span>{{ option.label }}</span>
-            <em>{{ archiveImportPreview?.modules?.[option.value]?.count ?? 0 }}</em>
+            <em>{{ archiveImportPreviews.length === 1 ? archiveImportPreviews[0]?.preview?.modules?.[option.value]?.count ?? 0 : '' }}</em>
           </label>
         </div>
       </div>
@@ -241,7 +273,7 @@ defineExpose({
       <div class="setting-actions">
         <n-button round strong :disabled="isImportingArchive" @click="closeArchiveImportModal">取消</n-button>
         <n-button type="primary" round strong :loading="isImportingArchive" :disabled="isImportingArchive" @click="confirmArchiveImport">
-          开始导入
+          {{ archiveImportPreviews.length > 1 ? `开始导入 ${archiveImportPreviews.length} 个归档包` : '开始导入' }}
         </n-button>
       </div>
     </template>
@@ -328,6 +360,58 @@ defineExpose({
   color: var(--arc-text-secondary);
   font-size: 12px;
   line-height: 1.6;
+}
+
+.archive-batch-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--arc-bg-surface) 74%, transparent);
+  padding: 12px 14px;
+}
+
+.archive-batch-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--arc-bg-panel);
+}
+
+.archive-batch-index {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--arc-primary) 12%, transparent);
+  color: var(--arc-primary);
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.archive-batch-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.archive-batch-info strong {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.archive-batch-info span {
+  color: var(--arc-text-secondary);
+  font-size: 12px;
 }
 
 .setting-name {

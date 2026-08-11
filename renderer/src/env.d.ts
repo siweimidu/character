@@ -481,10 +481,13 @@ declare global {
         canceled: boolean
         filePath?: string
         preview?: CharacterArcProjectArchivePreview
+        files?: Array<{ filePath: string; preview: CharacterArcProjectArchivePreview }>
+        singleFile?: { filePath: string; preview: CharacterArcProjectArchivePreview }
         error?: string
       }>
       importProjectArchive: (payload: {
-        filePath: string
+        filePath?: string
+        filePaths?: string[]
         mode: CharacterArcProjectArchiveImportMode
         targetProjectId?: string
         modules?: CharacterArcProjectArchiveModule[]

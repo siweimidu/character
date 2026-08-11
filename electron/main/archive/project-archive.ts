@@ -758,6 +758,7 @@ function remapArchiveContent(
     id: targetProjectId,
     title: modules.has('project') ? content.project.title : content.project.title,
     lastEdited: new Date().toISOString(),
+    createdAt: content.project.createdAt || new Date().toISOString(),
     selectedReferenceWorkIds: modules.has('referenceWorks')
       ? (content.project.selectedReferenceWorkIds ?? []).map((id) => mapId(idMap, id)).filter(Boolean)
       : []

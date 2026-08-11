@@ -164,6 +164,7 @@ type ProjectArchiveImportRequest = {
   mode?: ProjectArchiveImportMode
   targetProjectId?: string
   modules?: ProjectArchiveModule[]
+  filePaths?: string[]
 }
 
 /** 生成一张最小的 1x1 PNG，用于无头像时导出 PNG 角色卡 */
@@ -272,8 +273,8 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
 
     const result = await dialog.showOpenDialog(window, {
-      title: '选择项目归档包',
-      properties: ['openFile'],
+      title: '选择项目归档包（可多选）',
+      properties: ['openFile', 'multiSelections'],
       filters: [{ name: 'CharacterArc 项目归档', extensions: ['carc'] }]
     })
 
@@ -282,8 +283,17 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
 
     try {
-      const preview = await inspectProjectArchive(result.filePaths[0])
-      return { success: true, canceled: false, filePath: result.filePaths[0], preview }
+      const archives: Array<{ filePath: string; preview: Awaited<ReturnType<typeof inspectProjectArchive>> }> = []
+      for (const filePath of result.filePaths) {
+        const preview = await inspectProjectArchive(filePath)
+        archives.push({ filePath, preview })
+      }
+      return {
+        success: true,
+        canceled: false,
+        files: archives,
+        singleFile: archives.length === 1 ? archives[0] : undefined
+      }
     } catch (error) {
       return {
         success: false,
@@ -295,24 +305,50 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
 
   ipcMain.handle('characterarc:import-project-archive', async (_event, payload: unknown) => {
     const request = (payload ?? {}) as ProjectArchiveImportRequest
+    const filePaths = Array.isArray(request.filePaths) && request.filePaths.length > 0
+      ? request.filePaths.map((path) => String(path).trim()).filter(Boolean)
+      : []
     const filePath = String(request.filePath ?? '').trim()
+    const allFilePaths = filePath ? [filePath, ...filePaths] : filePaths
     const sendProgress = (progress: ProjectArchiveImportProgressPayload): void => {
       _event.sender.send('characterarc:project-archive-import-progress', progress)
     }
-    if (!filePath) {
+    if (allFilePaths.length === 0) {
       return { success: false, canceled: false, error: '缺少要导入的项目归档文件。' }
     }
 
     try {
-      sendProgress({ phase: 'preparing', message: '正在准备导入任务...', percent: 2 })
+      let lastSelectedProjectId = ''
+      const total = allFilePaths.length
       await deps.ensureWorkspaceDb()
-      const result = await importProjectArchiveInWorker({
-        filePath,
-        mode: request.mode ?? 'new-project',
-        targetProjectId: request.targetProjectId,
-        modules: request.modules,
-        onProgress: sendProgress
-      })
+
+      for (let index = 0; index < total; index++) {
+        const currentFilePath = allFilePaths[index]
+        sendProgress({
+          phase: 'preparing',
+          message: `正在准备导入 ${index + 1}/${total}...`,
+          percent: Math.round((index / total) * 100)
+        })
+
+        const result = await importProjectArchiveInWorker({
+          filePath: currentFilePath,
+          mode: request.mode ?? 'new-project',
+          targetProjectId: request.targetProjectId,
+          modules: request.modules,
+          onProgress: (progress) => {
+            const weighted = Math.round(
+              (index / total) * 100 + (progress.percent / total)
+            )
+            sendProgress({
+              ...progress,
+              percent: Math.min(95, weighted),
+              message: `[${index + 1}/${total}] ${progress.message}`
+            })
+          }
+        })
+        lastSelectedProjectId = result.selectedProjectId || lastSelectedProjectId
+      }
+
       sendProgress({ phase: 'syncing', message: '正在刷新工作区数据...', percent: 96 })
       const db = await deps.ensureWorkspaceDb()
       const workspace = deps.readWorkspaceSnapshot(db)
@@ -320,8 +356,8 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
         deps.setLatestWorkspaceSnapshot(workspace)
         deps.windowManager.broadcastWindowEvent('characterarc:workspace-sync-event', workspace)
       }
-      sendProgress({ phase: 'done', message: '导入完成', percent: 100 })
-      return { success: true, canceled: false, selectedProjectId: result.selectedProjectId }
+      sendProgress({ phase: 'done', message: `已完成 ${total} 个项目归档导入`, percent: 100 })
+      return { success: true, canceled: false, selectedProjectId: lastSelectedProjectId }
     } catch (error) {
       sendProgress({
         phase: 'error',

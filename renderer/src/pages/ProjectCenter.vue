@@ -148,6 +148,32 @@ function requestDeleteProject(projectId: string): void {
     }
   })
 }
+
+function requestBatchDeleteProjects(projectIds: string[]): void {
+  if (projectIds.length === 0) {
+    return
+  }
+
+  const projectTitles = projectIds
+    .map((id) => appStore.projects.find((item) => item.id === id)?.title)
+    .filter(Boolean)
+    .join('、')
+
+  dialog.warning({
+    title: '确认批量删除',
+    content: `确定要删除以下 ${projectIds.length} 个项目吗？\n${projectTitles}\n\n删除后当前本地项目数据将无法恢复。`,
+    positiveText: '确认删除',
+    negativeText: '取消',
+    autoFocus: false,
+    closable: false,
+    onPositiveClick: () => {
+      for (const projectId of projectIds) {
+        appStore.deleteProject(projectId)
+      }
+      message.success(`已删除 ${projectIds.length} 个项目`)
+    }
+  })
+}
 </script>
 
 <template>
@@ -174,6 +200,7 @@ function requestDeleteProject(projectId: string): void {
         :menu-options="projectMenuOptions"
         @open="openProject"
         @menu-select="handleMenuSelect"
+        @batch-delete="requestBatchDeleteProjects"
       />
     </div>
 

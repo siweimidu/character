@@ -96,6 +96,7 @@ export function normalizeProjectSummary(project: ProjectSummary): ProjectSummary
     ...project,
     novelLength: normalizeNovelLength(project.novelLength),
     wordCount: project.wordCount?.trim() || '待统计',
+    createdAt: project.createdAt || '',
     writingStylePresetId: project.writingStylePresetId?.trim() || 'cinematic-cool',
     writingStylePrompt: project.writingStylePrompt?.trim() || '',
     chapterAssistantTemplates: normalizeChapterAssistantTemplates(project.chapterAssistantTemplates),

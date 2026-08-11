@@ -329,6 +329,8 @@ export interface ProjectSummary {
   wordCount: string
   /** 最后编辑时间的人类可读文本 */
   lastEdited: string
+  /** 项目创建时间 ISO 时间戳 */
+  createdAt?: string
   /** 封面图 URL 或 CSS 渐变色值 */
   cover: string
   /** 写作风格预设 ID */
