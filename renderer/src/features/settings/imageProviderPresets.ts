@@ -43,6 +43,83 @@ export const imageProviderPresets: ImageProviderPreset[] = [
     hint: 'SiliconFlow 提供的快手 Kolors 可图模型，适合生成高质量中文风格封面。'
   },
   {
+    label: 'Stable Diffusion OpenAI兼容',
+    value: 'sd-openai-compatible',
+    model: 'stable-diffusion-xl-1024-v1-0',
+    baseUrl: 'https://api.stability.ai/v2beta',
+    hint: 'Stable Diffusion 的 OpenAI 兼容接口。若使用第三方/本地中转，请填写对应 Base URL 与模型名。'
+  },
+  {
+    label: 'DALL·E 3 (OpenAI)',
+    value: 'dall-e-3-openai',
+    model: 'dall-e-3',
+    baseUrl: 'https://api.openai.com/v1',
+    hint: 'OpenAI 官方 DALL·E 3 图片生成模型。需要 OpenAI API Key。'
+  },
+  {
+    label: 'Gemini Imagen (谷歌)',
+    value: 'gemini-imagen-google',
+    model: 'imagen-3.0-generate-002',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    hint: '谷歌 Gemini 平台的 Imagen 图片生成模型，需谷歌 API Key。'
+  },
+  {
+    label: '通义万相 (阿里百炼)',
+    value: 'tongyi-wanx-alibaba',
+    model: 'wanx2.1-t2i-turbo',
+    baseUrl: 'https://dashscope.aliyuncs.com/api/v1',
+    hint: '阿里百炼（DashScope）通义万相图片生成模型，需阿里云百炼 API Key。'
+  },
+  {
+    label: '文心一格 (百度千帆)',
+    value: 'wenxin-yige-baidu',
+    model: 'ernie-vilg',
+    baseUrl: 'https://aip.baidubce.com/rpc/2.0/ernievilg/v1/txt2img',
+    hint: '百度千帆文心一格图片生成接口，需百度智能云 API Key。'
+  },
+  {
+    label: 'Stable Image Core',
+    value: 'stable-image-core',
+    model: 'stable-image-core',
+    baseUrl: 'https://api.stability.ai/v2beta',
+    hint: 'Stability AI 官方 Stable Image Core 图片生成模型。'
+  },
+  {
+    label: 'Midjourney 中转API',
+    value: 'midjourney-proxy',
+    model: '',
+    baseUrl: '',
+    hint: 'Midjourney 中转 API（第三方代理）。请手动填写中转商提供的模型名和 Base URL。'
+  },
+  {
+    label: 'Ideogram 2.0',
+    value: 'ideogram-2',
+    model: 'V_2',
+    baseUrl: 'https://api.ideogram.ai',
+    hint: 'Ideogram 官方 API，支持 Ideogram 2.0 模型。需要 Ideogram API Key。'
+  },
+  {
+    label: 'ComfyUI API',
+    value: 'comfyui-api',
+    model: '',
+    baseUrl: 'http://127.0.0.1:8188',
+    hint: '本地 ComfyUI 服务接口，默认地址 127.0.0.1:8188，需本地运行 ComfyUI。'
+  },
+  {
+    label: 'SD WebUI API',
+    value: 'sd-webui-api',
+    model: '',
+    baseUrl: 'http://127.0.0.1:7860',
+    hint: '本地 Stable Diffusion WebUI 接口，默认地址 127.0.0.1:7860，需开启 --api 参数。'
+  },
+  {
+    label: 'Flux OpenAI兼容中转',
+    value: 'flux-openai-compatible',
+    model: '',
+    baseUrl: '',
+    hint: 'Flux 的 OpenAI 兼容中转接口（第三方）。请手动填写中转商提供的模型名和 Base URL。'
+  },
+  {
     label: '通用 OpenAI 兼容接口',
     value: 'custom-openai-compatible',
     model: '',
