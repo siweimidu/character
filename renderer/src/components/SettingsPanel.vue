@@ -82,8 +82,7 @@ const filteredWritingStyles = computed(() =>
   filterWritingStyles(allWritingStyles.value, writingStyleSearch.value, writingStyleSearchMode.value)
 )
 
-// 新建自定义风格表单
-const styleEditorVisible = ref(false)
+// 新建自定义风格表单（内嵌于自定义风格卡片）
 const styleForm = reactive({
   label: '',
   description: '',
@@ -91,14 +90,6 @@ const styleForm = reactive({
   colorIndex: 0
 })
 const isImportingStyleSkill = ref(false)
-
-function openStyleEditor(): void {
-  styleForm.label = ''
-  styleForm.description = ''
-  styleForm.prompt = ''
-  styleForm.colorIndex = customWritingStyles.value.length % 8
-  styleEditorVisible.value = true
-}
 
 function saveCustomStyle(): void {
   if (!styleForm.label.trim()) {
@@ -128,7 +119,10 @@ function saveCustomStyle(): void {
     ...customWritingStyles.value
   ]
   persistCustomWritingStyles(customWritingStyles.value)
-  styleEditorVisible.value = false
+  styleForm.label = ''
+  styleForm.description = ''
+  styleForm.prompt = ''
+  styleForm.colorIndex = customWritingStyles.value.length % 8
   message.success('自定义写作风格已保存')
 }
 
@@ -533,10 +527,6 @@ watch(
               @click="writingStyleSearchMode = mode"
             >{{ mode === 'keyword' ? '关键字' : mode === 'fuzzy' ? '模糊匹配' : '完整匹配' }}</button>
           </div>
-          <n-button size="small" secondary @click="openStyleEditor">
-            <template #icon><PenTool :size="13" /></template>
-            自定义风格
-          </n-button>
           <n-button size="small" secondary :loading="isImportingStyleSkill" @click="importStyleFromSkill">
             <template #icon><Upload :size="13" /></template>
             导入 Skill
@@ -563,6 +553,50 @@ watch(
               ✕
             </span>
           </button>
+
+          <!-- 自定义风格卡片：与内置风格卡片同尺寸对齐 -->
+          <div class="style-preset-card custom-style-card">
+            <div class="custom-style-head">
+              <strong>自定义风格卡片</strong>
+              <span class="style-source-tag source-custom">自定义</span>
+            </div>
+            <div class="custom-style-fields">
+              <label class="custom-field">
+                <span class="custom-field-label">风格名称</span>
+                <input v-model="styleForm.label" placeholder="例如：霓虹冷硬派" class="custom-input" />
+              </label>
+              <label class="custom-field">
+                <span class="custom-field-label">风格描述</span>
+                <input v-model="styleForm.description" placeholder="一句话说明适用场景（可选）" class="custom-input" />
+              </label>
+              <label class="custom-field">
+                <span class="custom-field-label">风格指令文本</span>
+                <textarea
+                  v-model="styleForm.prompt"
+                  rows="3"
+                  placeholder="输入要保存为预设的风格指令，例如：对话克制、多用雨幕与霓虹意象、情绪内敛…"
+                  class="custom-input"
+                ></textarea>
+              </label>
+              <label class="custom-field">
+                <span class="custom-field-label">按钮颜色</span>
+                <div class="style-color-picker">
+                  <button
+                    v-for="(c, i) in 8"
+                    :key="i"
+                    class="style-color-dot"
+                    :class="{ active: styleForm.colorIndex === i }"
+                    :style="{ background: nextCustomColor(i).accent }"
+                    @click="styleForm.colorIndex = i"
+                  />
+                </div>
+              </label>
+              <n-button type="primary" round strong block @click="saveCustomStyle">
+                <template #icon><Save :size="14" /></template>
+                保存风格
+              </n-button>
+            </div>
+          </div>
         </div>
         <p v-if="!filteredWritingStyles.length" class="style-empty-tip">没有匹配的写作风格，试试更换搜索词或搜索模式。</p>
         <n-form-item label="补充风格要求">
@@ -589,53 +623,6 @@ watch(
           当前章节助理、灵感生成、大纲扩写和角色/设定生成都会优先参考这里的项目风格。
         </div>
       </n-card>
-
-      <!-- 自定义写作风格弹窗 -->
-      <n-modal
-        v-model:show="styleEditorVisible"
-        preset="card"
-        title="添加自定义写作风格"
-        :style="{ width: 'min(520px, 92vw)' }"
-        :bordered="false"
-      >
-        <n-form label-placement="top" class="style-editor-form">
-          <n-form-item label="风格名称">
-            <n-input v-model:value="styleForm.label" placeholder="例如：霓虹冷硬派" />
-          </n-form-item>
-          <n-form-item label="风格描述">
-            <n-input v-model:value="styleForm.description" placeholder="一句话说明适用场景（可选）" />
-          </n-form-item>
-          <n-form-item label="风格指令文本">
-            <n-input
-              v-model:value="styleForm.prompt"
-              type="textarea"
-              :autosize="{ minRows: 4, maxRows: 8 }"
-              placeholder="输入要保存为预设的风格指令，例如：对话克制、多用雨幕与霓虹意象、情绪内敛…"
-            />
-          </n-form-item>
-          <n-form-item label="按钮颜色">
-            <div class="style-color-picker">
-              <button
-                v-for="(c, i) in 8"
-                :key="i"
-                class="style-color-dot"
-                :class="{ active: styleForm.colorIndex === i }"
-                :style="{ background: nextCustomColor(i).accent }"
-                @click="styleForm.colorIndex = i"
-              />
-            </div>
-          </n-form-item>
-        </n-form>
-        <template #footer>
-          <div class="style-editor-actions">
-            <n-button round strong @click="styleEditorVisible = false">取消</n-button>
-            <n-button type="primary" round strong @click="saveCustomStyle">
-              <template #icon><Save :size="14" /></template>
-              保存风格
-            </n-button>
-          </div>
-        </template>
-      </n-modal>
     </div>
 
     <ProjectArchiveImportModal ref="archiveImportRef" />
@@ -756,23 +743,6 @@ watch(
   font-size: 12px;
   margin-bottom: 10px;
 }
-/* 自定义写作风格表单：所有输入框统一全宽、顶部对齐，避免长短不一 */
-.style-editor-form {
-  width: 100%;
-}
-.style-editor-form :deep(.n-form-item) {
-  width: 100%;
-  margin-bottom: 16px;
-}
-.style-editor-form :deep(.n-form-item .n-form-item-label) {
-  width: 100%;
-  text-align: left;
-}
-.style-editor-form :deep(.n-form-item-content),
-.style-editor-form :deep(.n-form-item-control),
-.style-editor-form :deep(.n-input) {
-  width: 100%;
-}
 .style-color-picker {
   display: flex;
   flex-wrap: wrap;
@@ -787,22 +757,27 @@ watch(
 .style-preset-card {
   position: relative;
 }
-.style-source-tag {
+.style-preset-card .style-source-tag {
   position: absolute;
   top: 10px;
   right: 10px;
+  display: inline-flex;
+  align-items: center;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.28);
-  color: #fff;
+  background: color-mix(in srgb, var(--arc-primary) 8%, var(--arc-bg-surface));
+  color: var(--arc-primary);
   font-size: 10px;
-  font-weight: 700;
-  padding: 2px 7px;
+  font-weight: 800;
+  padding: 4px 8px;
+  white-space: nowrap;
 }
-.style-source-tag.source-custom {
-  background: rgba(22, 163, 74, 0.75);
+.style-preset-card .style-source-tag.source-custom {
+  background: color-mix(in srgb, #16a34a 10%, var(--arc-bg-surface));
+  color: #16a34a;
 }
-.style-source-tag.source-skill {
-  background: rgba(99, 102, 241, 0.8);
+.style-preset-card .style-source-tag.source-skill {
+  background: color-mix(in srgb, #6366f1 10%, var(--arc-bg-surface));
+  color: #6366f1;
 }
 .style-delete-tag {
   position: absolute;
@@ -840,11 +815,6 @@ watch(
 .style-color-dot.active {
   border-color: var(--arc-text-primary);
   transform: scale(1.1);
-}
-.style-editor-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
 }
 
 .style-preset-grid {
@@ -893,6 +863,68 @@ watch(
   color: var(--arc-text-secondary);
   font-size: 12px;
   line-height: 1.6;
+}
+
+/* 自定义风格卡片：与内置风格卡片同网格对齐，横跨整行占满容器宽度 */
+.custom-style-card {
+  grid-column: 1 / -1;
+  cursor: default;
+  background: var(--arc-bg-surface) !important;
+}
+.custom-style-card:hover {
+  transform: none;
+  box-shadow: none;
+}
+.custom-style-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+.custom-style-head .style-source-tag {
+  position: static;
+  flex: 0 0 auto;
+}
+.custom-style-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+.custom-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.custom-field-label {
+  color: var(--arc-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+.custom-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 8px 10px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.custom-input:focus {
+  border-color: color-mix(in srgb, var(--arc-primary) 55%, var(--arc-border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--arc-primary) 12%, transparent);
+}
+.custom-input::placeholder {
+  color: var(--arc-text-hint);
+}
+.custom-style-fields textarea.custom-input {
+  resize: vertical;
 }
 
 .style-footnote {
