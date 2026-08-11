@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Check, ChevronDown, ChevronRight, Folder, FocusIcon, History, Maximize2, Menu, MessageSquareQuote, Minus, Minimize2, Plus, RefreshCw, ShieldAlert, Sparkles, Type, Wand2 } from 'lucide-vue-next'
+import { Check, ChevronDown, ChevronRight, Folder, FocusIcon, History, Maximize2, Menu, MessageSquareQuote, Minus, Minimize2, Plus, RefreshCw, Save, Search, ShieldAlert, Sparkles, Type, Wand2 } from 'lucide-vue-next'
+import EditorCommandPalette from './EditorCommandPalette.vue'
+import type { CommandPaletteAction } from './editorCommandPalette'
 import { NAlert, NDropdown, NTag, NTooltip, useMessage } from 'naive-ui'
 import type { DropdownOption } from 'naive-ui'
 import SimpleChapterEditor from './SimpleChapterEditor.vue'
@@ -278,8 +280,69 @@ function handleMouseDown(e: MouseEvent): void {
   selToolbarVisible.value = false
 }
 
+const commandPaletteVisible = ref(false)
+const commandPaletteActions = computed<CommandPaletteAction[]>(() => [
+  { id: 'save', title: '保存工作区', type: 'save', icon: Save, keyHint: 'Ctrl+S' },
+  { id: 'save-version', title: '保存章节为历史版本', type: 'save-version', icon: History, keyHint: 'Ctrl+Shift+S' },
+  { id: 'find', title: '查找 / 替换', type: 'find', icon: Search, keyHint: 'Ctrl+F' },
+  { id: 'focus', title: '切换专注模式', type: 'focus', icon: FocusIcon, keyHint: 'F11' },
+  { id: 'draft', title: '生成初稿', type: 'draft', icon: Wand2, keywords: '生成初稿 草稿 写作' },
+  { id: 'ai', title: '切换 AI 助理', type: 'ai', icon: Sparkles, keyHint: 'Ctrl+Alt+A' },
+  { id: 'sidebar', title: '切换侧边栏', type: 'sidebar', icon: Menu },
+  { id: 'versions', title: '打开历史版本', type: 'versions', icon: History },
+  { id: 'font-inc', title: '增大正文字号', type: 'font-inc', icon: Plus },
+  { id: 'font-dec', title: '减小正文字号', type: 'font-dec', icon: Minus }
+])
+
+function handleCommandSelect(action: CommandPaletteAction): void {
+  switch (action.type) {
+    case 'save':
+      void appStore.persistWorkspace().then(() => {
+        if (appStore.persistenceError) message.error(appStore.persistenceError)
+        else message.success('工作区已保存')
+      })
+      break
+    case 'save-version':
+      void appStore.saveCurrentChapterVersion().then((result) => {
+        if (result.success) message.success('已保存当前章节版本')
+        else message.error(result.error ?? '保存版本失败')
+      })
+      break
+    case 'find':
+      openFindBar()
+      break
+    case 'focus':
+      emit('toggleFocus')
+      break
+    case 'draft':
+      emit('generateDraft')
+      break
+    case 'ai':
+      emit('toggleAi')
+      break
+    case 'sidebar':
+      emit('toggleSidebar')
+      break
+    case 'versions':
+      versionDialogVisible.value = true
+      break
+    case 'font-inc':
+      stepFont(1)
+      break
+    case 'font-dec':
+      stepFont(-1)
+      break
+  }
+  commandPaletteVisible.value = false
+}
+
 function handleGlobalKeydown(e: KeyboardEvent): void {
   const commandKey = e.ctrlKey || e.metaKey
+  if (commandKey && e.shiftKey && e.key.toLowerCase() === 'p') {
+    e.preventDefault()
+    commandPaletteVisible.value = true
+    return
+  }
   if (commandKey && e.key.toLowerCase() === 'f') {
     const scrollEl = scrollRef.value
     if (!scrollEl) return
@@ -490,6 +553,13 @@ onBeforeUnmount(() => {
       :has-selection="ctxMenuHasSelection"
       @close="ctxMenuVisible = false"
       @action="handleCtxAction"
+    />
+
+    <EditorCommandPalette
+      :visible="commandPaletteVisible"
+      :actions="commandPaletteActions"
+      @close="commandPaletteVisible = false"
+      @select="handleCommandSelect"
     />
 
     <Teleport to="body">
