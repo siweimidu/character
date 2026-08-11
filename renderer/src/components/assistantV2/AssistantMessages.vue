@@ -957,6 +957,7 @@ const hasContent = computed(() => props.messages.length > 0)
 }
 .rollback-confirm:hover {
   background: color-mix(in srgb, var(--v2-danger) 88%, #000);
+}
 
 .user-actions {
   position: absolute;
