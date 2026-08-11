@@ -596,6 +596,18 @@ declare global {
         importedSkillIds?: string[]
         error?: string
       }>
+      deleteProjectSkills: (projectId: string, paths: string[]) => Promise<{
+        success: boolean
+        deleted?: string[]
+        error?: string
+      }>
+      exportProjectSkills: (projectId: string, paths: string[]) => Promise<{
+        success: boolean
+        canceled?: boolean
+        exportedCount?: number
+        filePath?: string
+        error?: string
+      }>
       getProjectSkillsContext: (projectId: string) => Promise<{
         success: boolean
         skills?: Array<{

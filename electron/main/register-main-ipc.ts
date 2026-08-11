@@ -10,7 +10,7 @@ import type { AiTaskPayload, ReferenceStyleAnalysisResult, ReferenceStyleChunkRe
 import { runAiTask } from './ai/runtime'
 import { indexReferenceNovel } from './ai/knowledge-retrieval'
 import { refreshRegistry as refreshSkillRegistry, toScanEntries as skillScanEntries, toContextEntries as skillContextEntries } from './ai/skills'
-import { getProjectSkillsDirPath as getSkillsDirPath } from './ai/skills/discovery'
+import { getBuiltinSkillsDirPath, getProjectSkillsDirPath as getSkillsDirPath } from './ai/skills/discovery'
 import { extractReferenceNovelContext, type ReferenceNovelLocalContext } from './referenceAnalysis'
 import { fetchWithCache } from './github-mirror'
 import { fetchFanqieTrends } from './fanqie-trends'
@@ -1571,6 +1571,130 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
   })
 
+  // ── 批量删除项目级 skills ──
+  // 仅允许删除「项目导入」的 skills（project scope），内置 skills 不可删除。
+  // 入参：projectId 与要删除的 skill path 列表（形如 project-skills/xxx 或 project-skills/group/xxx）。
+  ipcMain.handle('characterarc:project-skills-delete', async (_event, projectId: unknown, paths: unknown) => {
+    try {
+      const resolvedProjectId = String(projectId ?? '').trim()
+      const skillsRoot = getSkillsDirPath(resolvedProjectId || undefined)
+      const targets = Array.isArray(paths) ? paths.map((p) => String(p ?? '').trim()).filter(Boolean) : []
+      if (!targets.length) {
+        return { success: false, error: '未选择要删除的 skills' }
+      }
+
+      const deleted: string[] = []
+      for (const skillPath of targets) {
+        // 只允许删除项目级（project-skills/ 前缀）路径，内置（skills/）不可删
+        if (!skillPath.startsWith('project-skills/')) continue
+        const rel = skillPath.slice('project-skills/'.length)
+        if (!rel || rel.includes('..')) continue
+        const targetDir = join(skillsRoot, rel)
+        // 安全校验：必须位于项目 skills 根目录之内，且确实是 SKILL.md 目录
+        if (!targetDir.startsWith(skillsRoot)) continue
+        if (!existsSync(join(targetDir, 'SKILL.md'))) continue
+        await rm(targetDir, { recursive: true, force: true })
+        deleted.push(skillPath)
+      }
+
+      // 刷新技能注册表，反映删除结果
+      if (deleted.length) {
+        await refreshSkillRegistry(resolvedProjectId || undefined)
+      }
+
+      return {
+        success: deleted.length > 0,
+        deleted,
+        error: deleted.length === targets.length
+          ? undefined
+          : (deleted.length ? '部分 skills 删除失败（内置或路径不合法）' : '所选 skills 均为内置或路径不合法，无法删除')
+      }
+    } catch (error) {
+      return { success: false, deleted: [], error: error instanceof Error ? error.message : 'skills 删除失败' }
+    }
+  })
+
+  // ── 批量导出 skills（内置 + 项目导入）为 zip 压缩包 ──
+  // 入参：要导出的 skill path 列表（形如 skills/xxx、skills/group/xxx、project-skills/xxx …），
+  // 按 SKILL.md 目录结构打包成 .zip 并弹出保存对话框。
+  ipcMain.handle('characterarc:project-skills-export', async (_event, projectId: unknown, paths: unknown) => {
+    try {
+      const resolvedProjectId = String(projectId ?? '').trim()
+      const targets = Array.isArray(paths) ? paths.map((p) => String(p ?? '').trim()).filter(Boolean) : []
+      if (!targets.length) {
+        return { success: false, error: '未选择要导出的 skills' }
+      }
+
+      const builtinRoot = getBuiltinSkillsDirPath()
+      const projectRoot = getSkillsDirPath(resolvedProjectId || undefined)
+
+      // 将 skill path 解析为磁盘目录，并计算 zip 内的相对目录名
+      const resolveSourceDir = (skillPath: string): { abs: string; zipDir: string } | null => {
+        if (skillPath.startsWith('skills/')) {
+          const rel = skillPath.slice('skills/'.length)
+          if (!rel || rel.includes('..')) return null
+          const abs = join(builtinRoot, rel)
+          return existsSync(join(abs, 'SKILL.md')) ? { abs, zipDir: basename(rel) } : null
+        }
+        if (skillPath.startsWith('project-skills/')) {
+          const rel = skillPath.slice('project-skills/'.length)
+          if (!rel || rel.includes('..')) return null
+          const abs = join(projectRoot, rel)
+          return existsSync(join(abs, 'SKILL.md')) ? { abs, zipDir: basename(rel) } : null
+        }
+        return null
+      }
+
+      const JSZip = (await import('jszip')).default
+      const zip = new JSZip()
+      let count = 0
+      for (const skillPath of targets) {
+        const resolved = resolveSourceDir(skillPath)
+        if (!resolved) continue
+        // 递归收集 skill 目录下所有文件（相对目录），含 references/ 等
+        const collectFiles = async (dir: string, prefix: string, out: string[]): Promise<void> => {
+          const entries = await readdir(dir, { withFileTypes: true })
+          for (const entry of entries) {
+            const rel = prefix ? `${prefix}/${entry.name}` : entry.name
+            const abs = join(dir, entry.name)
+            if (entry.isDirectory()) {
+              await collectFiles(abs, rel, out)
+            } else {
+              out.push(rel)
+            }
+          }
+        }
+        const files: string[] = []
+        await collectFiles(resolved.abs, '', files)
+        for (const file of files.sort()) {
+          zip.file(`${resolved.zipDir}/${file}`, await readFile(join(resolved.abs, file)))
+        }
+        count++
+      }
+
+      if (!count) {
+        return { success: false, error: '未找到可导出的 skill 目录' }
+      }
+
+      const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
+      const ownerWindow = deps.windowManager.getMainWindow() ?? BrowserWindow.getFocusedWindow()
+      const saveResult = ownerWindow
+        ? await dialog.showSaveDialog(ownerWindow, {
+            title: '导出 Skills',
+            defaultPath: `skills-${Date.now()}.zip`,
+            filters: [{ name: 'Skill 压缩包', extensions: ['zip'] }]
+          })
+        : { canceled: true, filePath: '' }
+      if (saveResult.canceled || !saveResult.filePath) {
+        return { success: true, canceled: true, exportedCount: count }
+      }
+      await writeFile(saveResult.filePath, buffer)
+      return { success: true, exportedCount: count, filePath: saveResult.filePath }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'skills 导出失败' }
+    }
+  })
+
   // ── 从 CC Switch 导入 skills 与 AI 接口配置 ──
   // CC Switch（https://github.com/farion1231/cc-switch）的配置保存在 ~/.cc-switch/config.json，
   // 用于管理 Claude Code / Codex 的多供应商接入。这里解析其中的 AI 接口配置（映射为 AiProfile），
@@ -1593,22 +1717,56 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
       try {
         const raw = await readFile(ccSwitchConfigPath, 'utf-8')
         const parsed = JSON.parse(raw)
-        // config.json 形如：{ "Claude": [...], "Codex": [...] }
-        const groups = Array.isArray(parsed) ? { Claude: parsed } : (parsed ?? {})
-        for (const key of Object.keys(groups)) {
-          const entries = groups[key]
-          if (!Array.isArray(entries)) continue
-          for (const entry of entries) {
-            if (!entry || typeof entry !== 'object') continue
-            aiProfiles.push({
-              name: String(entry.name ?? entry.label ?? key ?? '').trim() || key || 'CC Switch',
-              type: String(entry.type ?? '').toLowerCase(),
-              baseUrl: String(entry.baseUrl ?? entry.base_url ?? entry.endpoint ?? '').trim(),
-              apiKey: String(entry.apiKey ?? entry.api_key ?? entry.token ?? '').trim(),
-              model: String(entry.model ?? entry.modelId ?? entry.defaultModel ?? '').trim(),
-              isCurrent: Boolean(entry.isCurrent ?? entry.is_active ?? false)
-            })
+        // CC Switch 的 config.json 存在多种版本结构，需兼容解析：
+        //   ① { "Claude": [...], "Codex": [...] }   —— 旧版按分组数组
+        //   ② { "current": {...}, "providers": { "Claude": [...], ... } }  —— 新版 providers 对象
+        //   ③ { "current": "...", "providers": [ {...} ] }                  —— 新版 providers 数组
+        //   ④ [ {...}, {...} ]                        —— 直接为数组
+        // 统一展开为「供应商条目数组」后逐条映射。
+        const collectEntries = (node: unknown, out: Array<{ entry: Record<string, unknown>; group: string }>): void => {
+          if (!node || typeof node !== 'object') return
+          if (Array.isArray(node)) {
+            for (const item of node) {
+              if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+              out.push({ entry: item as Record<string, unknown>, group: '' })
+            }
+            return
           }
+          const obj = node as Record<string, unknown>
+          // 若存在 providers 字段，优先展开它（兼容新版结构）
+          const providerHolder = obj['providers']
+          if (providerHolder !== undefined) {
+            collectEntries(providerHolder, out)
+            return
+          }
+          // 否则按「分组名 -> 数组」的旧版结构展开
+          for (const key of Object.keys(obj)) {
+            const value = obj[key]
+            if (Array.isArray(value)) {
+              for (const item of value) {
+                if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+                out.push({ entry: item as Record<string, unknown>, group: key })
+              }
+            } else if (value && typeof value === 'object') {
+              // 某些版本嵌套了一层分组（如 providers 下的 Claude）
+              collectEntries(value, out)
+            }
+          }
+        }
+
+        const collected: Array<{ entry: Record<string, unknown>; group: string }> = []
+        collectEntries(parsed, collected)
+        for (const { entry, group } of collected) {
+          const e = entry as Record<string, unknown>
+          aiProfiles.push({
+            name: String(e.name ?? e.label ?? group ?? '').trim() || group || 'CC Switch',
+            // CC Switch 用 provider 表示供应商类型，部分版本也用 type
+            type: String(e.provider ?? e.type ?? '').toLowerCase(),
+            baseUrl: String(e.baseUrl ?? e.base_url ?? e.endpoint ?? e.host ?? '').trim(),
+            apiKey: String(e.apiKey ?? e.api_key ?? e.token ?? '').trim(),
+            model: String(e.model ?? e.modelId ?? e.defaultModel ?? e.default_model ?? '').trim(),
+            isCurrent: Boolean(e.isCurrent ?? e.is_active ?? false)
+          })
         }
       } catch (error) {
         configError = error instanceof Error ? error.message : 'CC Switch 配置文件解析失败'

@@ -69,6 +69,10 @@ contextBridge.exposeInMainWorld('characterArc', {
   scanProjectSkills: (projectId: string) => ipcRenderer.invoke('characterarc:project-skills-scan', projectId),
   /** 从本地目录导入一组项目扩展 skills 到应用数据目录 */
   importProjectSkillsPackage: (projectId: string) => ipcRenderer.invoke('characterarc:project-skills-import', projectId),
+  /** 批量删除项目级 skills（仅项目导入，内置不可删），入参为 skill path 列表 */
+  deleteProjectSkills: (projectId: string, paths: string[]) => ipcRenderer.invoke('characterarc:project-skills-delete', projectId, paths),
+  /** 批量导出 skills（内置 + 项目导入）为 zip，入参为 skill path 列表 */
+  exportProjectSkills: (projectId: string, paths: string[]) => ipcRenderer.invoke('characterarc:project-skills-export', projectId, paths),
   /** 读取当前项目可用 skills 的正文内容（供 AI 内部使用） */
   getProjectSkillsContext: (projectId: string) => ipcRenderer.invoke('characterarc:project-skills-context', projectId),
   /** 从 CC Switch（~/.cc-switch/config.json）导入 AI 接口配置，并导入 Claude Code skills */

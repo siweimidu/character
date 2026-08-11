@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { BookOpenText, ChevronDown } from 'lucide-vue-next'
-import { NButton, NTag, useMessage } from 'naive-ui'
+import { NButton, NTag, useDialog, useMessage } from 'naive-ui'
 import { novelWorkflowStageDefinitions } from '@/features/novelWorkflow/stages'
 import { useAppStore } from '@/stores/app'
 import type { NovelWorkflowStageId, ProjectSkillItem } from '@/types/app'
 
 const appStore = useAppStore()
 const message = useMessage()
+const dialog = useDialog()
 
 const isScanningProjectSkills = ref(false)
 const isImportingProjectSkills = ref(false)
@@ -169,6 +170,96 @@ async function importProjectSkillsPackage(): Promise<void> {
   }
 }
 
+// ── 批量选择 / 删除 / 导出 ──
+const selectedSkillPaths = ref<string[]>([])
+const isDeletingSkills = ref(false)
+const isExportingSkills = ref(false)
+
+// 仅项目导入的 skills 可删除；内置 skills 保留（可导出）
+const deletableSkillIds = computed(() =>
+  new Set(
+    resolvedProjectSkills.value
+      .filter((skill) => skill.scope !== 'builtin')
+      .map((skill) => skill.path)
+  )
+)
+
+function toggleSkillSelect(skillPath: string): void {
+  const idx = selectedSkillPaths.value.indexOf(skillPath)
+  if (idx >= 0) {
+    selectedSkillPaths.value.splice(idx, 1)
+  } else {
+    selectedSkillPaths.value.push(skillPath)
+  }
+}
+
+function isSkillSelected(skillPath: string): boolean {
+  return selectedSkillPaths.value.includes(skillPath)
+}
+
+function toggleSelectAll(): void {
+  const allPaths = resolvedProjectSkills.value.map((skill) => skill.path)
+  selectedSkillPaths.value =
+    selectedSkillPaths.value.length === allPaths.length && allPaths.length > 0
+      ? []
+      : [...allPaths]
+}
+
+const allSkillsSelected = computed(() => {
+  const allPaths = resolvedProjectSkills.value.map((skill) => skill.path)
+  return allPaths.length > 0 && selectedSkillPaths.value.length === allPaths.length
+})
+
+async function deleteSelectedSkills(): Promise<void> {
+  if (!currentProject.value?.id || selectedSkillPaths.value.length === 0) return
+  // 仅可删除项目导入（非内置）的 skills
+  const selected = selectedSkillPaths.value.filter((p) => deletableSkillIds.value.has(p))
+  if (selected.length === 0) {
+    message.warning('内置 skills 不可删除，请选择项目导入的 skills')
+    return
+  }
+  dialog.warning({
+    title: '批量删除 Skills',
+    content: `确定要删除选中的 ${selected.length} 个项目级 skills 吗？该操作不可恢复。`,
+    positiveText: '确认删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      isDeletingSkills.value = true
+      try {
+        const result = await window.characterArc.deleteProjectSkills(currentProject.value.id, selected)
+        if (!result.success) {
+          throw new Error(result.error ?? 'skills 删除失败')
+        }
+        selectedSkillPaths.value = selectedSkillPaths.value.filter((p) => !deletableSkillIds.value.has(p))
+        await scanProjectSkills()
+        message.success(`已删除 ${result.deleted?.length ?? 0} 个 skills`)
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : 'skills 删除失败')
+      } finally {
+        isDeletingSkills.value = false
+      }
+    }
+  })
+}
+
+async function exportSelectedSkills(): Promise<void> {
+  if (selectedSkillPaths.value.length === 0) return
+  isExportingSkills.value = true
+  try {
+    const result = await window.characterArc.exportProjectSkills(currentProject.value?.id ?? '', selectedSkillPaths.value)
+    if (!result.success) {
+      throw new Error(result.error ?? 'skills 导出失败')
+    }
+    if (!result.canceled) {
+      message.success(`已导出 ${result.exportedCount ?? 0} 个 skills`)
+    }
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : 'skills 导出失败')
+  } finally {
+    isExportingSkills.value = false
+  }
+}
+
 function toggleProjectSkill(skillId: string): void {
   if (!currentProject.value?.id) {
     return
@@ -237,6 +328,33 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
         </div>
       </div>
 
+      <div class="project-skill-bulkbar" v-if="resolvedProjectSkills.length > 0">
+        <label class="project-skill-select-all">
+          <input type="checkbox" :checked="allSkillsSelected" @change="toggleSelectAll" />
+          <span>全选（{{ selectedSkillPaths.length }}/{{ resolvedProjectSkills.length }}）</span>
+        </label>
+        <div class="project-skill-bulk-actions">
+          <n-button
+            size="small"
+            round
+            strong
+            secondary
+            type="primary"
+            :disabled="selectedSkillPaths.length === 0 || isExportingSkills"
+            @click="exportSelectedSkills"
+          >{{ isExportingSkills ? '导出中...' : `批量导出${selectedSkillPaths.length ? `（${selectedSkillPaths.length}）` : ''}` }}</n-button>
+          <n-button
+            size="small"
+            round
+            strong
+            secondary
+            type="error"
+            :disabled="selectedSkillPaths.length === 0 || isDeletingSkills || selectedSkillPaths.every(p => !deletableSkillIds.has(p))"
+            @click="deleteSelectedSkills"
+          >{{ isDeletingSkills ? '删除中...' : `批量删除${selectedSkillPaths.length ? `（${selectedSkillPaths.length}）` : ''}` }}</n-button>
+        </div>
+      </div>
+
       <div v-if="resolvedProjectSkills.length > 0" class="project-skill-overview">
         <div class="project-skill-overview-card">
           <span>已识别 skills</span>
@@ -274,6 +392,12 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
           </button>
           <div v-if="!collapsedGroups[group.name]" class="project-skill-list">
             <article v-for="skill in group.skills" :key="skill.id" class="project-skill-card">
+              <div class="project-skill-select-row">
+                <label class="project-skill-select-item">
+                  <input type="checkbox" :checked="isSkillSelected(skill.path)" @change="toggleSkillSelect(skill.path)" />
+                  <span>{{ isSkillSelected(skill.path) ? '已选' : '选择' }}</span>
+                </label>
+              </div>
               <div class="project-skill-head">
                 <div>
                   <div class="project-skill-title-row">
@@ -444,6 +568,54 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
   flex-direction: column;
   gap: 0;
   padding: 0 18px 14px;
+}
+
+.project-skill-bulkbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border: 1px solid var(--arc-border);
+  border-radius: 10px;
+  background: var(--arc-bg-body);
+}
+
+.project-skill-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--arc-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.project-skill-bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.project-skill-select-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-bottom: 6px;
+}
+
+.project-skill-select-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--arc-text-hint);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.project-skill-select-item:hover {
+  color: var(--arc-text-secondary);
 }
 
 .project-skill-overview {
