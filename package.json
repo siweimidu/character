@@ -131,6 +131,11 @@
       "artifactName": "${productName}-${version}-linux-${arch}.${ext}"
     }
   },
+  "pnpm": {
+    "overrides": {
+      "@ai-sdk/provider-utils>undici": "6.24.0"
+    }
+  },
   "optionalDependencies": {
     "@node-rs/jieba-darwin-arm64": "2.0.1",
     "@node-rs/jieba-darwin-x64": "2.0.1",
