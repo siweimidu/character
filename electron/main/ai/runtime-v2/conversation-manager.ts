@@ -241,6 +241,8 @@ export class ConversationManager {
     updateTurnStatus: StatementSync
     getTurn: StatementSync
     listTurnsBySession: StatementSync
+    /** 删除某 turn 之后（含该 turn）的所有 turn，用于"回退到本轮对话之前"。 */
+    deleteTurnsFrom: StatementSync
     insertEvent: StatementSync
     listEventsByTurn: StatementSync
     maxSeqByTurn: StatementSync
@@ -293,6 +295,10 @@ export class ConversationManager {
       ),
       listTurnsBySession: db.prepare(
         `SELECT * FROM assistant_turns WHERE session_id = ? ORDER BY created_at ASC`
+      ),
+      deleteTurnsFrom: db.prepare(
+        `DELETE FROM assistant_turns
+         WHERE session_id = ? AND created_at >= ?`
       ),
       insertEvent: db.prepare(
         `INSERT INTO assistant_events
@@ -435,6 +441,22 @@ export class ConversationManager {
   listTurns(sessionId: string): AssistantTurn[] {
     const rows = this.stmts.listTurnsBySession.all(sessionId) as unknown as TurnRow[]
     return rows.map(rowToTurn)
+  }
+
+  /**
+   * 回退到某轮对话之前：删除该 turn 及其之后的所有 turn（及其事件、暂存变更）。
+   * CASCADE 会自动级联清理关联的 events / staged_changes / turn_states。
+   */
+  deleteTurn(sessionId: string, turnId: string): void {
+    const target = this.getTurn(turnId)
+    if (!target) return
+    // CASCADE 会自动删掉关联的 events / staged_changes / turn_states
+    this.stmts.deleteTurnsFrom.run(sessionId, target.createdAt)
+    // 清理 seq 缓存中已删除的 turnId
+    for (const id of Array.from(this.nextSeqByTurn.keys())) {
+      if (!this.getTurn(id)) this.nextSeqByTurn.delete(id)
+    }
+    this.touchSession(sessionId)
   }
 
   // -------- Events --------

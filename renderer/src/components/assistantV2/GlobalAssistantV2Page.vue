@@ -97,9 +97,9 @@ function fillQuickAction(prompt: string): void {
   composerValue.value = prompt
 }
 
-function sendWithMode(): void {
+function sendWithMode(intentHint?: string): void {
   void assistant.send({
-    intentHint: `global-assistant-v2:${activeMode.value}`
+    intentHint: intentHint || `global-assistant-v2:${activeMode.value}`
   })
 }
 
@@ -348,6 +348,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
         @open-knowledge="openKnowledgeDocument"
         @continue="assistant.continueWithPrompt"
         @open-staged="reopenStagePanel"
+        @rollback="assistant.rollbackTurn"
       />
 
       <div v-else class="starter">
@@ -458,12 +459,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
 
 <style scoped>
 .v2-page {
-  /* Runtime v2 专属主题覆盖：强制 emerald accent，与旧 v1 的主题色区分 */
-  --arc-primary: #0d7d5a;
-  --arc-primary-hover: #0a6b4e;
-  --arc-primary-pressed: #085d43;
-  --arc-primary-soft: rgba(13, 125, 90, 0.08);
-  --v2-accent-line: rgba(13, 125, 90, 0.22);
+  /* 智能体颜色随界面主题所选定的主色变化（不再硬编码 emerald）。 */
   --v2-warn: #b45309;
   --v2-warn-soft: rgba(180, 83, 9, 0.08);
   --v2-danger: #b91c1c;

@@ -23,6 +23,7 @@ import {
   type SurfaceDefinition,
   type TurnEvent,
   type TurnCancelRequest,
+  type TurnDeleteRequest,
   type TurnSendRequest
 } from '@shared/assistant-runtime'
 import type { AiTaskName, AppSettings } from '../shared-types'
@@ -392,6 +393,16 @@ function registerTurnHandlers(): void {
       if (!controller) return { ok: false, reason: 'turn not active or already finished' }
       controller.abort()
       activeTurns.delete(payload.turnId)
+      return { ok: true }
+    }
+  )
+
+  ipcMain.handle(
+    ASSISTANT_IPC_CHANNELS.TURN_DELETE,
+    async (_event, payload: TurnDeleteRequest) => {
+      const cm = await getConversation()
+      cm.deleteTurn(payload.sessionId, payload.turnId)
+      stagedChangesStore.clearSession(payload.sessionId)
       return { ok: true }
     }
   )

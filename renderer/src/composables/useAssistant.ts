@@ -621,6 +621,18 @@ export function useAssistant(options: UseAssistantOptions) {
     })
   }
 
+  /**
+   * 回退到某轮对话之前：删除该 turn 及其之后的所有 turn（及其暂存变更）。
+   * 用于"回退到本轮对话之前"的撤销操作。
+   */
+  async function rollbackTurn(turnId: string): Promise<void> {
+    if (!activeSessionId.value || isStreaming.value) return
+    await A.turnDelete({ sessionId: activeSessionId.value, turnId })
+    // 重拉本轮之后的对话与暂存区，保持一致
+    await reloadTurns()
+    await reloadStaged()
+  }
+
   async function cancel(): Promise<void> {
     if (!streamingTurnId.value || !activeSessionId.value || isCanceling.value) return
     isCanceling.value = true
@@ -730,6 +742,7 @@ export function useAssistant(options: UseAssistantOptions) {
     renameSession,
     send,
     continueWithPrompt,
+    rollbackTurn,
     cancel,
     acceptChanges,
     rejectChanges,

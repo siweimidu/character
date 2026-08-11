@@ -82,7 +82,7 @@ const sidebarItems = [
   { id: 'chapters', label: '章节创作', description: '进入正文草稿与章节推进流程', icon: FileText, color: '#3b82f6' },
   { id: 'inspiration', label: '灵感模块', description: '收集标题、桥段、转折与人物动机', icon: Lightbulb, color: '#f59e0b' },
   { id: 'project-knowledge', label: '项目知识库', description: '一致性审计与从已有章节补录状态', icon: FileCheck2, color: '#14b8a6' },
-  { id: 'global-assistant-v2', label: '全局助手 v2', description: 'Runtime v2 · 多轮对话 + 暂存变更审阅', icon: Sparkles, color: '#0d7d5a' }
+  { id: 'global-assistant-v2', label: '智能体', description: '深度适配本项目的智能体 · 多轮对话 + 暂存变更审阅', icon: Sparkles, color: '#0d7d5a' }
 ] as const
 
 const hiddenPanelLabels: Partial<Record<PanelName, string>> = {
@@ -391,10 +391,10 @@ watch(searchKeyword, (value) => {
             round
             :type="isGlobalAssistantOpen ? 'primary' : 'default'"
             class="assistant-toggle"
-            title="打开全局助手 v2"
+            title="打开智能体"
             @click="toggleGlobalAssistant"
           >
-            AI助手
+            智能体
           </n-button>
         </div>
       </header>
@@ -429,7 +429,7 @@ watch(searchKeyword, (value) => {
               v-if="isGlobalAssistantOpen && shouldOverlayAssistant"
               type="button"
               class="assistant-backdrop"
-              aria-label="关闭全局助手"
+              aria-label="关闭智能体"
               @click="closeGlobalAssistant"
             />
           </Transition>

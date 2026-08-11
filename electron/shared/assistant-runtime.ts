@@ -270,6 +270,7 @@ export const ASSISTANT_IPC_CHANNELS = {
   // Turn（用户发起一次输入）
   TURN_SEND: 'characterarc:assistant:turn:send',
   TURN_CANCEL: 'characterarc:assistant:turn:cancel',
+  TURN_DELETE: 'characterarc:assistant:turn:delete',
   // 流式事件订阅（主 → 渲染 push）
   EVENT_STREAM: 'characterarc:assistant:event:stream',
   // Staged Changes
@@ -318,6 +319,16 @@ export interface TurnAttachment {
 
 export interface TurnCancelRequest {
   sessionId: string
+  turnId: string
+}
+
+/**
+ * 回退到某条对话之前：删除该 turn 及其之后的所有 turn / 事件 / 关联暂存变更。
+ * 用于实现"回退到本轮对话之前"的撤销操作。
+ */
+export interface TurnDeleteRequest {
+  sessionId: string
+  /** 回退边界：删除该 turn 及之后的所有 turn（保留其之前的对话）。 */
   turnId: string
 }
 

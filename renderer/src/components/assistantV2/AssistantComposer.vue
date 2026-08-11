@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { NButton } from 'naive-ui'
 import { Square } from 'lucide-vue-next'
 
@@ -13,16 +13,44 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
-  (e: 'send'): void
+  (e: 'send', intentHint?: string): void
   (e: 'cancel'): void
 }>()
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 
+/** 斜杠命令快捷指令：输入框内以 / 触发，选中后填充模板并附带 intentHint。 */
+const SLASH_COMMANDS: Array<{
+  key: string
+  label: string
+  description: string
+  template: string
+  intentHint: string
+}> = [
+  { key: 'audit', label: '/audit', description: '全书审计：矛盾、OOC、伏笔', template: '请审计当前项目的一致性风险，包括世界观矛盾、人物 OOC、大纲断裂、伏笔未回收和硬约束冲突。', intentHint: 'slash:audit' },
+  { key: 'fix', label: '/fix', description: '修正一致性', template: '请检查项目里可能跑偏或重复的设定，并把需要修正的内容产出为可暂存的修正方案。', intentHint: 'slash:fix' },
+  { key: 'ingest', label: '/ingest', description: '录入设定草稿', template: '我会给你一段设定草稿，请拆成可写入的世界观、人物、组织、大纲或创作记忆暂存变更。', intentHint: 'slash:ingest' },
+  { key: 'summarize', label: '/summarize', description: '章节摘要', template: '请读取最近章节并生成摘要，补全章节创作记忆。', intentHint: 'slash:summarize' },
+  { key: 'continuation', label: '/continuation', description: '续写', template: '请基于当前章节进度和项目设定，续写后续内容。', intentHint: 'slash:continuation' }
+]
+
+// 斜杠命令弹层状态
+const slashQuery = ref('')
+const slashOpen = ref(false)
+const slashActiveIdx = ref(0)
+const slashMenuRef = ref<HTMLDivElement | null>(null)
+
+const slashMatches = computed(() => {
+  const q = slashQuery.value.trim().toLowerCase()
+  if (!q) return SLASH_COMMANDS
+  return SLASH_COMMANDS.filter((c) => c.key.includes(q) || c.label.includes(q))
+})
+
 function handleInput(event: Event) {
   const target = event.target as HTMLTextAreaElement
   emit('update:modelValue', target.value)
   autosize(target)
+  updateSlashMenu(target.value)
 }
 
 function autosize(el: HTMLTextAreaElement) {
@@ -30,11 +58,96 @@ function autosize(el: HTMLTextAreaElement) {
   el.style.height = Math.min(180, el.scrollHeight) + 'px'
 }
 
+/** 判断当前光标是否位于一个 / 斜杠命令输入中，并提取 query。 */
+function updateSlashMenu(value: string): void {
+  const caret = textareaRef.value?.selectionStart ?? value.length
+  const beforeCaret = value.slice(0, caret)
+  const lastSlash = beforeCaret.lastIndexOf('/')
+  const lineStart = Math.max(beforeCaret.lastIndexOf('\n'), beforeCaret.lastIndexOf('\r'))
+  if (lastSlash > lineStart && beforeCaret.slice(lastSlash).length > 1) {
+    const q = beforeCaret.slice(lastSlash + 1)
+    if (!/\s/.test(q)) {
+      slashQuery.value = q
+      slashOpen.value = true
+      slashActiveIdx.value = 0
+      return
+    }
+  }
+  slashOpen.value = false
+}
+
+function applySlashCommand(idx: number): void {
+  const cmd = slashMatches.value[idx]
+  if (!cmd || !textareaRef.value) return
+  const value = props.modelValue
+  const caret = textareaRef.value.selectionStart ?? value.length
+  const beforeCaret = value.slice(0, caret)
+  const lineStart = Math.max(beforeCaret.lastIndexOf('\n'), beforeCaret.lastIndexOf('\r'))
+  const lastSlash = beforeCaret.lastIndexOf('/')
+  // 把 /xxx 替换为模板，并附上 intentHint
+  const prefix = beforeCaret.slice(0, lastSlash >= 0 ? lastSlash : caret)
+  const afterCaret = value.slice(caret)
+  const newValue = prefix + cmd.template + afterCaret
+  emit('update:modelValue', newValue)
+  slashOpen.value = false
+  slashQuery.value = ''
+  textareaRef.value.focus()
+  const pos = (prefix + cmd.template).length
+  textareaRef.value.setSelectionRange(pos, pos)
+  autosize(textareaRef.value)
+  pendingIntent.value = cmd.intentHint
+}
+
+function selectSlash(delta: number): void {
+  const len = slashMatches.value.length
+  if (len === 0) return
+  slashActiveIdx.value = (slashActiveIdx.value + delta + len) % len
+}
+
+// 选中斜杠命令后要携带的 intentHint，随发送一并上抛
+const pendingIntent = ref<string | null>(null)
+function flushIntent(): string | undefined {
+  const v = pendingIntent.value
+  pendingIntent.value = null
+  return v ?? undefined
+}
+
+function sendWithIntent(): void {
+  emit('send', flushIntent())
+}
+
 function handleKeydown(event: KeyboardEvent) {
+  // 斜杠菜单打开时的导航
+  if (slashOpen.value && slashMatches.value.length > 0) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      selectSlash(1)
+      return
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      selectSlash(-1)
+      return
+    }
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+      event.preventDefault()
+      applySlashCommand(slashActiveIdx.value)
+      return
+    }
+    if (event.key === 'Escape') {
+      slashOpen.value = false
+      return
+    }
+    if (event.key === 'Tab') {
+      event.preventDefault()
+      applySlashCommand(slashActiveIdx.value)
+      return
+    }
+  }
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
     event.preventDefault()
     if (props.isStreaming) return
-    emit('send')
+    sendWithIntent()
   }
 }
 </script>
@@ -42,12 +155,28 @@ function handleKeydown(event: KeyboardEvent) {
 <template>
   <div class="composer-wrap">
     <div class="composer" :class="{ streaming: props.isStreaming }">
+      <!-- 斜杠命令菜单 -->
+      <div v-if="slashOpen && slashMatches.length > 0" ref="slashMenuRef" class="slash-menu">
+        <button
+          v-for="(cmd, idx) in slashMatches"
+          :key="cmd.key"
+          type="button"
+          class="slash-item"
+          :class="{ active: idx === slashActiveIdx }"
+          @mouseenter="slashActiveIdx = idx"
+          @click="applySlashCommand(idx)"
+        >
+          <span class="slash-label">{{ cmd.label }}</span>
+          <span class="slash-desc">{{ cmd.description }}</span>
+        </button>
+      </div>
       <textarea
         ref="textareaRef"
         :value="props.modelValue"
-        placeholder="继续追问，或让助理动手。Enter 发送 · Shift+Enter 换行"
+        placeholder="继续追问，或让助理动手。输入 / 唤起快捷指令 · Enter 发送 · Shift+Enter 换行"
         @input="handleInput"
         @keydown="handleKeydown"
+        @blur="slashOpen = false"
       />
       <div class="foot">
         <div class="hint">
@@ -74,7 +203,7 @@ function handleKeydown(event: KeyboardEvent) {
             size="small"
             type="primary"
             :disabled="!props.modelValue.trim()"
-            @click="emit('send')"
+            @click="sendWithIntent"
           >
             发送
           </NButton>
@@ -85,6 +214,58 @@ function handleKeydown(event: KeyboardEvent) {
 </template>
 
 <style scoped>
+/* ── 斜杠命令菜单 ── */
+.composer {
+  position: relative;
+}
+.slash-menu {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(100% + 8px);
+  z-index: 20;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--arc-border-strong);
+  border-radius: 10px;
+  background: var(--arc-bg-surface);
+  box-shadow: var(--arc-shadow-lg);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.slash-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--arc-text-primary);
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.slash-item.active {
+  background: var(--arc-primary-soft);
+}
+.slash-label {
+  font-family: var(--v2-mono);
+  font-weight: 600;
+  color: var(--arc-primary);
+  flex: 0 0 auto;
+  min-width: 84px;
+}
+.slash-desc {
+  color: var(--arc-text-secondary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .composer-wrap {
   padding: 12px 32px 22px;
   background: linear-gradient(180deg, transparent, var(--arc-bg-body) 30%);

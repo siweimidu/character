@@ -88,6 +88,7 @@ const emit = defineEmits<{
   (e: 'open-knowledge', documentId?: string): void
   (e: 'continue', prompt: string): void
   (e: 'open-staged'): void
+  (e: 'rollback', turnId: string): void
 }>()
 
 const scrollRef = ref<HTMLDivElement | null>(null)
@@ -125,6 +126,57 @@ async function copyUserPrompt(msg: AssistantMessageView): Promise<void> {
   setTimeout(() => {
     if (copiedPromptTurnId.value === msg.turnId) copiedPromptTurnId.value = null
   }, 1600)
+}
+
+// 回退确认弹层
+const confirmRollbackTurnId = ref<string | null>(null)
+const rollbackTargetText = computed(() => {
+  const msg = props.messages.find((m) => m.turnId === confirmRollbackTurnId.value)
+  if (!msg) return ''
+  const flat = msg.userMessage.replace(/\s+/g, ' ').trim()
+  return flat.length > 24 ? flat.slice(0, 24) + '…' : flat
+})
+function openRollbackConfirm(turnId: string): void {
+  confirmRollbackTurnId.value = turnId
+}
+function cancelRollbackConfirm(): void {
+  confirmRollbackTurnId.value = null
+}
+function confirmRollback(): void {
+  const turnId = confirmRollbackTurnId.value
+  confirmRollbackTurnId.value = null
+  if (turnId) emit('rollback', turnId)
+}
+
+// ── opencode 风格：右侧透明横杠，悬浮放大，点击跳转到对应对话 ──
+const turnEls = ref<Record<string, HTMLElement | null>>({})
+const barHoverIdx = ref<number | null>(null)
+function setTurnEl(turnId: string, el: unknown): void {
+  if (el) turnEls.value[turnId] = el as HTMLElement
+}
+/** 根据条位置比例滚到对应 turn。 */
+function jumpToTurnIndex(idx: number): void {
+  const msg = props.messages[idx]
+  if (!msg) return
+  const el = turnEls.value[msg.turnId]
+  if (el && scrollRef.value) {
+    const top = el.offsetTop - scrollRef.value.clientHeight * 0.28
+    scrollRef.value.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+    shouldFollowOutput.value = false
+  }
+}
+function getTurnTop(turnId: string): number | null {
+  const el = turnEls.value[turnId]
+  if (!el || !scrollRef.value) return null
+  const containerRect = scrollRef.value.getBoundingClientRect()
+  const elRect = el.getBoundingClientRect()
+  return elRect.top - containerRect.top
+}
+function isTurnInView(turnId: string): boolean {
+  const top = getTurnTop(turnId)
+  if (top === null || !scrollRef.value) return false
+  const h = scrollRef.value.clientHeight
+  return top > -40 && top < h + 40
 }
 
 async function scrollToBottom(): Promise<void> {
@@ -300,6 +352,7 @@ const hasContent = computed(() => props.messages.length > 0)
     <article
       v-for="(msg, index) in props.messages"
       :key="msg.turnId"
+      :ref="(el) => setTurnEl(msg.turnId, el)"
       class="turn-entry"
       :class="{ 'is-first': index === 0 }"
     >
@@ -317,6 +370,15 @@ const hasContent = computed(() => props.messages.length > 0)
           <Copy v-if="copiedPromptTurnId !== msg.turnId" :size="13" />
           <ClipboardCheck v-else :size="13" />
         </button>
+        <button
+          v-if="!props.isStreaming || msg.status !== 'streaming'"
+          type="button"
+          class="rollback-prompt-btn"
+          :title="'回退到本轮对话之前'"
+          @click="openRollbackConfirm(msg.turnId)"
+        >
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
+        </button>
       </div>
 
       <div class="assistant-block">
@@ -324,7 +386,7 @@ const hasContent = computed(() => props.messages.length > 0)
           <span class="assistant-mark">
             <Sparkles :size="12" :stroke-width="2" />
           </span>
-          <span class="assistant-name">{{ props.assistantName ?? '全局助手' }}</span>
+          <span class="assistant-name">{{ props.assistantName ?? '智能体' }}</span>
           <span v-if="msg.status === 'streaming'" class="assistant-state">{{ msg.activityText || '处理中' }}</span>
         </div>
 
@@ -443,6 +505,35 @@ const hasContent = computed(() => props.messages.length > 0)
       </div>
     </article>
   </div>
+
+  <!-- opencode 风格：右侧透明横杠，悬浮放大，点击跳转到对应对话 -->
+  <div v-if="props.messages.length > 1" class="turn-rail" aria-hidden="true">
+    <button
+      v-for="(msg, idx) in props.messages"
+      :key="'rail-' + msg.turnId"
+      type="button"
+      class="rail-tick"
+      :class="{ active: isTurnInView(msg.turnId), hover: barHoverIdx === idx }"
+      :title="msg.userMessage"
+      @mouseenter="barHoverIdx = idx"
+      @mouseleave="barHoverIdx = null"
+      @click="jumpToTurnIndex(idx)"
+    />
+  </div>
+
+  <!-- 回退确认弹层 -->
+  <div v-if="confirmRollbackTurnId" class="rollback-overlay" @click.self="cancelRollbackConfirm">
+    <div class="rollback-dialog">
+      <div class="rollback-dialog-title">回退到本轮对话之前？</div>
+      <div class="rollback-dialog-body">
+        将删除这条对话<strong>“{{ rollbackTargetText }}”</strong>及其之后的所有对话和暂存变更，且不可恢复。
+      </div>
+      <div class="rollback-dialog-actions">
+        <button type="button" class="rollback-cancel" @click="cancelRollbackConfirm">取消</button>
+        <button type="button" class="rollback-confirm" @click="confirmRollback">确认回退</button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
@@ -458,6 +549,7 @@ const hasContent = computed(() => props.messages.length > 0)
   gap: 26px;
   min-width: 0;
   min-height: 0;
+  position: relative;
 }
 /* ── Skeleton 加载占位 ── */
 .skeleton {
@@ -568,6 +660,130 @@ const hasContent = computed(() => props.messages.length > 0)
 .copy-prompt-btn:hover {
   border-color: var(--arc-primary);
   color: var(--arc-primary);
+}
+/* ── 回退按钮（与复制按钮同排） ── */
+.rollback-prompt-btn {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-top: 2px;
+  border: 1px solid var(--arc-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--arc-text-hint);
+  cursor: pointer;
+  padding: 0;
+  opacity: 0;
+  transition: color 0.16s ease, border-color 0.16s ease, opacity 0.16s ease;
+}
+.user-entry:hover .rollback-prompt-btn,
+.rollback-prompt-btn:focus-visible {
+  opacity: 1;
+}
+.rollback-prompt-btn:hover {
+  border-color: var(--v2-danger);
+  color: var(--v2-danger);
+}
+/* ── opencode 风格右侧透明横杠 ── */
+.turn-rail {
+  position: absolute;
+  top: 0;
+  right: 6px;
+  bottom: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 10px;
+  pointer-events: none;
+}
+.rail-tick {
+  flex: 0 1 auto;
+  width: 6px;
+  min-height: 4px;
+  max-height: 14px;
+  border: none;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--arc-text-primary) 16%, transparent);
+  cursor: pointer;
+  padding: 0;
+  opacity: 0.9;
+  transition: background 0.18s ease, transform 0.18s ease, width 0.18s ease, flex-basis 0.18s ease;
+  pointer-events: auto;
+}
+.rail-tick:hover,
+.rail-tick.hover {
+  background: color-mix(in srgb, var(--arc-primary) 55%, transparent);
+  transform: scaleX(2.2);
+  width: 12px;
+}
+.rail-tick.active {
+  background: color-mix(in srgb, var(--arc-primary) 70%, transparent);
+}
+/* ── 回退确认弹层 ── */
+.rollback-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.35);
+}
+.rollback-dialog {
+  width: min(360px, calc(100vw - 48px));
+  border: 1px solid var(--arc-border-strong);
+  border-radius: 12px;
+  background: var(--arc-bg-surface);
+  box-shadow: var(--arc-shadow-lg);
+  padding: 18px;
+}
+.rollback-dialog-title {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--arc-text-primary);
+  margin-bottom: 8px;
+}
+.rollback-dialog-body {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--arc-text-secondary);
+  margin-bottom: 16px;
+}
+.rollback-dialog-body strong {
+  color: var(--arc-text-primary);
+}
+.rollback-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.rollback-dialog-actions button {
+  border-radius: 8px;
+  font-size: 13px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.rollback-cancel {
+  border: 1px solid var(--arc-border-strong);
+  background: transparent;
+  color: var(--arc-text-secondary);
+}
+.rollback-cancel:hover {
+  background: var(--arc-bg-weak);
+}
+.rollback-confirm {
+  border: 1px solid transparent;
+  background: var(--v2-danger);
+  color: #fff;
+  font-weight: 600;
+}
+.rollback-confirm:hover {
+  background: color-mix(in srgb, var(--v2-danger) 88%, #000);
 }
 .user-avatar {
   display: inline-flex;
