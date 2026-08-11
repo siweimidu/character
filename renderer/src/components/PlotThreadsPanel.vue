@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
-import { BookMarked, CheckCircle, Circle, MoreVertical, Plus } from 'lucide-vue-next'
+import { BookMarked, CheckCircle, Circle, MoreVertical, Plus, Sparkles } from 'lucide-vue-next'
 import { NButton, NDivider, NDynamicTags, NDropdown, NEmpty, NForm, NFormItem, NInput, NModal, NSelect, NTag, useDialog, useMessage } from 'naive-ui'
 import BatchDeleteBar from './BatchDeleteBar.vue'
 import { useAppStore } from '@/stores/app'
 import type { DropdownOption } from 'naive-ui'
 import type { PlotThread } from '@/types/app'
 import { useIncrementalList } from '@/composables/useIncrementalList'
+import { toIpcPayload } from '@/utils/ipcPayload'
 
 const props = defineProps<{
   searchQuery?: string
@@ -178,6 +179,124 @@ function formatTime(value: string): string {
   if (Number.isNaN(parsed.getTime())) return '刚刚'
   return parsed.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
+
+// ── AI 批量生成剧情线索 ──
+const BATCH_TASK_KEY = 'plot-thread-batch'
+const batchLoading = computed(() => appStore.isAiTaskRunning(BATCH_TASK_KEY))
+const batchModalVisible = ref(false)
+const batchFocusModalVisible = ref(false)
+const batchFocus = ref('')
+const generatedThreads = ref<Array<{ title: string; description: string; tags: string[]; selected: boolean }>>([])
+
+function compactForAi(value: unknown, maxLength: number): string {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim()
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text
+}
+
+async function handleAiBatchGenerate(): Promise<void> {
+  if (batchLoading.value) return
+  const project = appStore.currentProject
+  if (!project) {
+    message.warning('请先打开一个项目')
+    return
+  }
+
+  const existingThreads = appStore.plotThreads
+    .map((t) => (t.status === 'open' ? `${t.title}（${t.description}）` : t.title))
+  batchFocusModalVisible.value = false
+
+  try {
+    const result = await appStore.runTrackedAiTask(
+      {
+        key: BATCH_TASK_KEY,
+        kind: 'plot-thread',
+        label: 'AI 批量生成剧情线索',
+        description: '正在根据大纲/角色/世界观批量设计伏笔与悬念',
+        panel: 'plot-threads'
+      },
+      () =>
+        window.characterArc.generateAi(toIpcPayload({
+          task: 'plot-thread-batch',
+          settings: appStore.appSettings,
+          context: {
+            projectId: project.id,
+            projectTitle: project.title,
+            projectGenre: project.genre,
+            focus: batchFocus.value.trim(),
+            existingThreads,
+            worldviewEntries: appStore.worldviewEntries.slice(0, 12).map((e) => ({
+              type: e.type, title: e.title, content: compactForAi(e.content, 240)
+            })),
+            characters: appStore.characters.slice(0, 12).map((c) => ({
+              name: c.name, role: c.role, description: compactForAi(c.description, 200)
+            })),
+            organizations: appStore.organizations.slice(0, 8).map((o) => ({
+              name: o.name, type: o.type, description: compactForAi(o.description, 200)
+            })),
+            characterRelationships: appStore.characterRelationships.slice(0, 12).map((r) => ({
+              fromCharacterId: r.fromCharacterId, toCharacterId: r.toCharacterId, type: r.type, description: compactForAi(r.description, 160)
+            })),
+            outlineItems: appStore.outlineItems.slice(-12).map((item) => ({
+              title: item.title, conflict: compactForAi(item.conflict, 140), summary: compactForAi(item.summary, 240)
+            }))
+          }
+        }))
+    )
+
+    if (!result.success || !result.result) {
+      throw new Error(result.error ?? 'AI 批量生成剧情线索失败')
+    }
+
+    const entries = Array.isArray((result.result as Record<string, unknown>)?.entries)
+      ? ((result.result as Record<string, unknown>).entries as Array<Record<string, unknown>>)
+      : []
+
+    if (entries.length === 0) {
+      message.warning('AI 未返回有效的剧情线索')
+      return
+    }
+
+    generatedThreads.value = entries.map((e) => ({
+      title: String(e.title ?? '未命名伏笔'),
+      description: String(e.description ?? '暂无描述'),
+      tags: Array.isArray(e.tags) ? (e.tags as string[]).map(String).filter(Boolean) : [],
+      selected: true
+    }))
+    batchModalVisible.value = true
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : 'AI 批量生成剧情线索失败，请检查模型配置')
+  }
+}
+
+function openBatchGenerate(): void {
+  batchFocus.value = ''
+  generatedThreads.value = []
+  batchFocusModalVisible.value = true
+}
+
+function toggleGeneratedThread(index: number): void {
+  generatedThreads.value[index].selected = !generatedThreads.value[index].selected
+}
+
+function confirmAddGeneratedThreads(): void {
+  const toAdd = generatedThreads.value.filter((t) => t.selected)
+  if (!toAdd.length) {
+    message.warning('请至少勾选一条线索')
+    return
+  }
+  const openedInChapterId = appStore.selectedChapterId ?? ''
+  toAdd.forEach((t) => {
+    appStore.createPlotThread({
+      title: t.title,
+      description: t.description,
+      openedInChapterId,
+      status: 'open',
+      tags: t.tags
+    })
+  })
+  message.success(`已添加 ${toAdd.length} 条剧情线索`)
+  batchModalVisible.value = false
+}
 </script>
 
 <template>
@@ -188,10 +307,23 @@ function formatTime(value: string): string {
         <span class="stat-badge open">活跃 {{ openThreads.length }}</span>
         <span class="stat-badge resolved">已收尾 {{ resolvedThreads.length }}</span>
       </div>
-      <n-button size="small" type="primary" @click="openCreateEditor">
-        <template #icon><Plus :size="14" /></template>
-        新建线索
-      </n-button>
+      <div class="toolbar-actions">
+        <n-button
+          size="small"
+          secondary
+          type="info"
+          :loading="batchLoading"
+          :disabled="batchLoading"
+          @click="openBatchGenerate"
+        >
+          <template #icon><Sparkles :size="14" /></template>
+          AI 批量生成
+        </n-button>
+        <n-button size="small" type="primary" @click="openCreateEditor">
+          <template #icon><Plus :size="14" /></template>
+          新建线索
+        </n-button>
+      </div>
     </div>
 
     <BatchDeleteBar
@@ -362,6 +494,66 @@ function formatTime(value: string): string {
       <template #footer>
         <span />
       </template>
+    </n-modal>
+
+    <!-- AI 批量生成：重点方向输入 -->
+    <n-modal
+      v-model:show="batchFocusModalVisible"
+      preset="card"
+      title="AI 批量生成剧情线索"
+      style="width: 520px"
+      :mask-closable="false"
+    >
+      <p class="ai-modal-hint">
+        将根据项目的大纲、角色、世界观和已有线索，批量设计相互衔接的伏笔与悬念。可选填一个重点方向。
+      </p>
+      <n-input
+        v-model:value="batchFocus"
+        type="textarea"
+        :rows="3"
+        placeholder="如：围绕主角身世 / 反派势力的阴谋 / 下一卷的冲突重点（可留空）"
+      />
+      <div class="arc-modal-footer" style="margin-top: 16px">
+        <div class="arc-modal-footer-right">
+          <n-button @click="batchFocusModalVisible = false">取消</n-button>
+          <n-button type="primary" :loading="batchLoading" :disabled="batchLoading" @click="handleAiBatchGenerate">
+            开始生成
+          </n-button>
+        </div>
+      </div>
+    </n-modal>
+
+    <!-- AI 批量生成：结果预览与确认 -->
+    <n-modal
+      v-model:show="batchModalVisible"
+      preset="card"
+      title="AI 批量生成的剧情线索"
+      class="arc-editor-modal-wide"
+      :mask-closable="false"
+    >
+      <div class="ai-result-list">
+        <div v-for="(thread, index) in generatedThreads" :key="index" class="ai-result-item">
+          <label class="row-check">
+            <input type="checkbox" :checked="thread.selected" @change="toggleGeneratedThread(index)" />
+          </label>
+          <div class="ai-result-body">
+            <div class="ai-result-title">{{ thread.title }}</div>
+            <div class="ai-result-desc">{{ thread.description }}</div>
+            <div v-if="thread.tags.length" class="thread-tags">
+              <n-tag v-for="tag in thread.tags" :key="tag" size="tiny" :bordered="false" class="tag-chip">{{ tag }}</n-tag>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="arc-modal-footer">
+        <div class="arc-modal-footer-left">
+          <span>{{ generatedThreads.filter((t) => t.selected).length }} / {{ generatedThreads.length }} 条已选</span>
+        </div>
+        <div class="arc-modal-footer-right">
+          <n-button @click="batchModalVisible = false">取消</n-button>
+          <n-button type="primary" @click="confirmAddGeneratedThreads">添加所选</n-button>
+        </div>
+      </div>
     </n-modal>
   </div>
 </template>
@@ -559,5 +751,54 @@ function formatTime(value: string): string {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-modal-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--arc-text-hint);
+}
+
+.ai-result-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.ai-result-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px;
+  border: 1px solid var(--arc-border);
+  border-radius: var(--arc-radius-md);
+  background: var(--arc-bg-body);
+}
+
+.ai-result-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-result-title {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--arc-text-primary);
+  margin-bottom: 4px;
+}
+
+.ai-result-desc {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--arc-text-secondary);
 }
 </style>

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ChevronLeft, Copy, ExternalLink, Flame, RefreshCw } from 'lucide-vue-next'
+import { ChevronLeft, Copy, ExternalLink, Flame, Lightbulb, RefreshCw } from 'lucide-vue-next'
 import { computed, onMounted, ref } from 'vue'
-import { NButton, useMessage } from 'naive-ui'
+import { NButton, NInput, NModal, NTag, useMessage } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
+import { toIpcPayload } from '@/utils/ipcPayload'
 
 const appStore = useAppStore()
 const message = useMessage()
@@ -237,6 +238,112 @@ function fmt(n: unknown): string {
 onMounted(() => {
   void loadAll()
 })
+
+// ===== AI 一键生成新书选题 =====
+export interface FanqieSeedCandidate {
+  title: string
+  concept: string
+  genre: string
+  hook: string
+  protagonist: string
+  goldFinger: string
+  first3Hooks: string[]
+  outline: string
+}
+
+const SEED_TASK_KEY = 'fanqie-seed'
+const seedLoading = computed(() => appStore.isAiTaskRunning(SEED_TASK_KEY))
+const seedModalVisible = ref(false)
+const seedOptionsVisible = ref(false)
+const targetGenre = ref('')
+const seedCandidates = ref<FanqieSeedCandidate[]>([])
+
+function buildSeedContext(): Record<string, unknown> {
+  const hotGenres = (curPeriodData.value?.hot_genres || []).slice(0, 8).map((g: AnyRecord) => ({
+    name: g.name,
+    lead_category: g.lead_category ?? '',
+    read_growth_total: g.read_growth_total ?? g.score ?? '',
+    new_count: g.new_count ?? ''
+  }))
+  const hotThemes = (curPeriodData.value?.hot_themes || []).slice(0, 12).map((t: AnyRecord) => t.name)
+  const categoryBooks = curCatBooks.value.slice(0, 8).map((b: AnyRecord) => ({
+    title: b.title,
+    intro: typeof b.intro === 'string' ? b.intro.slice(0, 200) : '',
+    reads: b.reads ?? ''
+  }))
+  return {
+    platform: curBoardItem.value?.name || '番茄小说',
+    targetGenre: targetGenre.value.trim(),
+    summary: summaryText.value,
+    hotGenres: JSON.stringify(hotGenres),
+    hotThemes: JSON.stringify(hotThemes),
+    categoryBooks: JSON.stringify(categoryBooks)
+  }
+}
+
+async function handleSeedGenerate(): Promise<void> {
+  if (seedLoading.value) return
+  seedModalVisible.value = false
+  try {
+    const result = await appStore.runTrackedAiTask(
+      {
+        key: SEED_TASK_KEY,
+        kind: 'inspiration',
+        label: 'AI 生成新书选题',
+        description: '正在根据榜单风向设计新书选题方案',
+        panel: 'fanqie'
+      },
+      () =>
+        window.characterArc.generateAi(toIpcPayload({
+          task: 'fanqie-seed',
+          settings: appStore.appSettings,
+          context: buildSeedContext()
+        }))
+    )
+    if (!result.success || !result.result) {
+      throw new Error(result.error ?? 'AI 生成新书选题失败')
+    }
+    const entries = Array.isArray((result.result as Record<string, unknown>)?.entries)
+      ? ((result.result as Record<string, unknown>).entries as Array<Record<string, unknown>>)
+      : []
+    if (entries.length === 0) {
+      message.warning('AI 未返回有效的选题方案')
+      return
+    }
+    seedCandidates.value = entries.map((e) => ({
+      title: String(e.title ?? '未命名选题'),
+      concept: String(e.concept ?? ''),
+      genre: String(e.genre ?? ''),
+      hook: String(e.hook ?? ''),
+      protagonist: String(e.protagonist ?? ''),
+      goldFinger: String(e.goldFinger ?? ''),
+      first3Hooks: Array.isArray(e.first3Hooks) ? (e.first3Hooks as string[]).map(String) : [],
+      outline: String(e.outline ?? '')
+    }))
+    seedOptionsVisible.value = true
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : 'AI 生成新书选题失败，请检查模型配置')
+  }
+}
+
+function openSeedGenerator(): void {
+  targetGenre.value = ''
+  seedOptionsVisible.value = false
+  seedModalVisible.value = true
+}
+
+function formatSeedCandidate(seed: FanqieSeedCandidate): string {
+  return `【书名】${seed.title}\n【核心卖点】${seed.concept}\n【题材】${seed.genre}\n【钩子】${seed.hook}\n【主角】${seed.protagonist}\n【金手指】${seed.goldFinger}\n【前3章钩子】\n${seed.first3Hooks.map((h, i) => `  ${i + 1}. ${h}`).join('\n')}\n【主线】${seed.outline}`
+}
+
+async function copySeed(seed: FanqieSeedCandidate): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(formatSeedCandidate(seed))
+    message.success('选题方案已复制')
+  } catch {
+    message.error('复制失败')
+  }
+}
 </script>
 
 <template>
@@ -255,6 +362,9 @@ onMounted(() => {
         <div class="meta">
           <div class="date num">{{ dataDate }}</div>
           <div v-if="dataPrev" class="prev">{{ dataPrev }}</div>
+          <button class="seed-btn" :disabled="loading || seedLoading" @click="openSeedGenerator">
+            <Lightbulb :size="13" /> {{ seedLoading ? '生成中…' : 'AI 生成新书选题' }}
+          </button>
           <button class="refresh-btn" :disabled="loading" @click="loadAll(true)">
             <RefreshCw :size="13" /> 刷新
           </button>
@@ -454,6 +564,68 @@ onMounted(() => {
         </template>
       </div>
     </div>
+
+    <!-- AI 生成新书选题：目标偏好输入 -->
+    <n-modal
+      v-model:show="seedModalVisible"
+      preset="card"
+      title="AI 生成新书选题"
+      style="width: 520px"
+      :mask-closable="false"
+    >
+      <p class="seed-modal-hint">
+        将基于当前榜单的热门赛道、题材标签和标杆书目，生成 2~3 个可落地的新书选题（含书名、主角、金手指与前 3 章钩子）。可选填目标赛道偏好。
+      </p>
+      <n-input
+        v-model:value="targetGenre"
+        type="textarea"
+        :rows="3"
+        placeholder="如：男频玄幻 / 女频古言 / 都市直播文…（可留空）"
+      />
+      <div class="seed-modal-footer">
+        <n-button @click="seedModalVisible = false">取消</n-button>
+        <n-button type="primary" :loading="seedLoading" :disabled="seedLoading" @click="handleSeedGenerate">
+          开始生成
+        </n-button>
+      </div>
+    </n-modal>
+
+    <!-- AI 生成新书选题：候选展示 -->
+    <n-modal
+      v-model:show="seedOptionsVisible"
+      preset="card"
+      title="AI 生成的新书选题"
+      class="seed-options-modal"
+      :mask-closable="false"
+    >
+      <div class="seed-list">
+        <div v-for="(seed, index) in seedCandidates" :key="index" class="seed-card">
+          <div class="seed-card-head">
+            <span class="seed-rank num">#{{ index + 1 }}</span>
+            <span class="seed-title">{{ seed.title }}</span>
+            <n-tag v-if="seed.genre" size="small" :bordered="false" class="seed-genre">{{ seed.genre }}</n-tag>
+          </div>
+          <div class="seed-row"><span class="seed-k">核心卖点</span>{{ seed.concept }}</div>
+          <div class="seed-row"><span class="seed-k">钩子</span>{{ seed.hook }}</div>
+          <div class="seed-row"><span class="seed-k">主角</span>{{ seed.protagonist }}</div>
+          <div class="seed-row"><span class="seed-k">金手指</span>{{ seed.goldFinger }}</div>
+          <div v-if="seed.first3Hooks.length" class="seed-row">
+            <span class="seed-k">前3章钩子</span>
+            <div class="seed-hooks">
+              <div v-for="(h, i) in seed.first3Hooks" :key="i" class="seed-hook">{{ i + 1 }}. {{ h }}</div>
+            </div>
+          </div>
+          <div class="seed-row"><span class="seed-k">主线</span>{{ seed.outline }}</div>
+          <div class="seed-actions">
+            <button type="button" class="seed-action-btn" @click="copySeed(seed)"><Copy :size="12" /> 复制方案</button>
+          </div>
+        </div>
+      </div>
+      <div class="seed-modal-footer">
+        <n-button @click="seedOptionsVisible = false">关闭</n-button>
+        <n-button type="primary" @click="openSeedGenerator">换一批</n-button>
+      </div>
+    </n-modal>
   </section>
 </template>
 
@@ -912,5 +1084,97 @@ onMounted(() => {
 }
 @keyframes fanqie-spin { to { transform: rotate(360deg); } }
 .state .err-detail { font-size: 12px; margin-top: 10px; color: var(--arc-danger, #dc2626); }
+
+.seed-btn {
+  margin-top: 8px;
+  margin-right: 6px;
+  border: 1px solid color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border-strong));
+  background: var(--arc-primary-soft);
+  color: var(--arc-primary);
+  border-radius: var(--arc-radius-md);
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.18s, opacity 0.18s;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.seed-btn:hover:not(:disabled) { border-color: var(--arc-primary); }
+.seed-btn:disabled { opacity: 0.5; cursor: default; }
+
+.seed-modal-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--arc-text-hint);
+}
+.seed-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+.seed-options-modal { width: min(760px, 92vw); }
+.seed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 62vh;
+  overflow-y: auto;
+}
+.seed-card {
+  border: 1px solid var(--arc-border);
+  border-radius: var(--arc-radius-md);
+  padding: 14px;
+  background: var(--arc-bg-body);
+}
+.seed-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.seed-rank {
+  font-weight: 700;
+  color: var(--arc-primary);
+  font-size: 14px;
+}
+.seed-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--arc-text-primary);
+}
+.seed-genre { margin-left: auto; }
+.seed-row {
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--arc-text-secondary);
+  margin-top: 4px;
+}
+.seed-k {
+  display: inline-block;
+  min-width: 64px;
+  font-weight: 600;
+  color: var(--arc-text-primary);
+}
+.seed-hooks { display: flex; flex-direction: column; gap: 2px; }
+.seed-hook { color: var(--arc-text-secondary); }
+.seed-actions { margin-top: 10px; text-align: right; }
+.seed-action-btn {
+  border: 1px solid var(--arc-border-strong);
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  border-radius: var(--arc-radius-sm);
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 0.18s, border-color 0.18s;
+}
+.seed-action-btn:hover { border-color: var(--arc-primary); color: var(--arc-primary); }
 </style>
 

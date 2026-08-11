@@ -72,6 +72,8 @@ export type AiTaskName =
   | 'chapter-audit'
   | 'chapter-humanize'
   | 'plot-thread-detect'
+  | 'plot-thread-batch'
+  | 'fanqie-seed'
   | 'project-bootstrap'
   | 'premise-enhance'
   | 'spiral-seed'
@@ -466,6 +468,23 @@ export type PlotThreadDetectResult = {
   entries: PlotThreadDetectEntry[]
 }
 
+/** 单条新书选题候选 */
+export type FanqieSeedEntry = {
+  title: string
+  concept: string
+  genre: string
+  hook: string
+  protagonist: string
+  goldFinger: string
+  first3Hooks: string[]
+  outline: string
+}
+
+/** 番茄风向标 → 新书选题生成结果 */
+export type FanqieSeedResult = {
+  entries: FanqieSeedEntry[]
+}
+
 export type ContinuationImportChapterAnalysis = {
   chapterId: string
   title: string
@@ -539,6 +558,7 @@ export type AiTaskResult =
   | InspirationPackResult
   | CatalogBatchResult
   | PlotThreadDetectResult
+  | FanqieSeedResult
   | ChapterScenePlanResult
   | ChapterMemoResult
   | ChapterAuditResult

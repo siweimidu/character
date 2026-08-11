@@ -22,6 +22,8 @@ import chapterMemo from './chapter-memo'
 import chapterAudit from './chapter-audit'
 import chapterHumanize from './chapter-humanize'
 import plotThreadDetect from './plot-thread-detect'
+import plotThreadBatch from './plot-thread-batch'
+import fanqieSeed from './fanqie-seed'
 import workflowDocuments from './workflow-documents'
 import referenceStyleChunk from './reference-style-chunk'
 import referenceStyleAnalysis from './reference-style-analysis'
@@ -80,6 +82,8 @@ register(chapterMemo)
 register(chapterAudit)
 register(chapterHumanize)
 register(plotThreadDetect)
+register(plotThreadBatch)
+register(fanqieSeed)
 register(workflowDocuments)
 register(referenceStyleChunk)
 register(referenceStyleAnalysis)
