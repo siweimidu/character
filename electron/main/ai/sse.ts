@@ -1,3 +1,5 @@
+import { captureThoughtSignatures, injectThoughtSignaturesIntoRequestBody } from './thought-signature'
+
 export function splitCompleteSseEvents(buffer: string): {
   events: string[]
   remainder: string
@@ -217,8 +219,39 @@ export async function fetchWithResponseStartTimeout(
 }
 
 /**
+ * 从一条完整 SSE event 的 data 帧中读取 JSON 载荷（首个 `data:` 行）。
+ * 用于在透传的同时窥探 Gemini 的 thought_signature，不改变原始内容。
+ */
+export function parseSseEventJson(event: string): unknown | undefined {
+  for (const line of event.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('data:')) continue
+    const data = trimmed.slice(5).trim()
+    if (!data || data === '[DONE]') return undefined
+    if (!data.startsWith('{')) return undefined
+    try {
+      return JSON.parse(data)
+    } catch {
+      return undefined
+    }
+  }
+  return undefined
+}
+
+/** 是否可能承载 OpenAI Chat 的 choices（流式 delta 或非流式 message）。 */
+function looksLikeChatResponse(payload: unknown): boolean {
+  if (typeof payload !== 'object' || payload === null) return false
+  const record = payload as Record<string, unknown>
+  return Array.isArray(record.choices)
+}
+
+/**
  * 为 AI SDK provider 增加 SSE 完成事件感知，并允许调用方按需显式启用超时。
  * 默认不按时间中止请求，由网络错误、协议结束事件或用户取消决定生命周期。
+ *
+ * 同时负责 Gemini thought_signature 的传输层修补：
+ *  - 请求前把暂存的 thought_signature 注入到 assistant tool_calls；
+ *  - 响应时从 tool_calls（流式 delta / 非流式 message）中捕获 thought_signature。
  */
 export function createProviderTransportFetch(
   requestFetch: typeof fetch,
@@ -226,18 +259,55 @@ export function createProviderTransportFetch(
   responseStartTimeoutMs = 0
 ): typeof fetch {
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    // 请求前回填 thought_signature（仅当请求体是 OpenAI Chat JSON）。
+    let requestInit = init
+    if (init?.body) {
+      const rewritten = injectThoughtSignaturesIntoRequestBody(init.body)
+      if (rewritten !== undefined && typeof rewritten === 'string') {
+        requestInit = { ...init, body: rewritten }
+      }
+    }
+
     const response = responseStartTimeoutMs > 0
-      ? await fetchWithResponseStartTimeout(requestFetch, input, init, responseStartTimeoutMs)
-      : await requestFetch(input, init)
+      ? await fetchWithResponseStartTimeout(requestFetch, input, requestInit, responseStartTimeoutMs)
+      : await requestFetch(input, requestInit)
     if (!response.ok || !response.body) return response
 
     const contentType = response.headers.get('content-type') || ''
-    if (!contentType.includes('text/event-stream')) return response
+    if (contentType.includes('text/event-stream')) {
+      return new Response(createTerminalAwareSseStream(response.body, idleTimeoutMs, (event) => {
+        const payload = parseSseEventJson(event)
+        if (payload !== undefined && looksLikeChatResponse(payload)) {
+          captureThoughtSignatures(payload)
+        }
+        return event
+      }), {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers
+      })
+    }
 
-    return new Response(createTerminalAwareSseStream(response.body, idleTimeoutMs), {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers
-    })
+    // 非流式 JSON 响应：读取并窥探 thought_signature 后重放，避免打断下游消费。
+    if (contentType.includes('application/json')) {
+      const text = await response.text()
+      if (text) {
+        try {
+          const payload = JSON.parse(text)
+          if (looksLikeChatResponse(payload)) {
+            captureThoughtSignatures(payload)
+          }
+        } catch {
+          // 非 JSON 或解析失败时直接透传原文。
+        }
+        return new Response(text, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers
+        })
+      }
+    }
+
+    return response
   }
 }
