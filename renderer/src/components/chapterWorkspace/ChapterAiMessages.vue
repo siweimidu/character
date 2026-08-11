@@ -169,7 +169,7 @@ onBeforeUnmount(() => {
       <!-- Empty state -->
       <div v-if="!messages.length && !isResponding" class="empty">
         <Sparkles :size="28" class="empty-icon" />
-        <p class="empty-text">创作助理擅长讨论思路、改写段落、续写片段和审校。</p>
+        <p class="empty-text">智能体擅长讨论思路、改写段落、续写片段和审校。</p>
         <p class="empty-hint">想要按大纲生成整章正文，请用工具栏的「生成初稿」，它会带上写作备忘、参考文笔和完整上下文一次写满。</p>
         <button class="empty-cta" @click="emit('generate-draft')">
           <Wand2 :size="13" />

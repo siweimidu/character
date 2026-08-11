@@ -138,6 +138,20 @@ function sendWithMode(): void {
   })
 }
 
+function handleAttachFile(): void {
+  const chapter = appStore.selectedChapter
+  if (!chapter) {
+    message.warning('请先选择或打开一个章节，再添加文件引用')
+    return
+  }
+  composerValue.value = `【引用文件】章节《${chapter.title}》\n${composerValue.value}`
+  void assistant.send({
+    intentHint: `global-assistant-v2:attach:chapter`,
+    agentId: selectedAgentId.value || undefined,
+    attachments: [{ kind: 'chapter', ref: chapter.id, label: chapter.title }]
+  })
+}
+
 function notifyTruncate(result: TurnTruncateResult, action: '撤回' | '重新分叉'): void {
   if (result.keptCommitted > 0) {
     message.warning(`${action}完成，但 ${result.keptCommitted} 项已写回项目的改动未回滚`)
@@ -497,6 +511,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
         :restored-label="assistant.restoredDraftLabel.value"
         :mode-label="currentMode.label"
         @send="sendWithMode"
+        @attach="handleAttachFile"
         @cancel="assistant.cancel()"
         @edit-last="assistant.startEditingLastTurn()"
         @clear-restored="assistant.clearRestoredDraft()"
@@ -654,7 +669,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
   padding: 10px 32px 0;
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   gap: 8px;
   z-index: 10;
 }

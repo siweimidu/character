@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import { BookMarked, CheckCircle, Circle, MoreVertical, Plus, Sparkles } from 'lucide-vue-next'
-import { NButton, NDivider, NDynamicTags, NDropdown, NEmpty, NForm, NFormItem, NInput, NModal, NSelect, NTag, useDialog, useMessage } from 'naive-ui'
+import { NButton, NDivider, NDynamicTags, NDropdown, NEmpty, NForm, NFormItem, NInput, NInputNumber, NModal, NSelect, NTag, useDialog, useMessage } from 'naive-ui'
 import BatchDeleteBar from './BatchDeleteBar.vue'
 import { useAppStore } from '@/stores/app'
 import type { DropdownOption } from 'naive-ui'
@@ -186,6 +186,8 @@ const batchLoading = computed(() => appStore.isAiTaskRunning(BATCH_TASK_KEY))
 const batchModalVisible = ref(false)
 const batchFocusModalVisible = ref(false)
 const batchFocus = ref('')
+// 批量生成的数量设置（1-10 条）
+const batchCount = ref(5)
 const generatedThreads = ref<Array<{ title: string; description: string; tags: string[]; selected: boolean }>>([])
 
 function compactForAi(value: unknown, maxLength: number): string {
@@ -222,6 +224,7 @@ async function handleAiBatchGenerate(): Promise<void> {
             projectId: project.id,
             projectTitle: project.title,
             projectGenre: project.genre,
+            count: batchCount.value,
             focus: batchFocus.value.trim(),
             existingThreads,
             worldviewEntries: appStore.worldviewEntries.slice(0, 12).map((e) => ({
@@ -270,6 +273,7 @@ async function handleAiBatchGenerate(): Promise<void> {
 
 function openBatchGenerate(): void {
   batchFocus.value = ''
+  batchCount.value = 5
   generatedThreads.value = []
   batchFocusModalVisible.value = true
 }
@@ -513,6 +517,11 @@ function confirmAddGeneratedThreads(): void {
         :rows="3"
         placeholder="如：围绕主角身世 / 反派势力的阴谋 / 下一卷的冲突重点（可留空）"
       />
+      <div class="ai-modal-count-row" style="margin-top: 12px; display: flex; align-items: center; gap: 10px">
+        <span class="ai-modal-count-label">生成数量</span>
+        <n-input-number v-model:value="batchCount" :min="1" :max="10" :step="1" style="width: 120px" />
+        <span class="ai-modal-count-hint" style="color: var(--arc-text-hint); font-size: 12px">1~10 条</span>
+      </div>
       <div class="arc-modal-footer" style="margin-top: 16px">
         <div class="arc-modal-footer-right">
           <n-button @click="batchFocusModalVisible = false">取消</n-button>

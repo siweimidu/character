@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { NButton } from 'naive-ui'
-import { Square, Undo2, X } from 'lucide-vue-next'
+import { Paperclip, Square, Undo2, X } from 'lucide-vue-next'
 
 const props = defineProps<{
   modelValue: string
@@ -16,6 +16,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
   (e: 'send', intentHint?: string): void
+  (e: 'attach'): void
   (e: 'cancel'): void
   (e: 'edit-last'): void
   (e: 'clear-restored'): void
@@ -225,6 +226,15 @@ watch(
           <span v-else>AI的修改会显示在暂存区，需要你逐条确认。</span>
         </div>
         <div class="actions">
+          <NButton
+            size="small"
+            title="添加文件引用（当前章节）"
+            quaternary
+            :disabled="props.isStreaming"
+            @click="emit('attach')"
+          >
+            <template #icon><Paperclip :size="13" /></template>
+          </NButton>
           <NButton
             v-if="props.isStreaming"
             size="small"

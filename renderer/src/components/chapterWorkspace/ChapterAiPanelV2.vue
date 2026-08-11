@@ -128,6 +128,20 @@ function sendWithMode(): void {
   })
 }
 
+function handleAttachFile(): void {
+  const chapter = appStore.selectedChapter
+  if (!chapter) {
+    message.warning('请先选择或打开一个章节，再添加文件引用')
+    return
+  }
+  activeTab.value = 'chat'
+  composerValue.value = `【引用文件】章节《${chapter.title}》\n${composerValue.value}`
+  void assistant.send({
+    intentHint: `chapter-assistant-v2:attach:chapter`,
+    attachments: [{ kind: 'chapter', ref: chapter.id, label: chapter.title }]
+  })
+}
+
 function notifyTruncate(result: TurnTruncateResult, action: '撤回' | '重新分叉'): void {
   if (result.keptCommitted > 0) {
     message.warning(`${action}完成，但 ${result.keptCommitted} 项已写回项目的改动未回滚`)
@@ -240,9 +254,11 @@ async function applyTargetWords(targetWordCount: number): Promise<void> {
   }
   const target = Math.max(targetWordCount, 1)
   if (currentCount > target * 1.1) {
-    await handleReduceDraft(target)
+    // 超出目标：基于当前章节正文精简
+    try { await draft.reduceDraftToTarget(plain, target) } catch (error) { message.error(error instanceof Error ? error.message : 'AI 精简章节失败') }
   } else if (currentCount < target * 0.9) {
-    await handleExpandDraft(target)
+    // 不足目标：基于当前章节正文扩充续写（不再依赖初稿预览，避免“暂无可扩充”误报）
+    try { await draft.expandDraftToTarget(plain, target) } catch (error) { message.error(error instanceof Error ? error.message : 'AI 扩充续写失败') }
   } else {
     message.info(`当前正文约 ${currentCount} 字，已在目标 ${target} 字的合理范围内，无需调整`)
   }
@@ -286,7 +302,7 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
       <div class="dock-brand">
         <span class="brand-mark"><Sparkles :size="15" /></span>
         <div class="brand-copy">
-          <strong>创作助理</strong>
+          <strong>智能体</strong>
           <span>{{ selectedChapter?.title || '章节工作台' }}</span>
         </div>
       </div>
@@ -364,12 +380,13 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
         :messages="assistant.messages.value"
         :is-streaming="assistant.isStreaming.value"
         :is-initializing="assistant.isInitializing.value"
-        assistant-name="创作助理"
+        assistant-name="智能体"
         :editing-turn-id="assistant.editingTurnId.value"
         :editing-draft="assistant.editingDraft.value"
         :is-mutating="assistant.isTruncating.value"
         :staged-changes="assistant.stagedChanges.value"
         @continue="assistant.continueWithPrompt"
+        @rollback="(id, prompt) => assistant.rollbackTurn(id, prompt)"
         @open-staged="activeTab = 'staged'"
         @edit-start="assistant.startEditingTurn"
         @edit-cancel="assistant.cancelEditing"
@@ -429,6 +446,7 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
         :restored-label="assistant.restoredDraftLabel.value"
         :mode-label="hasSelection ? selectionHint : currentMode.label"
         @send="sendWithMode"
+        @attach="handleAttachFile"
         @cancel="assistant.cancel()"
         @edit-last="assistant.startEditingLastTurn()"
         @clear-restored="assistant.clearRestoredDraft()"

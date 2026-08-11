@@ -561,14 +561,11 @@ function confirmCcSwitchImport(): void {
     })
     existingKeys.add(key)
   }
-  const skillCount = ccSwitchImportedSkills.value.length
   ccSwitchImportOpen.value = false
   ccSwitchProfiles.value = []
   ccSwitchImportedSkills.value = []
   ccSwitchConfigError.value = ''
-  message.success(
-    `已导入 ${selected.length} 个 AI 接口配置${skillCount ? `，${skillCount} 个 skills` : ''}`
-  )
+  message.success(`已导入 ${selected.length} 个 AI 接口配置`)
 }
 
 async function saveSettings(): Promise<void> {
@@ -623,34 +620,16 @@ async function saveSettings(): Promise<void> {
 
       <div ref="scrollContainer" class="settings-main arc-scrollbar" @scroll="handleScroll">
         <section id="sec-ai" class="settings-section">
-          <div class="section-title">
+          <div class="section-title section-title--actions">
             <Cpu :size="18" />
-            <div>
+            <div class="section-title-copy">
               <strong>AI 接口配置</strong>
               <p>管理多个接口配置，可在标题栏快速切换。</p>
-            </div>
-          </div>
-
-          <div class="profile-tabs">
-            <div class="profile-tab-list">
-              <button
-                v-for="profile in draftSettings.aiProfiles"
-                :key="profile.id"
-                class="profile-tab"
-                :class="{
-                  active: editingProfileId === profile.id,
-                  'is-active-profile': profile.id === draftSettings.activeAiProfileId
-                }"
-                @click="selectProfile(profile.id)"
-              >
-                <span class="profile-tab-name">{{ profile.name }}</span>
-                <span v-if="profile.id === draftSettings.activeAiProfileId" class="profile-tab-badge">当前</span>
-              </button>
             </div>
             <div class="profile-tab-actions">
               <button
                 class="profile-action-btn"
-                title="从 CC Switch 导入 AI 接口配置与 skills"
+                title="从 CC Switch 导入 AI 接口配置"
                 :disabled="isCcSwitchImporting"
                 @click="handleCcSwitchImport"
               >
@@ -669,6 +648,24 @@ async function saveSettings(): Promise<void> {
                 @click="handleDeleteProfile"
               >
                 <Trash2 :size="14" />
+              </button>
+            </div>
+          </div>
+
+          <div class="profile-tabs">
+            <div class="profile-tab-list">
+              <button
+                v-for="profile in draftSettings.aiProfiles"
+                :key="profile.id"
+                class="profile-tab"
+                :class="{
+                  active: editingProfileId === profile.id,
+                  'is-active-profile': profile.id === draftSettings.activeAiProfileId
+                }"
+                @click="selectProfile(profile.id)"
+              >
+                <span class="profile-tab-name">{{ profile.name }}</span>
+                <span v-if="profile.id === draftSettings.activeAiProfileId" class="profile-tab-badge">当前</span>
               </button>
             </div>
           </div>
@@ -1084,7 +1081,7 @@ async function saveSettings(): Promise<void> {
     </template>
   </n-modal>
 
-  <!-- 从 CC Switch 导入 AI 接口配置与 skills 的确认弹窗 -->
+  <!-- 从 CC Switch 导入 AI 接口配置的确认弹窗 -->
   <n-modal
     :show="ccSwitchImportOpen"
     preset="card"
@@ -1094,7 +1091,7 @@ async function saveSettings(): Promise<void> {
     @close="ccSwitchImportOpen = false"
   >
     <div class="cc-switch-intro">
-      <p>已读取 CC Switch 配置（{{ ccSwitchConfigPath || '~/.cc-switch/config.json' }}）。选择要导入的 AI 接口配置，并确认 skills 导入结果。</p>
+      <p>已读取 CC Switch 配置（{{ ccSwitchConfigPath || '~/.cc-switch/config.json' }}）。选择要导入的 AI 接口配置。</p>
       <p v-if="ccSwitchConfigError" class="cc-switch-warn">
         配置读取提示：{{ ccSwitchConfigError }}
       </p>
@@ -1118,16 +1115,6 @@ async function saveSettings(): Promise<void> {
     </div>
     <div v-else class="cc-switch-empty">
       未在配置文件中识别到可导入的 AI 接口配置。
-    </div>
-
-    <div class="cc-switch-section-title">Skills</div>
-    <div v-if="ccSwitchImportedSkills.length" class="cc-switch-skill-list">
-      <span v-for="skillId in ccSwitchImportedSkills" :key="skillId" class="cc-switch-skill-tag">
-        {{ skillId }}
-      </span>
-    </div>
-    <div v-else class="cc-switch-empty">
-      未在 ~/.claude/skills 与 ~/.cc-switch/skills 中找到可导入的 skills。
     </div>
 
     <template #footer>
@@ -1229,9 +1216,27 @@ async function saveSettings(): Promise<void> {
   margin-bottom: 18px;
 }
 
+/* AI 接口配置：标题与右侧四个操作按钮同行对齐 */
+.section-title--actions {
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.section-title--actions .section-title-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.section-title--actions .profile-tab-actions {
+  margin-left: auto;
+  padding-top: 0;
+}
+
 .section-title :deep(svg) {
   margin-top: 2px;
   color: var(--arc-primary);
+}
+.section-title--actions :deep(svg) {
+  margin-top: 0;
 }
 
 .section-title strong {

@@ -598,7 +598,7 @@ watch(
         :style="{ width: 'min(520px, 92vw)' }"
         :bordered="false"
       >
-        <n-form label-placement="top">
+        <n-form label-placement="top" class="style-editor-form">
           <n-form-item label="风格名称">
             <n-input v-model:value="styleForm.label" placeholder="例如：霓虹冷硬派" />
           </n-form-item>
@@ -755,6 +755,28 @@ watch(
   color: var(--arc-text-hint);
   font-size: 12px;
   margin-bottom: 10px;
+}
+/* 自定义写作风格表单：所有输入框统一全宽、顶部对齐，避免长短不一 */
+.style-editor-form {
+  width: 100%;
+}
+.style-editor-form :deep(.n-form-item) {
+  width: 100%;
+  margin-bottom: 16px;
+}
+.style-editor-form :deep(.n-form-item .n-form-item-label) {
+  width: 100%;
+  text-align: left;
+}
+.style-editor-form :deep(.n-form-item-content),
+.style-editor-form :deep(.n-form-item-control),
+.style-editor-form :deep(.n-input) {
+  width: 100%;
+}
+.style-color-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .style-empty-tip {
   color: var(--arc-text-hint);

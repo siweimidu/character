@@ -102,7 +102,7 @@ const emit = defineEmits<{
   (e: 'open-knowledge', documentId?: string): void
   (e: 'continue', prompt: string): void
   (e: 'open-staged'): void
-  (e: 'rollback', turnId: string): void
+  (e: 'rollback', turnId: string, prompt: string): void
   (e: 'edit-start', turnId: string): void
   (e: 'edit-cancel'): void
   (e: 'edit-draft', value: string): void
@@ -180,7 +180,10 @@ function cancelRollbackConfirm(): void {
 function confirmRollback(): void {
   const turnId = confirmRollbackTurnId.value
   confirmRollbackTurnId.value = null
-  if (turnId) emit('rollback', turnId)
+  if (turnId) {
+    const msg = props.messages.find((m) => m.turnId === turnId)
+    emit('rollback', turnId, msg?.userMessage ?? '')
+  }
 }
 
 // ── opencode 风格：右侧透明横杠，悬浮放大，点击跳转到对应对话 ──

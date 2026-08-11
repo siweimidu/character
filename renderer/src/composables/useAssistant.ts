@@ -641,9 +641,13 @@ export function useAssistant(options: UseAssistantOptions) {
    * 回退到某轮对话之前：删除该 turn 及其之后的所有 turn（及其暂存变更）。
    * 用于"回退到本轮对话之前"的撤销操作。
    */
-  async function rollbackTurn(turnId: string): Promise<void> {
+  async function rollbackTurn(turnId: string, prompt?: string): Promise<void> {
     if (!activeSessionId.value || isStreaming.value) return
     await A.turnDelete({ sessionId: activeSessionId.value, turnId })
+    // 回退后把被回退的那轮对话提示词自动填入问答框，方便继续基于它调整
+    if (typeof prompt === 'string' && prompt.trim()) {
+      composerValue.value = prompt
+    }
     // 重拉本轮之后的对话与暂存区，保持一致
     await reloadTurns()
     await reloadStaged()

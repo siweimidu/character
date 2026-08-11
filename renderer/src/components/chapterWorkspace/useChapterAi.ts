@@ -817,7 +817,7 @@ export function useChapterAi(): {
           key: TASK_KEY,
           kind: 'chapter-assistant',
           label: 'AI 章节助手',
-          description: '与创作助理对话',
+          description: '与智能体对话',
           panel: 'chapters',
         },
         async () => {

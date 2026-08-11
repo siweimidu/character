@@ -1452,10 +1452,12 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     try {
       const resolvedProjectId = String(projectId ?? '').trim() || undefined
 
+      // 注意：Windows 下 properties 同时包含 openFile 与 openDirectory 时，文件类型过滤
+      // 会导致文件管理器只显示文件夹、隐藏 .zip 压缩包。因此这里去掉 filters，
+      // 让目录和 .zip 包都可见，选择后代码再按扩展名分别处理。
       const dialogOptions: Electron.OpenDialogOptions = {
         title: '选择要导入的 Skill 包（目录或压缩包）',
-        properties: ['openFile', 'openDirectory'],
-        filters: [{ name: 'Skill 包', extensions: ['zip'] }]
+        properties: ['openFile', 'openDirectory']
       }
       const ownerWindow = deps.windowManager.getMainWindow() ?? BrowserWindow.getFocusedWindow()
       const result = ownerWindow
@@ -1695,13 +1697,42 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
   })
 
-  // ── 从 CC Switch 导入 skills 与 AI 接口配置 ──
-  // CC Switch（https://github.com/farion1231/cc-switch）的配置保存在 ~/.cc-switch/config.json，
-  // 用于管理 Claude Code / Codex 的多供应商接入。这里解析其中的 AI 接口配置（映射为 AiProfile），
-  // 并把 Claude Code 的 skills（~/.claude/skills 与 ~/.cc-switch/skills）导入到共享 skills 目录。
+  // ── 从 CC Switch 导入 AI 接口配置 ──
+  // CC Switch（https://github.com/farion1231/cc-switch）的配置用于管理多供应商接入。
+  // 配置默认保存在 ~/.cc-switch/config.json，但不同安装版本路径可能不同，
+  // 因此这里按常见位置依次探测，仍找不到时允许用户手动选择 config.json。
+  // 注意：skills 的导入已改由「内置 Skills 与项目扩展」页面负责，这里只导入 AI 接口配置。
   ipcMain.handle('characterarc:cc-switch-import', async () => {
     const home = homedir()
-    const ccSwitchConfigPath = join(home, '.cc-switch', 'config.json')
+    // 依次探测 CC Switch 配置文件的常见位置
+    const candidatePaths = [
+      join(home, '.cc-switch', 'config.json'),
+      join(home, '.cc-switch', 'cc-switch', 'config.json'),
+      join(home, '.cc-switch', 'config', 'config.json'),
+      join(home, '.config', 'cc-switch', 'config.json'),
+      join(home, 'AppData', 'Roaming', 'cc-switch', 'config.json')
+    ]
+    let ccSwitchConfigPath = candidatePaths.find((p) => existsSync(p)) ?? ''
+
+    // 若常见位置都找不到，弹出文件选择框让用户手动指定 config.json
+    if (!ccSwitchConfigPath) {
+      const ownerWindow = deps.windowManager.getMainWindow() ?? BrowserWindow.getFocusedWindow()
+      const pick = ownerWindow
+        ? await dialog.showOpenDialog(ownerWindow, {
+            title: '请选择 CC Switch 的 config.json 配置文件',
+            properties: ['openFile'],
+            filters: [{ name: '配置文件', extensions: ['json'] }]
+          })
+        : await dialog.showOpenDialog({
+            title: '请选择 CC Switch 的 config.json 配置文件',
+            properties: ['openFile'],
+            filters: [{ name: '配置文件', extensions: ['json'] }]
+          })
+      if (pick.canceled || !pick.filePaths[0]) {
+        return { success: true, aiProfiles: [], importedSkills: [], configPath: '', configError: '已取消选择配置文件' }
+      }
+      ccSwitchConfigPath = pick.filePaths[0]
+    }
 
     // 1. 解析 AI 接口配置
     let aiProfiles: Array<{
@@ -1713,7 +1744,7 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
       isCurrent: boolean
     }> = []
     let configError = ''
-    if (existsSync(ccSwitchConfigPath)) {
+    if (ccSwitchConfigPath) {
       try {
         const raw = await readFile(ccSwitchConfigPath, 'utf-8')
         const parsed = JSON.parse(raw)
@@ -1775,39 +1806,13 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
       configError = `未找到 CC Switch 配置文件：${ccSwitchConfigPath}`
     }
 
-    // 2. 导入 skills 到共享目录（_shared scope，所有项目可见）
-    const skillsRoot = getSkillsDirPath()
-    await mkdir(skillsRoot, { recursive: true })
-    const importedSkills: Array<{ id: string; path: string }> = []
-    const skillSourceRoots = [
-      join(home, '.claude', 'skills'),
-      join(home, '.cc-switch', 'skills')
-    ]
-    for (const sourceRoot of skillSourceRoots) {
-      if (!existsSync(sourceRoot)) continue
-      const entries = await readdir(sourceRoot, { withFileTypes: true }).catch(() => [])
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue
-        const skillDir = join(sourceRoot, entry.name)
-        if (!existsSync(join(skillDir, 'SKILL.md'))) continue
-        const targetDir = join(skillsRoot, entry.name)
-        await cp(skillDir, targetDir, { recursive: true, force: true })
-        importedSkills.push({ id: entry.name, path: `project-skills/${entry.name}` })
-      }
-    }
-
-    // 3. 刷新技能注册表（共享作用域）
-    if (importedSkills.length) {
-      await refreshSkillRegistry(undefined)
-    }
-
     return {
       success: true,
       aiProfiles: aiProfiles
         .map((profile, index) => ({ ...profile, index }))
         .sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent) || a.index - b.index)
         .map(({ index, ...profile }) => profile),
-      importedSkills: importedSkills,
+      importedSkills: [],
       configPath: ccSwitchConfigPath,
       configError
     }

@@ -509,6 +509,59 @@ function deleteAuditReport(report: KnowledgeDocument): void {
   })
 }
 
+// ── 审计报告批量删除 ──
+const selectedAuditReportIds = ref<Set<string>>(new Set())
+const isAuditBatchSelecting = ref(false)
+const visibleAuditReportIds = computed(() => visibleAuditReports.value.map((r) => r.id))
+const auditAllSelected = computed(() =>
+  visibleAuditReportIds.value.length > 0 &&
+  visibleAuditReportIds.value.every((id) => selectedAuditReportIds.value.has(id))
+)
+
+function toggleAuditBatchSelect(): void {
+  isAuditBatchSelecting.value = !isAuditBatchSelecting.value
+  if (!isAuditBatchSelecting.value) {
+    selectedAuditReportIds.value = new Set()
+  }
+}
+
+function toggleAuditAll(): void {
+  const next = new Set(selectedAuditReportIds.value)
+  if (auditAllSelected.value) {
+    visibleAuditReportIds.value.forEach((id) => next.delete(id))
+  } else {
+    visibleAuditReportIds.value.forEach((id) => next.add(id))
+  }
+  selectedAuditReportIds.value = next
+}
+
+function toggleAuditSelect(id: string): void {
+  const next = new Set(selectedAuditReportIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selectedAuditReportIds.value = next
+}
+
+function handleDeleteSelectedAuditReports(): void {
+  const ids = Array.from(selectedAuditReportIds.value)
+  if (!ids.length) return
+  dialog.warning({
+    title: '批量删除审计报告',
+    content: `确认删除选中的 ${ids.length} 份审计报告吗？此操作无法撤销。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: () => {
+      appStore.removeKnowledgeDocuments(ids)
+      if (selectedAuditReport.value && ids.includes(selectedAuditReport.value.id)) {
+        selectedAuditReport.value = null
+      }
+      selectedAuditReportIds.value = new Set()
+      isAuditBatchSelecting.value = false
+      message.success(`已删除 ${ids.length} 份审计报告`)
+    }
+  })
+}
+
 function openKnowledgeDocument(document: KnowledgeDocument): void {
   selectedKnowledgeDocument.value = document
 }
@@ -938,6 +991,25 @@ watch(
           <strong>审计历史</strong>
           <n-tag size="tiny" :bordered="false">{{ auditReports.length }} 份</n-tag>
         </div>
+        <div class="pk-history-actions" v-if="auditReports.length">
+          <n-button
+            size="tiny"
+            :type="isAuditBatchSelecting ? 'error' : 'default'"
+            quaternary
+            @click="toggleAuditBatchSelect"
+          >{{ isAuditBatchSelecting ? '取消选择' : '批量删除' }}</n-button>
+          <template v-if="isAuditBatchSelecting">
+            <n-button size="tiny" quaternary @click="toggleAuditAll">
+              {{ auditAllSelected ? '取消全选' : '全选' }}
+            </n-button>
+            <n-button
+              size="tiny"
+              type="error"
+              :disabled="!selectedAuditReportIds.size"
+              @click="handleDeleteSelectedAuditReports"
+            >删除所选（{{ selectedAuditReportIds.size }}）</n-button>
+          </template>
+        </div>
       </div>
 
       <n-empty v-if="!auditReports.length" description="还没有执行过一致性审计。" />
@@ -948,10 +1020,14 @@ watch(
           size="small"
           hoverable
           class="pk-history-item"
-          @click="selectedAuditReport = report"
+          :class="{ 'pk-history-item--selected': isAuditBatchSelecting && selectedAuditReportIds.has(report.id) }"
+          @click="isAuditBatchSelecting ? toggleAuditSelect(report.id) : (selectedAuditReport = report)"
         >
           <template #header>
             <div class="pk-history-item-title">
+              <template v-if="isAuditBatchSelecting">
+                <input type="checkbox" :checked="selectedAuditReportIds.has(report.id)" @change="toggleAuditSelect(report.id)" />
+              </template>
               <strong>{{ report.title }}</strong>
               <n-tag size="tiny" :bordered="false" type="info">
                 {{ formatKnowledgeDateTime(report.createdAt) }}
@@ -959,7 +1035,7 @@ watch(
             </div>
           </template>
           <template #header-extra>
-            <n-button size="tiny" quaternary type="error" @click.stop="deleteAuditReport(report)">删除</n-button>
+            <n-button v-if="!isAuditBatchSelecting" size="tiny" quaternary type="error" @click.stop="deleteAuditReport(report)">删除</n-button>
           </template>
           <p class="pk-history-summary">{{ report.summary || report.content.slice(0, 160) }}</p>
         </n-card>
@@ -1296,6 +1372,12 @@ watch(
 }
 
 .pk-history-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pk-history-actions {
   display: flex;
   align-items: center;
   gap: 8px;

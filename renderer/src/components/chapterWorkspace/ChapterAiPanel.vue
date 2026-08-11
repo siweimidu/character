@@ -232,7 +232,7 @@ onMounted(() => {
   registerChatStream()
   draft.registerStreamListener()
   void hydrateCurrentSession().catch((error) => {
-    message.warning(error instanceof Error ? error.message : '加载创作助理历史会话失败')
+    message.warning(error instanceof Error ? error.message : '加载智能体历史会话失败')
   })
 })
 onBeforeUnmount(() => {
@@ -246,7 +246,7 @@ onBeforeUnmount(() => {
     <header class="ai-header">
       <div class="ai-title">
         <Sparkles :size="14" />
-        <span>创作助理</span>
+        <span>智能体</span>
       </div>
       <div class="ai-header-actions">
         <n-tooltip placement="bottom">
