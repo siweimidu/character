@@ -34,15 +34,19 @@ export function initAgentProfilesSchema(db: DatabaseSync): void {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     ) STRICT;
+  `)
 
+  // 迁移：旧表补齐 scope / project_id / skill_ids 列。
+  // 必须在创建依赖 scope 列的索引之前执行，否则旧库会报 "no such column: scope"。
+  ensureAgentProfileColumns(db)
+
+  db.exec(`
     CREATE INDEX IF NOT EXISTS idx_agent_profiles_updated
       ON agent_profiles (updated_at DESC);
 
     CREATE INDEX IF NOT EXISTS idx_agent_profiles_scope_project
       ON agent_profiles (scope, project_id);
   `)
-
-  ensureAgentProfileColumns(db)
 }
 
 /** 迁移：为旧表补齐 scope / project_id / skill_ids 列。 */
