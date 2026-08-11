@@ -2,6 +2,7 @@
 import { computed, reactive, ref } from 'vue'
 import { BookMarked, CheckCircle, Circle, MoreVertical, Plus } from 'lucide-vue-next'
 import { NButton, NDivider, NDynamicTags, NDropdown, NEmpty, NForm, NFormItem, NInput, NModal, NSelect, NTag, useDialog, useMessage } from 'naive-ui'
+import BatchDeleteBar from './BatchDeleteBar.vue'
 import { useAppStore } from '@/stores/app'
 import type { DropdownOption } from 'naive-ui'
 import type { PlotThread } from '@/types/app'
@@ -17,6 +18,8 @@ const message = useMessage()
 
 const editorVisible = ref(false)
 const editingThreadId = ref<string | null>(null)
+// 批量删除：已选线索 ID 集合
+const selectedThreadIds = ref<string[]>([])
 const form = reactive({
   title: '',
   description: '',
@@ -53,6 +56,43 @@ const menuOptions: DropdownOption[] = [
   { key: 'toggle', label: '切换状态' },
   { key: 'delete', label: '删除线索' }
 ]
+
+// ── 批量删除 ──
+const selectedThreadIdSet = computed(() => new Set(selectedThreadIds.value))
+const batchDeleteAllThreads = computed(
+  () => filteredThreads.value.length > 0 && selectedThreadIds.value.length === filteredThreads.value.length
+)
+function toggleSelectThread(threadId: string): void {
+  selectedThreadIds.value = selectedThreadIds.value.includes(threadId)
+    ? selectedThreadIds.value.filter((id) => id !== threadId)
+    : [...selectedThreadIds.value, threadId]
+}
+function toggleSelectAllThreads(): void {
+  selectedThreadIds.value =
+    batchDeleteAllThreads.value
+      ? []
+      : filteredThreads.value.map((thread) => thread.id)
+}
+function handleBatchDeleteThreads(): void {
+  const ids = selectedThreadIds.value
+  if (!ids.length) return
+  dialog.warning({
+    title: '确认批量删除',
+    content: `确定要删除选中的 ${ids.length} 条剧情线索吗？删除后无法恢复。`,
+    positiveText: '确认删除',
+    negativeText: '取消',
+    autoFocus: false,
+    closable: false,
+    onPositiveClick: () => {
+      appStore.deletePlotThreads(ids)
+      selectedThreadIds.value = []
+      message.success(`已删除 ${ids.length} 条剧情线索`)
+    }
+  })
+}
+function clearThreadSelection(): void {
+  selectedThreadIds.value = []
+}
 
 function openCreateEditor(): void {
   editingThreadId.value = null
@@ -154,6 +194,17 @@ function formatTime(value: string): string {
       </n-button>
     </div>
 
+    <BatchDeleteBar
+      v-if="filteredThreads.length > 0"
+      :selected-count="selectedThreadIds.length"
+      :total-count="filteredThreads.length"
+      item-label="剧情线索"
+      :all-selected="batchDeleteAllThreads"
+      @toggle-all="toggleSelectAllThreads"
+      @delete-selected="handleBatchDeleteThreads"
+      @clear="clearThreadSelection"
+    />
+
     <!-- 活跃线索 -->
     <div v-if="openThreads.length > 0" class="thread-group">
       <div class="group-label"><Circle :size="13" class="group-icon open-icon" /> 活跃伏笔</div>
@@ -163,6 +214,13 @@ function formatTime(value: string): string {
         class="thread-card"
       >
         <div class="thread-header">
+          <label class="row-check" title="勾选以便批量删除" @click.stop>
+            <input
+              type="checkbox"
+              :checked="selectedThreadIdSet.has(thread.id)"
+              @change="toggleSelectThread(thread.id)"
+            />
+          </label>
           <div class="thread-title">{{ thread.title }}</div>
           <n-dropdown :options="menuOptions" @select="(key: string) => handleMenuSelect(key, thread)">
             <n-button text size="tiny" class="more-btn">
@@ -199,6 +257,13 @@ function formatTime(value: string): string {
         class="thread-card resolved-card"
       >
         <div class="thread-header">
+          <label class="row-check" title="勾选以便批量删除" @click.stop>
+            <input
+              type="checkbox"
+              :checked="selectedThreadIdSet.has(thread.id)"
+              @change="toggleSelectThread(thread.id)"
+            />
+          </label>
           <div class="thread-title resolved-title">{{ thread.title }}</div>
           <n-dropdown :options="menuOptions" @select="(key: string) => handleMenuSelect(key, thread)">
             <n-button text size="tiny" class="more-btn">
@@ -404,6 +469,19 @@ function formatTime(value: string): string {
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
+}
+
+.row-check {
+  display: inline-flex;
+  align-items: center;
+  padding-top: 1px;
+  flex-shrink: 0;
+}
+.row-check input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--arc-danger);
+  cursor: pointer;
 }
 
 .thread-title {

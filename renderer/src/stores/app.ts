@@ -1485,6 +1485,19 @@ export const useAppStore = defineStore('app', () => {
     schedulePersist('fast')
   }
 
+  /** 批量删除世界观词条 */
+  function deleteWorldviewEntries(entryIds: string[]): void {
+    if (!entryIds.length) return
+    const idSet = new Set(entryIds)
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      worldviewEntries: reindexWorldviewEntries(
+        workspace.worldviewEntries.filter((entry) => !idSet.has(entry.id))
+      )
+    }))
+    schedulePersist('fast')
+  }
+
   // ── 角色 CRUD ──
   /** 创建新角色卡，追加到列表末尾，保持旧角色优先展示 */
   function createCharacter(payload?: Partial<CharacterCard>): string {
@@ -1545,6 +1558,24 @@ export const useAppStore = defineStore('app', () => {
       ),
       organizationMemberships: workspace.organizationMemberships.filter(
         (membership) => membership.characterId !== characterId
+      )
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 批量删除角色，同时清理其相关关系与组织归属 */
+  function deleteCharacters(characterIds: string[]): void {
+    if (!characterIds.length) return
+    const idSet = new Set(characterIds)
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      characters: workspace.characters.filter((character) => !idSet.has(character.id)),
+      characterRelationships: workspace.characterRelationships.filter(
+        (relationship) =>
+          !idSet.has(relationship.fromCharacterId) && !idSet.has(relationship.toCharacterId)
+      ),
+      organizationMemberships: workspace.organizationMemberships.filter(
+        (membership) => !idSet.has(membership.characterId)
       )
     }))
     schedulePersist('fast')
@@ -1614,6 +1645,22 @@ export const useAppStore = defineStore('app', () => {
     schedulePersist('fast')
   }
 
+  /** 批量删除组织，同时清理其相关成员归属关系 */
+  function deleteOrganizations(organizationIds: string[]): void {
+    if (!organizationIds.length) return
+    const idSet = new Set(organizationIds)
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      organizations: reindexOrganizations(
+        workspace.organizations.filter((organization) => !idSet.has(organization.id))
+      ),
+      organizationMemberships: workspace.organizationMemberships.filter(
+        (membership) => !idSet.has(membership.organizationId)
+      )
+    }))
+    schedulePersist('fast')
+  }
+
   // ── 角色关系 CRUD ──
   /** 创建角色关系，自动选择默认的角色对 */
   function createCharacterRelationship(payload?: Partial<CharacterRelationship>): void {
@@ -1677,6 +1724,19 @@ export const useAppStore = defineStore('app', () => {
       ...workspace,
       characterRelationships: workspace.characterRelationships.filter(
         (relationship) => relationship.id !== relationshipId
+      )
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 批量删除角色关系 */
+  function deleteCharacterRelationships(relationshipIds: string[]): void {
+    if (!relationshipIds.length) return
+    const idSet = new Set(relationshipIds)
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      characterRelationships: workspace.characterRelationships.filter(
+        (relationship) => !idSet.has(relationship.id)
       )
     }))
     schedulePersist('fast')
@@ -1809,6 +1869,19 @@ export const useAppStore = defineStore('app', () => {
     schedulePersist('fast')
   }
 
+  /** 批量删除灵感卡片 */
+  function deleteInspirationEntries(entryIds: string[]): void {
+    if (!entryIds.length) return
+    const idSet = new Set(entryIds)
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      inspirationEntries: reindexInspirationEntries(
+        workspace.inspirationEntries.filter((entry) => !idSet.has(entry.id))
+      )
+    }))
+    schedulePersist('fast')
+  }
+
   // ── 剧情线索 CRUD ──
   function createPlotThread(payload?: Partial<PlotThread>): void {
     const now = new Date().toISOString()
@@ -1855,6 +1928,17 @@ export const useAppStore = defineStore('app', () => {
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       plotThreads: workspace.plotThreads.filter((thread) => thread.id !== threadId)
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 批量删除剧情线索 */
+  function deletePlotThreads(threadIds: string[]): void {
+    if (!threadIds.length) return
+    const idSet = new Set(threadIds)
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      plotThreads: workspace.plotThreads.filter((thread) => !idSet.has(thread.id))
     }))
     schedulePersist('fast')
   }
@@ -2386,6 +2470,20 @@ export const useAppStore = defineStore('app', () => {
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       outlineItems: reindexOutlineItems(workspace.outlineItems.filter((item) => item.id !== outlineId))
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 批量删除大纲条目（同时清理对应章节） */
+  function deleteOutlineItems(outlineIds: string[]): void {
+    if (!outlineIds.length) return
+    const idSet = new Set(outlineIds)
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      outlineItems: reindexOutlineItems(
+        workspace.outlineItems.filter((item) => !idSet.has(item.id))
+      ),
+      chapters: workspace.chapters.filter((chapter) => !idSet.has(chapter.outlineItemId))
     }))
     schedulePersist('fast')
   }
@@ -3352,14 +3450,21 @@ export const useAppStore = defineStore('app', () => {
     deleteChapter,
     deleteCharacter,
     deleteCharacterRelationship,
+    deleteCharacters,
+    deleteCharacterRelationships,
     deleteInspirationEntry,
+    deleteInspirationEntries,
     deleteOrganization,
     deleteOrganizationMembership,
+    deleteOrganizations,
     deleteOutlineItem,
+    deleteOutlineItems,
     deleteOutlineVolume,
     deletePlotThread,
+    deletePlotThreads,
     deleteProject,
     deleteWorldviewEntry,
+    deleteWorldviewEntries,
     insertIntoChapter,
     importProjectData,
     importModuleData,

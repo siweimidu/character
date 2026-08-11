@@ -1,6 +1,7 @@
 import type { AppSettings } from '../shared-types'
-import { normalizeSettings } from '../settings'
+import { isLocalBaseUrl, normalizeSettings } from '../settings'
 import { createProxyFetch } from '../proxy-fetch'
+import { buildModelsUrlCandidates } from './model-urls'
 import {
   isAnthropicProtocol,
   isOpenCodeProvider,
@@ -15,62 +16,6 @@ export interface FetchedModel {
 
 /** 获取模型列表的超时时间（毫秒） */
 const FETCH_MODELS_TIMEOUT_MS = 15_000
-
-/** 已知的兼容性后缀路径，用于自动剥离后缀以找到真正的 /v1/models 端点 */
-const KNOWN_COMPAT_SUFFIXES = [
-  '/api/claudecode', '/api/anthropic', '/apps/anthropic',
-  '/api/coding', '/claudecode', '/anthropic',
-  '/step_plan', '/coding', '/claude'
-]
-
-const KNOWN_ENDPOINT_SUFFIXES = [
-  '/chat/completions',
-  '/messages',
-  '/responses',
-  '/embeddings',
-  '/models',
-  '/images/generations'
-]
-
-function stripKnownEndpointSuffix(baseUrl: string): string {
-  for (const suffix of KNOWN_ENDPOINT_SUFFIXES) {
-    if (baseUrl.endsWith(suffix)) return baseUrl.slice(0, -suffix.length)
-  }
-  return baseUrl
-}
-
-/** 从 baseUrl 中剥离已知的兼容性后缀，返回剥离后的 URL，无匹配时返回 null */
-function stripCompatSuffix(baseUrl: string): string | null {
-  for (const suffix of KNOWN_COMPAT_SUFFIXES) {
-    if (baseUrl.endsWith(suffix)) return baseUrl.slice(0, baseUrl.length - suffix.length)
-  }
-  return null
-}
-
-/** 根据 baseUrl 构建候选的模型列表请求 URL，自动尝试多种路径格式 */
-function buildModelsUrlCandidates(baseUrl: string): string[] {
-  const trimmed = stripKnownEndpointSuffix(baseUrl.trim().replace(/\/+$/, ''))
-  if (!trimmed) return []
-  const candidates: string[] = []
-  if (/(^|\.)open\.bigmodel\.cn(\/|$)/i.test(trimmed) || trimmed.endsWith('/api/paas/v4')) {
-    candidates.push(`${trimmed.replace(/\/v1$/i, '')}/models`)
-  }
-  if (/\/v\d+$/i.test(trimmed)) {
-    // 已有版本段（如 /v1、/v3、/v4），直接追加 /models
-    candidates.push(`${trimmed}/models`)
-  } else {
-    candidates.push(`${trimmed}/v1/models`)
-  }
-  const stripped = stripCompatSuffix(trimmed)
-  if (stripped) {
-    const root = stripped.replace(/\/+$/, '')
-    if (root.includes('://') && root.length > root.indexOf('://') + 3) {
-      candidates.push(`${root}/v1/models`)
-      candidates.push(`${root}/models`)
-    }
-  }
-  return [...new Set(candidates)]
-}
 
 /** 通过 OpenAI 兼容接口获取模型列表，自动尝试多个候选 URL */
 async function fetchModelsOpenAiCompatible(baseUrl: string, apiKey: string, requestFetch: typeof fetch): Promise<FetchedModel[]> {
@@ -138,7 +83,9 @@ async function fetchModelsAnthropic(baseUrl: string, apiKey: string, requestFetc
 export async function fetchModels(settings: AppSettings): Promise<FetchedModel[]> {
   const normalized = normalizeSettings(settings)
   if (!normalized.baseUrl.trim()) throw new Error('请先填写 Base URL。')
-  if (!normalized.apiKey.trim() && normalized.provider !== 'ollama') {
+  // 本地地址（127.0.0.1 / localhost）与 Ollama 无需 API Key 即可拉取模型列表；
+  // 兼容 LiteLLM / OmniRoute / FreeLLMAPI 等本地中转网关默认不配置密钥的场景。
+  if (!normalized.apiKey.trim() && normalized.provider !== 'ollama' && !isLocalBaseUrl(normalized.baseUrl)) {
     throw new Error('需要 API Key 才能获取模型列表。')
   }
   const rawBaseUrl = (settings.baseUrl?.trim() || '').replace(/\/+$/, '')

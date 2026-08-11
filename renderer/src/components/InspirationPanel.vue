@@ -7,6 +7,7 @@ import { buildProjectWritingStyleContext } from '@/features/writingStyles/preset
 import { useAppStore } from '@/stores/app'
 import type { DropdownOption } from 'naive-ui'
 import type { InspirationEntry } from '@/types/app'
+import BatchDeleteBar from './BatchDeleteBar.vue'
 import BatchGenerateDialog from './BatchGenerateDialog.vue'
 import { normalizeCatalogTags, useCatalogBatch } from '@/composables/useCatalogBatch'
 import { useIncrementalList } from '@/composables/useIncrementalList'
@@ -29,6 +30,8 @@ const sourceFilter = ref<'all' | 'ai' | 'manual'>('all')
 const { generateCatalogBatch } = useCatalogBatch()
 const editorVisible = ref(false) // 控制灵感编辑弹窗
 const editingEntryId = ref<string | null>(null) // 当前编辑的灵感 ID，null 为新建
+// 批量删除：已选灵感 ID 集合
+const selectedEntryIds = ref<string[]>([])
 // 灵感编辑表单
 const form = reactive({
   type: '场景火花',
@@ -71,6 +74,43 @@ const aiEntryCount = computed(() => appStore.inspirationEntries.filter((entry) =
 // 手动记录的灵感数量
 const manualEntryCount = computed(() => appStore.inspirationEntries.filter((entry) => entry.source === 'manual').length)
 const isEditing = computed(() => Boolean(editingEntryId.value)) // 判断当前是编辑模式还是新建模式
+
+// ── 批量删除 ──
+const selectedEntryIdSet = computed(() => new Set(selectedEntryIds.value))
+const batchDeleteAllEntries = computed(
+  () => filteredEntries.value.length > 0 && selectedEntryIds.value.length === filteredEntries.value.length
+)
+function toggleSelectEntry(entryId: string): void {
+  selectedEntryIds.value = selectedEntryIds.value.includes(entryId)
+    ? selectedEntryIds.value.filter((id) => id !== entryId)
+    : [...selectedEntryIds.value, entryId]
+}
+function toggleSelectAllEntries(): void {
+  selectedEntryIds.value =
+    batchDeleteAllEntries.value
+      ? []
+      : filteredEntries.value.map((entry) => entry.id)
+}
+function handleBatchDeleteEntries(): void {
+  const ids = selectedEntryIds.value
+  if (!ids.length) return
+  dialog.warning({
+    title: '确认批量删除',
+    content: `确定要删除选中的 ${ids.length} 条灵感吗？删除后无法恢复。`,
+    positiveText: '确认删除',
+    negativeText: '取消',
+    autoFocus: false,
+    closable: false,
+    onPositiveClick: () => {
+      appStore.deleteInspirationEntries(ids)
+      selectedEntryIds.value = []
+      message.success(`已删除 ${ids.length} 条灵感`)
+    }
+  })
+}
+function clearEntrySelection(): void {
+  selectedEntryIds.value = []
+}
 
 // 格式化灵感卡片的更新时间为中文简短格式
 function formatEntryMetaTime(value: string): string {
@@ -263,6 +303,17 @@ function handleMenuSelect(action: string | number, entry: InspirationEntry): voi
       @submit="handleGeneratePack"
     />
 
+    <BatchDeleteBar
+      v-if="filteredEntries.length > 0"
+      :selected-count="selectedEntryIds.length"
+      :total-count="filteredEntries.length"
+      item-label="灵感"
+      :all-selected="batchDeleteAllEntries"
+      @toggle-all="toggleSelectAllEntries"
+      @delete-selected="handleBatchDeleteEntries"
+      @clear="clearEntrySelection"
+    />
+
     <div v-if="filteredEntries.length > 0" class="inspiration-grid">
       <article
         v-for="entry in visibleEntries"
@@ -271,6 +322,13 @@ function handleMenuSelect(action: string | number, entry: InspirationEntry): voi
         @click="openEditor(entry)"
       >
         <div class="card-top">
+          <label class="card-check" title="勾选以便批量删除" @click.stop>
+            <input
+              type="checkbox"
+              :checked="selectedEntryIdSet.has(entry.id)"
+              @change="toggleSelectEntry(entry.id)"
+            />
+          </label>
           <div class="type-row">
             <span class="entry-type">{{ entry.type }}</span>
             <span class="entry-source" :class="entry.source">{{ entry.source === 'ai' ? 'AI 生成' : '手动记录' }}</span>
@@ -518,6 +576,19 @@ function handleMenuSelect(action: string | number, entry: InspirationEntry): voi
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.card-check {
+  display: inline-flex;
+  align-items: center;
+  padding-top: 2px;
+  flex-shrink: 0;
+}
+.card-check input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--arc-danger);
+  cursor: pointer;
 }
 
 .type-row {

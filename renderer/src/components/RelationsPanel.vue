@@ -23,6 +23,7 @@ import { useAppStore } from '@/stores/app'
 import { toIpcPayload } from '@/utils/ipcPayload'
 import type { CharacterCard, CharacterRelationship, OrganizationEntry, OrganizationMembership } from '@/types/app'
 import AiEnhancePreview from './AiEnhancePreview.vue'
+import BatchDeleteBar from './BatchDeleteBar.vue'
 import BatchGenerateDialog from './BatchGenerateDialog.vue'
 import type { EnhanceFieldDiff } from './AiEnhancePreview.vue'
 import { useCatalogBatch } from '@/composables/useCatalogBatch'
@@ -40,6 +41,9 @@ const viewMode = ref<'list' | 'graph'>('list')
 type ListSection = 'organizations' | 'relationships' | 'memberships'
 type MembershipGroupMode = 'organization' | 'character'
 const activeListSection = ref<ListSection>('organizations')
+// 批量删除：组织与关系各自的已选 ID 集合
+const selectedOrganizationIds = ref<string[]>([])
+const selectedRelationshipIds = ref<string[]>([])
 const membershipGroupMode = ref<MembershipGroupMode>('organization')
 const membershipOrganizationFilter = ref<string | null>(null)
 const membershipCollapsed = reactive<Record<string, boolean>>({})
@@ -353,6 +357,80 @@ function submitOrganization(): void {
 }
 
 // 删除组织前弹出二次确认对话框，同时清理该组织下的成员归属
+// ── 批量删除：组织 ──
+const selectedOrganizationIdSet = computed(() => new Set(selectedOrganizationIds.value))
+const batchDeleteAllOrganizations = computed(
+  () => filteredOrganizations.value.length > 0 && selectedOrganizationIds.value.length === filteredOrganizations.value.length
+)
+function toggleSelectOrganization(orgId: string): void {
+  selectedOrganizationIds.value = selectedOrganizationIds.value.includes(orgId)
+    ? selectedOrganizationIds.value.filter((id) => id !== orgId)
+    : [...selectedOrganizationIds.value, orgId]
+}
+function toggleSelectAllOrganizations(): void {
+  selectedOrganizationIds.value =
+    batchDeleteAllOrganizations.value
+      ? []
+      : filteredOrganizations.value.map((org) => org.id)
+}
+function handleBatchDeleteOrganizations(): void {
+  const ids = selectedOrganizationIds.value
+  if (!ids.length) return
+  dialog.warning({
+    title: '确认批量删除',
+    content: `确定要删除选中的 ${ids.length} 个组织吗？其成员归属关系将一并移除，且无法恢复。`,
+    positiveText: '确认删除',
+    negativeText: '取消',
+    autoFocus: false,
+    closable: false,
+    onPositiveClick: () => {
+      appStore.deleteOrganizations(ids)
+      selectedOrganizationIds.value = []
+      message.success(`已删除 ${ids.length} 个组织`)
+    }
+  })
+}
+function clearOrganizationSelection(): void {
+  selectedOrganizationIds.value = []
+}
+
+// ── 批量删除：关系 ──
+const selectedRelationshipIdSet = computed(() => new Set(selectedRelationshipIds.value))
+const batchDeleteAllRelationships = computed(
+  () => filteredRelationships.value.length > 0 && selectedRelationshipIds.value.length === filteredRelationships.value.length
+)
+function toggleSelectRelationship(relId: string): void {
+  selectedRelationshipIds.value = selectedRelationshipIds.value.includes(relId)
+    ? selectedRelationshipIds.value.filter((id) => id !== relId)
+    : [...selectedRelationshipIds.value, relId]
+}
+function toggleSelectAllRelationships(): void {
+  selectedRelationshipIds.value =
+    batchDeleteAllRelationships.value
+      ? []
+      : filteredRelationships.value.map((rel) => rel.id)
+}
+function handleBatchDeleteRelationships(): void {
+  const ids = selectedRelationshipIds.value
+  if (!ids.length) return
+  dialog.warning({
+    title: '确认批量删除',
+    content: `确定要删除选中的 ${ids.length} 条人物关系吗？删除后无法恢复。`,
+    positiveText: '确认删除',
+    negativeText: '取消',
+    autoFocus: false,
+    closable: false,
+    onPositiveClick: () => {
+      appStore.deleteCharacterRelationships(ids)
+      selectedRelationshipIds.value = []
+      message.success(`已删除 ${ids.length} 条人物关系`)
+    }
+  })
+}
+function clearRelationshipSelection(): void {
+  selectedRelationshipIds.value = []
+}
+
 function confirmDeleteOrganization(organization: OrganizationEntry): void {
   dialog.warning({
     title: '确认删除组织',
@@ -992,9 +1070,26 @@ function handleEnhanceMemApply(accepted: Record<string, string | string[]>): voi
       </nav>
 
       <section v-if="activeListSection === 'organizations'" class="list-section">
+        <BatchDeleteBar
+          v-if="filteredOrganizations.length > 0"
+          :selected-count="selectedOrganizationIds.length"
+          :total-count="filteredOrganizations.length"
+          item-label="组织"
+          :all-selected="batchDeleteAllOrganizations"
+          @toggle-all="toggleSelectAllOrganizations"
+          @delete-selected="handleBatchDeleteOrganizations"
+          @clear="clearOrganizationSelection"
+        />
         <div v-if="filteredOrganizations.length > 0" class="entity-grid">
           <article v-for="organization in visibleOrganizations" :key="organization.id" class="entity-card">
             <div class="entity-card-top">
+              <label class="card-check" title="勾选以便批量删除" @click.stop>
+                <input
+                  type="checkbox"
+                  :checked="selectedOrganizationIdSet.has(organization.id)"
+                  @change="toggleSelectOrganization(organization.id)"
+                />
+              </label>
               <div class="entity-badge" :style="{ background: orgBadgeBgLight(orgBadgeColor(organization)), color: orgBadgeColor(organization) }">{{ orgInitial(organization.name) }}</div>
               <div class="entity-head-copy">
                 <h4>{{ organization.name }}</h4>
@@ -1023,9 +1118,26 @@ function handleEnhanceMemApply(accepted: Record<string, string | string[]>): voi
       </section>
 
       <section v-else-if="activeListSection === 'relationships'" class="list-section">
+        <BatchDeleteBar
+          v-if="filteredRelationships.length > 0"
+          :selected-count="selectedRelationshipIds.length"
+          :total-count="filteredRelationships.length"
+          item-label="人物关系"
+          :all-selected="batchDeleteAllRelationships"
+          @toggle-all="toggleSelectAllRelationships"
+          @delete-selected="handleBatchDeleteRelationships"
+          @clear="clearRelationshipSelection"
+        />
         <div v-if="filteredRelationships.length > 0" class="card-list relationship-list">
           <article v-for="relationship in visibleRelationships" :key="relationship.id" class="entity-card">
             <div class="entity-card-top">
+              <label class="card-check" title="勾选以便批量删除" @click.stop>
+                <input
+                  type="checkbox"
+                  :checked="selectedRelationshipIdSet.has(relationship.id)"
+                  @change="toggleSelectRelationship(relationship.id)"
+                />
+              </label>
               <div class="link-pair">
                 <span>{{ relationship.fromCharacterName }}</span>
                 <Link2 :size="14" />
@@ -1639,6 +1751,18 @@ function handleEnhanceMemApply(accepted: Record<string, string | string[]>): voi
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.card-check {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.card-check input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--arc-danger);
+  cursor: pointer;
 }
 
 .entity-badge {

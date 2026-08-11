@@ -9,6 +9,7 @@ import { toIpcPayload } from '@/utils/ipcPayload'
 import type { CharacterCard } from '@/types/app'
 import type { DropdownOption } from 'naive-ui'
 import AiEnhancePreview from './AiEnhancePreview.vue'
+import BatchDeleteBar from './BatchDeleteBar.vue'
 import BatchGenerateDialog from './BatchGenerateDialog.vue'
 import type { EnhanceFieldDiff } from './AiEnhancePreview.vue'
 import { normalizeCatalogTags, useCatalogBatch } from '@/composables/useCatalogBatch'
@@ -55,6 +56,8 @@ const batchProgress = ref(0)
 const { generateCatalogBatch } = useCatalogBatch()
 const editorVisible = ref(false) // 控制角色编辑弹窗的显示
 const editingCharacterId = ref<string | null>(null) // 当前正在编辑的角色 ID，null 表示新建模式
+// 批量删除：勾选模式下的已选角色 ID 集合
+const selectedCharacterIds = ref<string[]>([])
 const focusedCharacterId = ref<string>('')
 // 角色编辑表单数据
 const form = reactive({
@@ -215,6 +218,43 @@ function handleMenuSelect(action: string | number, character: CharacterCard): vo
   })
 }
 
+// ── 批量删除 ──
+const selectedCharacterIdSet = computed(() => new Set(selectedCharacterIds.value))
+const batchDeleteAllCharacters = computed(
+  () => filteredCharacters.value.length > 0 && selectedCharacterIds.value.length === filteredCharacters.value.length
+)
+function toggleSelectCharacter(characterId: string): void {
+  selectedCharacterIds.value = selectedCharacterIds.value.includes(characterId)
+    ? selectedCharacterIds.value.filter((id) => id !== characterId)
+    : [...selectedCharacterIds.value, characterId]
+}
+function toggleSelectAllCharacters(): void {
+  selectedCharacterIds.value =
+    batchDeleteAllCharacters.value
+      ? []
+      : filteredCharacters.value.map((character) => character.id)
+}
+function handleBatchDeleteCharacters(): void {
+  const ids = selectedCharacterIds.value
+  if (!ids.length) return
+  dialog.warning({
+    title: '确认批量删除',
+    content: `确定要删除选中的 ${ids.length} 个角色吗？删除后角色资料及其关联关系将一并移除，且无法恢复。`,
+    positiveText: '确认删除',
+    negativeText: '取消',
+    autoFocus: false,
+    closable: false,
+    onPositiveClick: () => {
+      appStore.deleteCharacters(ids)
+      selectedCharacterIds.value = []
+      message.success(`已删除 ${ids.length} 个角色`)
+    }
+  })
+}
+function clearCharacterSelection(): void {
+  selectedCharacterIds.value = []
+}
+
 const ENHANCE_TASK_KEY = 'character-enhance'
 const enhanceLoading = computed(() => appStore.isAiTaskRunning(ENHANCE_TASK_KEY))
 const enhanceVisible = ref(false)
@@ -350,6 +390,17 @@ watch(
       </div>
     </div>
 
+    <BatchDeleteBar
+      v-if="filteredCharacters.length > 0"
+      :selected-count="selectedCharacterIds.length"
+      :total-count="filteredCharacters.length"
+      item-label="角色"
+      :all-selected="batchDeleteAllCharacters"
+      @toggle-all="toggleSelectAllCharacters"
+      @delete-selected="handleBatchDeleteCharacters"
+      @clear="clearCharacterSelection"
+    />
+
     <div class="character-grid">
       <!-- Direct card click keeps high-frequency editing faster than routing every change through the overflow menu. -->
       <article
@@ -360,6 +411,13 @@ watch(
         :data-assistant-focus-id="character.id"
         @click="openEditor(character)"
       >
+        <label class="card-check" title="勾选以便批量删除" @click.stop>
+          <input
+            type="checkbox"
+            :checked="selectedCharacterIdSet.has(character.id)"
+            @change="toggleSelectCharacter(character.id)"
+          />
+        </label>
         <div class="avatar" :style="avatarStyle(character.avatar, character.name)">
           <span>{{ character.name.slice(0, 1) }}</span>
         </div>
@@ -579,6 +637,20 @@ watch(
 
 .character-card:hover h3 {
   color: var(--arc-primary);
+}
+
+.card-check {
+  display: inline-flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 2px;
+  flex-shrink: 0;
+}
+.card-check input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--arc-danger);
+  cursor: pointer;
 }
 
 .avatar {

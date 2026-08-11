@@ -8,6 +8,7 @@ import { buildProjectWritingStyleContext } from '@/features/writingStyles/preset
 import type { DropdownOption } from 'naive-ui'
 import type { WorldviewEntry } from '@/types/app'
 import AiEnhancePreview from './AiEnhancePreview.vue'
+import BatchDeleteBar from './BatchDeleteBar.vue'
 import BatchGenerateDialog from './BatchGenerateDialog.vue'
 import type { EnhanceFieldDiff } from './AiEnhancePreview.vue'
 import { useCatalogBatch } from '@/composables/useCatalogBatch'
@@ -32,6 +33,8 @@ const typeFilter = ref<string | null>(null)
 const { generateCatalogBatch } = useCatalogBatch()
 const editorVisible = ref(false) // 控制词条编辑弹窗的显示
 const editingEntryId = ref<string | null>(null) // 当前正在编辑的词条 ID，null 表示新建模式
+// 批量删除：勾选模式下的已选词条 ID 集合
+const selectedEntryIds = ref<string[]>([])
 const focusedEntryId = ref<string>('')
 // 词条编辑表单数据
 const form = reactive({
@@ -216,6 +219,43 @@ function handleMenuSelect(action: string | number, entry: WorldviewEntry): void 
   })
 }
 
+// ── 批量删除 ──
+const selectedEntryIdSet = computed(() => new Set(selectedEntryIds.value))
+const batchDeleteAllSelected = computed(
+  () => filteredEntries.value.length > 0 && selectedEntryIds.value.length === filteredEntries.value.length
+)
+function toggleSelectEntry(entryId: string): void {
+  selectedEntryIds.value = selectedEntryIds.value.includes(entryId)
+    ? selectedEntryIds.value.filter((id) => id !== entryId)
+    : [...selectedEntryIds.value, entryId]
+}
+function toggleSelectAllEntries(): void {
+  selectedEntryIds.value =
+    batchDeleteAllSelected.value
+      ? []
+      : filteredEntries.value.map((entry) => entry.id)
+}
+function handleBatchDeleteEntries(): void {
+  const ids = selectedEntryIds.value
+  if (!ids.length) return
+  dialog.warning({
+    title: '确认批量删除',
+    content: `确定要删除选中的 ${ids.length} 条世界观词条吗？删除后内容将无法恢复。`,
+    positiveText: '确认删除',
+    negativeText: '取消',
+    autoFocus: false,
+    closable: false,
+    onPositiveClick: () => {
+      appStore.deleteWorldviewEntries(ids)
+      selectedEntryIds.value = []
+      message.success(`已删除 ${ids.length} 条世界观词条`)
+    }
+  })
+}
+function clearEntrySelection(): void {
+  selectedEntryIds.value = []
+}
+
 const ENHANCE_TASK_KEY = 'worldview-enhance'
 const enhanceLoading = computed(() => appStore.isAiTaskRunning(ENHANCE_TASK_KEY))
 const enhanceVisible = ref(false)
@@ -338,6 +378,17 @@ watch(
       </div>
     </div>
 
+    <BatchDeleteBar
+      v-if="filteredEntries.length > 0"
+      :selected-count="selectedEntryIds.length"
+      :total-count="filteredEntries.length"
+      item-label="世界观词条"
+      :all-selected="batchDeleteAllSelected"
+      @toggle-all="toggleSelectAllEntries"
+      @delete-selected="handleBatchDeleteEntries"
+      @clear="clearEntrySelection"
+    />
+
     <BatchGenerateDialog
       :show="batchVisible"
       title="批量生成世界观"
@@ -354,6 +405,7 @@ watch(
 
     <div v-if="filteredEntries.length > 0" class="world-list">
       <div class="world-list-head" aria-hidden="true">
+        <span class="col-check">选</span>
         <span>分类</span>
         <span>设定内容</span>
         <span>更新信息</span>
@@ -367,6 +419,13 @@ watch(
         :data-assistant-focus-id="entry.id"
         @click="openEditor(entry)"
       >
+        <label class="row-check" title="勾选以便批量删除" @click.stop>
+          <input
+            type="checkbox"
+            :checked="selectedEntryIdSet.has(entry.id)"
+            @change="toggleSelectEntry(entry.id)"
+          />
+        </label>
         <span class="entry-type" :title="entry.type">{{ entry.type }}</span>
         <div class="entry-main">
           <h3>{{ entry.title }}</h3>
@@ -534,9 +593,23 @@ watch(
 .world-list-head,
 .world-row {
   display: grid;
-  grid-template-columns: 104px minmax(0, 1fr) 150px 36px;
+  grid-template-columns: 24px 104px minmax(0, 1fr) 150px 36px;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
+}
+.col-check {
+  font-size: 11px;
+  text-align: center;
+}
+.row-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.row-check input[type='checkbox'],
+.col-check {
+  accent-color: var(--arc-danger);
+  cursor: pointer;
 }
 
 .world-list-head {
