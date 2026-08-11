@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Bell, BookOpen, BookUp2, Flame, ImagePlus, LibraryBig, Plus, Radar, RefreshCw, Settings2, Upload, Wrench } from 'lucide-vue-next'
+import { Bell, BookOpen, BookUp2, Flame, ImagePlus, LibraryBig, Plus, RefreshCw, Settings2, Upload, Wrench } from 'lucide-vue-next'
 import { NButton } from 'naive-ui'
 import type { StatusIndicator } from '@/composables/useStartupCheck'
 
@@ -14,7 +14,6 @@ const emit = defineEmits<{
   (e: 'import'): void
   (e: 'openDeconstruction'): void
   (e: 'openFanqieTrends'): void
-  (e: 'openQimaoScout'): void
   (e: 'openCoverWorkbench'): void
   (e: 'openSkills'): void
   (e: 'openSettings'): void
@@ -45,9 +44,6 @@ const emit = defineEmits<{
       </button>
       <button class="hero-icon-btn" title="番茄风向标" @click="emit('openFanqieTrends')">
         <Flame :size="18" />
-      </button>
-      <button class="hero-icon-btn" title="七猫扫榜" @click="emit('openQimaoScout')">
-        <Radar :size="18" />
       </button>
 
       <div class="action-group secondary-actions">

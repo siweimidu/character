@@ -161,7 +161,6 @@ function requestDeleteProject(projectId: string): void {
         @import="archiveImportRef?.pickArchive()"
         @open-deconstruction="openDeconstructionLibrary"
         @open-fanqie-trends="appStore.openFanqieTrends()"
-        @open-qimao-scout="appStore.openQimaoScout()"
         @open-cover-workbench="openCoverWorkbenchPage"
         @open-skills="openSkillsPage"
         @open-settings="settingsVisible = true"

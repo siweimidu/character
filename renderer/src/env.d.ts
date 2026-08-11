@@ -687,29 +687,6 @@ declare global {
         mirror?: string
         error?: string
       }>
-
-      /** 七猫扫榜：一键自动抓取（主进程隐藏浏览器通过 WAF） */
-      fetchQimaoRank: (options?: { sex?: string; type?: string; period?: 'date' | 'month' }) => Promise<{
-        success: boolean
-        channelLabel: string
-        boardLabel: string
-        books: Array<{
-          rank: number
-          title: string
-          author: string
-          genre: string
-          subGenre: string
-          status: string
-          words: string
-          heat: string
-          update: string
-          intro: string
-          url: string
-        }>
-        error?: string
-        scrapedAt: string
-      }>
-
       /** Assistant Runtime v2 IPC 通道。参数与返回值见 @shared/assistant-runtime。 */
       assistant: {
         sessionList: (payload: {

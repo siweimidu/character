@@ -217,7 +217,7 @@ export const useAppStore = defineStore('app', () => {
   /** 是否已完成初始化水合（从 SQLite 加载数据） */
   const hasHydrated = ref(false)
   /** 当前视图：项目列表 / 新建向导 / 工作台 / 章节写作 / 独立能力页 */
-  const currentView = ref<'projects' | 'wizard' | 'continuation-import' | 'workbench' | 'chapter-studio' | 'deconstruction-library' | 'skills' | 'cover-workbench' | 'fanqie-trends' | 'qimao-scout'>('projects')
+  const currentView = ref<'projects' | 'wizard' | 'continuation-import' | 'workbench' | 'chapter-studio' | 'deconstruction-library' | 'skills' | 'cover-workbench' | 'fanqie-trends'>('projects')
   /** 工作台中当前激活的面板 */
   const activePanel = ref<PanelName>('outline')
   /** 上一次在工作台中查看的面板（非 chapters），用于从章节写作返回时恢复 */
@@ -1008,11 +1008,6 @@ export const useAppStore = defineStore('app', () => {
     currentView.value = 'fanqie-trends'
   }
 
-  /** 打开七猫扫榜独立页面（全局功能，不依赖项目） */
-  function openQimaoScout(): void {
-    pendingChapterInsertion.value = null
-    currentView.value = 'qimao-scout'
-  }
 
   /** 打开 Skills 独立页面 */
   function openSkillsPage(projectId?: string): void {
@@ -3528,7 +3523,6 @@ export const useAppStore = defineStore('app', () => {
     openChapterStudio,
     openDeconstructionLibrary,
     openFanqieTrends,
-    openQimaoScout,
     openProject,
     openCoverWorkbenchPage,
     openContinuationImport,
