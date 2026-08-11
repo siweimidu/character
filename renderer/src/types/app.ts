@@ -782,7 +782,13 @@ export interface ChapterSelectionState {
   text: string
 }
 
-/** 剧情线索 / 伏笔追踪条目 */
+/** 伏笔状态：待回收 / 已回收 / 废弃 */
+export type PlotThreadStatus = 'pending' | 'resolved' | 'abandoned'
+
+/** 伏笔优先级 */
+export type PlotThreadPriority = 'low' | 'medium' | 'high'
+
+/** 伏笔线索条目 */
 export interface PlotThread {
   /** 唯一标识 */
   id: string
@@ -792,12 +798,20 @@ export interface PlotThread {
   description: string
   /** 在哪章埋下（章节 ID） */
   openedInChapterId: string
-  /** 状态：活跃（未收尾）/ 已收尾 */
-  status: 'open' | 'resolved'
+  /** 计划回收章节（章节 ID） */
+  plannedCloseChapterId?: string
+  /** 状态：待回收 / 已回收 / 废弃 */
+  status: PlotThreadStatus
   /** 在哪章收尾（章节 ID，resolved 时填写） */
   closedInChapterId?: string
   /** 关联标签（角色名、地点等） */
   tags: string[]
+  /** 优先级：低 / 中 / 高 */
+  priority: PlotThreadPriority
+  /** 备注 */
+  remark?: string
+  /** 关联人物卡片 ID 列表（二期） */
+  characterIds?: string[]
   /** 创建时间 */
   createdAt: string
   /** 最后更新时间 */
@@ -874,12 +888,12 @@ export interface ProjectWorkspaceData {
   aiRuns: AiRunRecord[]
   /** 项目固定创作记忆 */
   workflowDocuments: WorkflowDocument[]
-  /** 剧情线索 / 伏笔追踪列表 */
+  /** 伏笔线索列表 */
   plotThreads: PlotThread[]
 }
 
 /** 导入/导出的模块类型标识 */
-export type ImportExportModuleType = 'project' | 'characters' | 'outline' | 'inspiration' | 'relations' | 'chapters'
+export type ImportExportModuleType = 'project' | 'characters' | 'outline' | 'inspiration' | 'relations' | 'chapters' | 'threads'
 
 /** 导入冲突解决模式 */
 export type ImportConflictMode = 'overwrite' | 'copy'
@@ -898,6 +912,7 @@ export interface ProjectImportPayload {
   outlineItems?: OutlineItem[]
   chapters?: ChapterDraft[]
   chapterVersions?: ChapterVersion[]
+  plotThreads?: PlotThread[]
 }
 
 /** CharacterArc 导出文件的标准信封格式 */

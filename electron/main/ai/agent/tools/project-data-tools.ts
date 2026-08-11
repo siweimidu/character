@@ -443,13 +443,16 @@ async function readEntities(projectId: string, options: ReadEntitiesOptions): Pr
     }
     case 'plot_threads': {
       if (entityId) {
-        const row = db.prepare('SELECT id, title, description, status, opened_in_chapter_id, closed_in_chapter_id, tags_json, updated_at FROM plot_threads WHERE id = ? AND project_id = ?').get(entityId, projectId) as Record<string, unknown> | undefined
+        const row = db.prepare('SELECT id, title, description, status, opened_in_chapter_id, planned_close_chapter_id, closed_in_chapter_id, tags_json, priority, remark, updated_at FROM plot_threads WHERE id = ? AND project_id = ?').get(entityId, projectId) as Record<string, unknown> | undefined
         if (!row) return `Plot thread not found: ${entityId}`
         const tags = safeParseArray(row.tags_json)
         return [
           `# ${String(row.title)} (${String(row.status)})`,
+          String(row.priority) ? `Priority: ${String(row.priority)}` : '',
           String(row.opened_in_chapter_id) ? `Opened in chapter: ${String(row.opened_in_chapter_id)}` : '',
+          String(row.planned_close_chapter_id) ? `Planned close in chapter: ${String(row.planned_close_chapter_id)}` : '',
           String(row.closed_in_chapter_id) ? `Closed in chapter: ${String(row.closed_in_chapter_id)}` : '',
+          String(row.remark) ? `Remark: ${String(row.remark)}` : '',
           tags.length ? `Tags: ${tags.join(', ')}` : '',
           `Updated: ${String(row.updated_at ?? '')}`,
           '',

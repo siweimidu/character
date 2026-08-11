@@ -45,7 +45,7 @@ export function useChapterThreadDetect(): {
 
     try {
       const existingThreads = appStore.plotThreads
-        .filter((t) => t.status === 'open')
+        .filter((t) => t.status === 'pending')
         .map((t) => t.title)
 
       const result = await appStore.runTrackedAiTask(
@@ -105,7 +105,7 @@ export function useChapterThreadDetect(): {
         title: t.title,
         description: t.description,
         openedInChapterId: chapterId,
-        status: 'open',
+        status: 'pending',
         tags: t.tags
       })
     })

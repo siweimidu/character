@@ -727,34 +727,36 @@ async function commitPlotThread(
   const description = stringField(payload, 'description')
   const openedInChapterId = stringField(payload, 'openedInChapterId') || stringField(payload, 'opened_in_chapter_id')
   const closedInChapterId = stringField(payload, 'closedInChapterId') || stringField(payload, 'closed_in_chapter_id')
-  const rawStatus = stringField(payload, 'status', 'open')
-  const status = rawStatus === 'resolved' ? 'resolved' : 'open'
+  const rawStatus = stringField(payload, 'status', 'pending')
+  const status = ['pending', 'resolved', 'abandoned'].includes(rawStatus) ? rawStatus : 'pending'
+  const priority = stringField(payload, 'priority', 'medium')
+  const remark = stringField(payload, 'remark', '')
   const tags = stringArrayField(payload, 'tags')
 
   if (!title || !description) {
-    return { changeId: change.id, ok: false, error: '剧情线索缺少 title 或 description' }
+    return { changeId: change.id, ok: false, error: '伏笔缺少 title 或 description' }
   }
 
   if (change.action === 'create') {
     const duplicate = db.prepare('SELECT id FROM plot_threads WHERE project_id = ? AND TRIM(title) = ?')
       .get(projectId, title) as { id: string } | undefined
-    if (duplicate) return conflictResult(change, '剧情线索', title)
+    if (duplicate) return conflictResult(change, '伏笔', title)
     const id = `plot-thread-${randomUUID()}`
     db.prepare(`
-      INSERT INTO plot_threads (id, project_id, title, description, opened_in_chapter_id, status, closed_in_chapter_id, tags_json, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, projectId, title, description, openedInChapterId, status, closedInChapterId, JSON.stringify(tags), now, now)
+      INSERT INTO plot_threads (id, project_id, title, description, opened_in_chapter_id, planned_close_chapter_id, status, closed_in_chapter_id, tags_json, priority, remark, character_ids_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, projectId, title, description, openedInChapterId, '', status, closedInChapterId, JSON.stringify(tags), priority, remark, '[]', now, now)
     return { changeId: change.id, ok: true, entityId: id }
   }
 
   if (!change.entityId) {
-    return { changeId: change.id, ok: false, error: '剧情线索 update 缺少 entityId' }
+    return { changeId: change.id, ok: false, error: '伏笔 update 缺少 entityId' }
   }
 
   const existing = db.prepare('SELECT description FROM plot_threads WHERE id = ? AND project_id = ?')
     .get(change.entityId, projectId) as { description: string } | undefined
   if (!existing) {
-    return { changeId: change.id, ok: false, error: `剧情线索不存在：${change.entityId}` }
+    return { changeId: change.id, ok: false, error: `伏笔不存在：${change.entityId}` }
   }
 
   const result = db.prepare(`
@@ -763,7 +765,7 @@ async function commitPlotThread(
     WHERE id = ? AND project_id = ?
   `).run(title, description, openedInChapterId, status, closedInChapterId, JSON.stringify(tags), now, change.entityId, projectId)
   if (result.changes === 0) {
-    return { changeId: change.id, ok: false, error: `剧情线索不存在：${change.entityId}` }
+    return { changeId: change.id, ok: false, error: `伏笔不存在：${change.entityId}` }
   }
   return { changeId: change.id, ok: true, entityId: change.entityId }
 }

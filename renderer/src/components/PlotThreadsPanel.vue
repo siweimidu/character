@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
-import { BookMarked, CheckCircle, Circle, MoreVertical, Plus, Sparkles } from 'lucide-vue-next'
-import { NButton, NDivider, NDynamicTags, NDropdown, NEmpty, NForm, NFormItem, NInput, NInputNumber, NModal, NSelect, NTag, useDialog, useMessage } from 'naive-ui'
+import {
+  AlertTriangle, Archive, BookMarked, CheckCircle2, Circle,
+  Download, FileUp, Flag, MoreVertical, Plus, Search, Sparkles, XCircle
+} from 'lucide-vue-next'
+import {
+  NButton, NDivider, NDropdown, NDynamicTags, NEmpty, NForm, NFormItem,
+  NInput, NInputNumber, NModal, NSelect, NTag, NPopover, useDialog, useMessage
+} from 'naive-ui'
+import type { DropdownOption } from 'naive-ui'
 import BatchDeleteBar from './BatchDeleteBar.vue'
 import { useAppStore } from '@/stores/app'
-import type { DropdownOption } from 'naive-ui'
-import type { PlotThread } from '@/types/app'
+import type { PlotThread, PlotThreadPriority, PlotThreadStatus } from '@/types/app'
 import { useIncrementalList } from '@/composables/useIncrementalList'
 import { toIpcPayload } from '@/utils/ipcPayload'
 
@@ -25,40 +31,103 @@ const form = reactive({
   title: '',
   description: '',
   openedInChapterId: '',
+  plannedCloseChapterId: '',
   closedInChapterId: '',
-  status: 'open' as 'open' | 'resolved',
-  tags: [] as string[]
+  status: 'pending' as PlotThreadStatus,
+  tags: [] as string[],
+  priority: 'medium' as PlotThreadPriority,
+  remark: ''
 })
 
-// 按 open/resolved 分组过滤
+// 筛选状态
+const statusFilter = ref<'all' | PlotThreadStatus>('all')
+const chapterFilter = ref<string>('')
+
+// 伏笔状态映射
+const STATUS_MAP: Record<PlotThreadStatus, { label: string; color: string }> = {
+  pending: { label: '待回收', color: '#eab308' },
+  resolved: { label: '已回收', color: '#22c55e' },
+  abandoned: { label: '废弃', color: '#6b7280' }
+}
+
+const PRIORITY_MAP: Record<PlotThreadPriority, { label: string; color: string }> = {
+  low: { label: '低', color: '#94a3b8' },
+  medium: { label: '中', color: '#eab308' },
+  high: { label: '高', color: '#ef4444' }
+}
+
+// 按状态分组统计
+const stats = computed(() => {
+  const all = appStore.plotThreads
+  return {
+    total: all.length,
+    pending: all.filter((t) => t.status === 'pending').length,
+    resolved: all.filter((t) => t.status === 'resolved').length,
+    abandoned: all.filter((t) => t.status === 'abandoned').length
+  }
+})
+
+// 筛选+搜索
 const filteredThreads = computed(() => {
   const query = props.searchQuery?.trim().toLowerCase() ?? ''
-  const threads = appStore.plotThreads
-  if (!query) return threads
-  return threads.filter((t) =>
-    `${t.title} ${t.description} ${t.tags.join(' ')}`.toLowerCase().includes(query)
-  )
+  let threads = appStore.plotThreads
+
+  // 状态筛选
+  if (statusFilter.value !== 'all') {
+    threads = threads.filter((t) => t.status === statusFilter.value)
+  }
+
+  // 章节筛选
+  if (chapterFilter.value) {
+    threads = threads.filter(
+      (t) => t.openedInChapterId === chapterFilter.value || t.closedInChapterId === chapterFilter.value
+    )
+  }
+
+  // 关键词搜索
+  if (query) {
+    threads = threads.filter((t) =>
+      `${t.title} ${t.description} ${t.tags.join(' ')} ${t.remark ?? ''}`.toLowerCase().includes(query)
+    )
+  }
+
+  return threads
 })
 
-const openThreads = computed(() => filteredThreads.value.filter((t) => t.status === 'open'))
+const pendingThreads = computed(() => filteredThreads.value.filter((t) => t.status === 'pending'))
 const resolvedThreads = computed(() => filteredThreads.value.filter((t) => t.status === 'resolved'))
-const threadResetKey = computed(() => props.searchQuery?.trim().toLowerCase() ?? '')
-const visibleOpenThreads = useIncrementalList(openThreads, threadResetKey, { initialSize: 30, batchSize: 30 })
+const abandonedThreads = computed(() => filteredThreads.value.filter((t) => t.status === 'abandoned'))
+const threadResetKey = computed(() => `${props.searchQuery?.trim().toLowerCase() ?? ''}-${statusFilter.value}-${chapterFilter.value}`)
+const visiblePendingThreads = useIncrementalList(pendingThreads, threadResetKey, { initialSize: 30, batchSize: 30 })
 const visibleResolvedThreads = useIncrementalList(resolvedThreads, threadResetKey, { initialSize: 30, batchSize: 30 })
+const visibleAbandonedThreads = useIncrementalList(abandonedThreads, threadResetKey, { initialSize: 30, batchSize: 30 })
 const isEditing = computed(() => Boolean(editingThreadId.value))
 
-// 章节选项，用于关联哪章埋下/哪章收束
+// 章节选项
 const chapterOptions = computed(() =>
   appStore.chapters.map((c) => ({ label: c.title || '未命名章节', value: c.id }))
 )
 
-const menuOptions: DropdownOption[] = [
-  { key: 'edit', label: '编辑线索' },
-  { key: 'toggle', label: '切换状态' },
-  { key: 'delete', label: '删除线索' }
+const statusOptions = computed(() => [
+  { label: '全部状态', value: 'all' },
+  { label: '待回收', value: 'pending' },
+  { label: '已回收', value: 'resolved' },
+  { label: '废弃', value: 'abandoned' }
+])
+
+const priorityOptions = [
+  { label: '低', value: 'low' },
+  { label: '中', value: 'medium' },
+  { label: '高', value: 'high' }
 ]
 
-// ── 批量删除 ──
+const menuOptions: DropdownOption[] = [
+  { key: 'edit', label: '编辑伏笔' },
+  { key: 'toggle', label: '切换状态' },
+  { key: 'delete', label: '删除伏笔' }
+]
+
+// ── 批量操作 ──
 const selectedThreadIdSet = computed(() => new Set(selectedThreadIds.value))
 const batchDeleteAllThreads = computed(
   () => filteredThreads.value.length > 0 && selectedThreadIds.value.length === filteredThreads.value.length
@@ -79,7 +148,7 @@ function handleBatchDeleteThreads(): void {
   if (!ids.length) return
   dialog.warning({
     title: '确认批量删除',
-    content: `确定要删除选中的 ${ids.length} 条剧情线索吗？删除后无法恢复。`,
+    content: `确定要删除选中的 ${ids.length} 条伏笔吗？删除后无法恢复。`,
     positiveText: '确认删除',
     negativeText: '取消',
     autoFocus: false,
@@ -87,7 +156,7 @@ function handleBatchDeleteThreads(): void {
     onPositiveClick: () => {
       appStore.deletePlotThreads(ids)
       selectedThreadIds.value = []
-      message.success(`已删除 ${ids.length} 条剧情线索`)
+      message.success(`已删除 ${ids.length} 条伏笔`)
     }
   })
 }
@@ -95,14 +164,155 @@ function clearThreadSelection(): void {
   selectedThreadIds.value = []
 }
 
-function openCreateEditor(): void {
+// 批量修改状态
+const batchStatusModalVisible = ref(false)
+const batchStatus = ref<PlotThreadStatus>('pending')
+function openBatchStatus(): void {
+  if (!selectedThreadIds.value.length) {
+    message.warning('请先选择要操作的伏笔')
+    return
+  }
+  batchStatus.value = 'pending'
+  batchStatusModalVisible.value = true
+}
+function confirmBatchStatus(): void {
+  appStore.batchUpdatePlotThreadStatus(selectedThreadIds.value, batchStatus.value)
+  message.success(`已将 ${selectedThreadIds.value.length} 条伏笔状态改为「${STATUS_MAP[batchStatus.value].label}」`)
+  batchStatusModalVisible.value = false
+  clearThreadSelection()
+}
+
+// 批量修改标签
+const batchTagsModalVisible = ref(false)
+const batchTags = ref<string[]>([])
+function openBatchTags(): void {
+  if (!selectedThreadIds.value.length) {
+    message.warning('请先选择要操作的伏笔')
+    return
+  }
+  batchTags.value = []
+  batchTagsModalVisible.value = true
+}
+function confirmBatchTags(): void {
+  appStore.batchUpdatePlotThreadTags(selectedThreadIds.value, batchTags.value)
+  message.success(`已更新 ${selectedThreadIds.value.length} 条伏笔的标签`)
+  batchTagsModalVisible.value = false
+  clearThreadSelection()
+}
+
+// ── 导入 / 导出 ──
+const importModalVisible = ref(false)
+const importItems = ref<Array<Record<string, unknown>>>([])
+const importErrors = ref<string[]>([])
+const importLoading = ref(false)
+
+function openImportModal(): void {
+  importItems.value = []
+  importErrors.value = []
+  importModalVisible.value = true
+  handleImport()
+}
+
+async function handleImport(): Promise<void> {
+  importLoading.value = true
+  try {
+    const result = await window.characterArc.importPlotThreads()
+    if (result.canceled) {
+      importModalVisible.value = false
+      return
+    }
+    if (!result.success) {
+      if (result.error) message.error(result.error)
+      else message.warning('未解析到有效的伏笔数据')
+      importModalVisible.value = false
+      return
+    }
+    importItems.value = result.items ?? []
+    importErrors.value = result.errors ?? []
+
+    // 将解析到的伏笔导入 store
+    if (importItems.value.length > 0) {
+      const items = importItems.value.map((item) => ({
+        title: String(item.title ?? ''),
+        description: String(item.description ?? ''),
+        status: (item.status as PlotThreadStatus) || 'pending',
+        priority: (item.priority as PlotThreadPriority) || 'medium',
+        tags: Array.isArray(item.tags) ? (item.tags as string[]) : [],
+        remark: String(item.remark ?? '')
+      }))
+      appStore.importPlotThreads(items as Array<Partial<PlotThread> & { title: string }>)
+      message.success(`成功导入 ${items.length} 条伏笔`)
+    }
+
+    if (importErrors.value.length > 0) {
+      message.warning(`${importErrors.value.length} 个文件解析失败`)
+    }
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '导入伏笔失败')
+  } finally {
+    importLoading.value = false
+    importModalVisible.value = false
+  }
+}
+
+function chapterTitleById(id: string): string {
+  return appStore.chapters.find((c) => c.id === id)?.title || id || '未知章节'
+}
+
+function buildExportData(): Array<Record<string, unknown>> {
+  const chapterTitleMap = new Map(appStore.chapters.map((c) => [c.id, c.title]))
+  return appStore.plotThreads.map((t) => ({
+    title: t.title,
+    description: t.description,
+    status: t.status,
+    priority: t.priority,
+    tags: t.tags,
+    remark: t.remark ?? '',
+    openedInChapterId: t.openedInChapterId,
+    openedInChapterTitle: chapterTitleMap.get(t.openedInChapterId) ?? '',
+    plannedCloseChapterId: t.plannedCloseChapterId ?? '',
+    plannedCloseChapterTitle: t.plannedCloseChapterId ? (chapterTitleMap.get(t.plannedCloseChapterId) ?? '') : '',
+    closedInChapterId: t.closedInChapterId ?? '',
+    closedInChapterTitle: t.closedInChapterId ? (chapterTitleMap.get(t.closedInChapterId) ?? '') : ''
+  }))
+}
+
+async function exportThreads(format: 'md' | 'txt' | 'json'): Promise<void> {
+  const data = buildExportData()
+  if (!data.length) {
+    message.warning('当前没有伏笔可以导出')
+    return
+  }
+  const ext = format === 'json' ? 'json' : (format === 'md' ? 'md' : 'txt')
+  const result = await window.characterArc.exportPlotThreads(toIpcPayload({
+    data,
+    format,
+    title: `导出伏笔 ${ext.toUpperCase()}`,
+    defaultPath: `plot-threads-${new Date().toISOString().slice(0, 10)}.${ext}`
+  }))
+  if (result.canceled) return
+  result.success ? message.success(`伏笔已导出为 ${ext.toUpperCase()}`) : message.error(result.error ?? '导出失败')
+}
+
+// ── 章节跳转 ──
+function jumpToChapter(chapterId: string): void {
+  if (!chapterId) return
+  appStore.setPanel('chapters')
+  appStore.selectChapter(chapterId)
+}
+
+// ── 新建/编辑 ──
+function openCreateEditor(chapterId?: string): void {
   editingThreadId.value = null
   form.title = ''
   form.description = ''
-  form.openedInChapterId = appStore.selectedChapterId ?? ''
+  form.openedInChapterId = chapterId ?? appStore.selectedChapterId ?? ''
+  form.plannedCloseChapterId = ''
   form.closedInChapterId = ''
-  form.status = 'open'
+  form.status = 'pending'
   form.tags = []
+  form.priority = 'medium'
+  form.remark = ''
   editorVisible.value = true
 }
 
@@ -111,9 +321,12 @@ function openEditEditor(thread: PlotThread): void {
   form.title = thread.title
   form.description = thread.description
   form.openedInChapterId = thread.openedInChapterId
+  form.plannedCloseChapterId = thread.plannedCloseChapterId ?? ''
   form.closedInChapterId = thread.closedInChapterId ?? ''
   form.status = thread.status
   form.tags = [...thread.tags]
+  form.priority = thread.priority
+  form.remark = thread.remark ?? ''
   editorVisible.value = true
 }
 
@@ -121,15 +334,17 @@ function handleMenuSelect(key: string, thread: PlotThread): void {
   if (key === 'edit') {
     openEditEditor(thread)
   } else if (key === 'toggle') {
-    const nextStatus = thread.status === 'open' ? 'resolved' : 'open'
+    const nextStatus: PlotThreadStatus =
+      thread.status === 'pending' ? 'resolved' :
+      thread.status === 'resolved' ? 'abandoned' : 'pending'
     appStore.updatePlotThread(thread.id, {
       status: nextStatus,
       closedInChapterId: nextStatus === 'resolved' ? (appStore.selectedChapterId ?? '') : undefined
     })
-    message.success(nextStatus === 'resolved' ? '已标记为已收尾' : '已重新激活')
+    message.success(`已标记为「${STATUS_MAP[nextStatus].label}」`)
   } else if (key === 'delete') {
     dialog.warning({
-      title: '删除线索',
+      title: '删除伏笔',
       content: `确定删除"${thread.title}"？此操作无法撤销。`,
       positiveText: '删除',
       negativeText: '取消',
@@ -143,7 +358,7 @@ function handleMenuSelect(key: string, thread: PlotThread): void {
 
 function handleSave(): void {
   if (!form.title.trim()) {
-    message.warning('请填写线索标题')
+    message.warning('请填写伏笔标题')
     return
   }
 
@@ -152,9 +367,12 @@ function handleSave(): void {
       title: form.title.trim(),
       description: form.description.trim(),
       openedInChapterId: form.openedInChapterId,
+      plannedCloseChapterId: form.plannedCloseChapterId || undefined,
       closedInChapterId: form.status === 'resolved' ? form.closedInChapterId : undefined,
       status: form.status,
-      tags: form.tags
+      tags: form.tags,
+      priority: form.priority,
+      remark: form.remark.trim()
     })
     message.success('已更新')
   } else {
@@ -162,16 +380,15 @@ function handleSave(): void {
       title: form.title.trim(),
       description: form.description.trim(),
       openedInChapterId: form.openedInChapterId,
-      status: 'open',
-      tags: form.tags
+      plannedCloseChapterId: form.plannedCloseChapterId || undefined,
+      status: form.status,
+      tags: form.tags,
+      priority: form.priority,
+      remark: form.remark.trim()
     })
     message.success('已添加')
   }
   editorVisible.value = false
-}
-
-function chapterTitleById(id: string): string {
-  return appStore.chapters.find((c) => c.id === id)?.title || id || '未知章节'
 }
 
 function formatTime(value: string): string {
@@ -180,13 +397,12 @@ function formatTime(value: string): string {
   return parsed.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
-// ── AI 批量生成剧情线索 ──
+// ── AI 批量生成伏笔 ──
 const BATCH_TASK_KEY = 'plot-thread-batch'
 const batchLoading = computed(() => appStore.isAiTaskRunning(BATCH_TASK_KEY))
 const batchModalVisible = ref(false)
 const batchFocusModalVisible = ref(false)
 const batchFocus = ref('')
-// 批量生成的数量设置（1-10 条）
 const batchCount = ref(5)
 const generatedThreads = ref<Array<{ title: string; description: string; tags: string[]; selected: boolean }>>([])
 
@@ -204,7 +420,7 @@ async function handleAiBatchGenerate(): Promise<void> {
   }
 
   const existingThreads = appStore.plotThreads
-    .map((t) => (t.status === 'open' ? `${t.title}（${t.description}）` : t.title))
+    .map((t) => (t.status === 'pending' ? `${t.title}（${t.description}）` : t.title))
   batchFocusModalVisible.value = false
 
   try {
@@ -212,7 +428,7 @@ async function handleAiBatchGenerate(): Promise<void> {
       {
         key: BATCH_TASK_KEY,
         kind: 'plot-thread',
-        label: 'AI 批量生成剧情线索',
+        label: 'AI 批量生成伏笔',
         description: '正在根据大纲/角色/世界观批量设计伏笔与悬念',
         panel: 'plot-threads'
       },
@@ -236,9 +452,6 @@ async function handleAiBatchGenerate(): Promise<void> {
             organizations: appStore.organizations.slice(0, 8).map((o) => ({
               name: o.name, type: o.type, description: compactForAi(o.description, 200)
             })),
-            characterRelationships: appStore.characterRelationships.slice(0, 12).map((r) => ({
-              fromCharacterId: r.fromCharacterId, toCharacterId: r.toCharacterId, type: r.type, description: compactForAi(r.description, 160)
-            })),
             outlineItems: appStore.outlineItems.slice(-12).map((item) => ({
               title: item.title, conflict: compactForAi(item.conflict, 140), summary: compactForAi(item.summary, 240)
             }))
@@ -247,7 +460,7 @@ async function handleAiBatchGenerate(): Promise<void> {
     )
 
     if (!result.success || !result.result) {
-      throw new Error(result.error ?? 'AI 批量生成剧情线索失败')
+      throw new Error(result.error ?? 'AI 批量生成伏笔失败')
     }
 
     const entries = Array.isArray((result.result as Record<string, unknown>)?.entries)
@@ -255,7 +468,7 @@ async function handleAiBatchGenerate(): Promise<void> {
       : []
 
     if (entries.length === 0) {
-      message.warning('AI 未返回有效的剧情线索')
+      message.warning('AI 未返回有效的伏笔')
       return
     }
 
@@ -267,7 +480,7 @@ async function handleAiBatchGenerate(): Promise<void> {
     }))
     batchModalVisible.value = true
   } catch (error) {
-    message.error(error instanceof Error ? error.message : 'AI 批量生成剧情线索失败，请检查模型配置')
+    message.error(error instanceof Error ? error.message : 'AI 批量生成伏笔失败，请检查模型配置')
   }
 }
 
@@ -285,7 +498,7 @@ function toggleGeneratedThread(index: number): void {
 function confirmAddGeneratedThreads(): void {
   const toAdd = generatedThreads.value.filter((t) => t.selected)
   if (!toAdd.length) {
-    message.warning('请至少勾选一条线索')
+    message.warning('请至少勾选一条伏笔')
     return
   }
   const openedInChapterId = appStore.selectedChapterId ?? ''
@@ -294,11 +507,11 @@ function confirmAddGeneratedThreads(): void {
       title: t.title,
       description: t.description,
       openedInChapterId,
-      status: 'open',
+      status: 'pending',
       tags: t.tags
     })
   })
-  message.success(`已添加 ${toAdd.length} 条剧情线索`)
+  message.success(`已添加 ${toAdd.length} 条伏笔`)
   batchModalVisible.value = false
 }
 </script>
@@ -308,49 +521,93 @@ function confirmAddGeneratedThreads(): void {
     <!-- 顶部工具栏 -->
     <div class="panel-toolbar">
       <div class="toolbar-stats">
-        <span class="stat-badge open">活跃 {{ openThreads.length }}</span>
-        <span class="stat-badge resolved">已收尾 {{ resolvedThreads.length }}</span>
+        <span class="stat-badge total">共 {{ stats.total }} 条</span>
+        <span class="stat-badge pending">待回收 {{ stats.pending }}</span>
+        <span class="stat-badge resolved">已回收 {{ stats.resolved }}</span>
+        <span class="stat-badge abandoned">废弃 {{ stats.abandoned }}</span>
       </div>
       <div class="toolbar-actions">
-        <n-button
-          size="small"
-          secondary
-          type="info"
-          :loading="batchLoading"
-          :disabled="batchLoading"
-          @click="openBatchGenerate"
-        >
+        <n-button size="small" secondary type="info" :loading="batchLoading" :disabled="batchLoading" @click="openBatchGenerate">
           <template #icon><Sparkles :size="14" /></template>
-          AI 批量生成
+          AI 生成
         </n-button>
-        <n-button size="small" type="primary" @click="openCreateEditor">
+        <n-dropdown
+          trigger="click"
+          :options="[
+            { key: 'import', label: '导入伏笔（MD/TXT/JSON）' },
+            { type: 'divider', key: 'd1' },
+            { key: 'md', label: '导出为 Markdown' },
+            { key: 'txt', label: '导出为 TXT' },
+            { key: 'json', label: '导出为 JSON' }
+          ]"
+          @select="(key: string) => {
+            if (key === 'import') openImportModal()
+            else exportThreads(key as 'md' | 'txt' | 'json')
+          }"
+        >
+          <n-button size="small" secondary>
+            <template #icon><FileUp :size="14" /></template>
+            导入/导出
+          </n-button>
+        </n-dropdown>
+        <n-button size="small" type="primary" @click="openCreateEditor()">
           <template #icon><Plus :size="14" /></template>
-          新建线索
+          新建伏笔
         </n-button>
       </div>
     </div>
 
+    <!-- 筛选栏 -->
+    <div class="filter-bar">
+      <n-select
+        v-model:value="statusFilter"
+        :options="statusOptions"
+        size="small"
+        class="filter-status"
+        placeholder="按状态筛选"
+      />
+      <n-select
+        v-model:value="chapterFilter"
+        :options="chapterOptions"
+        size="small"
+        class="filter-chapter"
+        placeholder="按章节筛选"
+        clearable
+        filterable
+      />
+    </div>
+
+    <!-- 批量操作栏 -->
+    <div v-if="selectedThreadIds.length > 0" class="batch-actions">
+      <span class="batch-count">已选 {{ selectedThreadIds.length }} 条</span>
+      <n-button size="tiny" secondary type="primary" @click="openBatchStatus">修改状态</n-button>
+      <n-button size="tiny" secondary type="primary" @click="openBatchTags">修改标签</n-button>
+      <n-button size="tiny" secondary type="error" @click="handleBatchDeleteThreads">批量删除</n-button>
+      <n-button size="tiny" text @click="clearThreadSelection">取消选择</n-button>
+    </div>
+
     <BatchDeleteBar
-      v-if="filteredThreads.length > 0"
+      v-else-if="filteredThreads.length > 0"
       :selected-count="selectedThreadIds.length"
       :total-count="filteredThreads.length"
-      item-label="剧情线索"
+      item-label="伏笔"
       :all-selected="batchDeleteAllThreads"
       @toggle-all="toggleSelectAllThreads"
       @delete-selected="handleBatchDeleteThreads"
       @clear="clearThreadSelection"
     />
 
-    <!-- 活跃线索 -->
-    <div v-if="openThreads.length > 0" class="thread-group">
-      <div class="group-label"><Circle :size="13" class="group-icon open-icon" /> 活跃伏笔</div>
+    <!-- 待回收伏笔 -->
+    <div v-if="pendingThreads.length > 0" class="thread-group">
+      <div class="group-label"><Circle :size="13" class="group-icon pending-icon" /> 待回收（{{ pendingThreads.length }}）</div>
       <div
-        v-for="thread in visibleOpenThreads"
+        v-for="thread in visiblePendingThreads"
         :key="thread.id"
         class="thread-card"
+        :class="`priority-${thread.priority}`"
       >
         <div class="thread-header">
-          <label class="row-check" title="勾选以便批量删除" @click.stop>
+          <label class="row-check" title="勾选以便批量操作" @click.stop>
             <input
               type="checkbox"
               :checked="selectedThreadIdSet.has(thread.id)"
@@ -358,6 +615,9 @@ function confirmAddGeneratedThreads(): void {
             />
           </label>
           <div class="thread-title">{{ thread.title }}</div>
+          <span class="priority-badge" :style="{ color: PRIORITY_MAP[thread.priority].color }">
+            <Flag :size="12" /> {{ PRIORITY_MAP[thread.priority].label }}
+          </span>
           <n-dropdown :options="menuOptions" @select="(key: string) => handleMenuSelect(key, thread)">
             <n-button text size="tiny" class="more-btn">
               <MoreVertical :size="14" />
@@ -366,8 +626,11 @@ function confirmAddGeneratedThreads(): void {
         </div>
         <div v-if="thread.description" class="thread-desc">{{ thread.description }}</div>
         <div class="thread-meta">
-          <span v-if="thread.openedInChapterId" class="meta-item">
-            埋入：{{ chapterTitleById(thread.openedInChapterId) }}
+          <span v-if="thread.openedInChapterId" class="meta-item chapter-link" @click="jumpToChapter(thread.openedInChapterId)">
+            埋设：{{ chapterTitleById(thread.openedInChapterId) }} →
+          </span>
+          <span v-if="thread.plannedCloseChapterId" class="meta-item chapter-link" @click="jumpToChapter(thread.plannedCloseChapterId)">
+            计划回收：{{ chapterTitleById(thread.plannedCloseChapterId) }}
           </span>
           <span v-if="thread.tags.length" class="thread-tags">
             <n-tag
@@ -380,20 +643,24 @@ function confirmAddGeneratedThreads(): void {
           </span>
           <span class="meta-time">{{ formatTime(thread.updatedAt) }}</span>
         </div>
+        <div v-if="thread.remark" class="thread-remark">
+          <Archive :size="12" /> {{ thread.remark }}
+        </div>
       </div>
     </div>
 
-    <!-- 已收尾线索 -->
+    <!-- 已回收伏笔 -->
     <div v-if="resolvedThreads.length > 0" class="thread-group resolved-group">
       <n-divider class="group-divider" />
-      <div class="group-label"><CheckCircle :size="13" class="group-icon resolved-icon" /> 已收尾</div>
+      <div class="group-label"><CheckCircle2 :size="13" class="group-icon resolved-icon" /> 已回收（{{ resolvedThreads.length }}）</div>
       <div
         v-for="thread in visibleResolvedThreads"
         :key="thread.id"
         class="thread-card resolved-card"
+        :class="`priority-${thread.priority}`"
       >
         <div class="thread-header">
-          <label class="row-check" title="勾选以便批量删除" @click.stop>
+          <label class="row-check" title="勾选以便批量操作" @click.stop>
             <input
               type="checkbox"
               :checked="selectedThreadIdSet.has(thread.id)"
@@ -409,11 +676,51 @@ function confirmAddGeneratedThreads(): void {
         </div>
         <div v-if="thread.description" class="thread-desc resolved-desc">{{ thread.description }}</div>
         <div class="thread-meta">
-          <span v-if="thread.openedInChapterId" class="meta-item">
-            埋入：{{ chapterTitleById(thread.openedInChapterId) }}
+          <span v-if="thread.openedInChapterId" class="meta-item chapter-link" @click="jumpToChapter(thread.openedInChapterId)">
+            埋设：{{ chapterTitleById(thread.openedInChapterId) }}
           </span>
-          <span v-if="thread.closedInChapterId" class="meta-item">
-            收尾：{{ chapterTitleById(thread.closedInChapterId) }}
+          <span v-if="thread.closedInChapterId" class="meta-item chapter-link" @click="jumpToChapter(thread.closedInChapterId)">
+            回收：{{ chapterTitleById(thread.closedInChapterId) }}
+          </span>
+          <span v-if="thread.tags.length" class="thread-tags">
+            <n-tag v-for="tag in thread.tags" :key="tag" size="tiny" :bordered="false" class="tag-chip">{{ tag }}</n-tag>
+          </span>
+          <span class="meta-time">{{ formatTime(thread.updatedAt) }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 已废弃伏笔 -->
+    <div v-if="abandonedThreads.length > 0" class="thread-group abandoned-group">
+      <n-divider class="group-divider" />
+      <div class="group-label"><XCircle :size="13" class="group-icon abandoned-icon" /> 已废弃（{{ abandonedThreads.length }}）</div>
+      <div
+        v-for="thread in visibleAbandonedThreads"
+        :key="thread.id"
+        class="thread-card abandoned-card"
+      >
+        <div class="thread-header">
+          <label class="row-check" title="勾选以便批量操作" @click.stop>
+            <input
+              type="checkbox"
+              :checked="selectedThreadIdSet.has(thread.id)"
+              @change="toggleSelectThread(thread.id)"
+            />
+          </label>
+          <div class="thread-title abandoned-title">{{ thread.title }}</div>
+          <n-dropdown :options="menuOptions" @select="(key: string) => handleMenuSelect(key, thread)">
+            <n-button text size="tiny" class="more-btn">
+              <MoreVertical :size="14" />
+            </n-button>
+          </n-dropdown>
+        </div>
+        <div v-if="thread.description" class="thread-desc abandoned-desc">{{ thread.description }}</div>
+        <div class="thread-meta">
+          <span v-if="thread.openedInChapterId" class="meta-item chapter-link" @click="jumpToChapter(thread.openedInChapterId)">
+            埋设：{{ chapterTitleById(thread.openedInChapterId) }}
+          </span>
+          <span v-if="thread.remark" class="meta-item">
+            <Archive :size="12" /> {{ thread.remark }}
           </span>
           <span class="meta-time">{{ formatTime(thread.updatedAt) }}</span>
         </div>
@@ -421,11 +728,14 @@ function confirmAddGeneratedThreads(): void {
     </div>
 
     <!-- 空状态 -->
-    <div v-if="openThreads.length === 0 && resolvedThreads.length === 0" class="empty-state">
-      <n-empty description="暂无剧情线索">
+    <div v-if="pendingThreads.length === 0 && resolvedThreads.length === 0 && abandonedThreads.length === 0" class="empty-state">
+      <n-empty description="暂无伏笔">
         <template #icon><BookMarked :size="32" class="empty-icon" /></template>
         <template #extra>
-          <n-button size="small" @click="openCreateEditor">添加第一条线索</n-button>
+          <div class="empty-actions">
+            <n-button size="small" @click="openCreateEditor()">添加第一条伏笔</n-button>
+            <n-button size="small" secondary @click="openImportModal()">批量导入</n-button>
+          </div>
         </template>
       </n-empty>
     </div>
@@ -434,42 +744,69 @@ function confirmAddGeneratedThreads(): void {
     <n-modal
       v-model:show="editorVisible"
       preset="card"
-      :title="isEditing ? '编辑线索' : '新建线索'"
+      :title="isEditing ? '编辑伏笔' : '新建伏笔'"
       class="arc-editor-modal-wide"
       :mask-closable="false"
     >
       <div class="arc-split-body">
         <div class="arc-split-left">
           <n-form label-placement="top" :show-feedback="false" class="thread-form">
-            <n-form-item label="线索标题" required>
+            <n-form-item label="伏笔标题" required>
               <n-input v-model:value="form.title" placeholder="如：林莫的穿越遗物" maxlength="60" show-count />
             </n-form-item>
-            <n-form-item label="埋入章节">
+            <n-form-item label="埋设章节">
               <n-select
                 v-model:value="form.openedInChapterId"
                 :options="chapterOptions"
-                placeholder="选择埋入的章节"
+                placeholder="选择埋设的章节"
                 clearable
                 filterable
               />
             </n-form-item>
-            <n-form-item v-if="isEditing" label="状态">
+            <n-form-item label="计划回收章节">
               <n-select
-                v-model:value="form.status"
-                :options="[{ label: '活跃（未收尾）', value: 'open' }, { label: '已收尾', value: 'resolved' }]"
+                v-model:value="form.plannedCloseChapterId"
+                :options="chapterOptions"
+                placeholder="选择计划回收的章节"
+                clearable
+                filterable
               />
             </n-form-item>
-            <n-form-item v-if="form.status === 'resolved'" label="收尾章节">
+            <n-form-item label="状态">
+              <n-select
+                v-model:value="form.status"
+                :options="[
+                  { label: '待回收', value: 'pending' },
+                  { label: '已回收', value: 'resolved' },
+                  { label: '废弃', value: 'abandoned' }
+                ]"
+              />
+            </n-form-item>
+            <n-form-item v-if="form.status === 'resolved'" label="实际回收章节">
               <n-select
                 v-model:value="form.closedInChapterId"
                 :options="chapterOptions"
-                placeholder="选择收尾的章节"
+                placeholder="选择回收的章节"
                 clearable
                 filterable
+              />
+            </n-form-item>
+            <n-form-item label="优先级">
+              <n-select
+                v-model:value="form.priority"
+                :options="priorityOptions"
               />
             </n-form-item>
             <n-form-item label="关联标签">
               <n-dynamic-tags v-model:value="form.tags" />
+            </n-form-item>
+            <n-form-item label="备注">
+              <n-input
+                v-model:value="form.remark"
+                type="textarea"
+                :rows="2"
+                placeholder="补充说明，如回收时机、关联信息等"
+              />
             </n-form-item>
           </n-form>
         </div>
@@ -500,16 +837,59 @@ function confirmAddGeneratedThreads(): void {
       </template>
     </n-modal>
 
+    <!-- 批量修改状态弹窗 -->
+    <n-modal
+      v-model:show="batchStatusModalVisible"
+      preset="card"
+      title="批量修改伏笔状态"
+      style="width: 400px"
+      :mask-closable="false"
+    >
+      <p class="ai-modal-hint">将 {{ selectedThreadIds.length }} 条伏笔的状态改为：</p>
+      <n-select
+        v-model:value="batchStatus"
+        :options="[
+          { label: '待回收', value: 'pending' },
+          { label: '已回收', value: 'resolved' },
+          { label: '废弃', value: 'abandoned' }
+        ]"
+      />
+      <div class="arc-modal-footer" style="margin-top: 16px">
+        <div class="arc-modal-footer-right">
+          <n-button @click="batchStatusModalVisible = false">取消</n-button>
+          <n-button type="primary" @click="confirmBatchStatus">确认修改</n-button>
+        </div>
+      </div>
+    </n-modal>
+
+    <!-- 批量修改标签弹窗 -->
+    <n-modal
+      v-model:show="batchTagsModalVisible"
+      preset="card"
+      title="批量修改伏笔标签"
+      style="width: 400px"
+      :mask-closable="false"
+    >
+      <p class="ai-modal-hint">为 {{ selectedThreadIds.length }} 条伏笔统一设置标签（将覆盖原有标签）：</p>
+      <n-dynamic-tags v-model:value="batchTags" />
+      <div class="arc-modal-footer" style="margin-top: 16px">
+        <div class="arc-modal-footer-right">
+          <n-button @click="batchTagsModalVisible = false">取消</n-button>
+          <n-button type="primary" @click="confirmBatchTags">确认修改</n-button>
+        </div>
+      </div>
+    </n-modal>
+
     <!-- AI 批量生成：重点方向输入 -->
     <n-modal
       v-model:show="batchFocusModalVisible"
       preset="card"
-      title="AI 批量生成剧情线索"
+      title="AI 批量生成伏笔"
       style="width: 520px"
       :mask-closable="false"
     >
       <p class="ai-modal-hint">
-        将根据项目的大纲、角色、世界观和已有线索，批量设计相互衔接的伏笔与悬念。可选填一个重点方向。
+        将根据项目的大纲、角色、世界观和已有伏笔，批量设计相互衔接的伏笔与悬念。可选填一个重点方向。
       </p>
       <n-input
         v-model:value="batchFocus"
@@ -536,7 +916,7 @@ function confirmAddGeneratedThreads(): void {
     <n-modal
       v-model:show="batchModalVisible"
       preset="card"
-      title="AI 批量生成的剧情线索"
+      title="AI 批量生成的伏笔"
       class="arc-editor-modal-wide"
       :mask-closable="false"
     >
@@ -583,12 +963,14 @@ function confirmAddGeneratedThreads(): void {
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 4px;
+  flex-wrap: wrap;
 }
 
 .toolbar-stats {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .stat-badge {
@@ -601,10 +983,60 @@ function confirmAddGeneratedThreads(): void {
   background: var(--arc-bg-body);
 }
 
-.stat-badge.open {
-  color: var(--arc-primary);
+.stat-badge.total {
+  color: var(--arc-text-primary);
+}
+
+.stat-badge.pending {
+  color: #eab308;
+  background: color-mix(in srgb, #eab308 10%, var(--arc-bg-body));
+  border-color: color-mix(in srgb, #eab308 30%, var(--arc-border));
+}
+
+.stat-badge.resolved {
+  color: #22c55e;
+  background: color-mix(in srgb, #22c55e 10%, var(--arc-bg-body));
+  border-color: color-mix(in srgb, #22c55e 30%, var(--arc-border));
+}
+
+.stat-badge.abandoned {
+  color: #6b7280;
+  background: color-mix(in srgb, #6b7280 10%, var(--arc-bg-body));
+  border-color: color-mix(in srgb, #6b7280 30%, var(--arc-border));
+}
+
+.filter-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.filter-status {
+  width: 120px;
+  flex-shrink: 0;
+}
+
+.filter-chapter {
+  flex: 1;
+  min-width: 0;
+}
+
+.batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--arc-radius-sm);
   background: var(--arc-primary-soft);
-  border-color: color-mix(in srgb, var(--arc-primary) 24%, var(--arc-border));
+  border: 1px solid color-mix(in srgb, var(--arc-primary) 30%, var(--arc-border));
+  flex-wrap: wrap;
+}
+
+.batch-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--arc-primary);
+  margin-right: 4px;
 }
 
 .thread-group {
@@ -613,7 +1045,8 @@ function confirmAddGeneratedThreads(): void {
   gap: 6px;
 }
 
-.resolved-group {
+.resolved-group,
+.abandoned-group {
   margin-top: 4px;
 }
 
@@ -633,12 +1066,16 @@ function confirmAddGeneratedThreads(): void {
   flex-shrink: 0;
 }
 
-.open-icon {
-  color: var(--arc-primary);
+.pending-icon {
+  color: #eab308;
 }
 
 .resolved-icon {
-  color: var(--arc-success, #15803d);
+  color: #22c55e;
+}
+
+.abandoned-icon {
+  color: #6b7280;
 }
 
 .group-divider {
@@ -654,14 +1091,32 @@ function confirmAddGeneratedThreads(): void {
   flex-direction: column;
   gap: 5px;
   transition: border-color 0.15s;
+  border-left: 3px solid transparent;
 }
 
 .thread-card:hover {
   border-color: var(--arc-border-strong);
 }
 
+.thread-card.priority-high {
+  border-left-color: #ef4444;
+}
+
+.thread-card.priority-medium {
+  border-left-color: #eab308;
+}
+
+.thread-card.priority-low {
+  border-left-color: #94a3b8;
+}
+
 .resolved-card {
-  opacity: 0.65;
+  opacity: 0.7;
+  background: var(--arc-bg-body);
+}
+
+.abandoned-card {
+  opacity: 0.45;
   background: var(--arc-bg-body);
 }
 
@@ -681,7 +1136,7 @@ function confirmAddGeneratedThreads(): void {
 .row-check input[type='checkbox'] {
   width: 15px;
   height: 15px;
-  accent-color: var(--arc-danger);
+  accent-color: var(--arc-primary);
   cursor: pointer;
 }
 
@@ -698,6 +1153,21 @@ function confirmAddGeneratedThreads(): void {
   color: var(--arc-text-hint);
 }
 
+.abandoned-title {
+  text-decoration: line-through;
+  color: var(--arc-text-hint);
+}
+
+.priority-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
 .more-btn {
   flex-shrink: 0;
   color: var(--arc-text-hint);
@@ -709,7 +1179,8 @@ function confirmAddGeneratedThreads(): void {
   line-height: 1.55;
 }
 
-.resolved-desc {
+.resolved-desc,
+.abandoned-desc {
   color: var(--arc-text-hint);
 }
 
@@ -724,6 +1195,21 @@ function confirmAddGeneratedThreads(): void {
 .meta-item {
   font-size: 11px;
   color: var(--arc-text-hint);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.chapter-link {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+  color: var(--arc-primary);
+}
+
+.chapter-link:hover {
+  opacity: 0.8;
 }
 
 .thread-tags {
@@ -744,6 +1230,16 @@ function confirmAddGeneratedThreads(): void {
   margin-left: auto;
 }
 
+.thread-remark {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--arc-text-hint);
+  padding-top: 2px;
+  border-top: 1px dashed var(--arc-border);
+}
+
 .empty-state {
   display: flex;
   flex: 1;
@@ -754,6 +1250,12 @@ function confirmAddGeneratedThreads(): void {
 
 .empty-icon {
   color: var(--arc-text-hint);
+}
+
+.empty-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
 }
 
 .thread-form {

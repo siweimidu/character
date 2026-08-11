@@ -525,6 +525,24 @@ declare global {
         error?: string
       }>
       setTitleBarOverlay: (options: { color: string; symbolColor: string }) => Promise<void>
+      exportPlotThreads: (payload: {
+        data: unknown
+        format?: 'md' | 'txt' | 'json'
+        title?: string
+        defaultPath?: string
+      }) => Promise<{
+        success: boolean
+        canceled: boolean
+        filePath?: string
+        error?: string
+      }>
+      importPlotThreads: () => Promise<{
+        success: boolean
+        canceled: boolean
+        items?: Array<Record<string, unknown>>
+        errors?: string[]
+        error?: string
+      }>
       importJson: () => Promise<{
         success: boolean
         canceled: boolean

@@ -789,7 +789,10 @@ function createContinuationProject(): void {
       title: hook.length > 36 ? `${hook.slice(0, 36)}...` : hook,
       description: hook,
       openedInChapterId: importedChapterIdMap.get(sourceAnalysis?.chapterId ?? '') || fallbackSourceChapterId,
-      status: 'open',
+      status: 'pending',
+      priority: 'medium',
+      remark: '',
+      characterIds: [],
       tags: sourceAnalysis?.characters.map((character) => character.name).filter(Boolean).slice(0, 5) ?? [],
       createdAt: now,
       updatedAt: now

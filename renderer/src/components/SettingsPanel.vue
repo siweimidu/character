@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { Archive, FileJson, FileStack, FileText, Lightbulb, Moon, Network, PenTool, Save, Upload, Users } from 'lucide-vue-next'
+import { Archive, BookMarked, FileJson, FileStack, FileText, Lightbulb, Moon, Network, PenTool, Save, Upload, Users } from 'lucide-vue-next'
 import { NButton, NCard, NFormItem, NInput, NSelect, NSwitch, useMessage } from 'naive-ui'
 import { getPlainTextFromEditorContent } from '@/features/chapters/editorContent'
 import { autoSaveOptions } from '@/features/settings/autoSave'
@@ -369,6 +369,27 @@ async function handleExportChaptersJson(): Promise<void> {
   }
 }
 
+// 导出伏笔线索为 JSON 文件
+async function handleExportThreads(): Promise<void> {
+  const result = await window.characterArc.exportJson(toIpcPayload({
+    data: buildExportEnvelope('threads', {
+      project: appStore.currentProject,
+      plotThreads: appStore.plotThreads
+    }),
+    title: '导出伏笔线索 JSON',
+    defaultPath: `${buildExportStem('threads')}.json`
+  }))
+
+  if (result.success) {
+    message.success('伏笔线索已导出')
+    return
+  }
+
+  if (!result.canceled) {
+    message.error('导出伏笔线索失败，请稍后重试')
+  }
+}
+
 watch(
   () => appStore.currentProject,
   (project) => {
@@ -486,6 +507,11 @@ watch(
               <Network :size="18" />
               <strong>关系组织</strong>
               <span>导出势力、人物关系与成员归属</span>
+            </button>
+            <button class="module-export-card" @click="handleExportThreads">
+              <BookMarked :size="18" />
+              <strong>伏笔线索</strong>
+              <span>导出伏笔清单与状态</span>
             </button>
             <button class="module-export-card" @click="handleExportChaptersJson">
               <FileJson :size="18" />

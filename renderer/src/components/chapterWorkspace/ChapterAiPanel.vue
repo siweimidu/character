@@ -64,7 +64,7 @@ const contextModules: { module: ContextModule; label: string }[] = [
   { module: 'outline', label: '章节大纲' },
   { module: 'characters', label: '角色卡' },
   { module: 'worldview', label: '世界观' },
-  { module: 'plotThreads', label: '剧情线索' },
+  { module: 'plotThreads', label: '伏笔线索' },
   { module: 'knowledge', label: '项目知识库' },
   { module: 'deconstructionLibrary', label: '拆书知识库' }
 ]
@@ -407,7 +407,7 @@ onBeforeUnmount(() => {
       :show="detect.modalVisible.value"
       :detected="detect.detected.value"
       @update:show="(v) => (detect.modalVisible.value = v)"
-      @confirm="() => { const count = detect.confirmAdd(); if (count === 0) message.warning('请至少选择一条线索'); else message.success(`已添加 ${count} 条剧情线索`) }"
+      @confirm="() => { const count = detect.confirmAdd(); if (count === 0) message.warning('请至少选择一条线索'); else message.success(`已添加 ${count} 条伏笔`) }"
     />
 
     <GlobalAssistantDiffReviewDialog

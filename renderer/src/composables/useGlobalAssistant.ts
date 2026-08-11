@@ -159,8 +159,8 @@ function toolScopeLabel(scope: string): string {
     organization_memberships: '成员归属',
     relationships: '关系',
     outline: '大纲',
-    plot_threads: '剧情线索',
-    plotThreads: '剧情线索',
+    plot_threads: '伏笔线索',
+    plotThreads: '伏笔线索',
     inspiration: '灵感',
     knowledge: '项目知识',
     available_deconstructions: '公共拆书库',
@@ -424,7 +424,7 @@ export function useGlobalAssistant(options: UseGlobalAssistantOptions = {}) {
     audit: [
       { label: '检查 OOC', prompt: '请基于当前人物卡检查最近几章是否有 OOC，并按“问题 -> 证据 -> 最小修法”输出。' },
       { label: '设定冲突', prompt: '请检查当前世界观和大纲中是否存在设定冲突、时间线冲突或规则冲突。' },
-      { label: '伏笔回收', prompt: '请检查当前大纲和剧情线索里有哪些伏笔埋设过早、过晚或仍未回收。' }
+      { label: '伏笔回收', prompt: '请检查当前大纲和伏笔线索里有哪些伏笔埋设过早、过晚或仍未回收。' }
     ]
   }))
 

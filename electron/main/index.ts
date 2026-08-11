@@ -268,7 +268,7 @@ const EXPORT_COMPATIBILITY_NOTE =
   '2.x 导出文件可直接导入当前版本；1.x 旧导出会按兼容模式解析，并默认按完整项目导入。'
 
 /** 导入模块类型 */
-type ImportModuleType = 'project' | 'characters' | 'outline' | 'inspiration' | 'relations' | 'chapters'
+type ImportModuleType = 'project' | 'characters' | 'outline' | 'inspiration' | 'relations' | 'chapters' | 'threads'
 
 /** 导入验证结果：成功时包含解析后的载荷和元信息，失败时包含错误消息 */
 type ImportValidationResult =
@@ -313,7 +313,8 @@ function validateImportedWorkspace(payload: unknown): { valid: true } | { valid:
     ['outlineVolumes', data.outlineVolumes],
     ['outlineItems', data.outlineItems],
     ['chapters', data.chapters],
-    ['chapterVersions', data.chapterVersions]
+    ['chapterVersions', data.chapterVersions],
+    ['plotThreads', data.plotThreads]
   ]
 
   for (const [field, value] of collectionChecks) {

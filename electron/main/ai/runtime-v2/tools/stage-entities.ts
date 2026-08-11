@@ -915,7 +915,7 @@ export function makeStagePlotThreadTool(deps: StageEntitiesToolDeps): Tool {
     definition: {
       name: 'stage_plot_thread',
       description:
-        '暂存剧情线索/伏笔新增、修改或删除，不直接写库。create 需提供 title/description；update/delete 需提供 match_id 或 match_title。',
+        '暂存伏笔新增、修改或删除，不直接写库。create 需提供 title/description；update/delete 需提供 match_id 或 match_title。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -926,7 +926,7 @@ export function makeStagePlotThreadTool(deps: StageEntitiesToolDeps): Tool {
           description: { type: 'string', description: '线索描述。create 必填；update 可选。' },
           opened_in_chapter_id: { type: 'string', description: '埋设章节 ID。' },
           closed_in_chapter_id: { type: 'string', description: '收束章节 ID。resolved 时可填。' },
-          status: { type: 'string', enum: ['open', 'resolved'], description: '线索状态。' },
+          status: { type: 'string', enum: ['pending', 'resolved', 'abandoned'], description: '伏笔状态：待回收/已回收/废弃。' },
           tags: { type: 'array', items: { type: 'string' }, description: '标签数组。' },
           write_mode: WRITE_MODE_SCHEMA,
           reason: { type: 'string', description: '简短说明为什么要新增/修改/删除。' }
@@ -936,7 +936,7 @@ export function makeStagePlotThreadTool(deps: StageEntitiesToolDeps): Tool {
     },
     handler: async (input) => {
       const view = readProjectView(deps)
-      if (!view) return { content: '当前项目快照未就绪，无法暂存剧情线索。', isError: true }
+      if (!view) return { content: '当前项目快照未就绪，无法暂存伏笔。', isError: true }
 
       const action = readString(input, 'action')
       const reason = readString(input, 'reason') || '（未提供理由）'
@@ -950,7 +950,7 @@ export function makeStagePlotThreadTool(deps: StageEntitiesToolDeps): Tool {
           description: readString(input, 'description'),
           openedInChapterId: readString(input, 'opened_in_chapter_id'),
           closedInChapterId: readString(input, 'closed_in_chapter_id'),
-          status: readString(input, 'status') || 'open',
+          status: readString(input, 'status') || 'pending',
           tags: readTags(input.tags)
         }
         if (!payload.title || !payload.description) {
@@ -967,7 +967,7 @@ export function makeStagePlotThreadTool(deps: StageEntitiesToolDeps): Tool {
           after: renderPlotThreadText(payload),
           entityPayload: payload
         })
-        return { content: `已暂存剧情线索新增（change_id=${change.id}）：${payload.title}。尚未写回，需用户确认。` }
+        return { content: `已暂存伏笔新增（change_id=${change.id}）：${payload.title}。尚未写回，需用户确认。` }
       }
 
       const ref = readString(input, 'match_id') || readString(input, 'match_title')
@@ -993,7 +993,7 @@ export function makeStagePlotThreadTool(deps: StageEntitiesToolDeps): Tool {
           before: renderPlotThreadText(before),
           after: ''
         })
-        return { content: `已暂存剧情线索删除（change_id=${change.id}）：${before.title}。尚未写回，需用户确认。` }
+        return { content: `已暂存伏笔删除（change_id=${change.id}）：${before.title}。尚未写回，需用户确认。` }
       }
 
       const writeMode = readWriteMode(input)
@@ -1022,7 +1022,7 @@ export function makeStagePlotThreadTool(deps: StageEntitiesToolDeps): Tool {
         after: renderPlotThreadText(payload),
         entityPayload: payload
       })
-      return { content: `已暂存剧情线索修改（change_id=${change.id}）：${before.title}。尚未写回，需用户确认。` }
+      return { content: `已暂存伏笔修改（change_id=${change.id}）：${before.title}。尚未写回，需用户确认。` }
     }
   }
 }

@@ -279,7 +279,7 @@ function describeToolAction(t: AssistantToolCallView): string {
     case 'stage_organization': return `暂存组织（${short(a.action ?? 'update')}）`
     case 'stage_outline': return `暂存大纲节点（${short(a.action ?? 'update')}）`
     case 'stage_constraint': return `暂存项目约束（${short(a.action ?? 'create')}）`
-    case 'stage_plot_thread': return `暂存剧情线索（${short(a.action ?? 'update')}）`
+    case 'stage_plot_thread': return `暂存伏笔线索（${short(a.action ?? 'update')}）`
     case 'stage_workflow_document': return `暂存创作记忆（${short(a.doc_key ?? '')}${a.operation ? ' · ' + short(a.operation) : ''}）`
     case 'skill_list': return '查看可用技能'
     case 'skill_load': return `加载技能: ${short(a.id ?? a.name)}`

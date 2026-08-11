@@ -166,7 +166,7 @@ ${formatCharacterRelationships(characterRelationships, characters) || '暂无'}
 剧情大纲：
 ${formatOutlineItems(outlineItems) || '暂无'}
 
-活跃剧情线索：
+待回收伏笔：
 ${formatOpenPlotThreads(plotThreads) || '暂无'}
 
 项目灵感：

@@ -82,6 +82,7 @@ import type {
   OutlineVolume,
   PanelName,
   PlotThread,
+  PlotThreadStatus,
   ProjectImportPayload,
   ProjectSummary,
   ProjectWorkspaceData,
@@ -305,7 +306,7 @@ export const useAppStore = defineStore('app', () => {
       ?? globalAssistantSessions.value[0]
   )
   const messages = computed(() => activeGlobalAssistantSession.value?.messages ?? currentWorkspace.value.messages)
-  /** 当前项目的剧情线索列表 */
+  /** 当前项目的伏笔线索列表 */
   const plotThreads = computed(() => currentWorkspace.value.plotThreads)
   /** 持久化全部知识文档；项目知识按 projectId 隔离，参考资料保持全局。 */
   const allKnowledgeDocuments = ref<KnowledgeDocument[]>(
@@ -2031,17 +2032,21 @@ export const useAppStore = defineStore('app', () => {
     schedulePersist('fast')
   }
 
-  // ── 剧情线索 CRUD ──
+  // ── 伏笔线索 CRUD ──
   function createPlotThread(payload?: Partial<PlotThread>): void {
     const now = new Date().toISOString()
     const nextThread: PlotThread = {
       id: uniqueId('thread'),
-      title: payload?.title?.trim() || '未命名线索',
+      title: payload?.title?.trim() || '未命名伏笔',
       description: payload?.description?.trim() || '',
       openedInChapterId: payload?.openedInChapterId || '',
-      status: 'open',
-      closedInChapterId: undefined,
+      plannedCloseChapterId: payload?.plannedCloseChapterId || undefined,
+      status: payload?.status || 'pending',
+      closedInChapterId: payload?.closedInChapterId || undefined,
       tags: Array.isArray(payload?.tags) ? payload.tags.map((t) => String(t).trim()).filter(Boolean) : [],
+      priority: payload?.priority || 'medium',
+      remark: payload?.remark || '',
+      characterIds: Array.isArray(payload?.characterIds) ? payload.characterIds : [],
       createdAt: now,
       updatedAt: now
     }
@@ -2065,6 +2070,9 @@ export const useAppStore = defineStore('app', () => {
               tags: Array.isArray(payload.tags)
                 ? payload.tags.map((t) => String(t).trim()).filter(Boolean)
                 : thread.tags,
+              characterIds: Array.isArray(payload.characterIds)
+                ? payload.characterIds
+                : thread.characterIds ?? [],
               updatedAt: new Date().toISOString()
             }
           : thread
@@ -2081,13 +2089,79 @@ export const useAppStore = defineStore('app', () => {
     schedulePersist('fast')
   }
 
-  /** 批量删除剧情线索 */
+  /** 批量删除伏笔 */
   function deletePlotThreads(threadIds: string[]): void {
     if (!threadIds.length) return
     const idSet = new Set(threadIds)
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       plotThreads: workspace.plotThreads.filter((thread) => !idSet.has(thread.id))
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 批量修改伏笔状态 */
+  function batchUpdatePlotThreadStatus(threadIds: string[], status: PlotThreadStatus): void {
+    if (!threadIds.length) return
+    const idSet = new Set(threadIds)
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      plotThreads: workspace.plotThreads.map((thread) =>
+        idSet.has(thread.id)
+          ? {
+              ...thread,
+              status,
+              closedInChapterId: status === 'resolved' ? (thread.closedInChapterId || selectedChapterId.value) : thread.closedInChapterId,
+              updatedAt: new Date().toISOString()
+            }
+          : thread
+      )
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 批量修改伏笔标签 */
+  function batchUpdatePlotThreadTags(threadIds: string[], tags: string[]): void {
+    if (!threadIds.length) return
+    const idSet = new Set(threadIds)
+    const cleanTags = tags.map((t) => String(t).trim()).filter(Boolean)
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      plotThreads: workspace.plotThreads.map((thread) =>
+        idSet.has(thread.id)
+          ? {
+              ...thread,
+              tags: cleanTags,
+              updatedAt: new Date().toISOString()
+            }
+          : thread
+      )
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 批量导入伏笔 */
+  function importPlotThreads(threads: Array<Partial<PlotThread> & { title: string }>): void {
+    if (!threads.length) return
+    const now = new Date().toISOString()
+    const newThreads: PlotThread[] = threads.map((t) => ({
+      id: uniqueId('thread'),
+      title: t.title.trim(),
+      description: t.description?.trim() || '',
+      openedInChapterId: t.openedInChapterId || '',
+      plannedCloseChapterId: t.plannedCloseChapterId || undefined,
+      status: t.status || 'pending',
+      closedInChapterId: t.closedInChapterId || undefined,
+      tags: Array.isArray(t.tags) ? t.tags.map((tag) => String(tag).trim()).filter(Boolean) : [],
+      priority: t.priority || 'medium',
+      remark: t.remark || '',
+      characterIds: Array.isArray(t.characterIds) ? t.characterIds : [],
+      createdAt: t.createdAt || now,
+      updatedAt: now
+    }))
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      plotThreads: [...workspace.plotThreads, ...newThreads]
     }))
     schedulePersist('fast')
   }
@@ -3656,6 +3730,9 @@ export const useAppStore = defineStore('app', () => {
     deleteOutlineVolume,
     deletePlotThread,
     deletePlotThreads,
+    batchUpdatePlotThreadStatus,
+    batchUpdatePlotThreadTags,
+    importPlotThreads,
     deleteProject,
     deleteWorldviewEntry,
     deleteWorldviewEntries,

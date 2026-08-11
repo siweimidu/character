@@ -510,6 +510,162 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     return { success: true, canceled: false, filePath: result.filePath }
   })
 
+  // ── 伏笔导入 / 导出 ──
+  ipcMain.handle('characterarc:export-plot-threads', async (_event, payload: unknown) => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) return { success: false, canceled: true }
+
+    const request = (payload ?? {}) as {
+      data: unknown
+      format?: 'md' | 'txt' | 'json'
+      title?: string
+      defaultPath?: string
+    }
+    const format = request.format ?? 'txt'
+    const ext = format === 'json' ? 'json' : (format === 'md' ? 'md' : 'txt')
+    const label = format === 'json' ? 'JSON 文件' : (format === 'md' ? 'Markdown 文档' : '文本文档')
+
+    const result = await dialog.showSaveDialog(window, {
+      title: request.title ?? `导出伏笔 ${ext.toUpperCase()}`,
+      defaultPath: request.defaultPath ?? `plot-threads.${ext}`,
+      filters: [{ name: label, extensions: [ext] }]
+    })
+    if (result.canceled || !result.filePath) return { success: false, canceled: true }
+
+    if (format === 'json') {
+      await writeFile(result.filePath, JSON.stringify(request.data, null, 2), 'utf-8')
+    } else {
+      const data = request.data as Array<Record<string, unknown>>
+      const lines = (data ?? []).map((t) => {
+        const title = String(t.title ?? '未命名伏笔')
+        const desc = String(t.description ?? '')
+        const statusMap: Record<string, string> = {
+          pending: '待回收',
+          resolved: '已回收',
+          abandoned: '废弃'
+        }
+        const status = statusMap[String(t.status ?? 'pending')] ?? '待回收'
+        const priorityMap: Record<string, string> = { low: '低', medium: '中', high: '高' }
+        const priority = priorityMap[String(t.priority ?? 'medium')] ?? '中'
+        const tags = Array.isArray(t.tags) ? (t.tags as string[]).join(',') : ''
+        const remark = String(t.remark ?? '')
+        const opened = String(t.openedInChapterTitle ?? '')
+        const plannedClose = String(t.plannedCloseChapterTitle ?? '')
+
+        const lines = [
+          `标题：${title}`,
+          `状态：${status}`,
+          `优先级：${priority}`,
+          ...(opened ? [`埋设章节：${opened}`] : []),
+          ...(plannedClose ? [`计划回收章节：${plannedClose}`] : []),
+          ...(tags ? [`标签：${tags}`] : []),
+          ...(remark ? [`备注：${remark}`] : []),
+          ...(desc ? ['描述：', desc, ''] : [])
+        ]
+        return lines.join('\n')
+      })
+
+      const text = [
+        '# 伏笔清单',
+        '',
+        `共 ${lines.length} 条伏笔`,
+        '',
+        ...lines.map((line, i) => `## 伏笔 ${i + 1}\n\n${line}`)
+      ].join('\n\n')
+
+      await writeFile(result.filePath, text, 'utf-8')
+    }
+
+    return { success: true, canceled: false, filePath: result.filePath }
+  })
+
+  ipcMain.handle('characterarc:import-plot-threads', async () => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) return { success: false, canceled: true }
+
+    const result = await dialog.showOpenDialog(window, {
+      title: '导入伏笔',
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: 'Markdown / 文本文档 / JSON', extensions: ['md', 'txt', 'json'] }
+      ]
+    })
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, canceled: true }
+    }
+
+    const items: Array<Record<string, unknown>> = []
+    const errors: string[] = []
+
+    for (const filePath of result.filePaths) {
+      try {
+        const raw = await readFile(filePath, 'utf-8')
+        const lowerPath = filePath.toLowerCase()
+
+        if (lowerPath.endsWith('.json')) {
+          const parsed = JSON.parse(raw)
+          const arr = Array.isArray(parsed) ? parsed : Array.isArray((parsed as Record<string, unknown>)?.plotThreads)
+            ? ((parsed as Record<string, unknown>).plotThreads as unknown[])
+            : []
+          arr.forEach((item) => {
+            if (item && typeof item === 'object') {
+              items.push(item as Record<string, unknown>)
+            }
+          })
+        } else {
+          // Parse MD/TXT: look for title: lines and description blocks
+          const sections = raw.split(/\n(?=标题[:：])/g)
+          for (const section of sections) {
+            const titleMatch = section.match(/标题[:：]\s*(.+)/)
+            if (!titleMatch) continue
+            const title = titleMatch[1].trim()
+            if (!title) continue
+
+            const statusMatch = section.match(/状态[:：]\s*(.+)/)
+            const statusRaw = statusMatch?.[1]?.trim() ?? ''
+            const status = statusRaw.includes('废弃') ? 'abandoned'
+              : statusRaw.includes('已回收') ? 'resolved' : 'pending'
+
+            const priorityMatch = section.match(/优先级[:：]\s*(.+)/)
+            const priorityRaw = priorityMatch?.[1]?.trim() ?? ''
+            const priority = priorityRaw.includes('高') ? 'high'
+              : priorityRaw.includes('低') ? 'low' : 'medium'
+
+            const openedMatch = section.match(/埋设章节[:：]\s*(.+)/)
+            const plannedCloseMatch = section.match(/计划回收章节[:：]\s*(.+)/)
+            const tagsMatch = section.match(/标签[:：]\s*(.+)/)
+            const remarkMatch = section.match(/备注[:：]\s*(.+)/)
+
+            // Extract description: everything after 描述: until next section
+            const descMatch = section.match(/描述[:：]\n?([\s\S]*?)(?=\n\s*$|$)/)
+
+            items.push({
+              title,
+              description: descMatch?.[1]?.trim() ?? '',
+              status,
+              priority,
+              openedInChapterId: '',
+              plannedCloseChapterId: '',
+              tags: tagsMatch ? tagsMatch[1].split(/[,，]/).map((t) => t.trim()).filter(Boolean) : [],
+              remark: remarkMatch?.[1]?.trim() ?? '',
+              openedInChapterTitle: openedMatch?.[1]?.trim() ?? '',
+              plannedCloseChapterTitle: plannedCloseMatch?.[1]?.trim() ?? ''
+            })
+          }
+        }
+      } catch (err) {
+        errors.push(`${filePath}: ${err instanceof Error ? err.message : '解析失败'}`)
+      }
+    }
+
+    return {
+      success: items.length > 0,
+      canceled: false,
+      items,
+      errors
+    }
+  })
+
   ipcMain.handle('characterarc:import-json', async () => {
     const window = deps.windowManager.getActiveWindow()
     if (!window) {

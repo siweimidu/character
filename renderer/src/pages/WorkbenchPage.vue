@@ -79,7 +79,7 @@ const sidebarItems = [
   { id: 'characters', label: '人物卡片', description: '维护人物卡、关系与成长线索', icon: Users, color: '#ec4899' },
   { id: 'relations', label: '关系组织', description: '维护势力结构、人物关系与成员归属', icon: Network, color: '#6b7280' },
   { id: 'outline', label: '剧情大纲', description: '组织卷宗结构与关键情节点', icon: GitMerge, color: '#10b981' },
-  { id: 'threads', label: '剧情线索', description: '追踪未收尾伏笔与活跃剧情线', icon: BookMarked, color: '#6366f1' },
+  { id: 'threads', label: '伏笔线索', description: '追踪伏笔埋设、回收与废弃状态', icon: BookMarked, color: '#6366f1' },
   { id: 'inspiration', label: '灵感模块', description: '收集标题、桥段、转折与人物动机', icon: Lightbulb, color: '#f59e0b' },
   { id: 'project-knowledge', label: '项目知识库', description: '一致性审计与从已有章节补录状态', icon: FileCheck2, color: '#14b8a6' },
   { id: 'global-assistant-v2', label: '智能体', description: '多角色创作助手 + 暂存变更审阅', icon: Sparkles, color: '#0d7d5a' }
@@ -136,13 +136,14 @@ const sidebarBadgeMap = computed<Record<string, string | null>>(() => ({
   inspiration: String(appStore.inspirationEntries.length),
   outline: String(appStore.outlineItems.length),
   chapters: String(appStore.chapters.length),
+  threads: String(appStore.plotThreads.length),
   settings: null
 }))
 
 // 侧边栏底部的汇总统计文本
 const sidebarSummary = computed(
   () =>
-    `设定 ${appStore.worldviewEntries.length} · 角色 ${appStore.characters.length} · 关系 ${appStore.characterRelationships.length} · 组织 ${appStore.organizations.length} · 章节 ${appStore.chapters.length}`
+    `设定 ${appStore.worldviewEntries.length} · 角色 ${appStore.characters.length} · 组织 ${appStore.organizations.length} · 伏笔 ${appStore.plotThreads.length} · 章节 ${appStore.chapters.length}`
 )
 
 // 窄屏模式下使用紧凑侧边栏（仅显示图标）

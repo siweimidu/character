@@ -322,9 +322,13 @@ export type WorkspacePayload = {
         title: string
         description: string
         openedInChapterId: string
-        status: 'open' | 'resolved'
-        closedInChapterId: string
+        plannedCloseChapterId?: string
+        status: string
+        closedInChapterId?: string
         tags: string[]
+        priority: string
+        remark?: string
+        characterIds?: string[]
         createdAt: string
         updatedAt: string
       }>

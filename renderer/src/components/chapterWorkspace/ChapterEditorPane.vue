@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, h, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { Check, ChevronDown, ChevronRight, Folder, FocusIcon, History, Maximize2, Menu, MessageSquareQuote, Minus, Minimize2, Plus, RefreshCw, Save, Search, ShieldAlert, Sparkles, Type, Wand2 } from 'lucide-vue-next'
 import EditorCommandPalette from './EditorCommandPalette.vue'
 import type { CommandPaletteAction } from './editorCommandPalette'
-import { NAlert, NDropdown, NTag, NTooltip, useMessage } from 'naive-ui'
+import { NAlert, NDropdown, NDynamicTags, NForm, NFormItem, NInput, NModal, NSelect, NTag, NTooltip, useMessage } from 'naive-ui'
 import type { DropdownOption } from 'naive-ui'
 import SimpleChapterEditor from './SimpleChapterEditor.vue'
 import type { ChapterRecoverySnapshot } from './SimpleChapterEditor.vue'
@@ -39,6 +39,49 @@ const MAX_FONT = 35
 const DEFAULT_FONT = 17
 const fontSize = ref(DEFAULT_FONT)
 const versionDialogVisible = ref(false)
+// ── 章节内快速新建伏笔 ──
+const quickCreateThreadVisible = ref(false)
+const quickThreadForm = reactive({
+  title: '',
+  description: '',
+  priority: 'medium' as 'low' | 'medium' | 'high',
+  plannedCloseChapterId: '',
+  tags: [] as string[],
+  remark: ''
+})
+const quickChapterOptions = computed(() =>
+  appStore.chapters.map((c) => ({ label: c.title || '未命名章节', value: c.id }))
+)
+
+function openQuickCreateThread(): void {
+  quickThreadForm.title = ''
+  quickThreadForm.description = ''
+  quickThreadForm.priority = 'medium'
+  quickThreadForm.plannedCloseChapterId = ''
+  quickThreadForm.tags = []
+  quickThreadForm.remark = ''
+  quickCreateThreadVisible.value = true
+}
+
+function confirmQuickCreateThread(): void {
+  const title = quickThreadForm.title.trim()
+  if (!title) {
+    message.warning('请填写伏笔标题')
+    return
+  }
+  appStore.createPlotThread({
+    title,
+    description: quickThreadForm.description.trim(),
+    openedInChapterId: currentChapter.value?.id ?? '',
+    plannedCloseChapterId: quickThreadForm.plannedCloseChapterId || undefined,
+    status: 'pending',
+    tags: quickThreadForm.tags,
+    priority: quickThreadForm.priority,
+    remark: quickThreadForm.remark.trim()
+  })
+  message.success('伏笔已添加')
+  quickCreateThreadVisible.value = false
+}
 // 章节摘要默认折叠，点击目标字数右侧按钮展开
 const summaryExpanded = ref(false)
 
@@ -474,6 +517,10 @@ onBeforeUnmount(() => {
           <Wand2 :size="13" />
           <span>生成初稿</span>
         </button>
+        <button class="toolbtn" :disabled="!currentChapter" @click="openQuickCreateThread">
+          <Plus :size="13" />
+          <span>新建伏笔</span>
+        </button>
         <button class="toolbtn" :class="{ primary: !aiOpen, active: aiOpen }" @click="emit('toggleAi')">
           <Sparkles :size="13" />
           <span>AI 助理</span>
@@ -635,6 +682,60 @@ onBeforeUnmount(() => {
       v-model:show="versionDialogVisible"
       :chapter="currentChapter ?? null"
     />
+
+    <!-- 章节内快速新建伏笔 -->
+    <n-modal
+      v-model:show="quickCreateThreadVisible"
+      preset="card"
+      title="在「{{ currentChapter?.title || '本章' }}」中新建伏笔"
+      style="width: 520px"
+      :mask-closable="false"
+    >
+      <n-form label-placement="top" :show-feedback="false" class="quick-thread-form">
+        <n-form-item label="伏笔标题" required>
+          <n-input v-model:value="quickThreadForm.title" placeholder="如：林莫的穿越遗物" maxlength="60" show-count />
+        </n-form-item>
+        <n-form-item label="伏笔描述">
+          <n-input
+            v-model:value="quickThreadForm.description"
+            type="textarea"
+            :rows="3"
+            placeholder="描述这条伏笔的内容、背景或潜在影响"
+          />
+        </n-form-item>
+        <n-form-item label="计划回收章节">
+          <n-select
+            v-model:value="quickThreadForm.plannedCloseChapterId"
+            :options="quickChapterOptions"
+            placeholder="选择计划回收的章节"
+            clearable
+            filterable
+          />
+        </n-form-item>
+        <n-form-item label="优先级">
+          <n-select
+            v-model:value="quickThreadForm.priority"
+            :options="[
+              { label: '低', value: 'low' },
+              { label: '中', value: 'medium' },
+              { label: '高', value: 'high' }
+            ]"
+          />
+        </n-form-item>
+        <n-form-item label="标签">
+          <n-dynamic-tags v-model:value="quickThreadForm.tags" />
+        </n-form-item>
+        <n-form-item label="备注">
+          <n-input v-model:value="quickThreadForm.remark" type="textarea" :rows="2" placeholder="可选补充说明" />
+        </n-form-item>
+      </n-form>
+      <template #footer>
+        <div class="quick-thread-actions">
+          <n-button @click="quickCreateThreadVisible = false">取消</n-button>
+          <n-button type="primary" @click="confirmQuickCreateThread">添加伏笔</n-button>
+        </div>
+      </template>
+    </n-modal>
   </main>
 </template>
 
@@ -1023,6 +1124,18 @@ onBeforeUnmount(() => {
   color: var(--arc-text-secondary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.quick-thread-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.quick-thread-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 </style>

@@ -93,7 +93,7 @@ type ChapterAssistantContextInput = {
     }>
   } | null
   outlineItems: OutlineItem[]                           // 大纲条目列表
-  plotThreads: PlotThread[]                             // 剧情线索（活跃伏笔）
+  plotThreads: PlotThread[]                             // 伏笔（待回收）
   projectSkills?: Array<{                               // 当前项目启用的 skills 摘要
     id: string
     name: string
@@ -146,7 +146,7 @@ export type ChapterFirstDraftContextInput = {
     }>
   } | null
   outlineItems: OutlineItem[]
-  plotThreads: PlotThread[]                             // 剧情线索（活跃伏笔）
+  plotThreads: PlotThread[]                             // 伏笔（待回收）
   projectSkills?: Array<{
     id: string
     name: string
@@ -467,9 +467,9 @@ export function buildChapterAssistantContext(input: ChapterAssistantContextInput
     novelOpenerSummary: input.novelOpenerSummary ?? null,
     currentOutlineItem,
     recentMessages: input.recentMessages,
-    // 只传递活跃（open）的剧情线索，精简字段
+    // 只传递待回收的伏笔，精简字段
     plotThreads: input.plotThreads
-      .filter((t) => t.status === 'open')
+      .filter((t) => t.status === 'pending')
       .map((t) => ({ title: t.title, description: t.description, status: t.status })),
     // 精简世界观字段，只保留标题和内容
     worldviewEntries: relevantReferenceData.worldviewEntries.map((entry) => ({
@@ -586,9 +586,9 @@ export function buildChapterFirstDraftContext(input: ChapterFirstDraftContextInp
     relatedChapters: input.relatedChapters,
     volumeChapterSummaries: input.volumeChapterSummaries,
     novelOpenerSummary: input.novelOpenerSummary ?? null,
-    // 只传递活跃（open）的剧情线索
+    // 只传递待回收的伏笔
     plotThreads: input.plotThreads
-      .filter((t) => t.status === 'open')
+      .filter((t) => t.status === 'pending')
       .map((t) => ({ title: t.title, description: t.description, status: t.status })),
     worldviewEntries: relevantReferenceData.worldviewEntries.map((entry) => ({
       title: entry.title,

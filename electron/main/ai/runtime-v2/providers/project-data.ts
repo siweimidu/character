@@ -150,7 +150,7 @@ export function makePlotThreadsProvider(accessor: SnapshotAccessor): ContextProv
     id: 'plot-threads',
     priority: 48,
     truncationHint:
-      '剧情线索因预算受限省略。请调用 read_project_data(entity_type="plot_threads") 精读。',
+      '伏笔线索因预算受限省略。请调用 read_project_data(entity_type="plot_threads") 精读。',
     async build(request: ContextBuildRequest): Promise<ContextSlice | null> {
       const view = getProjectView(accessor.getSnapshot(), request.projectId)
       if (!view || !view.workspace.plotThreads.length) return null
@@ -160,7 +160,7 @@ export function makePlotThreadsProvider(accessor: SnapshotAccessor): ContextProv
         const closed = thread.closedInChapterId ? (chapterTitles.get(thread.closedInChapterId) ?? thread.closedInChapterId) : ''
         return `- **${thread.title}**（${thread.status}）${opened ? `｜埋设：${opened}` : ''}${closed ? `｜收束：${closed}` : ''}${tags(thread.tags)}：${truncate(thread.description, 500)}`
       })
-      return makeSlice('plot-threads', 48, '剧情线索 / 伏笔', lines.join('\n'))
+      return makeSlice('plot-threads', 48, '伏笔线索', lines.join('\n'))
     }
   }
 }

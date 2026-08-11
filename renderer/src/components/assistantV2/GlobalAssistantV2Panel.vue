@@ -97,7 +97,7 @@ const quickActions: Record<AssistantMode, Array<{ label: string; prompt: string 
   ],
   audit: [
     { label: '全项目审计', prompt: '请审计当前项目的一致性风险，包括世界观矛盾、人物 OOC、大纲断裂、伏笔未回收和硬约束冲突。' },
-    { label: '伏笔审计', prompt: '请读取剧情线索、章节摘要和创作记忆，列出待回收伏笔、风险和建议处理顺序。' },
+    { label: '伏笔审计', prompt: '请读取伏笔线索、章节摘要和创作记忆，列出待回收伏笔、风险和建议处理顺序。' },
     { label: '章节连续性审计', prompt: '请检查最近章节和大纲之间的连续性，指出问题并给出最小修正方案。' }
   ]
 }

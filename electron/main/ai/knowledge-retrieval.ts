@@ -445,7 +445,7 @@ function buildSemanticQueryPlan(context: Record<string, unknown>): SemanticQuery
 
   const entityQuery = [
     characterNames.length ? `关键角色：${characterNames.join('、')}` : '',
-    plotThreadTitles.length ? `活跃线索：${plotThreadTitles.join('、')}` : '',
+    plotThreadTitles.length ? `待回收伏笔：${plotThreadTitles.join('、')}` : '',
     outlineTitles.length ? `相关大纲：${outlineTitles.join('、')}` : ''
   ].filter(Boolean).join('\n')
 

@@ -305,9 +305,13 @@ export async function ensureWorkspaceDb(): Promise<DatabaseSync> {
       title TEXT NOT NULL,
       description TEXT NOT NULL,
       opened_in_chapter_id TEXT NOT NULL DEFAULT '',
-      status TEXT NOT NULL DEFAULT 'open',
+      planned_close_chapter_id TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending',
       closed_in_chapter_id TEXT NOT NULL DEFAULT '',
       tags_json TEXT NOT NULL DEFAULT '[]',
+      priority TEXT NOT NULL DEFAULT 'medium',
+      remark TEXT NOT NULL DEFAULT '',
+      character_ids_json TEXT NOT NULL DEFAULT '[]',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
@@ -389,6 +393,7 @@ export async function ensureWorkspaceDb(): Promise<DatabaseSync> {
   ensureVolumeColumns(db)
   ensureOutlineItemColumns(db)
   ensureWorkflowDocumentColumns(db)
+  ensurePlotThreadColumns(db)
   ensureKnowledgeDocumentSchema(db)
   initStoryStateSchema(db)
   initAssistantRuntimeSchema(db)
@@ -645,6 +650,27 @@ function ensureWorkflowDocumentColumns(db: DatabaseSync): void {
     )
     WHERE COALESCE(volume_id, '') = '';
   `)
+}
+
+function ensurePlotThreadColumns(db: DatabaseSync): void {
+  const columns = db.prepare(`PRAGMA table_info('plot_threads')`).all() as Array<{ name: string }>
+  const columnNames = new Set(columns.map((column) => column.name))
+
+  if (!columnNames.has('planned_close_chapter_id')) {
+    db.exec(`ALTER TABLE plot_threads ADD COLUMN planned_close_chapter_id TEXT NOT NULL DEFAULT '';`)
+  }
+  if (!columnNames.has('priority')) {
+    db.exec(`ALTER TABLE plot_threads ADD COLUMN priority TEXT NOT NULL DEFAULT 'medium';`)
+  }
+  if (!columnNames.has('remark')) {
+    db.exec(`ALTER TABLE plot_threads ADD COLUMN remark TEXT NOT NULL DEFAULT '';`)
+  }
+  if (!columnNames.has('character_ids_json')) {
+    db.exec(`ALTER TABLE plot_threads ADD COLUMN character_ids_json TEXT NOT NULL DEFAULT '[]';`)
+  }
+
+  // 迁移旧状态值：open → pending
+  db.exec(`UPDATE plot_threads SET status = 'pending' WHERE status = 'open';`)
 }
 
 function ensureProjectColumns(db: DatabaseSync): void {
@@ -1133,9 +1159,13 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
 
   const plotThreads = db.prepare(`
     SELECT project_id AS projectId, id, title, description,
-      opened_in_chapter_id AS openedInChapterId, status,
+      opened_in_chapter_id AS openedInChapterId,
+      planned_close_chapter_id AS plannedCloseChapterId,
+      status,
       closed_in_chapter_id AS closedInChapterId,
-      tags_json AS tagsJson, created_at AS createdAt, updated_at AS updatedAt
+      tags_json AS tagsJson, priority, remark,
+      character_ids_json AS characterIdsJson,
+      created_at AS createdAt, updated_at AS updatedAt
     FROM plot_threads
     ORDER BY project_id ASC, created_at ASC
   `).all() as Array<{
@@ -1144,9 +1174,13 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
     title: string
     description: string
     openedInChapterId: string
-    status: 'open' | 'resolved'
+    plannedCloseChapterId: string
+    status: string
     closedInChapterId: string
     tagsJson: string
+    priority: string
+    remark: string
+    characterIdsJson: string
     createdAt: string
     updatedAt: string
   }>
@@ -1281,9 +1315,10 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
         aiRuns: [],
         workflowDocuments: [],
         plotThreads: (plotThreadsByProject.get(project.id) ?? [])
-          .map(({ projectId: _projectId, tagsJson, ...thread }) => ({
+          .map(({ projectId: _projectId, tagsJson, characterIdsJson, ...thread }) => ({
             ...thread,
-            tags: parseJson(tagsJson, [] as string[])
+            tags: parseJson(tagsJson, [] as string[]),
+            characterIds: parseJson(characterIdsJson, [] as string[])
           }))
       }
     ])
@@ -1484,8 +1519,8 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
     `)
 
     const insertPlotThread = db.prepare(`
-      INSERT OR REPLACE INTO plot_threads (id, project_id, title, description, opened_in_chapter_id, status, closed_in_chapter_id, tags_json, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO plot_threads (id, project_id, title, description, opened_in_chapter_id, planned_close_chapter_id, status, closed_in_chapter_id, tags_json, priority, remark, character_ids_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     for (const project of payload.projects) {
@@ -1732,9 +1767,13 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
           thread.title,
           thread.description,
           thread.openedInChapterId ?? '',
-          thread.status ?? 'open',
+          thread.plannedCloseChapterId ?? '',
+          thread.status ?? 'pending',
           thread.closedInChapterId ?? '',
           JSON.stringify(thread.tags ?? []),
+          thread.priority ?? 'medium',
+          thread.remark ?? '',
+          JSON.stringify(thread.characterIds ?? []),
           thread.createdAt,
           thread.updatedAt
         )

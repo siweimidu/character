@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Minimize } from 'lucide-vue-next'
+import { NButton, NModal } from 'naive-ui'
 import ChapterTreeSidebar from './ChapterTreeSidebar.vue'
 import ChapterEditorPane from './ChapterEditorPane.vue'
 import ChapterAiPanelV2 from './ChapterAiPanelV2.vue'
@@ -146,6 +147,45 @@ function syncViewport(): void {
   viewportWidth.value = window.innerWidth
 }
 
+// ── 本章待回收伏笔提醒 ──
+const reminderVisible = ref(false)
+const reminderThreads = ref<Array<{ id: string; title: string }>>([])
+const remindedChapterIds = ref<Set<string>>(new Set())
+
+// 当前章节的计划回收伏笔
+const chapterPendingThreads = computed(() => {
+  const chapter = appStore.selectedChapter
+  if (!chapter) return []
+  return appStore.plotThreads.filter(
+    (t) => t.status === 'pending' && t.plannedCloseChapterId === chapter.id
+  )
+})
+
+// 监听章节切换，弹出待回收伏笔提醒
+watch(
+  () => appStore.selectedChapterId,
+  (chapterId) => {
+    if (!chapterId || remindedChapterIds.value.has(chapterId)) return
+    const pending = appStore.plotThreads.filter(
+      (t) => t.status === 'pending' && t.plannedCloseChapterId === chapterId
+    )
+    if (pending.length > 0) {
+      reminderThreads.value = pending.map((t) => ({ id: t.id, title: t.title }))
+      reminderVisible.value = true
+      remindedChapterIds.value.add(chapterId)
+    }
+  }
+)
+
+function closeReminder(): void {
+  reminderVisible.value = false
+}
+
+function jumpToThread(threadId: string): void {
+  appStore.setPanel('threads')
+  reminderVisible.value = false
+}
+
 function handleKeydown(event: KeyboardEvent): void {
   if (event.key === 'F11') {
     event.preventDefault()
@@ -221,6 +261,29 @@ onBeforeUnmount(() => {
       @cancel="draftConfigVisible = false"
       @apply-target-words="handleApplyTargetWords"
     />
+
+    <!-- 本章待回收伏笔提醒 -->
+    <n-modal
+      v-model:show="reminderVisible"
+      preset="card"
+      title="📌 本章有待回收伏笔"
+      style="width: 420px"
+      :mask-closable="false"
+    >
+      <p class="reminder-hint">当前章节计划回收以下 {{ reminderThreads.length }} 条伏笔：</p>
+      <div class="reminder-list">
+        <div v-for="thread in reminderThreads" :key="thread.id" class="reminder-item">
+          <span class="reminder-dot" />
+          <span class="reminder-title">{{ thread.title }}</span>
+        </div>
+      </div>
+      <template #footer>
+        <div class="reminder-actions">
+          <n-button @click="closeReminder">知道了</n-button>
+          <n-button type="primary" @click="jumpToThread(reminderThreads[0]?.id)">查看伏笔</n-button>
+        </div>
+      </template>
+    </n-modal>
   </section>
 </template>
 
@@ -343,5 +406,49 @@ onBeforeUnmount(() => {
 .sidebar-slide-enter-from .sidebar-panel,
 .sidebar-slide-leave-to .sidebar-panel {
   transform: translateX(-100%);
+}
+
+/* ── Reminder ── */
+.reminder-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--arc-text-secondary);
+  line-height: 1.6;
+}
+
+.reminder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reminder-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  background: var(--arc-bg-weak);
+}
+
+.reminder-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #eab308;
+  flex-shrink: 0;
+}
+
+.reminder-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--arc-text-primary);
+}
+
+.reminder-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 </style>

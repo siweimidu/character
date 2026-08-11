@@ -285,7 +285,7 @@ export function formatNovelOpenerSummary(source: unknown): string {
 export function formatOpenPlotThreads(source: unknown): string {
   return Array.isArray(source)
     ? source
-        .filter((t) => (t as Record<string, unknown>).status === 'open')
+        .filter((t) => (t as Record<string, unknown>).status === 'pending')
         .map((t) => {
           const record = t as Record<string, unknown>
           return `- ${String(record.title ?? '')}：${String(record.description ?? '')}`
