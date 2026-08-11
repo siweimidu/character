@@ -14,9 +14,10 @@ main:
         - name: test
           script: |
             apt-get update -qq
-            apt-get install -y -qq libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 libpango-1.0-0 libcairo2 libnss3 libnspr4 libxss1 libgtk-3-0 libxtst6
+            apt-get install -y -qq libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 libpango-1.0-0 libcairo2 libnss3 libnspr4 libxss1 libgtk-3-0 libxtst6 xvfb
             export ELECTRON_DISABLE_SANDBOX=1
-            pnpm run test
+            export ELECTRON_RUN_AS_NODE=1
+            xvfb-run -a pnpm run test
         - name: package-win
           script: |
             pnpm run dist:win
