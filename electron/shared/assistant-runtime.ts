@@ -425,7 +425,6 @@ export interface TurnTruncateResult {
   /** 已写回业务数据的变更数；业务数据本身不会回滚。 */
   keptCommitted: number
 }
-}
 
 export interface StageAcceptRequest {
   changeIds: string[]

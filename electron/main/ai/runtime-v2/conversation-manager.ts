@@ -504,7 +504,6 @@ export class ConversationManager {
       restoredUserMessage: anchor.user_message
     }
   }
-  }
 
   // -------- Events --------
 
