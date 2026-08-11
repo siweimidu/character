@@ -652,7 +652,7 @@ export function useChapterFirstDraft(): {
             relatedChapters,
             volumeChapterSummaries,
             plotThreads: appStore.plotThreads
-              .filter((t) => t.status === 'open')
+              .filter((t) => t.status === 'pending')
               .map((t) => ({ title: t.title, description: t.description, status: t.status })),
             worldviewEntries: appStore.worldviewEntries.map((e) => ({ title: e.title, content: e.content })),
             characters: appStore.characters.map((c) => ({ name: c.name, role: c.role, description: c.description })),
