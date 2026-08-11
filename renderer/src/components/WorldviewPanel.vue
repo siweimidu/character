@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
-import { MoreVertical, Plus, Search, Sparkles } from 'lucide-vue-next'
-import { NButton, NDropdown, NForm, NFormItem, NInput, NModal, NSelect, useDialog, useMessage } from 'naive-ui'
+import { Download, MoreVertical, Plus, Search, Sparkles, Tags, Upload } from 'lucide-vue-next'
+import { NButton, NDropdown, NDynamicTags, NForm, NFormItem, NInput, NModal, NSelect, NTag, useDialog, useMessage } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import { toIpcPayload } from '@/utils/ipcPayload'
 import { buildProjectWritingStyleContext } from '@/features/writingStyles/presets'
@@ -11,7 +11,7 @@ import AiEnhancePreview from './AiEnhancePreview.vue'
 import BatchDeleteBar from './BatchDeleteBar.vue'
 import BatchGenerateDialog from './BatchGenerateDialog.vue'
 import type { EnhanceFieldDiff } from './AiEnhancePreview.vue'
-import { useCatalogBatch } from '@/composables/useCatalogBatch'
+import { normalizeCatalogTags, useCatalogBatch } from '@/composables/useCatalogBatch'
 import { useIncrementalList } from '@/composables/useIncrementalList'
 
 const props = defineProps<{
@@ -40,10 +40,11 @@ const focusedEntryId = ref<string>('')
 const form = reactive({
   type: '地理',
   title: '',
-  content: ''
+  content: '',
+  tags: [] as string[]
 })
 
-const entryTypes = ['地理', '法则', '物种', '势力', '历史'] // 世界观词条的分类列表
+const entryTypes = ['时代背景', '地理', '势力', '法则', '物种', '历史'] // 世界观词条的分类列表
 const typeOptions = computed(() =>
   [...new Set([...entryTypes, ...appStore.worldviewEntries.map((entry) => entry.type.trim()).filter(Boolean)])]
     .map((type) => ({ label: type, value: type }))
@@ -91,7 +92,7 @@ const filteredEntries = computed(() => {
   const query = [props.searchQuery, keyword.value].filter(Boolean).join(' ').trim().toLowerCase()
   return appStore.worldviewEntries.filter((entry) => {
     const matchesType = !typeFilter.value || entry.type.trim() === typeFilter.value
-    const matchesQuery = !query || `${entry.type} ${entry.title} ${entry.content}`.toLowerCase().includes(query)
+    const matchesQuery = !query || `${entry.type} ${entry.title} ${entry.content} ${(entry.tags ?? []).join(' ')}`.toLowerCase().includes(query)
     return matchesType && matchesQuery
   })
 })
@@ -126,6 +127,7 @@ function handleCreateEntry(): void {
   form.type = '地理'
   form.title = ''
   form.content = ''
+  form.tags = []
   editorVisible.value = true
 }
 
@@ -162,7 +164,8 @@ async function handleGenerateEntry(payload: { count: number; prompt: string; typ
     entries.forEach((entry) => appStore.createWorldviewEntry({
       type: String(entry.type ?? payload.types[0] ?? '地理'),
       title: String(entry.title ?? '新世界观词条'),
-      content: String(entry.content ?? 'AI 未返回有效内容')
+      content: String(entry.content ?? 'AI 未返回有效内容'),
+      tags: normalizeCatalogTags(entry.tags)
     }))
     batchVisible.value = false
     message.success(`已生成 ${entries.length} 条世界观设定`)
@@ -177,6 +180,7 @@ function openEditor(entry?: WorldviewEntry): void {
   form.type = entry?.type ?? '地理'
   form.title = entry?.title ?? ''
   form.content = entry?.content ?? ''
+  form.tags = normalizeCatalogTags(entry?.tags)
   editorVisible.value = true
 }
 
@@ -188,10 +192,10 @@ function submitEntry(): void {
   }
 
   if (editingEntryId.value) {
-    appStore.updateWorldviewEntry(editingEntryId.value, form)
+    appStore.updateWorldviewEntry(editingEntryId.value, { ...form, tags: form.tags })
     message.success('世界观词条已更新')
   } else {
-    appStore.createWorldviewEntry(form)
+    appStore.createWorldviewEntry({ ...form, tags: form.tags })
     message.success('已新增世界观词条')
   }
 
@@ -252,8 +256,103 @@ function handleBatchDeleteEntries(): void {
     }
   })
 }
+
 function clearEntrySelection(): void {
   selectedEntryIds.value = []
+}
+
+// ── 批量导入 / 导出 ──
+const importLoading = ref(false)
+const exportLoading = ref(false)
+// 批量导入 txt/md/json 世界观文件
+async function handleBatchImport(): Promise<void> {
+  if (importLoading.value) return
+  importLoading.value = true
+  try {
+    const result = await window.characterArc.worldviewImport()
+    if (!result.success) {
+      if (!result.canceled) message.error(result.error ?? '导入失败')
+      return
+    }
+    const entries = result.entries ?? []
+    if (!entries.length) {
+      message.warning('所选文件中没有可导入的世界观词条')
+      return
+    }
+    let created = 0
+    for (const entry of entries) {
+      appStore.createWorldviewEntry({
+        type: entry.type || '地理',
+        title: entry.title,
+        content: entry.content,
+        tags: entry.tags ?? []
+      })
+      created += 1
+    }
+    if (result.warning) message.warning(`已导入 ${created} 条。${result.warning}`)
+    else message.success(`已导入 ${created} 条世界观词条`)
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '批量导入失败')
+  } finally {
+    importLoading.value = false
+  }
+}
+// 批量导出世界观词条为 txt / md / json
+async function handleBatchExport(format: 'txt' | 'md' | 'json'): Promise<void> {
+  const ids = selectedEntryIds.value
+  const entries = (ids.length ? filteredEntries.value.filter((e) => ids.includes(e.id)) : appStore.worldviewEntries)
+    .map((entry) => ({ type: entry.type, title: entry.title, content: entry.content, tags: entry.tags ?? [] }))
+  if (!entries.length) {
+    message.warning('当前没有可导出的世界观词条')
+    return
+  }
+  exportLoading.value = true
+  try {
+    const result = await window.characterArc.worldviewExport({ format, entries })
+    if (!result.success) {
+      if (!result.canceled) message.error(result.error ?? '导出失败')
+      return
+    }
+    message.success(`已导出 ${entries.length} 条世界观词条`)
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '导出失败')
+  } finally {
+    exportLoading.value = false
+  }
+}
+const exportMenuOptions: DropdownOption[] = [
+  { key: 'md', label: '导出为 Markdown' },
+  { key: 'txt', label: '导出为 TXT' },
+  { key: 'json', label: '导出为 JSON' }
+]
+function handleExportSelect(key: string | number): void {
+  void handleBatchExport(key as 'txt' | 'md' | 'json')
+}
+
+// ── 批量修改分类 / 标签 ──
+const batchEditVisible = ref(false)
+const batchEditForm = reactive({ type: '地理', tags: [] as string[] })
+function openBatchEdit(): void {
+  if (!selectedEntryIds.value.length) {
+    message.warning('请先勾选需要修改的世界观词条')
+    return
+  }
+  batchEditForm.type = '地理'
+  batchEditForm.tags = []
+  batchEditVisible.value = true
+}
+function submitBatchEdit(): void {
+  const ids = selectedEntryIds.value
+  if (!ids.length) return
+  if (batchEditForm.type) {
+    appStore.updateWorldviewEntriesType(ids, batchEditForm.type)
+  }
+  if (batchEditForm.tags.length) {
+    appStore.updateWorldviewEntriesTags(ids, batchEditForm.tags)
+  }
+  batchEditVisible.value = false
+  selectedEntryIds.value = []
+  message.success(`已批量更新 ${ids.length} 条世界观词条`)
 }
 
 const ENHANCE_TASK_KEY = 'worldview-enhance'
@@ -347,6 +446,16 @@ watch(
         <h2>世界观设定</h2>
       </div>
       <div class="head-actions">
+        <n-button secondary strong :loading="importLoading" @click="handleBatchImport">
+          <template #icon><Upload :size="16" /></template>
+          批量导入
+        </n-button>
+        <n-dropdown :options="exportMenuOptions" placement="bottom-end" @select="handleExportSelect">
+          <n-button secondary strong :loading="exportLoading">
+            <template #icon><Download :size="16" /></template>
+            批量导出
+          </n-button>
+        </n-dropdown>
         <n-button secondary strong :loading="isGenerating" @click="batchVisible = true">
           <template #icon><Sparkles :size="16" /></template>
           批量生成
@@ -389,6 +498,13 @@ watch(
       @clear="clearEntrySelection"
     />
 
+    <div v-if="selectedEntryIds.length > 0" class="batch-edit-row">
+      <n-button size="small" secondary strong @click="openBatchEdit">
+        <template #icon><Tags :size="14" /></template>
+        批量修改分类/标签 ({{ selectedEntryIds.length }})
+      </n-button>
+    </div>
+
     <BatchGenerateDialog
       :show="batchVisible"
       title="批量生成世界观"
@@ -430,6 +546,12 @@ watch(
         <div class="entry-main">
           <h3>{{ entry.title }}</h3>
           <p :title="entry.content">{{ entry.content }}</p>
+          <div v-if="(entry.tags ?? []).length" class="entry-tags">
+            <n-tag v-for="tag in (entry.tags ?? []).slice(0, 3)" :key="tag" size="tiny" :bordered="false">
+              {{ tag }}
+            </n-tag>
+            <span v-if="(entry.tags ?? []).length > 3" class="tag-overflow">+{{ (entry.tags ?? []).length - 3 }}</span>
+          </div>
         </div>
         <div class="entry-meta">
           <span>更新于 {{ formatEntryMetaTime(entry.updatedAt) }}</span>
@@ -464,6 +586,9 @@ watch(
             <n-form-item label="词条标题">
               <n-input v-model:value="form.title" placeholder="例如：新法则 / 地理区域 / 势力设定" />
             </n-form-item>
+            <n-form-item label="词条标签">
+              <n-dynamic-tags v-model:value="form.tags" placeholder="输入标签后回车" />
+            </n-form-item>
           </n-form>
         </div>
         <div class="arc-split-right">
@@ -496,6 +621,32 @@ watch(
 
       <template #footer>
         <span />
+      </template>
+    </n-modal>
+
+    <n-modal
+      :show="batchEditVisible"
+      preset="card"
+      style="width: min(460px, 92vw)"
+      title="批量修改分类/标签"
+      :bordered="false"
+      @close="batchEditVisible = false"
+    >
+      <n-form label-placement="top">
+        <n-form-item label="分类">
+          <n-select v-model:value="batchEditForm.type" :options="typeOptions" placeholder="选择要设置的分类" />
+        </n-form-item>
+        <n-form-item label="标签">
+          <n-dynamic-tags v-model:value="batchEditForm.tags" placeholder="输入标签后回车，可添加多个" />
+        </n-form-item>
+      </n-form>
+      <template #footer>
+        <div class="arc-modal-footer">
+          <div class="arc-modal-footer-right">
+            <n-button round strong @click="batchEditVisible = false">取消</n-button>
+            <n-button type="primary" round strong @click="submitBatchEdit">确认修改</n-button>
+          </div>
+        </div>
       </template>
     </n-modal>
 
@@ -687,6 +838,25 @@ watch(
   line-height: 1.5;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.entry-tags {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.tag-overflow {
+  color: var(--arc-text-hint);
+  font-size: 11px;
+}
+
+.batch-edit-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
 }
 
 .entry-meta {

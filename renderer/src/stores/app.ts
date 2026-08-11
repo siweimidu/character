@@ -1461,6 +1461,7 @@ export const useAppStore = defineStore('app', () => {
           content:
             payload?.content?.trim() ||
             '这里是新的世界观设定草稿。你可以继续补充时代背景、法则机制或地理环境细节。',
+          tags: Array.isArray(payload?.tags) ? payload.tags.map((tag) => String(tag).trim()).filter(Boolean).slice(0, 8) : [],
           sortOrder: payload?.sortOrder ?? 0,
           createdAt,
           updatedAt
@@ -1483,6 +1484,9 @@ export const useAppStore = defineStore('app', () => {
                 type: payload.type?.trim() || entry.type,
                 title: payload.title?.trim() || entry.title,
                 content: payload.content?.trim() || entry.content,
+                tags: Array.isArray(payload.tags)
+                  ? payload.tags.map((tag) => String(tag).trim()).filter(Boolean).slice(0, 8)
+                  : entry.tags,
                 updatedAt: toIsoTimestamp(payload.updatedAt || new Date().toISOString())
               }
             : entry
@@ -1508,6 +1512,42 @@ export const useAppStore = defineStore('app', () => {
       ...workspace,
       worldviewEntries: reindexWorldviewEntries(
         workspace.worldviewEntries.filter((entry) => !idSet.has(entry.id))
+      )
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 批量修改世界观词条分类（类型） */
+  function updateWorldviewEntriesType(entryIds: string[], type: string): void {
+    if (!entryIds.length) return
+    const idSet = new Set(entryIds)
+    const nextType = type.trim() || '地理'
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      worldviewEntries: reindexWorldviewEntries(
+        workspace.worldviewEntries.map((entry) =>
+          idSet.has(entry.id)
+            ? { ...entry, type: nextType, updatedAt: toIsoTimestamp(new Date().toISOString()) }
+            : entry
+        )
+      )
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 批量修改世界观词条标签 */
+  function updateWorldviewEntriesTags(entryIds: string[], tags: string[]): void {
+    if (!entryIds.length) return
+    const idSet = new Set(entryIds)
+    const nextTags = tags.map((tag) => String(tag).trim()).filter(Boolean).slice(0, 8)
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      worldviewEntries: reindexWorldviewEntries(
+        workspace.worldviewEntries.map((entry) =>
+          idSet.has(entry.id)
+            ? { ...entry, tags: nextTags, updatedAt: toIsoTimestamp(new Date().toISOString()) }
+            : entry
+        )
       )
     }))
     schedulePersist('fast')
@@ -3736,6 +3776,8 @@ export const useAppStore = defineStore('app', () => {
     deleteProject,
     deleteWorldviewEntry,
     deleteWorldviewEntries,
+    updateWorldviewEntriesTags,
+    updateWorldviewEntriesType,
     insertIntoChapter,
     importProjectData,
     importModuleData,

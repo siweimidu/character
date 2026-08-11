@@ -1,11 +1,12 @@
-export const WORLDVIEW_TYPES = ['地理', '法则', '物种', '势力', '历史'] as const
+export const WORLDVIEW_TYPES = ['时代背景', '地理', '势力', '法则', '物种', '历史'] as const
 
 const TYPE_ALIASES: Record<string, (typeof WORLDVIEW_TYPES)[number]> = {
-  geography: '地理', geographical: '地理', location: '地理', region: '地理', environment: '地理',
+  era: '时代背景', age: '时代背景', eraBackground: '时代背景', background: '时代背景',
+  geography: '地理', geographical: '地理', location: '地理', region: '地理', environment: '地理', terrain: '地理',
+  faction: '势力', power: '势力', organization: '势力', organisation: '势力', force: '势力',
   law: '法则', laws: '法则', rule: '法则', rules: '法则', principle: '法则',
   species: '物种', race: '物种', creature: '物种',
-  faction: '势力', power: '势力', organization: '势力', organisation: '势力',
-  history: '历史', historical: '历史', timeline: '历史'
+  history: '历史', historical: '历史', timeline: '历史', chronicle: '历史'
 }
 
 /** 将模型可能返回的英文分类归一为世界观面板使用的中文分类。 */

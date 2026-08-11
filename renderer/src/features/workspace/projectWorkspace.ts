@@ -43,6 +43,7 @@ function normalizeWorldviewEntries(worldviewEntries?: WorldviewEntry[]): Worldvi
 
     return {
       ...entry,
+      tags: Array.isArray(entry.tags) ? entry.tags.map((tag) => String(tag).trim()).filter(Boolean).slice(0, 8) : [],
       sortOrder: index,
       createdAt,
       updatedAt

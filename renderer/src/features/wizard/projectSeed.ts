@@ -186,6 +186,7 @@ export function createProjectWorkspaceSeedFromSpiral(
     type: normalizeWorldviewType(item.type, '法则'),
     title: item.title?.trim() || `设定条目 ${index + 1}`,
     content: item.content?.trim() || '待补充设定内容。',
+    tags: [],
     sortOrder: index,
     createdAt,
     updatedAt: createdAt
@@ -403,6 +404,7 @@ export function createProjectWorkspaceSeed(
     type: item.type?.trim() || '地理',
     title: item.title?.trim() || `设定条目 ${index + 1}`,
     content: item.content?.trim() || '待补充设定内容。',
+    tags: [],
     sortOrder: index,
     createdAt,
     updatedAt: createdAt

@@ -550,6 +550,20 @@ declare global {
         meta?: CharacterArcImportMeta
         error?: string
       }>
+      worldviewImport: () => Promise<{
+        success: boolean
+        canceled: boolean
+        entries?: Array<{ type: string; title: string; content: string; tags: string[] }>
+        fileCount?: number
+        warning?: string
+        error?: string
+      }>
+      worldviewExport: (payload: { format: 'txt' | 'md' | 'json'; entries?: Array<{ type: string; title: string; content: string; tags?: string[] }> }) => Promise<{
+        success: boolean
+        canceled: boolean
+        filePath?: string
+        error?: string
+      }>
       exportRelationsData: (payload: {
         dataType: 'organization' | 'membership' | 'relationship'
         format: 'json' | 'txt' | 'markdown' | 'excel'

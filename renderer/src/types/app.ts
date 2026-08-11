@@ -355,12 +355,14 @@ export interface ProjectSummary {
 export interface WorldviewEntry {
   /** 条目唯一标识 */
   id: string
-  /** 分类：地理 / 法则 / 物种 / 势力 / 历史 */
+  /** 分类：地理 / 法则 / 物种 / 势力 / 历史 / 时代背景等 */
   type: string
   /** 条目标题 */
   title: string
   /** 条目正文描述 */
   content: string
+  /** 筛选标签列表 */
+  tags: string[]
   /** 排序权重，数值越小越靠前 */
   sortOrder: number
   /** 创建时间 ISO 时间戳 */

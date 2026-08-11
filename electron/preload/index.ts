@@ -49,6 +49,10 @@ contextBridge.exposeInMainWorld('characterArc', {
   exportChapterDocx: (payload: unknown) => ipcRenderer.invoke('characterarc:export-chapter-docx', toIpcPayload(payload)),
   /** 从 JSON 文件导入项目数据 */
   importJson: () => ipcRenderer.invoke('characterarc:import-json'),
+  /** 批量导入世界观设定（txt/md/json） */
+  worldviewImport: () => ipcRenderer.invoke('characterarc:worldview-import'),
+  /** 批量导出世界观设定（txt/md/json） */
+  worldviewExport: (payload: unknown) => ipcRenderer.invoke('characterarc:worldview-export', toIpcPayload(payload)),
   /** 导出关系组织数据（组织势力/成员归属/人物关系）为指定格式 */
   exportRelationsData: (payload: unknown) => ipcRenderer.invoke('characterarc:export-relations-data', toIpcPayload(payload)),
   /** 导入关系组织数据（组织势力/成员归属/人物关系） */

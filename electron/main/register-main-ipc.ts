@@ -712,6 +712,179 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
   })
 
+  // ── 世界观批量导入 / 导出 ──
+  /**
+   * 解析 JSON 世界观数据。支持两种结构：
+   * - 数组：`[{ type, title, content, tags }]`
+   * - 对象：`{ entries: [...] }` 或 `{ worldviewEntries: [...] }`
+   */
+  function parseWorldviewJson(data: unknown): Array<{ type: string; title: string; content: string; tags: string[] }> {
+    const rawEntries = Array.isArray(data)
+      ? data
+      : Array.isArray((data as Record<string, unknown> | null)?.entries)
+        ? (data as Record<string, unknown>).entries as unknown[]
+        : Array.isArray((data as Record<string, unknown> | null)?.worldviewEntries)
+          ? (data as Record<string, unknown>).worldviewEntries as unknown[]
+          : []
+    return rawEntries
+      .map((item) => {
+        const record = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>
+        const title = String(record.title ?? '').trim()
+        if (!title) return null
+        const tagsRaw = Array.isArray(record.tags) ? record.tags : Array.isArray(record.tagsJson) ? record.tagsJson : []
+        return {
+          type: String(record.type ?? '地理').trim() || '地理',
+          title,
+          content: String(record.content ?? '').trim(),
+          tags: tagsRaw.map((tag) => String(tag).trim()).filter(Boolean).slice(0, 8)
+        }
+      })
+      .filter((entry): entry is { type: string; title: string; content: string; tags: string[] } => entry !== null)
+  }
+
+  /** 解析纯文本世界观（TXT/MD）：按二级标题或编号标题切分为词条 */
+  function parseWorldviewText(raw: string): Array<{ type: string; title: string; content: string; tags: string[] }> {
+    const lines = raw.split(/\r?\n/)
+    const entries: Array<{ type: string; title: string; content: string; tags: string[] }> = []
+    let current: { type: string; title: string; content: string; tags: string[] } | null = null
+
+    for (const line of lines) {
+      const trimmed = line.trim()
+      // 匹配 markdown 二级/三级标题，或普通行首的编号标题
+      const headingMatch = trimmed.match(/^#{2,3}\s+(.+)$/) || trimmed.match(/^(?:第?\s*[0-9一二三四五六七八九十]+[、\.\s])\s*(.+)$/)
+      if (headingMatch && !trimmed.startsWith('#')) {
+        // 编号标题
+        if (current) entries.push(current)
+        current = { type: '地理', title: headingMatch[1].trim(), content: '', tags: [] }
+        continue
+      }
+      if (trimmed.startsWith('#')) {
+        const title = headingMatch ? headingMatch[1].trim() : trimmed.replace(/^#+\s*/, '').trim()
+        if (!title) continue
+        if (current) entries.push(current)
+        current = { type: '地理', title, content: '', tags: [] }
+        continue
+      }
+      if (current) {
+        current.content = current.content ? `${current.content}\n${trimmed}` : trimmed
+      }
+    }
+    if (current) entries.push(current)
+    return entries.filter((entry) => entry.title)
+  }
+
+  ipcMain.handle('characterarc:worldview-import', async () => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) {
+      return { success: false, canceled: true }
+    }
+
+    const result = await dialog.showOpenDialog(window, {
+      title: '批量导入世界观设定',
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: '世界观文件 (txt/md/json)', extensions: ['txt', 'md', 'markdown', 'json'] },
+        { name: '所有文件', extensions: ['*'] }
+      ]
+    })
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, canceled: true }
+    }
+
+    const entries: Array<{ type: string; title: string; content: string; tags: string[] }> = []
+    const errors: string[] = []
+
+    for (const filePath of result.filePaths) {
+      try {
+        const raw = await readFile(filePath, 'utf-8')
+        const ext = basename(filePath).toLowerCase()
+        if (ext.endsWith('.json')) {
+          try {
+            entries.push(...parseWorldviewJson(JSON.parse(raw)))
+          } catch {
+            errors.push(`${basename(filePath)}：JSON 解析失败`)
+          }
+        } else {
+          entries.push(...parseWorldviewText(raw))
+        }
+      } catch {
+        errors.push(`${basename(filePath)}：读取失败`)
+      }
+    }
+
+    if (!entries.length) {
+      return {
+        success: false,
+        canceled: false,
+        error: errors.length ? errors.join('；') : '未能从所选文件中解析出任何世界观词条。'
+      }
+    }
+
+    return {
+      success: true,
+      canceled: false,
+      entries,
+      fileCount: result.filePaths.length,
+      warning: errors.length ? errors.join('；') : undefined
+    }
+  })
+
+  ipcMain.handle('characterarc:worldview-export', async (_event, payload: unknown) => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) {
+      return { success: false, canceled: true }
+    }
+
+    const request = (payload && typeof payload === 'object' ? payload : {}) as {
+      format?: 'txt' | 'md' | 'json'
+      entries?: Array<{ type: string; title: string; content: string; tags?: string[] }>
+    }
+    const format = request.format ?? 'json'
+    const entries = request.entries ?? []
+    const defaultPath = `世界观设定-${new Date().toISOString().slice(0, 10)}.${format === 'md' ? 'md' : format === 'txt' ? 'txt' : 'json'}`
+
+    const filterMap = {
+      txt: { name: '文本文档', extensions: ['txt'] },
+      md: { name: 'Markdown 文档', extensions: ['md'] },
+      json: { name: 'JSON 文件', extensions: ['json'] }
+    }
+
+    const result = await dialog.showSaveDialog(window, {
+      title: '导出世界观设定',
+      defaultPath,
+      filters: [filterMap[format]]
+    })
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true }
+    }
+
+    let content = ''
+    if (format === 'json') {
+      content = JSON.stringify(
+        { entries: entries.map((entry) => ({ type: entry.type, title: entry.title, content: entry.content, tags: entry.tags ?? [] })) },
+        null,
+        2
+      )
+    } else if (format === 'md') {
+      content = entries
+        .map((entry) => [`### ${entry.title}`, '', `**分类**：${entry.type}`, ...(entry.tags?.length ? [`**标签**：${entry.tags.join('、')}`] : []), '', entry.content || '（暂无内容）', ''].join('\n'))
+        .join('\n---\n\n')
+    } else {
+      content = entries
+        .map((entry) => {
+          const header = `【${entry.type}】${entry.title}`
+          const tagLine = entry.tags?.length ? `标签：${entry.tags.join('、')}` : ''
+          return [header, tagLine, '', entry.content || '（暂无内容）', ''].filter((line) => line !== '').join('\n')
+        })
+        .join('\n' + ''.padEnd(40, '-') + '\n\n')
+    }
+
+    await writeFile(result.filePath, content, 'utf-8')
+    return { success: true, canceled: false, filePath: result.filePath }
+  })
+
   // ── 人物卡片导入导出（兼容酒馆 SillyTavern 角色卡 V2） ──
   ipcMain.handle('characterarc:character-card-pick', async () => {
     const window = deps.windowManager.getActiveWindow()

@@ -87,6 +87,7 @@ export async function ensureWorkspaceDb(): Promise<DatabaseSync> {
       type TEXT NOT NULL,
       title TEXT NOT NULL,
       content TEXT NOT NULL,
+      tags_json TEXT NOT NULL DEFAULT '[]',
       sort_order INTEGER NOT NULL,
       created_at TEXT NOT NULL DEFAULT '',
       updated_at TEXT NOT NULL DEFAULT '',
@@ -376,6 +377,10 @@ export async function ensureWorkspaceDb(): Promise<DatabaseSync> {
 
   if (!worldviewColumnNames.has('updated_at')) {
     db.exec(`ALTER TABLE worldview_entries ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';`)
+  }
+
+  if (!worldviewColumnNames.has('tags_json')) {
+    db.exec(`ALTER TABLE worldview_entries ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]';`)
   }
 
   db.exec(`
@@ -935,10 +940,20 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
   }
 
   const worldviewEntries = db.prepare(`
-    SELECT project_id AS projectId, id, type, title, content, sort_order AS sortOrder, created_at AS createdAt, updated_at AS updatedAt
+    SELECT project_id AS projectId, id, type, title, content, tags_json AS tagsJson, sort_order AS sortOrder, created_at AS createdAt, updated_at AS updatedAt
     FROM worldview_entries
     ORDER BY project_id ASC, sort_order ASC
-  `).all() as Array<WorkspacePayload['workspaces'][string]['worldviewEntries'][number] & { projectId: string }>
+  `).all().map((row) => ({
+    projectId: row.projectId as string,
+    id: row.id as string,
+    type: row.type as string,
+    title: row.title as string,
+    content: row.content as string,
+    tags: parseJson(row.tagsJson as string, [] as string[]),
+    sortOrder: row.sortOrder as number,
+    createdAt: row.createdAt as string,
+    updatedAt: row.updatedAt as string
+  })) as Array<WorkspacePayload['workspaces'][string]['worldviewEntries'][number] & { projectId: string }>
 
   const characters = db.prepare(`
     SELECT project_id AS projectId, id, name, role, description, avatar, tags_json AS tagsJson
@@ -1436,8 +1451,8 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
     }
 
     const insertWorldview = db.prepare(`
-      INSERT OR REPLACE INTO worldview_entries (id, project_id, type, title, content, sort_order, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO worldview_entries (id, project_id, type, title, content, tags_json, sort_order, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     const insertCharacter = db.prepare(`
@@ -1552,6 +1567,7 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
           entry.type,
           entry.title,
           entry.content,
+          JSON.stringify(entry.tags ?? []),
           entry.sortOrder ?? index,
           entry.createdAt,
           entry.updatedAt

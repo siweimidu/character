@@ -720,6 +720,7 @@ function createContinuationProject(): void {
         type: entry.type || '其他',
         title: entry.title,
         content: entry.content,
+        tags: [],
         sortOrder: index,
         createdAt: now,
         updatedAt: now

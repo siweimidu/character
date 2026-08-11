@@ -188,6 +188,7 @@ export type WorkspacePayload = {
         type: string
         title: string
         content: string
+        tags: string[]
         sortOrder: number
         createdAt: string
         updatedAt: string
@@ -387,6 +388,7 @@ export type LegacyWorkspacePayload = Omit<WorkspacePayload, 'workspaces' | 'aiRu
     type: string
     title: string
     content: string
+    tags?: string[]
     sortOrder?: number
     createdAt?: string
     updatedAt?: string
@@ -724,6 +726,7 @@ export function normalizeWorkspacePayload(payload: WorkspacePayload | LegacyWork
           project.id === selectedProjectId
             ? (legacyPayload.worldviewEntries ?? []).map((entry, index) => ({
                 ...entry,
+                tags: Array.isArray(entry.tags) ? entry.tags : [],
                 sortOrder: entry.sortOrder ?? index,
                 createdAt: entry.createdAt || normalizedTimestamp,
                 updatedAt: entry.updatedAt || entry.createdAt || normalizedTimestamp
