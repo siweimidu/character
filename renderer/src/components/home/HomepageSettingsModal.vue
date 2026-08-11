@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { Copy, Cpu, Download, Image, MonitorCog, Moon, Network, Palette, PlugZap, Plus, RefreshCw, Trash2 } from 'lucide-vue-next'
+import { Activity, Copy, Cpu, Download, Image, MonitorCog, Moon, Network, Palette, PlugZap, Plus, RefreshCw, Trash2 } from 'lucide-vue-next'
 import { NButton, NFormItem, NInput, NInputNumber, NModal, NSelect, NSwitch, useMessage } from 'naive-ui'
 import { autoSaveOptions } from '@/features/settings/autoSave'
 import { getProviderPreset, providerOptions, resolveProviderDefaults } from '@/features/settings/providerPresets'
@@ -21,6 +21,8 @@ const emit = defineEmits<{
 const appStore = useAppStore()
 const message = useMessage()
 const isTestingAiConnection = ref(false)
+const isBenchmarkingModel = ref(false)
+const benchmarkResult = ref<{ latencyMs: number; tokensPerSec: number; completionTokens: number; promptTokens: number } | null>(null)
 const isTestingProxyConnection = ref(false)
 const proxyTestIp = ref('')
 const isFetchingModels = ref(false)
@@ -377,6 +379,32 @@ async function handleTestAiConnection(): Promise<void> {
   }
 }
 
+async function handleBenchmarkModel(): Promise<void> {
+  if (isBenchmarkingModel.value) return
+  isBenchmarkingModel.value = true
+  benchmarkResult.value = null
+  try {
+    const payload = buildProfilePayload()
+    if (!payload.model.trim()) throw new Error('请先填写模型名称后再进行性能测试。')
+    const result = await window.characterArc.benchmarkModel(toIpcPayload(payload))
+    if (!result.success) throw new Error(result.error ?? '模型性能测试失败')
+    const res = result.result
+    if (!res) throw new Error('模型性能测试未返回有效数据')
+    benchmarkResult.value = {
+      latencyMs: res.latencyMs,
+      tokensPerSec: res.tokensPerSec,
+      completionTokens: res.completionTokens,
+      promptTokens: res.promptTokens
+    }
+    message.success('模型性能测试完成')
+  } catch (error) {
+    benchmarkResult.value = null
+    message.error(error instanceof Error ? error.message : '模型性能测试失败')
+  } finally {
+    isBenchmarkingModel.value = false
+  }
+}
+
 async function saveSettings(): Promise<void> {
   const activeProfile = draftSettings.aiProfiles.find(p => p.id === draftSettings.activeAiProfileId)
   const nextSettings: AppSettings = {
@@ -588,6 +616,33 @@ async function saveSettings(): Promise<void> {
                 </template>
                 {{ isTestingAiConnection ? '测试中...' : '测试模型连接' }}
               </n-button>
+              <n-button
+                round
+                strong
+                secondary
+                :disabled="isBenchmarkingModel || isTestingAiConnection || !editingProfile?.model.trim()"
+                :title="'测速与测延迟，展示该模型每秒 token 数与毫秒级延迟'"
+                @click="handleBenchmarkModel"
+              >
+                <template #icon>
+                  <Activity :size="16" />
+                </template>
+                {{ isBenchmarkingModel ? '测试中...' : '测试模型性能' }}
+              </n-button>
+            </div>
+            <div v-if="benchmarkResult" class="benchmark-result">
+              <div class="benchmark-item">
+                <span class="benchmark-label">延迟</span>
+                <strong>{{ benchmarkResult.latencyMs.toFixed(0) }} ms</strong>
+              </div>
+              <div class="benchmark-item">
+                <span class="benchmark-label">测速</span>
+                <strong>{{ benchmarkResult.tokensPerSec.toFixed(1) }} tokens/s</strong>
+              </div>
+              <div class="benchmark-item">
+                <span class="benchmark-label">本次输出</span>
+                <strong>{{ benchmarkResult.completionTokens }} tokens</strong>
+              </div>
             </div>
           </template>
         </section>
@@ -976,6 +1031,33 @@ async function saveSettings(): Promise<void> {
   display: flex;
   gap: 12px;
   margin-top: 4px;
+}
+
+.benchmark-result {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.benchmark-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  background: var(--arc-bg-soft);
+}
+
+.benchmark-label {
+  font-size: 12px;
+  color: var(--arc-text-muted);
+}
+
+.benchmark-item strong {
+  font-size: 13px;
+  color: var(--arc-text);
 }
 
 /* ── Profile Tabs ── */

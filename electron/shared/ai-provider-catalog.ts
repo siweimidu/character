@@ -29,6 +29,9 @@ export const AI_PROVIDER_CATALOG: readonly AiProviderCatalogEntry[] = [
   { label: 'OpenCode Go', value: 'opencode-go', protocol: 'openai-chat', baseUrl: 'https://opencode.ai/zen/go/v1', model: '', customBaseUrl: false, supportsEmbedding: false, hint: 'Go 订阅接口，自动按模型选择 Responses、Messages 或 Chat Completions 协议。' },
   { label: 'OpenCode Zen', value: 'opencode-zen', protocol: 'openai-chat', baseUrl: 'https://opencode.ai/zen/v1', model: '', customBaseUrl: false, supportsEmbedding: false, hint: '自动按模型选择 Responses、Messages 或 Chat Completions 协议。' },
   { label: 'Ollama（本地）', value: 'ollama', protocol: 'openai-chat', baseUrl: 'http://localhost:11434/v1', model: '', customBaseUrl: false, supportsEmbedding: true, hint: '本地 Ollama 服务，不需要 API Key。' },
+  { label: 'LiteLLM（本地路由）', value: 'litellm', protocol: 'openai-chat', baseUrl: 'http://localhost:4000/v1', model: '', customBaseUrl: true, supportsEmbedding: false, hint: 'LiteLLM 本地模型路由（OpenAI 兼容），默认端口 4000，可在 /v1 拉取代理后的模型列表。' },
+  { label: 'OmniRoute（本地路由）', value: 'omniroute', protocol: 'openai-chat', baseUrl: 'http://localhost:3000/v1', model: '', customBaseUrl: true, supportsEmbedding: false, hint: 'OmniRoute 本地模型路由（OpenAI 兼容），默认端口 3000，可在 /v1 拉取路由后的模型列表。' },
+  { label: 'FreeLLMAPI（本地路由）', value: 'freellmapi', protocol: 'openai-chat', baseUrl: 'http://localhost:8080/v1', model: '', customBaseUrl: true, supportsEmbedding: false, hint: 'FreeLLMAPI 本地模型网关（OpenAI 兼容），默认端口 8080，可在 /v1 拉取可用模型。' },
   { label: '自定义 OpenAI 兼容接口', value: 'openai-compatible', protocol: 'openai-chat', baseUrl: '', model: '', customBaseUrl: true, supportsEmbedding: true, hint: '填写完整 API Base URL，例如 https://example.com/v1。' },
   { label: '自定义 Anthropic 兼容接口', value: 'anthropic-compatible', protocol: 'anthropic', baseUrl: '', model: '', customBaseUrl: true, supportsEmbedding: false, hint: '填写完整 API Base URL，系统将通过 Messages 协议调用。' }
 ]

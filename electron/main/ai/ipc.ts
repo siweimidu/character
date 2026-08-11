@@ -1,7 +1,7 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import { randomUUID } from 'node:crypto'
 import type { AiTaskPayload, AppSettings, ChapterPostGenerationIssuesPayload, ChapterPostGenerationTaskPayload, ChapterStateWarningsPayload } from './shared-types'
-import { runAiTask, streamAiTask, testAiConnection, fetchModels, fetchImageModels, generateImage } from './runtime'
+import { runAiTask, streamAiTask, testAiConnection, fetchModels, fetchImageModels, generateImage, benchmarkModel } from './runtime'
 import { runStreamingAgentTask } from './agent/streaming-orchestrator'
 import { isToolUseNotSupportedError } from './provider'
 import { setChapterPostGenerationIssuesEmitter, setChapterPostGenerationTaskEmitter, setChapterWarningsEmitter } from './runtime/orchestrator'
@@ -395,6 +395,15 @@ export function registerAiIpcHandlers(injectedDeps: AiIpcDeps): void {
       return { success: true, result }
     } catch (error) {
       return { success: false, error: formatAiErrorMessage(error, 'AI 连接测试失败') }
+    }
+  })
+
+  ipcMain.handle('characterarc:ai-benchmark-model', async (_event, settings: unknown) => {
+    try {
+      const result = await benchmarkModel(settings as AppSettings)
+      return { success: true, result }
+    } catch (error) {
+      return { success: false, error: formatAiErrorMessage(error, '模型性能测试失败') }
     }
   })
 

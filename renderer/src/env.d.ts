@@ -417,6 +417,16 @@ declare global {
         result?: unknown
         error?: string
       }>
+      benchmarkModel: (settings: unknown) => Promise<{
+        success: boolean
+        result?: {
+          latencyMs: number
+          tokensPerSec: number
+          completionTokens: number
+          promptTokens: number
+        }
+        error?: string
+      }>
       testProxyConnection: (proxyUrl: string) => Promise<{
         success: boolean
         result?: { ip: string }
