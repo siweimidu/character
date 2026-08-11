@@ -1807,6 +1807,19 @@ export const useAppStore = defineStore('app', () => {
     schedulePersist('fast')
   }
 
+  /** 批量删除组织成员归属 */
+  function deleteOrganizationMemberships(membershipIds: string[]): void {
+    if (!membershipIds.length) return
+    const idSet = new Set(membershipIds)
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      organizationMemberships: workspace.organizationMemberships.filter(
+        (membership) => !idSet.has(membership.id)
+      )
+    }))
+    schedulePersist('fast')
+  }
+
   // ── 灵感卡片 CRUD ──
   function normalizeInspirationTags(value: unknown): string[] {
     if (!Array.isArray(value)) return []
@@ -3511,6 +3524,7 @@ export const useAppStore = defineStore('app', () => {
     deleteInspirationEntries,
     deleteOrganization,
     deleteOrganizationMembership,
+    deleteOrganizationMemberships,
     deleteOrganizations,
     deleteOutlineItem,
     deleteOutlineItems,

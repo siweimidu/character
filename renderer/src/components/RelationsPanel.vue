@@ -3,6 +3,8 @@ import { computed, reactive, ref } from 'vue'
 import {
   Building2,
   ChevronDown,
+  Download,
+  FileUp,
   Link2,
   Network,
   PencilLine,
@@ -44,6 +46,7 @@ const activeListSection = ref<ListSection>('organizations')
 // 批量删除：组织与关系各自的已选 ID 集合
 const selectedOrganizationIds = ref<string[]>([])
 const selectedRelationshipIds = ref<string[]>([])
+const selectedMembershipIds = ref<string[]>([])
 const membershipGroupMode = ref<MembershipGroupMode>('organization')
 const membershipOrganizationFilter = ref<string | null>(null)
 const membershipCollapsed = reactive<Record<string, boolean>>({})
@@ -431,6 +434,44 @@ function clearRelationshipSelection(): void {
   selectedRelationshipIds.value = []
 }
 
+// ── 批量删除：成员归属 ──
+const selectedMembershipIdSet = computed(() => new Set(selectedMembershipIds.value))
+const filteredMembershipIds = computed(() => filteredMemberships.value.map((m) => m.id))
+const batchDeleteAllMemberships = computed(
+  () => filteredMemberships.value.length > 0 && selectedMembershipIds.value.length === filteredMemberships.value.length
+)
+function toggleSelectMembership(membershipId: string): void {
+  selectedMembershipIds.value = selectedMembershipIds.value.includes(membershipId)
+    ? selectedMembershipIds.value.filter((id) => id !== membershipId)
+    : [...selectedMembershipIds.value, membershipId]
+}
+function toggleSelectAllMemberships(): void {
+  selectedMembershipIds.value =
+    batchDeleteAllMemberships.value
+      ? []
+      : filteredMembershipIds.value
+}
+function handleBatchDeleteMemberships(): void {
+  const ids = selectedMembershipIds.value
+  if (!ids.length) return
+  dialog.warning({
+    title: '确认批量删除',
+    content: `确定要删除选中的 ${ids.length} 条成员归属吗？删除后无法恢复。`,
+    positiveText: '确认删除',
+    negativeText: '取消',
+    autoFocus: false,
+    closable: false,
+    onPositiveClick: () => {
+      appStore.deleteOrganizationMemberships(ids)
+      selectedMembershipIds.value = []
+      message.success(`已删除 ${ids.length} 条成员归属`)
+    }
+  })
+}
+function clearMembershipSelection(): void {
+  selectedMembershipIds.value = []
+}
+
 function confirmDeleteOrganization(organization: OrganizationEntry): void {
   dialog.warning({
     title: '确认删除组织',
@@ -648,6 +689,206 @@ const createActionOptions = computed<DropdownOption[]>(() => [
     disabled: appStore.characters.length === 0 || appStore.organizations.length === 0
   }
 ])
+
+const importActionOptions = computed<DropdownOption[]>(() => [
+  { key: 'organization', label: '导入组织势力' },
+  { key: 'membership', label: '导入成员归属' },
+  { key: 'relationship', label: '导入人物关系' }
+])
+
+const exportActionOptions = computed<DropdownOption[]>(() => [
+  { key: 'organization', label: '导出组织势力' },
+  { key: 'membership', label: '导出成员归属' },
+  { key: 'relationship', label: '导出人物关系' }
+])
+
+const formatActionOptions = computed<DropdownOption[]>(() => [
+  { key: 'json', label: 'JSON' },
+  { key: 'txt', label: 'TXT' },
+  { key: 'markdown', label: 'Markdown' },
+  { key: 'excel', label: 'Excel' }
+])
+
+// 导出状态：记录当前待导出的数据类型，选择格式时执行
+const pendingExportType = ref<'organization' | 'membership' | 'relationship' | null>(null)
+
+async function handleImportAction(key: string | number): Promise<void> {
+  if (key === 'organization') {
+    const result = await window.characterArc.importRelationsData({ dataType: 'organization' })
+    if (result.canceled || !result.data) return
+    importOrganizationsFromData(result.data)
+  } else if (key === 'membership') {
+    const result = await window.characterArc.importRelationsData({ dataType: 'membership' })
+    if (result.canceled || !result.data) return
+    importMembershipsFromData(result.data)
+  } else if (key === 'relationship') {
+    const result = await window.characterArc.importRelationsData({ dataType: 'relationship' })
+    if (result.canceled || !result.data) return
+    importRelationshipsFromData(result.data)
+  }
+}
+
+function formatDescription(format: string): string {
+  const descriptions: Record<string, string> = {
+    json: '结构化的 JSON 文件',
+    txt: '纯文本文档',
+    markdown: 'Markdown 表格',
+    excel: 'Excel 电子表格'
+  }
+  return descriptions[format] || ''
+}
+
+async function handleExportSelect(key: string | number): Promise<void> {
+  if (key === 'organization' || key === 'membership' || key === 'relationship') {
+    pendingExportType.value = key
+    return
+  }
+  if (!pendingExportType.value) return
+  const format = String(key) as 'json' | 'txt' | 'markdown' | 'excel'
+  const dataType = pendingExportType.value
+  pendingExportType.value = null
+
+  let payload: Parameters<typeof window.characterArc.exportRelationsData>[0] = {
+    dataType,
+    format,
+    projectTitle: appStore.currentProject?.title ?? ''
+  }
+
+  if (dataType === 'organization') {
+    payload.organizations = appStore.organizations.map((org) => ({
+      id: org.id,
+      name: org.name,
+      type: org.type,
+      description: org.description,
+      motto: org.motto,
+      color: org.color
+    }))
+  } else if (dataType === 'membership') {
+    payload.memberships = appStore.organizationMemberships.map((m) => {
+      const character = characterMap.value.get(m.characterId)
+      const organization = organizationMap.value.get(m.organizationId)
+      return {
+        id: m.id,
+        characterId: m.characterId,
+        organizationId: m.organizationId,
+        characterName: character?.name ?? '',
+        organizationName: organization?.name ?? '',
+        role: m.role,
+        notes: m.notes
+      }
+    })
+  } else if (dataType === 'relationship') {
+    payload.relationships = appStore.characterRelationships.map((rel) => {
+      const from = characterMap.value.get(rel.fromCharacterId)
+      const to = characterMap.value.get(rel.toCharacterId)
+      return {
+        id: rel.id,
+        fromCharacterId: rel.fromCharacterId,
+        toCharacterId: rel.toCharacterId,
+        fromCharacterName: from?.name ?? '',
+        toCharacterName: to?.name ?? '',
+        type: rel.type,
+        description: rel.description,
+        intensity: rel.intensity
+      }
+    })
+  }
+
+  const result = await window.characterArc.exportRelationsData(payload)
+  if (result.success) {
+    message.success('导出成功')
+  } else if (result.canceled) {
+    // User cancelled - no message needed
+  } else {
+    message.error(result.error || '导出失败')
+  }
+}
+
+function importOrganizationsFromData(data: unknown[]): void {
+  let imported = 0
+  data.forEach((item) => {
+    const record = item as Record<string, unknown>
+    const name = String(record['组织名称'] ?? record['name'] ?? record['名称'] ?? '').trim()
+    if (!name) return
+    // Check for duplicates
+    const existingName = appStore.organizations.some((org) => org.name === name)
+    if (existingName) return
+    appStore.createOrganization({
+      name,
+      type: String(record['组织类型'] ?? record['type'] ?? record['类型'] ?? '中立势力').trim(),
+      description: String(record['组织描述'] ?? record['description'] ?? record['描述'] ?? '').trim(),
+      motto: String(record['口号'] ?? record['motto'] ?? '').trim(),
+      color: String(record['主色调'] ?? record['color'] ?? '').trim()
+    })
+    imported += 1
+  })
+  message.success(imported > 0 ? `已导入 ${imported} 个组织` : '没有可导入的组织（可能已存在重名）')
+}
+
+function importMembershipsFromData(data: unknown[]): void {
+  let imported = 0
+  data.forEach((item) => {
+    const record = item as Record<string, unknown>
+    const characterName = String(record['角色'] ?? record['characterName'] ?? record['character_name'] ?? '').trim()
+    const orgName = String(record['组织'] ?? record['organizationName'] ?? record['organization_name'] ?? '').trim()
+    const role = String(record['组织身份'] ?? record['role'] ?? record['身份'] ?? '').trim()
+    const notes = String(record['备注'] ?? record['notes'] ?? '').trim()
+
+    const character = appStore.characters.find((c) => c.name === characterName)
+    const organization = appStore.organizations.find((o) => o.name === orgName)
+    if (!character || !organization) return
+    if (!role) return
+
+    // Check for duplicates
+    const exists = appStore.organizationMemberships.some(
+      (m) => m.characterId === character.id && m.organizationId === organization.id && m.role === role
+    )
+    if (exists) return
+
+    appStore.createOrganizationMembership({
+      characterId: character.id,
+      organizationId: organization.id,
+      role,
+      notes
+    })
+    imported += 1
+  })
+  message.success(imported > 0 ? `已导入 ${imported} 条成员归属` : '没有可导入的归属（角色或组织可能不存在）')
+}
+
+function importRelationshipsFromData(data: unknown[]): void {
+  let imported = 0
+  data.forEach((item) => {
+    const record = item as Record<string, unknown>
+    const fromName = String(record['角色A'] ?? record['fromCharacterName'] ?? record['from'] ?? '').trim()
+    const toName = String(record['角色B'] ?? record['toCharacterName'] ?? record['to'] ?? '').trim()
+    const type = String(record['关系类型'] ?? record['type'] ?? record['类型'] ?? '').trim()
+    const description = String(record['描述'] ?? record['description'] ?? '').trim()
+    const intensity = Math.max(0, Math.min(100, Number(record['强度'] ?? record['intensity'] ?? 50) || 50))
+
+    const fromChar = appStore.characters.find((c) => c.name === fromName)
+    const toChar = appStore.characters.find((c) => c.name === toName)
+    if (!fromChar || !toChar || fromChar.id === toChar.id) return
+    if (!type) return
+
+    // Check for duplicates
+    const exists = appStore.characterRelationships.some(
+      (r) => (r.fromCharacterId === fromChar.id && r.toCharacterId === toChar.id) ||
+             (r.fromCharacterId === toChar.id && r.toCharacterId === fromChar.id)
+    )
+    if (exists) return
+
+    appStore.createCharacterRelationship({
+      fromCharacterId: fromChar.id,
+      toCharacterId: toChar.id,
+      type,
+      description: description || '补充两人之间的关系张力。',
+      intensity
+    })
+    imported += 1
+  })
+  message.success(imported > 0 ? `已导入 ${imported} 条人物关系` : '没有可导入的关系（角色可能不存在）')
+}
 
 const aiActionOptions = computed<DropdownOption[]>(() => [
   { key: 'organization', label: isGeneratingOrg.value ? '正在生成组织...' : 'AI 生成组织', disabled: isGeneratingOrg.value },
@@ -1040,6 +1281,20 @@ function handleEnhanceMemApply(accepted: Record<string, string | string[]>): voi
             <ChevronDown :size="14" class="button-chevron" />
           </n-button>
         </n-dropdown>
+        <n-dropdown trigger="click" :options="importActionOptions" @select="handleImportAction">
+          <n-button strong secondary>
+            <template #icon><FileUp :size="16" /></template>
+            导入
+            <ChevronDown :size="14" class="button-chevron" />
+          </n-button>
+        </n-dropdown>
+        <n-dropdown trigger="click" :options="exportActionOptions" @select="handleExportSelect">
+          <n-button strong secondary>
+            <template #icon><Download :size="16" /></template>
+            导出
+            <ChevronDown :size="14" class="button-chevron" />
+          </n-button>
+        </n-dropdown>
       </div>
     </div>
 
@@ -1190,6 +1445,16 @@ function handleEnhanceMemApply(accepted: Record<string, string | string[]>): voi
           </n-button>
         </div>
 
+        <BatchDeleteBar
+          v-if="filteredMemberships.length > 0"
+          :selected-count="selectedMembershipIds.length"
+          :total-count="filteredMemberships.length"
+          item-label="成员归属"
+          :all-selected="batchDeleteAllMemberships"
+          @toggle-all="toggleSelectAllMemberships"
+          @delete-selected="handleBatchDeleteMemberships"
+          @clear="clearMembershipSelection"
+        />
         <div v-if="membershipGroups.length > 0" class="membership-groups">
           <section v-for="group in membershipGroups" :key="group.key" class="membership-group">
             <button
@@ -1213,12 +1478,20 @@ function handleEnhanceMemApply(accepted: Record<string, string | string[]>): voi
 
             <div v-show="!membershipCollapsed[group.key]" class="membership-table" role="table">
               <div class="membership-table-head" role="row">
+                <span role="columnheader" class="membership-check-col"></span>
                 <span role="columnheader">{{ membershipEntityColumnLabel }}</span>
                 <span role="columnheader">组织身份</span>
                 <span role="columnheader">备注</span>
                 <span role="columnheader">操作</span>
               </div>
               <div v-for="membership in group.items" :key="membership.id" class="membership-table-row" role="row">
+                <span class="membership-check-col" role="cell" @click.stop>
+                  <input
+                    type="checkbox"
+                    :checked="selectedMembershipIdSet.has(membership.id)"
+                    @change="toggleSelectMembership(membership.id)"
+                  />
+                </span>
                 <strong class="membership-entity" role="cell">
                   {{ membershipGroupMode === 'organization' ? membership.characterName : membership.organizationName }}
                 </strong>
@@ -1543,6 +1816,33 @@ function handleEnhanceMemApply(accepted: Record<string, string | string[]>): voi
       @apply="handleEnhanceMemApply"
       @close="enhanceMemVisible = false"
     />
+
+    <n-modal
+      :show="pendingExportType !== null"
+      preset="card"
+      class="arc-editor-modal"
+      title="选择导出格式"
+      :bordered="false"
+      @close="pendingExportType = null"
+    >
+      <div class="export-format-grid">
+        <button
+          v-for="option in formatActionOptions"
+          :key="String(option.key)"
+          class="export-format-card"
+          type="button"
+          @click="handleExportSelect(option.key ?? '')"
+        >
+          <strong>{{ option.label }}</strong>
+          <span>{{ formatDescription(String(option.key ?? '')) }}</span>
+        </button>
+      </div>
+      <template #footer>
+        <div class="arc-modal-actions">
+          <n-button round strong @click="pendingExportType = null">取消</n-button>
+        </div>
+      </template>
+    </n-modal>
   </section>
 </template>
 
@@ -2053,10 +2353,23 @@ function handleEnhanceMemApply(accepted: Record<string, string | string[]>): voi
 .membership-table-head,
 .membership-table-row {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) minmax(120px, 0.8fr) minmax(220px, 2fr) 82px;
+  grid-template-columns: 30px minmax(150px, 1fr) minmax(120px, 0.8fr) minmax(220px, 2fr) 82px;
   align-items: center;
   gap: 12px;
   padding: 0 12px;
+}
+
+.membership-check-col {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.membership-check-col input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--arc-danger);
+  cursor: pointer;
 }
 
 .membership-table-head {
@@ -2243,6 +2556,11 @@ function handleEnhanceMemApply(accepted: Record<string, string | string[]>): voi
     padding: 10px 12px;
   }
 
+  .membership-check-col {
+    grid-column: 1;
+    justify-self: start;
+  }
+
   .membership-role {
     grid-column: 1;
     justify-self: end;
@@ -2263,5 +2581,49 @@ function handleEnhanceMemApply(accepted: Record<string, string | string[]>): voi
 <style>
 .batch-relation-modal {
   width: min(560px, calc(100vw - 32px));
+}
+
+.export-format-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.export-format-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-primary);
+  padding: 16px;
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    transform 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.export-format-card:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--arc-primary) 28%, var(--arc-border));
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
+}
+
+.export-format-card strong {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.export-format-card span {
+  color: var(--arc-text-secondary);
+  font-size: 12px;
+}
+
+@media (max-width: 600px) {
+  .export-format-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

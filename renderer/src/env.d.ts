@@ -529,6 +529,28 @@ declare global {
         meta?: CharacterArcImportMeta
         error?: string
       }>
+      exportRelationsData: (payload: {
+        dataType: 'organization' | 'membership' | 'relationship'
+        format: 'json' | 'txt' | 'markdown' | 'excel'
+        organizations?: Array<{ id?: string; name?: string; type?: string; description?: string; motto?: string; color?: string }>
+        memberships?: Array<{ id?: string; characterId?: string; organizationId?: string; role?: string; notes?: string; characterName?: string; organizationName?: string }>
+        relationships?: Array<{ id?: string; fromCharacterId?: string; toCharacterId?: string; type?: string; description?: string; intensity?: number; fromCharacterName?: string; toCharacterName?: string }>
+        projectTitle?: string
+      }) => Promise<{
+        success: boolean
+        canceled: boolean
+        filePath?: string
+        error?: string
+      }>
+      importRelationsData: (payload: {
+        dataType: 'organization' | 'membership' | 'relationship'
+      }) => Promise<{
+        success: boolean
+        canceled: boolean
+        fileName?: string
+        data?: unknown[]
+        error?: string
+      }>
       importOutlineSpreadsheet: () => Promise<{
         success: boolean
         canceled: boolean

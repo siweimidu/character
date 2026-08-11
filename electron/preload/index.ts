@@ -49,6 +49,10 @@ contextBridge.exposeInMainWorld('characterArc', {
   exportChapterDocx: (payload: unknown) => ipcRenderer.invoke('characterarc:export-chapter-docx', toIpcPayload(payload)),
   /** 从 JSON 文件导入项目数据 */
   importJson: () => ipcRenderer.invoke('characterarc:import-json'),
+  /** 导出关系组织数据（组织势力/成员归属/人物关系）为指定格式 */
+  exportRelationsData: (payload: unknown) => ipcRenderer.invoke('characterarc:export-relations-data', toIpcPayload(payload)),
+  /** 导入关系组织数据（组织势力/成员归属/人物关系） */
+  importRelationsData: (payload: unknown) => ipcRenderer.invoke('characterarc:import-relations-data', toIpcPayload(payload)),
   /** 读取 Excel/CSV 大纲文件并返回二维表数据 */
   importOutlineSpreadsheet: () => ipcRenderer.invoke('characterarc:import-outline-spreadsheet'),
   /** 下载标准大纲 Excel 模板 */

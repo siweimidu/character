@@ -2,7 +2,20 @@
 import cytoscape from 'cytoscape'
 import type { StylesheetJson } from 'cytoscape'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Building2, Link2, Network, Search, Sparkles, Target, Users } from 'lucide-vue-next'
+import {
+  Building2,
+  Camera,
+  Link2,
+  Maximize2,
+  Minimize2,
+  Network,
+  Search,
+  Sparkles,
+  Target,
+  Users,
+  ZoomIn,
+  ZoomOut
+} from 'lucide-vue-next'
 import {
   buildCharacterOrganizationLabels,
   buildOrganizationMemberIds,
@@ -45,6 +58,7 @@ let cy: cytoscape.Core | null = null
 let lastTappedNodeId: string | null = null
 let lastTappedAt = 0
 let renderFrameId: number | null = null
+const isFullscreen = ref(false)
 
 const filteredGraph = computed(() =>
   filterRelationsGraph(props.graph, {
@@ -233,6 +247,10 @@ onBeforeUnmount(() => {
     window.cancelAnimationFrame(renderFrameId)
     renderFrameId = null
   }
+  if (containerRef.value) {
+    containerRef.value.removeEventListener('mousedown', handleMouseDown)
+    containerRef.value.removeEventListener('contextmenu', handleCanvasContextMenu)
+  }
   if (cy) {
     cy.destroy()
     cy = null
@@ -251,6 +269,71 @@ function scheduleGraphRender(): void {
 
 function toggleHighIntensityOnly(): void {
   highIntensityOnly.value = !highIntensityOnly.value
+}
+
+function toggleFullscreen(): void {
+  isFullscreen.value = !isFullscreen.value
+  // When entering/leaving fullscreen, re-fit the graph after a tick
+  setTimeout(() => {
+    if (cy) {
+      cy.resize()
+      cy.fit(cy.elements(), 60)
+      syncNodeLabels()
+    }
+  }, 80)
+}
+
+function zoomIn(): void {
+  if (!cy) return
+  const currentZoom = cy.zoom()
+  const nextZoom = Math.min(currentZoom * 1.2, cy.maxZoom())
+  cy.animate({
+    zoom: nextZoom,
+    duration: 180
+  })
+  syncNodeLabels()
+}
+
+function zoomOut(): void {
+  if (!cy) return
+  const currentZoom = cy.zoom()
+  const nextZoom = Math.max(currentZoom * 0.8, cy.minZoom())
+  cy.animate({
+    zoom: nextZoom,
+    duration: 180
+  })
+  syncNodeLabels()
+}
+
+function saveGraphImage(): void {
+  if (!cy || !containerRef.value) return
+  const pngDataUrl = cy.png({
+    full: true,
+    scale: 2,
+    bg: isDarkMode.value ? '#0f1418' : '#ffffff'
+  })
+  window.characterArc.saveCoverImage({
+    dataUrl: pngDataUrl,
+    defaultFileName: `关系图谱-${Date.now()}.png`
+  }).then((result) => {
+    if (result.success && result.filePath) {
+      // Show a subtle confirmation using message
+    }
+  }).catch(() => {})
+}
+
+function handleMouseDown(event: MouseEvent): void {
+  // Middle mouse button pan
+  if (event.button === 1 && cy) {
+    event.preventDefault()
+    // Cytoscape already handles middle mouse button pan by default
+    // Just prevent default browser behavior
+  }
+}
+
+function handleCanvasContextMenu(event: MouseEvent): void {
+  // Prevent default browser context menu on the graph
+  event.preventDefault()
 }
 
 function revealInList(): void {
@@ -356,6 +439,10 @@ function renderGraph(): void {
   cy.on('render pan zoom resize layoutstop dragfree position bounds', () => {
     syncNodeLabels()
   })
+
+  // Middle mouse button pan support (Cytoscape handles it by default with boxSelectionEnabled: false)
+  containerRef.value.addEventListener('mousedown', handleMouseDown)
+  containerRef.value.addEventListener('contextmenu', handleCanvasContextMenu)
 
   applyFocusClasses(false)
   syncNodeLabels()
@@ -786,7 +873,7 @@ function syncNodeLabels(): void {
     </div>
 
     <div v-if="displayGraph.nodes.length > 0" class="graph-body">
-      <div class="graph-stage">
+      <div class="graph-stage" :class="{ 'graph-stage-fullscreen': isFullscreen }">
         <div class="graph-canvas-shell">
           <div ref="containerRef" class="graph-canvas"></div>
           <div class="graph-node-label-layer" aria-hidden="true">
@@ -800,6 +887,21 @@ function syncNodeLabels(): void {
               @click="selectNode(label.id)"
             >
               {{ label.label }}
+            </button>
+          </div>
+
+          <div class="graph-controls">
+            <button class="graph-control-btn" type="button" title="缩小 20%" aria-label="缩小 20%" @click="zoomOut">
+              <ZoomOut :size="16" />
+            </button>
+            <button class="graph-control-btn" type="button" title="放大 20%" aria-label="放大 20%" @click="zoomIn">
+              <ZoomIn :size="16" />
+            </button>
+            <button class="graph-control-btn" type="button" title="保存为图片" aria-label="保存为图片" @click="saveGraphImage">
+              <Camera :size="16" />
+            </button>
+            <button class="graph-control-btn" type="button" :title="isFullscreen ? '退出全屏' : '进入全屏'" :aria-label="isFullscreen ? '退出全屏' : '进入全屏'" @click="toggleFullscreen">
+              <component :is="isFullscreen ? Minimize2 : Maximize2" :size="16" />
             </button>
           </div>
         </div>
@@ -1308,6 +1410,7 @@ function syncNodeLabels(): void {
 }
 
 .graph-stage {
+  position: relative;
   overflow: hidden;
   padding: 18px;
   background: var(--arc-bg-surface);
@@ -1315,6 +1418,69 @@ function syncNodeLabels(): void {
 
 .graph-canvas-shell {
   position: relative;
+}
+
+.graph-controls {
+  position: absolute;
+  right: 24px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--arc-bg-surface) 92%, transparent);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.14);
+  z-index: 10;
+}
+
+.graph-control-btn {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--arc-border);
+  border-radius: 6px;
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    color 0.16s ease,
+    background 0.16s ease,
+    transform 0.16s ease;
+}
+
+.graph-control-btn:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--arc-primary) 28%, var(--arc-border));
+  color: var(--arc-primary);
+  background: color-mix(in srgb, var(--arc-primary) 8%, var(--arc-bg-surface));
+}
+
+.graph-stage-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  border-radius: 0;
+  margin: 0;
+  overflow: hidden;
+  background: var(--arc-bg-surface);
+  padding: 16px;
+}
+
+.graph-stage-fullscreen .graph-canvas-shell {
+  height: 100%;
+}
+
+.graph-stage-fullscreen .graph-canvas {
+  height: calc(100vh - 100px);
+  border-radius: 0;
+}
+
+.graph-stage-fullscreen + .detail-card {
+  display: none;
 }
 
 .graph-canvas {

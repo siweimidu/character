@@ -734,6 +734,294 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
   })
 
+  // ── 关系组织数据批量导入/导出 ──
+  ipcMain.handle('characterarc:export-relations-data', async (_event, payload: unknown) => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) {
+      return { success: false, canceled: true }
+    }
+
+    const request = (payload ?? {}) as {
+      dataType: 'organization' | 'membership' | 'relationship'
+      format: 'json' | 'txt' | 'markdown' | 'excel'
+      organizations?: Array<{ id?: string; name?: string; type?: string; description?: string; motto?: string; color?: string }>
+      memberships?: Array<{ id?: string; characterId?: string; organizationId?: string; role?: string; notes?: string; characterName?: string; organizationName?: string }>
+      relationships?: Array<{ id?: string; fromCharacterId?: string; toCharacterId?: string; type?: string; description?: string; intensity?: number; fromCharacterName?: string; toCharacterName?: string }>
+      projectTitle?: string
+    }
+
+    const dataType = request.dataType || 'organization'
+    const format = request.format || 'json'
+    const projectTitle = String(request.projectTitle || 'CharacterArc').replace(/[\\/:*?"<>|]/g, '-').trim() || 'CharacterArc'
+
+    let defaultFileName = ''
+    let filters: Array<{ name: string; extensions: string[] }> = []
+    let fileContent: Buffer | string = ''
+
+    // Build the exported content based on data type and format
+    if (dataType === 'organization') {
+      const orgs = request.organizations ?? []
+      if (format === 'json') {
+        defaultFileName = `${projectTitle}-组织势力.json`
+        filters = [{ name: 'JSON 文件', extensions: ['json'] }]
+        fileContent = JSON.stringify(orgs, null, 2)
+      } else if (format === 'txt') {
+        defaultFileName = `${projectTitle}-组织势力.txt`
+        filters = [{ name: '文本文档', extensions: ['txt'] }]
+        fileContent = orgs.map((org) => [
+          `名称: ${org.name || ''}`,
+          `类型: ${org.type || ''}`,
+          `描述: ${org.description || ''}`,
+          `口号: ${org.motto || ''}`,
+          '---'
+        ].join('\n')).join('\n\n')
+      } else if (format === 'markdown') {
+        defaultFileName = `${projectTitle}-组织势力.md`
+        filters = [{ name: 'Markdown 文件', extensions: ['md', 'markdown'] }]
+        fileContent = [
+          `# ${projectTitle} - 组织势力`,
+          '',
+          '| 名称 | 类型 | 口号 | 描述 |',
+          '|------|------|------|------|',
+          ...orgs.map((org) => `| ${String(org.name || '').replace(/\|/g, '\\|')} | ${String(org.type || '').replace(/\|/g, '\\|')} | ${String(org.motto || '').replace(/\|/g, '\\|')} | ${String(org.description || '').replace(/\|/g, '\\|')} |`)
+        ].join('\n')
+      } else if (format === 'excel') {
+        defaultFileName = `${projectTitle}-组织势力.xlsx`
+        filters = [{ name: 'Excel 工作簿', extensions: ['xlsx'] }]
+        const workbook = XLSX.utils.book_new()
+        const sheet = XLSX.utils.json_to_sheet(orgs.map((org) => ({
+          组织名称: org.name || '',
+          组织类型: org.type || '',
+          组织描述: org.description || '',
+          口号: org.motto || '',
+          主色调: org.color || ''
+        })))
+        sheet['!cols'] = [{ wch: 20 }, { wch: 16 }, { wch: 50 }, { wch: 30 }, { wch: 12 }]
+        XLSX.utils.book_append_sheet(workbook, sheet, '组织势力')
+        fileContent = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+      }
+    } else if (dataType === 'membership') {
+      const memberships = request.memberships ?? []
+      if (format === 'json') {
+        defaultFileName = `${projectTitle}-成员归属.json`
+        filters = [{ name: 'JSON 文件', extensions: ['json'] }]
+        fileContent = JSON.stringify(memberships, null, 2)
+      } else if (format === 'txt') {
+        defaultFileName = `${projectTitle}-成员归属.txt`
+        filters = [{ name: '文本文档', extensions: ['txt'] }]
+        fileContent = memberships.map((m) => [
+          `角色: ${m.characterName || m.characterId || ''}`,
+          `组织: ${m.organizationName || m.organizationId || ''}`,
+          `身份: ${m.role || ''}`,
+          `备注: ${m.notes || ''}`,
+          '---'
+        ].join('\n')).join('\n\n')
+      } else if (format === 'markdown') {
+        defaultFileName = `${projectTitle}-成员归属.md`
+        filters = [{ name: 'Markdown 文件', extensions: ['md', 'markdown'] }]
+        fileContent = [
+          `# ${projectTitle} - 成员归属`,
+          '',
+          '| 角色 | 组织 | 身份 | 备注 |',
+          '|------|------|------|------|',
+          ...memberships.map((m) => `| ${String(m.characterName || m.characterId || '').replace(/\|/g, '\\|')} | ${String(m.organizationName || m.organizationId || '').replace(/\|/g, '\\|')} | ${String(m.role || '').replace(/\|/g, '\\|')} | ${String(m.notes || '').replace(/\|/g, '\\|')} |`)
+        ].join('\n')
+      } else if (format === 'excel') {
+        defaultFileName = `${projectTitle}-成员归属.xlsx`
+        filters = [{ name: 'Excel 工作簿', extensions: ['xlsx'] }]
+        const workbook = XLSX.utils.book_new()
+        const sheet = XLSX.utils.json_to_sheet(memberships.map((m) => ({
+          角色: m.characterName || m.characterId || '',
+          组织: m.organizationName || m.organizationId || '',
+          组织身份: m.role || '',
+          备注: m.notes || ''
+        })))
+        sheet['!cols'] = [{ wch: 20 }, { wch: 20 }, { wch: 16 }, { wch: 40 }]
+        XLSX.utils.book_append_sheet(workbook, sheet, '成员归属')
+        fileContent = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+      }
+    } else if (dataType === 'relationship') {
+      const relationships = request.relationships ?? []
+      if (format === 'json') {
+        defaultFileName = `${projectTitle}-人物关系.json`
+        filters = [{ name: 'JSON 文件', extensions: ['json'] }]
+        fileContent = JSON.stringify(relationships, null, 2)
+      } else if (format === 'txt') {
+        defaultFileName = `${projectTitle}-人物关系.txt`
+        filters = [{ name: '文本文档', extensions: ['txt'] }]
+        fileContent = relationships.map((rel) => [
+          `角色A: ${rel.fromCharacterName || rel.fromCharacterId || ''}`,
+          `角色B: ${rel.toCharacterName || rel.toCharacterId || ''}`,
+          `类型: ${rel.type || ''}`,
+          `描述: ${rel.description || ''}`,
+          `强度: ${rel.intensity ?? 0}`,
+          '---'
+        ].join('\n')).join('\n\n')
+      } else if (format === 'markdown') {
+        defaultFileName = `${projectTitle}-人物关系.md`
+        filters = [{ name: 'Markdown 文件', extensions: ['md', 'markdown'] }]
+        fileContent = [
+          `# ${projectTitle} - 人物关系`,
+          '',
+          '| 角色A | 角色B | 类型 | 强度 | 描述 |',
+          '|------|------|------|------|------|',
+          ...relationships.map((rel) => `| ${String(rel.fromCharacterName || rel.fromCharacterId || '').replace(/\|/g, '\\|')} | ${String(rel.toCharacterName || rel.toCharacterId || '').replace(/\|/g, '\\|')} | ${String(rel.type || '').replace(/\|/g, '\\|')} | ${rel.intensity ?? 0} | ${String(rel.description || '').replace(/\|/g, '\\|')} |`)
+        ].join('\n')
+      } else if (format === 'excel') {
+        defaultFileName = `${projectTitle}-人物关系.xlsx`
+        filters = [{ name: 'Excel 工作簿', extensions: ['xlsx'] }]
+        const workbook = XLSX.utils.book_new()
+        const sheet = XLSX.utils.json_to_sheet(relationships.map((rel) => ({
+          角色A: rel.fromCharacterName || rel.fromCharacterId || '',
+          角色B: rel.toCharacterName || rel.toCharacterId || '',
+          关系类型: rel.type || '',
+          强度: rel.intensity ?? 0,
+          描述: rel.description || ''
+        })))
+        sheet['!cols'] = [{ wch: 20 }, { wch: 20 }, { wch: 16 }, { wch: 8 }, { wch: 40 }]
+        XLSX.utils.book_append_sheet(workbook, sheet, '人物关系')
+        fileContent = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+      }
+    } else {
+      return { success: false, canceled: false, error: '未知的数据类型。' }
+    }
+
+    const result = await dialog.showSaveDialog(window, {
+      title: `导出${dataType === 'organization' ? '组织势力' : dataType === 'membership' ? '成员归属' : '人物关系'}`,
+      defaultPath: defaultFileName,
+      filters
+    })
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true }
+    }
+
+    await writeFile(result.filePath, fileContent)
+    return { success: true, canceled: false, filePath: result.filePath }
+  })
+
+  ipcMain.handle('characterarc:import-relations-data', async (_event, payload: unknown) => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) {
+      return { success: false, canceled: true }
+    }
+
+    const request = (payload ?? {}) as {
+      dataType: 'organization' | 'membership' | 'relationship'
+    }
+    const dataType = request.dataType || 'organization'
+
+    const result = await dialog.showOpenDialog(window, {
+      title: `导入${dataType === 'organization' ? '组织势力' : dataType === 'membership' ? '成员归属' : '人物关系'}`,
+      properties: ['openFile'],
+      filters: [
+        { name: '支持的文件', extensions: ['json', 'txt', 'md', 'markdown', 'xlsx', 'xls', 'csv'] }
+      ]
+    })
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, canceled: true }
+    }
+
+    try {
+      const filePath = result.filePaths[0]
+      const ext = filePath.split('.').pop()?.toLowerCase() || ''
+      const fileName = basename(filePath)
+
+      // JSON import
+      if (ext === 'json') {
+        const raw = await readFile(filePath, 'utf-8')
+        const parsed = JSON.parse(raw)
+        const items = Array.isArray(parsed) ? parsed : (parsed as Record<string, unknown>).items
+        if (!Array.isArray(items)) {
+          return { success: false, canceled: false, error: 'JSON 文件结构无效，应为数组或含 items 数组的对象。' }
+        }
+        return { success: true, canceled: false, fileName, data: items }
+      }
+
+      // Excel / CSV import
+      if (['xlsx', 'xls', 'csv'].includes(ext)) {
+        const workbook = XLSX.read(await readFile(filePath), { type: 'buffer' })
+        const sheet = workbook.Sheets[workbook.SheetNames[0]]
+        if (!sheet) return { success: false, canceled: false, error: 'Excel 文件中没有工作表。' }
+        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet)
+        return { success: true, canceled: false, fileName, data: rows }
+      }
+
+      // TXT / Markdown import
+      if (['txt', 'md', 'markdown'].includes(ext)) {
+        const raw = await readFile(filePath, 'utf-8')
+        const lines = raw.split('\n').map((line) => line.trim())
+
+        // Detect if it's a markdown table
+        const isMarkdownTable = lines.some((line) => /^\|.*\|.*\|.*\|$/.test(line)) && lines.some((line) => /^\|[-:]+\|/.test(line))
+
+        if (isMarkdownTable) {
+          // Parse markdown table
+          const headerLine = lines.findIndex((line) => /^\|/.test(line) && /[^\|]/.test(line))
+          const separatorLine = lines.findIndex((line, i) => i > headerLine && /^\|[-:]+\|/.test(line))
+          if (headerLine < 0 || separatorLine < 0) {
+            return { success: false, canceled: false, error: 'Markdown 表格格式无效。' }
+          }
+          const headers = lines[headerLine].split('\|').filter((h) => h.trim()).map((h) => h.trim())
+          const items = []
+          for (let i = separatorLine + 1; i < lines.length; i++) {
+            const line = lines[i]
+            if (!line.startsWith('|')) continue
+            const cells = line.split('\|').filter((c) => c.trim())
+            if (cells.length < headers.length) continue
+            const item: Record<string, unknown> = {}
+            headers.forEach((header, index) => {
+              item[header] = cells[index]?.trim() || ''
+            })
+            items.push(item)
+          }
+          return { success: true, canceled: false, fileName, data: items }
+        }
+
+        // Parse TXT format with "key: value" lines
+        const items: Array<Record<string, unknown>> = []
+        let current: Record<string, unknown> | null = null
+        for (const line of lines) {
+          if (!line) continue
+          if (line === '---') {
+            if (current) items.push(current)
+            current = null
+            continue
+          }
+          const match = line.match(/^([^:]+):\s*(.*)$/)
+          if (match) {
+            const key = match[1].trim()
+            const value = match[2].trim()
+            if (!current) current = {}
+            current[key] = value
+          } else if (current) {
+            // Append continuation text
+            const lastKey = Object.keys(current).pop()
+            if (lastKey) {
+              const existing = String(current[lastKey] ?? '')
+              current[lastKey] = existing ? `${existing}\n${line}` : line
+            }
+          }
+        }
+        if (current) items.push(current)
+
+        if (items.length === 0) {
+          return { success: false, canceled: false, error: '未能从文本文件中解析出数据。' }
+        }
+        return { success: true, canceled: false, fileName, data: items }
+      }
+
+      return { success: false, canceled: false, error: '不支持的文件格式。' }
+    } catch (error) {
+      return {
+        success: false,
+        canceled: false,
+        error: error instanceof Error ? error.message : '文件解析失败'
+      }
+    }
+  })
+
   ipcMain.handle('characterarc:save-cover-image', async (_event, payload: unknown) => {
     const window = deps.windowManager.getActiveWindow()
     if (!window) {
