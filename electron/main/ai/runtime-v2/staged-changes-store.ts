@@ -427,6 +427,24 @@ export class StagedChangesStore {
     for (const id of Array.from(set)) this.remove(id)
     this.bySession.delete(sessionId)
   }
+
+  /** 同步清理由 ConversationManager 级联删除的轮次索引，并返回影响统计。 */
+  clearTurns(turnIds: readonly string[]): { discarded: number; keptCommitted: number } {
+    const targets = new Set(turnIds)
+    let discarded = 0
+    let keptCommitted = 0
+
+    for (const change of Array.from(this.items.values())) {
+      if (!targets.has(change.turnId)) continue
+      if (change.status === 'committed') keptCommitted += 1
+      else discarded += 1
+      this.items.delete(change.id)
+      this.indexRemove(change)
+      this.emit({ type: 'removed', changeId: change.id, sessionId: change.sessionId })
+    }
+
+    return { discarded, keptCommitted }
+  }
 }
 
 /** 单例，供整个 Runtime 共享。 */

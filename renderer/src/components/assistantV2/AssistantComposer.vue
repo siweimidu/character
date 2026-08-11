@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { NButton } from 'naive-ui'
-import { Square } from 'lucide-vue-next'
+import { Square, Undo2, X } from 'lucide-vue-next'
 
 const props = defineProps<{
   modelValue: string
@@ -9,15 +9,20 @@ const props = defineProps<{
   isCanceling?: boolean
   modeLabel?: string
   streamingCharCount?: number
+  isEditing?: boolean
+  restoredLabel?: string
 }>()
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
   (e: 'send', intentHint?: string): void
   (e: 'cancel'): void
+  (e: 'edit-last'): void
+  (e: 'clear-restored'): void
 }>()
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
+let lastEscapeAt = 0
 
 /** 斜杠命令快捷指令：输入框内以 / 触发，选中后填充模板并附带 intentHint。 */
 const SLASH_COMMANDS: Array<{
@@ -144,17 +149,48 @@ function handleKeydown(event: KeyboardEvent) {
       return
     }
   }
+  // Escape 双击编辑上一轮（上游新增）
+  if (event.key === 'Escape' && !props.isStreaming && !props.isEditing) {
+    const now = Date.now()
+    if (now - lastEscapeAt <= 600) {
+      lastEscapeAt = 0
+      event.preventDefault()
+      emit('edit-last')
+    } else {
+      lastEscapeAt = now
+    }
+    return
+  }
+  lastEscapeAt = 0
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
     event.preventDefault()
-    if (props.isStreaming) return
+    if (props.isStreaming || props.isEditing) return
     sendWithIntent()
   }
 }
+
+watch(
+  () => props.restoredLabel,
+  async (label) => {
+    if (!label) return
+    await nextTick()
+    if (!textareaRef.value) return
+    textareaRef.value.focus()
+    autosize(textareaRef.value)
+  }
+)
 </script>
 
 <template>
   <div class="composer-wrap">
-    <div class="composer" :class="{ streaming: props.isStreaming }">
+    <div class="composer" :class="{ streaming: props.isStreaming, editing: props.isEditing }">
+      <div v-if="props.restoredLabel" class="restored-draft">
+        <Undo2 :size="12" />
+        <span>{{ props.restoredLabel }}</span>
+        <button type="button" title="清除回填内容" aria-label="清除回填内容" @click="emit('clear-restored')">
+          <X :size="11" />
+        </button>
+      </div>
       <!-- 斜杠命令菜单 -->
       <div v-if="slashOpen && slashMatches.length > 0" ref="slashMenuRef" class="slash-menu">
         <button
@@ -173,7 +209,8 @@ function handleKeydown(event: KeyboardEvent) {
       <textarea
         ref="textareaRef"
         :value="props.modelValue"
-        placeholder="继续追问，或让助理动手。输入 / 唤起快捷指令 · Enter 发送 · Shift+Enter 换行"
+        :disabled="props.isEditing"
+        :placeholder="props.isEditing ? '正在编辑历史提问' : '继续追问，或让助理动手。输入 / 唤起快捷指令 · Enter 发送 · Shift+Enter 换行'"
         @input="handleInput"
         @keydown="handleKeydown"
         @blur="slashOpen = false"
@@ -181,7 +218,8 @@ function handleKeydown(event: KeyboardEvent) {
       <div class="foot">
         <div class="hint">
           <span v-if="props.modeLabel" class="mode-chip">{{ props.modeLabel }}</span>
-          <span v-if="props.isStreaming" class="streaming-hint">
+          <span v-if="props.isEditing">正在编辑历史提问</span>
+          <span v-else-if="props.isStreaming" class="streaming-hint">
             <span class="streaming-dot" />AI 正在回答<template v-if="props.streamingCharCount && props.streamingCharCount > 0"> · 已生成 {{ props.streamingCharCount }} 字</template>
           </span>
           <span v-else>AI的修改会显示在暂存区，需要你逐条确认。</span>
@@ -202,7 +240,7 @@ function handleKeydown(event: KeyboardEvent) {
             v-else
             size="small"
             type="primary"
-            :disabled="!props.modelValue.trim()"
+            :disabled="props.isEditing || !props.modelValue.trim()"
             @click="sendWithIntent"
           >
             发送
@@ -287,6 +325,44 @@ function handleKeydown(event: KeyboardEvent) {
   border-color: rgba(13, 125, 90, 0.4);
   box-shadow: 0 0 0 3px rgba(13, 125, 90, 0.06), var(--arc-shadow-md);
 }
+.composer.editing {
+  opacity: 0.56;
+}
+.restored-draft {
+  align-self: flex-start;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--arc-primary) 30%, var(--arc-border));
+  border-radius: 999px;
+  background: var(--arc-primary-soft);
+  color: var(--arc-primary);
+  font-family: var(--v2-mono);
+  font-size: 10.5px;
+}
+.restored-draft span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.restored-draft button {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.restored-draft button:hover {
+  background: color-mix(in srgb, var(--arc-primary) 12%, transparent);
+}
 textarea {
   width: 100%;
   resize: none;
@@ -300,6 +376,9 @@ textarea {
   line-height: 1.5;
   padding: 0;
   font-size: 14px;
+}
+textarea:disabled {
+  cursor: not-allowed;
 }
 textarea::placeholder {
   color: var(--arc-text-hint);

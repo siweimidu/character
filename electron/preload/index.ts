@@ -268,6 +268,8 @@ contextBridge.exposeInMainWorld('characterArc', {
       ipcRenderer.invoke('characterarc:assistant:turn:cancel', toIpcPayload(payload)),
     turnDelete: (payload: unknown) =>
       ipcRenderer.invoke('characterarc:assistant:turn:delete', toIpcPayload(payload)),
+    turnTruncate: (payload: unknown) =>
+      ipcRenderer.invoke('characterarc:assistant:turn:truncate', toIpcPayload(payload)),
     // Stage
     stageList: (payload: unknown) =>
       ipcRenderer.invoke('characterarc:assistant:stage:list', toIpcPayload(payload)),

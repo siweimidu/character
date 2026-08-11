@@ -33,7 +33,9 @@ import {
   type TurnEvent,
   type TurnCancelRequest,
   type TurnDeleteRequest,
-  type TurnSendRequest
+  type TurnSendRequest,
+  type TurnTruncateRequest,
+  type TurnTruncateResult
 } from '@shared/assistant-runtime'
 import { presetAvatarDataUri } from '@shared/agent-avatars'
 import { seedBuiltinAgents } from './agent-profile-store'
@@ -84,7 +86,12 @@ export interface AssistantIpcDeps {
 let deps: AssistantIpcDeps | null = null
 
 /** 每个 in-flight turn 的 AbortController，用于 TURN_CANCEL。 */
-const activeTurns = new Map<string, AbortController>()
+interface ActiveTurn {
+  controller: AbortController
+  sessionId: string
+}
+
+const activeTurns = new Map<string, ActiveTurn>()
 
 /**
  * 惰性拿到 ConversationManager 单例。委托给 runtime-v2/state.ts 的共享实例。
@@ -316,7 +323,7 @@ function registerTurnHandlers(): void {
       const activeKeys = new Set<string>()
       const registerActiveKey = (key?: string): void => {
         if (!key) return
-        activeTurns.set(key, controller)
+        activeTurns.set(key, { controller, sessionId: payload.sessionId })
         activeKeys.add(key)
       }
       registerActiveKey(payload.clientRequestId)
@@ -393,7 +400,7 @@ function registerTurnHandlers(): void {
         return result
       } finally {
         for (const key of activeKeys) {
-          if (activeTurns.get(key) === controller) activeTurns.delete(key)
+          if (activeTurns.get(key)?.controller === controller) activeTurns.delete(key)
         }
       }
     }
@@ -402,9 +409,9 @@ function registerTurnHandlers(): void {
   ipcMain.handle(
     ASSISTANT_IPC_CHANNELS.TURN_CANCEL,
     async (_event, payload: TurnCancelRequest) => {
-      const controller = activeTurns.get(payload.turnId)
-      if (!controller) return { ok: false, reason: 'turn not active or already finished' }
-      controller.abort()
+      const active = activeTurns.get(payload.turnId)
+      if (!active) return { ok: false, reason: 'turn not active or already finished' }
+      active.controller.abort()
       activeTurns.delete(payload.turnId)
       return { ok: true }
     }
@@ -417,6 +424,25 @@ function registerTurnHandlers(): void {
       cm.deleteTurn(payload.sessionId, payload.turnId)
       stagedChangesStore.clearSession(payload.sessionId)
       return { ok: true }
+    }
+  )
+
+  ipcMain.handle(
+    ASSISTANT_IPC_CHANNELS.TURN_TRUNCATE,
+    async (_event, payload: TurnTruncateRequest): Promise<TurnTruncateResult> => {
+      const hasActiveTurn = Array.from(activeTurns.values()).some(
+        (active) => active.sessionId === payload.sessionId
+      )
+      if (hasActiveTurn) throw new Error('请先停止当前生成，再撤回或编辑历史对话。')
+
+      const cm = await getConversation()
+      const result = cm.truncateFrom(payload.sessionId, payload.fromTurnId)
+      const staged = stagedChangesStore.clearTurns(result.removedTurnIds)
+      return {
+        ...result,
+        discardedStaged: staged.discarded,
+        keptCommitted: staged.keptCommitted
+      }
     }
   )
 }

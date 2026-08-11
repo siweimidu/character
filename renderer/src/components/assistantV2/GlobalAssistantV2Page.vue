@@ -14,7 +14,7 @@ import {
   Users,
   Wrench
 } from 'lucide-vue-next'
-import type { SurfaceDefinition } from '@shared/assistant-runtime'
+import type { SurfaceDefinition, TurnTruncateResult } from '@shared/assistant-runtime'
 import { useAppStore } from '@/stores/app'
 import { useAssistant } from '@/composables/useAssistant'
 import AssistantSessionList from './AssistantSessionList.vue'
@@ -136,6 +136,28 @@ function sendWithMode(): void {
     intentHint: `global-assistant-v2:${activeMode.value}`,
     agentId: selectedAgentId.value || undefined
   })
+}
+
+function notifyTruncate(result: TurnTruncateResult, action: '撤回' | '重新分叉'): void {
+  if (result.keptCommitted > 0) {
+    message.warning(`${action}完成，但 ${result.keptCommitted} 项已写回项目的改动未回滚`)
+  } else if (result.discardedStaged > 0) {
+    message.success(`${action}完成，已丢弃 ${result.discardedStaged} 项暂存变更`)
+  } else {
+    message.success(`${action}完成`)
+  }
+}
+
+async function handleUndoTurn(turnId: string): Promise<void> {
+  const result = await assistant.undoTurn(turnId)
+  if (result) notifyTruncate(result, '撤回')
+}
+
+async function handleResendTurn(): Promise<void> {
+  const result = await assistant.resendEditedTurn({
+    intentHint: `global-assistant-v2:${activeMode.value}`
+  })
+  if (result) notifyTruncate(result, '重新分叉')
 }
 
 function openKnowledgeDocument(documentId?: string): void {
@@ -399,10 +421,19 @@ async function handleCommit(ids?: string[]): Promise<void> {
         :messages="assistant.messages.value"
         :is-streaming="assistant.isStreaming.value"
         assistant-name="智能体"
+        :editing-turn-id="assistant.editingTurnId.value"
+        :editing-draft="assistant.editingDraft.value"
+        :is-mutating="assistant.isTruncating.value"
+        :staged-changes="assistant.stagedChanges.value"
         @open-knowledge="openKnowledgeDocument"
         @continue="assistant.continueWithPrompt"
         @open-staged="reopenStagePanel"
         @rollback="assistant.rollbackTurn"
+        @edit-start="assistant.startEditingTurn"
+        @edit-cancel="assistant.cancelEditing"
+        @edit-draft="assistant.updateEditingDraft"
+        @resend="handleResendTurn"
+        @undo="handleUndoTurn"
       />
 
       <div v-else class="starter">
@@ -462,9 +493,13 @@ async function handleCommit(ids?: string[]): Promise<void> {
         v-model="composerValue"
         :is-streaming="assistant.isStreaming.value"
         :is-canceling="assistant.isCanceling.value"
+        :is-editing="Boolean(assistant.editingTurnId.value)"
+        :restored-label="assistant.restoredDraftLabel.value"
         :mode-label="currentMode.label"
         @send="sendWithMode"
         @cancel="assistant.cancel()"
+        @edit-last="assistant.startEditingLastTurn()"
+        @clear-restored="assistant.clearRestoredDraft()"
       />
     </div>
 

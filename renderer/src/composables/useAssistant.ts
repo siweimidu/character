@@ -18,7 +18,8 @@ import type {
   StagedChange,
   SurfaceDefinition,
   TurnAttachment,
-  TurnEvent
+  TurnEvent,
+  TurnTruncateResult
 } from '@shared/assistant-runtime'
 
 // ============================================================================
@@ -132,6 +133,10 @@ export function useAssistant(options: UseAssistantOptions) {
 
   // === Composer ===
   const composerValue = ref('')
+  const editingTurnId = ref<string | null>(null)
+  const editingDraft = ref('')
+  const restoredDraftLabel = ref('')
+  const isTruncating = ref(false)
 
   // === 错误 ===
   const lastError = ref<string | null>(null)
@@ -412,6 +417,8 @@ export function useAssistant(options: UseAssistantOptions) {
       eventsByTurn.value = new Map()
       stagedChanges.value = []
       streamingTurnId.value = null
+      cancelEditing()
+      restoredDraftLabel.value = ''
       isInitializing.value = false
       return
     }
@@ -498,6 +505,8 @@ export function useAssistant(options: UseAssistantOptions) {
     stagedChanges.value = []
     streamingTurnId.value = null
     isCanceling.value = false
+    cancelEditing()
+    restoredDraftLabel.value = ''
     await Promise.all([reloadTurns(), reloadStaged()])
   }
 
@@ -513,6 +522,8 @@ export function useAssistant(options: UseAssistantOptions) {
       turns.value = []
       eventsByTurn.value = new Map()
       stagedChanges.value = []
+      cancelEditing()
+      restoredDraftLabel.value = ''
       if (sessions.value.length > 0) {
         await switchSession(sessions.value[0].id)
       }
@@ -569,6 +580,7 @@ export function useAssistant(options: UseAssistantOptions) {
     if (composerValue.value.trim() === trimmedText) {
       composerValue.value = ''
     }
+    restoredDraftLabel.value = ''
     lastError.value = null
 
     // 先乐观塞一个 streaming turn（真实 turnId 由后端事件确认）
@@ -610,6 +622,7 @@ export function useAssistant(options: UseAssistantOptions) {
       streamingTurnId.value = null
       isCanceling.value = false
       turns.value = turns.value.filter((t) => t.id !== optimisticTurnId)
+      if (!composerValue.value.trim()) composerValue.value = trimmedText
       lastError.value = e instanceof Error ? e.message : String(e)
     }
   }
@@ -652,6 +665,95 @@ export function useAssistant(options: UseAssistantOptions) {
       isCanceling.value = false
       lastError.value = error instanceof Error ? error.message : '停止生成失败'
     }
+  }
+
+  function startEditingTurn(turnId: string): void {
+    if (isStreaming.value || isTruncating.value) {
+      lastError.value = '请先停止当前生成，再编辑历史对话。'
+      return
+    }
+    const turn = turns.value.find((item) => item.id === turnId)
+    if (!turn) return
+    editingTurnId.value = turnId
+    editingDraft.value = turn.userMessage
+    restoredDraftLabel.value = ''
+    lastError.value = null
+  }
+
+  function startEditingLastTurn(): void {
+    const last = turns.value[turns.value.length - 1]
+    if (last) startEditingTurn(last.id)
+  }
+
+  function updateEditingDraft(value: string): void {
+    editingDraft.value = value
+  }
+
+  function cancelEditing(): void {
+    editingTurnId.value = null
+    editingDraft.value = ''
+  }
+
+  function clearRestoredDraft(): void {
+    composerValue.value = ''
+    restoredDraftLabel.value = ''
+  }
+
+  async function truncateTurn(turnId: string): Promise<TurnTruncateResult | null> {
+    const sessionId = activeSessionId.value
+    if (!sessionId || isStreaming.value || isTruncating.value) {
+      if (isStreaming.value) lastError.value = '请先停止当前生成，再撤回或编辑历史对话。'
+      return null
+    }
+
+    isTruncating.value = true
+    try {
+      const result = await A.turnTruncate({ sessionId, fromTurnId: turnId })
+      const removed = new Set(result.removedTurnIds)
+      turns.value = turns.value.filter((turn) => !removed.has(turn.id))
+
+      const nextEvents = new Map(eventsByTurn.value)
+      for (const removedTurnId of removed) nextEvents.delete(removedTurnId)
+      eventsByTurn.value = nextEvents
+      stagedChanges.value = stagedChanges.value.filter((change) => !removed.has(change.turnId))
+      await reloadStaged()
+      lastError.value = null
+      return result
+    } catch (error) {
+      lastError.value = error instanceof Error ? error.message : '撤回对话失败'
+      return null
+    } finally {
+      isTruncating.value = false
+    }
+  }
+
+  async function undoTurn(turnId: string): Promise<TurnTruncateResult | null> {
+    const index = turns.value.findIndex((turn) => turn.id === turnId)
+    if (index < 0 || index !== turns.value.length - 1) {
+      lastError.value = '只能撤回最后一轮对话。'
+      return null
+    }
+    const result = await truncateTurn(turnId)
+    if (!result) return null
+    cancelEditing()
+    composerValue.value = result.restoredUserMessage
+    restoredDraftLabel.value = `已回填 · 撤回的第 ${index + 1} 轮原文`
+    return result
+  }
+
+  async function resendEditedTurn(
+    sendOptions: AssistantSendOptions = {}
+  ): Promise<TurnTruncateResult | null> {
+    const turnId = editingTurnId.value
+    const draft = editingDraft.value.trim()
+    if (!turnId || !draft) return null
+
+    const result = await truncateTurn(turnId)
+    if (!result) return null
+    cancelEditing()
+    composerValue.value = draft
+    void sendText(draft, sendOptions)
+    return result
   }
 
   // ==========================================================================
@@ -705,6 +807,12 @@ export function useAssistant(options: UseAssistantOptions) {
     () => options.projectId(),
     async () => {
       activeSessionId.value = null
+      turns.value = []
+      eventsByTurn.value = new Map()
+      stagedChanges.value = []
+      streamingTurnId.value = null
+      cancelEditing()
+      restoredDraftLabel.value = ''
       await reloadSessions()
     },
     { immediate: true }
@@ -717,6 +825,12 @@ export function useAssistant(options: UseAssistantOptions) {
       async (newRef, oldRef) => {
         if (newRef !== oldRef) {
           activeSessionId.value = null
+          turns.value = []
+          eventsByTurn.value = new Map()
+          stagedChanges.value = []
+          streamingTurnId.value = null
+          cancelEditing()
+          restoredDraftLabel.value = ''
           await reloadSessions()
         }
       }
@@ -737,6 +851,10 @@ export function useAssistant(options: UseAssistantOptions) {
     pendingStaged,
     acceptedStaged,
     composerValue,
+    editingTurnId,
+    editingDraft,
+    restoredDraftLabel,
+    isTruncating,
     lastError,
     // actions
     createSession,
@@ -747,6 +865,13 @@ export function useAssistant(options: UseAssistantOptions) {
     continueWithPrompt,
     rollbackTurn,
     cancel,
+    startEditingTurn,
+    startEditingLastTurn,
+    updateEditingDraft,
+    cancelEditing,
+    clearRestoredDraft,
+    undoTurn,
+    resendEditedTurn,
     acceptChanges,
     rejectChanges,
     commitAccepted,

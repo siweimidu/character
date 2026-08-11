@@ -738,6 +738,8 @@ declare global {
           Promise<{ ok: boolean; reason?: string }>
         turnDelete: (payload: import('@shared/assistant-runtime').TurnDeleteRequest) =>
           Promise<{ ok: boolean }>
+        turnTruncate: (payload: import('@shared/assistant-runtime').TurnTruncateRequest) =>
+          Promise<import('@shared/assistant-runtime').TurnTruncateResult>
         stageList: (payload: {
           sessionId?: string
           status?: readonly string[]

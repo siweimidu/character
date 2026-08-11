@@ -2,20 +2,26 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import { useMessage } from 'naive-ui'
 import {
   Brain,
   CheckCircle2,
   ChevronRight,
   CircleAlert,
-  ClipboardCheck,
   Copy,
+  ClipboardCheck,
+  GitFork,
   Layers3,
+  Pencil,
   SearchCheck,
   Sparkles,
   SquareTerminal,
+  TriangleAlert,
+  Undo2,
   UserRound
 } from 'lucide-vue-next'
 import type { AssistantMessageView, AssistantToolCallView } from '@/composables/useAssistant'
+import type { StagedChange } from '@shared/assistant-runtime'
 
 const MD_ALLOWED_TAGS = [
   'p', 'br', 'strong', 'em', 'code', 'pre', 'ul', 'ol', 'li', 'blockquote',
@@ -77,27 +83,56 @@ function renderMarkdown(content: string, cacheKey: string): string {
   return sanitized
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   messages: AssistantMessageView[]
   isStreaming: boolean
   isInitializing?: boolean
   assistantName?: string
-}>()
+  editingTurnId?: string | null
+  editingDraft?: string
+  isMutating?: boolean
+  stagedChanges?: StagedChange[]
+}>(), {
+  editingTurnId: null,
+  editingDraft: '',
+  stagedChanges: () => []
+})
 
 const emit = defineEmits<{
   (e: 'open-knowledge', documentId?: string): void
   (e: 'continue', prompt: string): void
   (e: 'open-staged'): void
   (e: 'rollback', turnId: string): void
+  (e: 'edit-start', turnId: string): void
+  (e: 'edit-cancel'): void
+  (e: 'edit-draft', value: string): void
+  (e: 'resend'): void
+  (e: 'undo', turnId: string): void
 }>()
 
 const scrollRef = ref<HTMLDivElement | null>(null)
+const editTextareaRef = ref<HTMLTextAreaElement | null>(null)
+const copiedTurnId = ref<string | null>(null)
+const notification = useMessage()
 const shouldFollowOutput = ref(true)
 const BOTTOM_THRESHOLD_PX = 72
 
 watch(
   () => props.messages[0]?.turnId,
   () => markdownCache.clear()
+)
+
+watch(
+  () => props.editingTurnId,
+  async (turnId) => {
+    if (!turnId) return
+    await nextTick()
+    const textarea = editTextareaRef.value
+    if (!textarea) return
+    textarea.focus()
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length)
+    autosizeEdit(textarea)
+  }
 )
 
 function isNearBottom(el: HTMLDivElement): boolean {
@@ -321,6 +356,59 @@ function isActiveReasoningBlock(message: AssistantMessageView, blockId: string):
     && message.flowBlocks[message.flowBlocks.length - 1]?.id === blockId
 }
 
+const editingIndex = computed(() =>
+  props.editingTurnId
+    ? props.messages.findIndex((message) => message.turnId === props.editingTurnId)
+    : -1
+)
+
+function impactAt(index: number): { laterTurns: number; staged: number; committed: number } {
+  const turnIds = new Set(props.messages.slice(index).map((message) => message.turnId))
+  const changes = props.stagedChanges.filter((change) => turnIds.has(change.turnId))
+  return {
+    laterTurns: Math.max(0, props.messages.length - index - 1),
+    staged: changes.filter((change) => change.status !== 'committed').length,
+    committed: changes.filter((change) => change.status === 'committed').length
+  }
+}
+
+async function copyUserMessage(message: AssistantMessageView): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(message.userMessage)
+    copiedTurnId.value = message.turnId
+    window.setTimeout(() => {
+      if (copiedTurnId.value === message.turnId) copiedTurnId.value = null
+    }, 1200)
+    notification.success('已复制到剪贴板')
+  } catch {
+    copiedTurnId.value = null
+    notification.error('复制失败，请重试')
+  }
+}
+
+function autosizeEdit(textarea: HTMLTextAreaElement): void {
+  textarea.style.height = 'auto'
+  textarea.style.height = `${Math.min(240, textarea.scrollHeight)}px`
+}
+
+function handleEditInput(event: Event): void {
+  const textarea = event.target as HTMLTextAreaElement
+  emit('edit-draft', textarea.value)
+  autosizeEdit(textarea)
+}
+
+function handleEditKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    emit('edit-cancel')
+    return
+  }
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+    event.preventDefault()
+    if (props.editingDraft.trim() && !props.isMutating) emit('resend')
+  }
+}
+
 const hasContent = computed(() => props.messages.length > 0)
 </script>
 
@@ -354,31 +442,104 @@ const hasContent = computed(() => props.messages.length > 0)
       :key="msg.turnId"
       :ref="(el) => setTurnEl(msg.turnId, el)"
       class="turn-entry"
-      :class="{ 'is-first': index === 0 }"
+      :class="{
+        'is-first': index === 0,
+        'is-doomed': editingIndex >= 0 && index > editingIndex
+      }"
     >
+      <div v-if="props.editingTurnId === msg.turnId" class="turn-editor">
+        <header class="turn-editor-head">
+          <GitFork :size="14" />
+          <span>从这里重新分叉</span>
+          <em>第 {{ index + 1 }} 轮及之后重写</em>
+        </header>
+        <textarea
+          ref="editTextareaRef"
+          :value="props.editingDraft"
+          rows="3"
+          @input="handleEditInput"
+          @keydown="handleEditKeydown"
+        />
+        <div class="edit-impact">
+          <div class="edit-impact-head">
+            <TriangleAlert :size="14" />
+            <span>重新发送会</span>
+          </div>
+          <ul>
+            <li v-if="impactAt(index).laterTurns > 0">
+              丢弃这一轮之后的 <strong>{{ impactAt(index).laterTurns }}</strong> 轮对话
+            </li>
+            <li v-if="impactAt(index).staged > 0">
+              连带丢弃 <strong>{{ impactAt(index).staged }}</strong> 项暂存变更
+            </li>
+            <li v-if="impactAt(index).committed > 0" class="hard-warning">
+              <strong>{{ impactAt(index).committed }}</strong> 项已写回项目的改动不会回滚
+            </li>
+            <li v-if="impactAt(index).laterTurns === 0 && impactAt(index).staged === 0 && impactAt(index).committed === 0">
+              替换这一轮提问与回答
+            </li>
+          </ul>
+        </div>
+        <footer class="turn-editor-foot">
+          <span>Enter 重发 · Shift+Enter 换行 · Esc 取消</span>
+          <button type="button" class="edit-cancel" :disabled="props.isMutating" @click="emit('edit-cancel')">取消</button>
+          <button
+            type="button"
+            class="edit-resend"
+            :disabled="!props.editingDraft.trim() || props.isMutating"
+            @click="emit('resend')"
+          >
+            {{ props.isMutating ? '处理中' : '重新发送' }}
+          </button>
+        </footer>
+      </div>
+
+      <template v-else>
       <div class="user-entry">
         <div class="user-avatar">
           <UserRound :size="14" :stroke-width="1.9" />
         </div>
         <div class="user-content">{{ msg.userMessage }}</div>
-        <button
-          type="button"
-          class="copy-prompt-btn"
-          :title="'复制这条提示词'"
-          @click="copyUserPrompt(msg)"
-        >
-          <Copy v-if="copiedPromptTurnId !== msg.turnId" :size="13" />
-          <ClipboardCheck v-else :size="13" />
-        </button>
-        <button
-          v-if="!props.isStreaming || msg.status !== 'streaming'"
-          type="button"
-          class="rollback-prompt-btn"
-          :title="'回退到本轮对话之前'"
-          @click="openRollbackConfirm(msg.turnId)"
-        >
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
-        </button>
+        <div v-if="!props.isStreaming && msg.status !== 'streaming'" class="user-actions">
+          <button
+            type="button"
+            :title="copiedTurnId === msg.turnId ? '已复制' : '复制提问'"
+            :aria-label="copiedTurnId === msg.turnId ? '已复制' : '复制提问'"
+            :disabled="props.isMutating"
+            @click="copyUserMessage(msg)"
+          >
+            <Copy :size="13" />
+          </button>
+          <button
+            type="button"
+            title="编辑并重新发送"
+            aria-label="编辑并重新发送"
+            :disabled="props.isMutating"
+            @click="emit('edit-start', msg.turnId)"
+          >
+            <Pencil :size="13" />
+          </button>
+          <button
+            v-if="index === props.messages.length - 1"
+            type="button"
+            class="danger-action"
+            title="撤回本轮"
+            aria-label="撤回本轮"
+            :disabled="props.isMutating"
+            @click="emit('undo', msg.turnId)"
+          >
+            <Undo2 :size="13" />
+          </button>
+          <button
+            type="button"
+            class="rollback-prompt-btn"
+            title="回退到本轮对话之前"
+            :disabled="props.isMutating"
+            @click="openRollbackConfirm(msg.turnId)"
+          >
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
+          </button>
+        </div>
       </div>
 
       <div class="assistant-block">
@@ -503,6 +664,7 @@ const hasContent = computed(() => props.messages.length > 0)
           </button>
         </div>
       </div>
+      </template>
     </article>
   </div>
 
@@ -631,7 +793,15 @@ const hasContent = computed(() => props.messages.length > 0)
   padding-top: 0;
   border-top: none;
 }
+.turn-entry.is-doomed {
+  opacity: 0.38;
+}
+.turn-entry.is-doomed .user-content {
+  text-decoration: line-through;
+  text-decoration-color: var(--arc-text-hint);
+}
 .user-entry {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -784,6 +954,160 @@ const hasContent = computed(() => props.messages.length > 0)
 }
 .rollback-confirm:hover {
   background: color-mix(in srgb, var(--v2-danger) 88%, #000);
+
+.user-actions {
+  position: absolute;
+  top: -13px;
+  right: 0;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  background: var(--arc-bg-surface);
+  box-shadow: var(--arc-shadow-md);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(3px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+.user-entry:hover .user-actions,
+.user-actions:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+.user-actions button {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+}
+.user-actions button:hover {
+  background: var(--arc-bg-weak);
+  color: var(--arc-text-primary);
+}
+.user-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.user-actions button.danger-action:hover {
+  background: var(--v2-danger-soft);
+  color: var(--v2-danger);
+}
+.turn-editor {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--arc-primary) 35%, var(--arc-border));
+  border-radius: 8px;
+  background: var(--arc-bg-surface);
+  box-shadow: var(--arc-shadow-md);
+  animation: editor-in 0.22s ease-out;
+}
+@keyframes editor-in {
+  from { opacity: 0; transform: translateY(-4px); }
+}
+.turn-editor-head {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--arc-border);
+  color: var(--arc-primary);
+  font-family: var(--v2-mono);
+  font-size: 11px;
+}
+.turn-editor-head em {
+  margin-left: auto;
+  color: var(--arc-text-hint);
+  font-style: normal;
+}
+.turn-editor textarea {
+  display: block;
+  width: 100%;
+  min-height: 76px;
+  max-height: 240px;
+  resize: none;
+  border: 0;
+  outline: 0;
+  padding: 12px;
+  background: transparent;
+  color: var(--arc-text-primary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.edit-impact {
+  padding: 9px 12px;
+  border-top: 1px solid var(--arc-border);
+  background: var(--v2-warn-soft);
+}
+.edit-impact-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--v2-warn);
+  font-family: var(--v2-mono);
+  font-size: 11px;
+}
+.edit-impact ul {
+  margin: 5px 0 0 18px;
+  padding: 0;
+}
+.edit-impact li {
+  color: var(--arc-text-secondary);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.edit-impact strong {
+  color: var(--arc-text-primary);
+  font-weight: 600;
+}
+.edit-impact .hard-warning,
+.edit-impact .hard-warning strong {
+  color: var(--v2-danger);
+}
+.turn-editor-foot {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px 8px 12px;
+  border-top: 1px solid var(--arc-border);
+}
+.turn-editor-foot > span {
+  margin-right: auto;
+  color: var(--arc-text-hint);
+  font-family: var(--v2-mono);
+  font-size: 10px;
+}
+.turn-editor-foot button {
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.turn-editor-foot button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.edit-cancel {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--arc-text-secondary);
+}
+.edit-cancel:hover {
+  background: var(--arc-bg-weak);
+}
+.edit-resend {
+  border: 1px solid var(--arc-primary);
+  background: var(--arc-primary);
+  color: #fff;
 }
 .user-avatar {
   display: inline-flex;
@@ -1235,6 +1559,27 @@ const hasContent = computed(() => props.messages.length > 0)
   .tool-open {
     grid-column: 2;
     justify-self: start;
+  }
+  .user-entry {
+    flex-wrap: wrap;
+  }
+  .user-actions {
+    position: static;
+    flex-basis: calc(100% - 36px);
+    margin-left: 36px;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+  .user-actions button {
+    border: 1px solid var(--arc-border);
+  }
+  .turn-editor-head em,
+  .turn-editor-foot > span {
+    display: none;
   }
 }
 </style>
