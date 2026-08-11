@@ -154,6 +154,49 @@ function handleAttachFile(): void {
   })
 }
 
+/** 打开文件选择对话框，上传本地 txt/md 文件到对话 */
+async function handleUploadFile(): Promise<void> {
+  try {
+    const result = await window.characterArc.pickAssistantTextFile()
+    if (!result?.success) {
+      if (result?.error) message.warning(result.error)
+      return
+    }
+    const name = result.name ?? '本地文件'
+    const content = result.content ?? ''
+    if (content.length > 60000) {
+      message.warning('文件内容过长，已截断前 6 万字，如需完整内容请精简后重试')
+    }
+    activeTab.value = 'chat'
+    composerValue.value = `【已上传本地文件：${name}】\n${content.slice(0, 60000)}\n${composerValue.value}`
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : '上传文件失败')
+  }
+}
+
+/** 拖拽本地文本文件到对话（前端直接读取 File 对象内容） */
+function handleUploadFiles(files: File[]): void {
+  activeTab.value = 'chat'
+  const readers = files.map(
+    (file) =>
+      new Promise<string>((resolve) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result as string)
+        reader.onerror = () => resolve('')
+        reader.readAsText(file)
+      })
+  )
+  void Promise.all(readers).then((contents) => {
+    const parts: string[] = []
+    files.forEach((file, idx) => {
+      const content = (contents[idx] ?? '').slice(0, 60000)
+      parts.push(`【已上传本地文件：${file.name}】\n${content}`)
+    })
+    composerValue.value = `${parts.join('\n\n')}\n${composerValue.value}`
+    message.success(`已上传 ${files.length} 个文件`)
+  })
+}
+
 function notifyTruncate(result: TurnTruncateResult, action: '撤回' | '重新分叉'): void {
   if (result.keptCommitted > 0) {
     message.warning(`${action}完成，但 ${result.keptCommitted} 项已写回项目的改动未回滚`)
@@ -361,6 +404,8 @@ async function handleCommit(ids?: string[]): Promise<void> {
         :mode-label="currentMode.label"
         @send="sendWithMode"
         @attach="handleAttachFile"
+        @upload-file="handleUploadFile"
+        @upload-files="handleUploadFiles"
         @cancel="assistant.cancel()"
         @edit-last="assistant.startEditingLastTurn()"
         @clear-restored="assistant.clearRestoredDraft()"

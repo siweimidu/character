@@ -326,7 +326,9 @@ export class AgentLoopCore {
       } else {
         status = 'error'
         errorMessage = this.isToolUseNotSupportedError(e)
-          ? '当前模型不支持工具调用（tool_use），无法驱动全局助手 v2 的读取与暂存流程。请在设置中切换到支持工具调用的模型（如 Claude / GPT 系列）后重试。'
+          ? /thought_signature/i.test(e instanceof Error ? e.message : String(e))
+            ? '当前模型（Gemini）在工具调用（function calling）时需要 thought_signature（思考签名），但 OpenAI 兼容接口未附带该签名，导致读取与暂存流程失败。建议在设置中切换到完整支持工具调用的模型（如 Claude / GPT 系列），或升级到支持 thought_signature 的 Gemini SDK/接口后再试。'
+            : '当前模型不支持工具调用（tool_use），无法驱动全局助手 v2 的读取与暂存流程。请在设置中切换到支持工具调用的模型（如 Claude / GPT 系列）后重试。'
           : formatAiErrorMessage(e, e instanceof Error ? e.message : String(e))
         this.dispatch(sessionId, turnId, {
           kind: 'error',

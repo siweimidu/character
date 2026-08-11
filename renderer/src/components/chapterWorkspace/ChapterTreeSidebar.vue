@@ -939,18 +939,6 @@ function handleMenuSelect(key: string | number, chapter: ChapterDraft): void {
         </NFormItem>
         <NFormItem label="分卷标题">
           <NInput v-model:value="volumeForm.title" placeholder="例如：霓虹下的老鼠" />
-          <template #feedback>
-            <NButton
-              size="tiny"
-              secondary
-              :loading="importingVolumeFile"
-              @click="handleImportVolumeFile"
-            >
-              <template #icon><FilePlus :size="12" /></template>
-              从本地文件导入（txt / md）
-            </NButton>
-            <span v-if="isGeneratingImportedSummary" class="import-summary-hint">正在用 AI 生成摘要…</span>
-          </template>
         </NFormItem>
         <NFormItem label="目标字数">
           <NInput v-model:value="volumeForm.wordTarget" placeholder="例如：50000" :allow-input="allowDigitsOnly">
@@ -964,11 +952,24 @@ function handleMenuSelect(key: string | number, chapter: ChapterDraft): void {
             :autosize="{ minRows: 3, maxRows: 5 }"
             placeholder="概括这一卷的主线、冲突和情绪走向..."
           />
+          <span v-if="isGeneratingImportedSummary" class="import-summary-hint">正在用 AI 生成摘要…</span>
         </NFormItem>
       </NForm>
 
       <template #footer>
         <div class="create-actions">
+          <NButton
+            round
+            strong
+            secondary
+            :loading="importingVolumeFile"
+            class="import-bottom-btn"
+            @click="handleImportVolumeFile"
+          >
+            <template #icon><FilePlus :size="13" /></template>
+            从本地文件导入（txt / md）
+          </NButton>
+          <span class="footer-spacer" />
           <NButton round strong @click="closeVolumeDialog">取消</NButton>
           <NButton type="primary" round strong @click="submitVolume">
             {{ editingVolumeId ? '保存分卷信息' : (volumeForm.bindVolumeId ? '绑定分卷信息' : '创建分卷信息') }}
@@ -1002,20 +1003,26 @@ function handleMenuSelect(key: string | number, chapter: ChapterDraft): void {
         </NFormItem>
         <NFormItem label="章节标题">
           <NInput v-model:value="createForm.title" placeholder="选择大纲后自动带入标题" />
-          <template #feedback>
-            <NButton size="tiny" secondary :loading="importingChapterFile" @click="handleImportChapterFile">
-              <template #icon><FilePlus :size="12" /></template>
-              从本地文件导入（txt / md）
-            </NButton>
-            <span v-if="importedChapterCharCount" class="import-summary-hint">
-              已导入文件，共 {{ importedChapterCharCount.toLocaleString() }} 字，创建时将写入正文并生成摘要
-            </span>
-          </template>
+          <span v-if="importedChapterCharCount" class="import-summary-hint">
+            已导入文件，共 {{ importedChapterCharCount.toLocaleString() }} 字，创建时将写入正文并生成摘要
+          </span>
         </NFormItem>
       </NForm>
 
       <template #footer>
         <div class="create-actions">
+          <NButton
+            round
+            strong
+            secondary
+            :loading="importingChapterFile"
+            class="import-bottom-btn"
+            @click="handleImportChapterFile"
+          >
+            <template #icon><FilePlus :size="13" /></template>
+            从本地文件导入（txt / md）
+          </NButton>
+          <span class="footer-spacer" />
           <NButton round strong @click="closeCreateDialog">取消</NButton>
           <NButton
             type="primary"
@@ -1421,6 +1428,13 @@ function handleMenuSelect(key: string | number, chapter: ChapterDraft): void {
 .create-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 12px;
+}
+.footer-spacer {
+  flex: 1;
+}
+.import-bottom-btn {
+  margin-right: auto;
 }
 </style>

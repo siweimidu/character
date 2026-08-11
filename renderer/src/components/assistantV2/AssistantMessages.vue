@@ -523,24 +523,14 @@ const hasContent = computed(() => props.messages.length > 0)
             <Pencil :size="13" />
           </button>
           <button
-            v-if="index === props.messages.length - 1"
-            type="button"
-            class="danger-action"
-            title="撤回本轮"
-            aria-label="撤回本轮"
-            :disabled="props.isMutating"
-            @click="emit('undo', msg.turnId)"
-          >
-            <Undo2 :size="13" />
-          </button>
-          <button
             type="button"
             class="rollback-prompt-btn"
             title="回退到本轮对话之前"
+            aria-label="回退到本轮对话之前"
             :disabled="props.isMutating"
             @click="openRollbackConfirm(msg.turnId)"
           >
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
+            <Undo2 :size="13" />
           </button>
         </div>
       </div>

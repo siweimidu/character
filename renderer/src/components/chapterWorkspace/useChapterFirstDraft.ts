@@ -747,7 +747,7 @@ export function useChapterFirstDraft(): {
             knowledgeDocuments: appStore.projectConstraints,
             chapterContent: '',
             targetWordCount,
-            userPrompt: appendStepPrompt(`请生成这一章的完整初稿，目标字数为 ${targetWordCount} 字，这是本次生成的硬约束；请在完成剧情的同时主动控制篇幅。如果当前正文为空，就从零起稿；如果当前正文不为空，也按整章重写处理，而不是续写。${config.userPrompt ? `\n\n补充要求：${config.userPrompt}` : ''}`, steps.draft.userPrompt),
+            userPrompt: appendStepPrompt(`请生成这一章的完整初稿，目标字数为 ${targetWordCount} 字，这是本次生成的硬约束；请在完成剧情的同时主动控制篇幅，尽量把正文控制在目标的 95%~105% 范围内，既不要超过目标太多，也不要明显不足。如果当前正文为空，就从零起稿；如果当前正文不为空，也按整章重写处理，而不是续写。${config.userPrompt ? `\n\n补充要求：${config.userPrompt}` : ''}`, steps.draft.userPrompt),
             ...(draftProjectSkills !== undefined ? { projectSkills: draftProjectSkills } : {}),
             chapterMemo,
             recentEndingsTrail,

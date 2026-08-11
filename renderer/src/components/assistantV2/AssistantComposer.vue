@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { NButton } from 'naive-ui'
-import { Paperclip, Square, Undo2, X } from 'lucide-vue-next'
+import { Paperclip, Square, Undo2, Upload, X } from 'lucide-vue-next'
 
 const props = defineProps<{
   modelValue: string
@@ -17,6 +17,8 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
   (e: 'send', intentHint?: string): void
   (e: 'attach'): void
+  (e: 'upload-file'): void
+  (e: 'upload-files', files: File[]): void
   (e: 'cancel'): void
   (e: 'edit-last'): void
   (e: 'clear-restored'): void
@@ -122,6 +124,52 @@ function sendWithIntent(): void {
   emit('send', flushIntent())
 }
 
+// ── 本地文件拖拽上传 ──
+const isDragOver = ref(false)
+const ACCEPTED_TEXT_EXT = ['txt', 'md', 'markdown', 'mdown', 'mkd']
+
+function isTextFile(file: File): boolean {
+  const name = (file.name || '').toLowerCase()
+  if (file.type && file.type.startsWith('text/')) return true
+  const ext = name.split('.').pop() ?? ''
+  return ACCEPTED_TEXT_EXT.includes(ext)
+}
+
+function handleDragEnter(event: DragEvent): void {
+  event.preventDefault()
+  if (props.isStreaming) return
+  if (event.dataTransfer?.types?.includes('Files')) {
+    isDragOver.value = true
+  }
+}
+
+function handleDragOver(event: DragEvent): void {
+  event.preventDefault()
+  if (props.isStreaming) return
+  if (event.dataTransfer?.types?.includes('Files')) {
+    isDragOver.value = true
+  }
+}
+
+function handleDragLeave(event: DragEvent): void {
+  event.preventDefault()
+  const related = event.relatedTarget as Node | null
+  const wrap = textareaRef.value?.closest('.composer-wrap')
+  if (wrap && related && wrap.contains(related)) return
+  isDragOver.value = false
+}
+
+function handleDrop(event: DragEvent): void {
+  event.preventDefault()
+  isDragOver.value = false
+  if (props.isStreaming) return
+  const files = Array.from(event.dataTransfer?.files ?? [])
+  if (files.length === 0) return
+  const textFiles = files.filter(isTextFile)
+  if (textFiles.length === 0) return
+  emit('upload-files', textFiles)
+}
+
 function handleKeydown(event: KeyboardEvent) {
   // 斜杠菜单打开时的导航
   if (slashOpen.value && slashMatches.value.length > 0) {
@@ -183,7 +231,18 @@ watch(
 </script>
 
 <template>
-  <div class="composer-wrap">
+  <div
+    class="composer-wrap"
+    :class="{ 'drag-over': isDragOver }"
+    @dragenter="handleDragEnter"
+    @dragover="handleDragOver"
+    @dragleave="handleDragLeave"
+    @drop="handleDrop"
+  >
+    <div class="drag-overlay" v-if="isDragOver">
+      <Upload :size="18" />
+      松开以上传本地文本文件
+    </div>
     <div class="composer" :class="{ streaming: props.isStreaming, editing: props.isEditing }">
       <div v-if="props.restoredLabel" class="restored-draft">
         <Undo2 :size="12" />
@@ -211,7 +270,7 @@ watch(
         ref="textareaRef"
         :value="props.modelValue"
         :disabled="props.isEditing"
-        :placeholder="props.isEditing ? '正在编辑历史提问' : '继续追问，或让助理动手。输入 / 唤起快捷指令 · Enter 发送 · Shift+Enter 换行'"
+        :placeholder="props.isEditing ? '正在编辑历史提问' : '输入 / 唤起快捷指令 · Enter 发送 · Shift+Enter 换行'"
         @input="handleInput"
         @keydown="handleKeydown"
         @blur="slashOpen = false"
@@ -223,7 +282,6 @@ watch(
           <span v-else-if="props.isStreaming" class="streaming-hint">
             <span class="streaming-dot" />AI 正在回答<template v-if="props.streamingCharCount && props.streamingCharCount > 0"> · 已生成 {{ props.streamingCharCount }} 字</template>
           </span>
-          <span v-else>AI的修改会显示在暂存区，需要你逐条确认。</span>
         </div>
         <div class="actions">
           <NButton
@@ -234,6 +292,15 @@ watch(
             @click="emit('attach')"
           >
             <template #icon><Paperclip :size="13" /></template>
+          </NButton>
+          <NButton
+            size="small"
+            title="上传本地文件（txt/md）"
+            quaternary
+            :disabled="props.isStreaming"
+            @click="emit('upload-file')"
+          >
+            <template #icon><Upload :size="13" /></template>
           </NButton>
           <NButton
             v-if="props.isStreaming"
@@ -315,8 +382,25 @@ watch(
   white-space: nowrap;
 }
 .composer-wrap {
+  position: relative;
   padding: 12px 32px 22px;
   background: linear-gradient(180deg, transparent, var(--arc-bg-body) 30%);
+}
+.drag-overlay {
+  position: absolute;
+  inset: 4px 12px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 2px dashed var(--arc-primary, #0ea5e9);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--arc-primary, #0ea5e9) 10%, var(--arc-bg-surface));
+  color: var(--arc-primary, #0ea5e9);
+  font-size: 14px;
+  font-weight: 600;
+  pointer-events: none;
 }
 .composer {
   max-width: 720px;

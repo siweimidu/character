@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { BookMarked, Brain, Plus, Trash2, X } from 'lucide-vue-next'
 import { NButton, NModal, NSelect, NInput, useMessage } from 'naive-ui'
 import type { AgentMemory, AgentMemoryKind } from '@shared/assistant-runtime'
@@ -15,6 +15,7 @@ const props = defineProps<{
 const memories = ref<AgentMemory[]>([])
 const loading = ref(false)
 const isAdding = ref(false)
+const selectedIds = ref<string[]>([])
 
 // 新增表单
 const newKind = ref<AgentMemoryKind>('preference')
@@ -77,9 +78,40 @@ async function deleteMemory(memory: AgentMemory): Promise<void> {
   try {
     await window.characterArc.assistant.memoryDelete({ id: memory.id, projectId: props.projectId })
     memories.value = memories.value.filter((m) => m.id !== memory.id)
+    selectedIds.value = selectedIds.value.filter((id) => id !== memory.id)
     message.success('已删除该创作记忆')
   } catch (e) {
     message.error(`删除失败：${e instanceof Error ? e.message : String(e)}`)
+  }
+}
+
+function toggleSelect(id: string): void {
+  if (selectedIds.value.includes(id)) {
+    selectedIds.value = selectedIds.value.filter((sid) => sid !== id)
+  } else {
+    selectedIds.value = [...selectedIds.value, id]
+  }
+}
+
+const allSelected = computed(() => memories.value.length > 0 && selectedIds.value.length === memories.value.length)
+
+function toggleSelectAll(): void {
+  selectedIds.value = allSelected.value ? [] : memories.value.map((m) => m.id)
+}
+
+async function batchDelete(): Promise<void> {
+  const ids = selectedIds.value
+  if (ids.length === 0) return
+  if (!confirm(`确定删除选中的 ${ids.length} 条创作记忆吗？此操作不可恢复。`)) return
+  try {
+    for (const id of ids) {
+      await window.characterArc.assistant.memoryDelete({ id, projectId: props.projectId })
+    }
+    memories.value = memories.value.filter((m) => !ids.includes(m.id))
+    selectedIds.value = []
+    message.success(`已删除 ${ids.length} 条创作记忆`)
+  } catch (e) {
+    message.error(`批量删除失败：${e instanceof Error ? e.message : String(e)}`)
   }
 }
 
@@ -138,19 +170,43 @@ watch(
         <BookMarked :size="18" />
         还没有创作记忆。添加偏好后，智能体会越用越懂你的创作习惯。
       </div>
-      <ul v-else class="memory-list">
-        <li v-for="m in memories" :key="m.id" class="memory-item">
-          <div class="memory-head">
-            <span class="kind-badge" :class="m.kind">{{ KIND_LABEL[m.kind] ?? m.kind }}</span>
-            <span class="importance">重要度 {{ m.importance }}/5</span>
-            <span class="source">{{ m.source === 'agent' ? '智能体沉淀' : m.source === 'system' ? '系统' : '用户' }}</span>
-            <NButton size="tiny" text type="error" @click="deleteMemory(m)">
-              <Trash2 :size="14" />
-            </NButton>
-          </div>
-          <p class="memory-content">{{ m.content }}</p>
-        </li>
-      </ul>
+      <template v-else>
+        <div class="batch-bar">
+          <label class="select-all">
+            <input type="checkbox" :checked="allSelected" @change="toggleSelectAll" />
+            <span>全选</span>
+          </label>
+          <NButton
+            size="tiny"
+            type="error"
+            ghost
+            :disabled="selectedIds.length === 0"
+            @click="batchDelete"
+          >
+            <template #icon><Trash2 :size="13" /></template>
+            批量删除{{ selectedIds.length > 0 ? `（${selectedIds.length}）` : '' }}
+          </NButton>
+        </div>
+        <ul class="memory-list">
+          <li v-for="m in memories" :key="m.id" class="memory-item" :class="{ selected: selectedIds.includes(m.id) }">
+            <div class="memory-head">
+              <input
+                type="checkbox"
+                class="memory-check"
+                :checked="selectedIds.includes(m.id)"
+                @change="toggleSelect(m.id)"
+              />
+              <span class="kind-badge" :class="m.kind">{{ KIND_LABEL[m.kind] ?? m.kind }}</span>
+              <span class="importance">重要度 {{ m.importance }}/5</span>
+              <span class="source">{{ m.source === 'agent' ? '智能体沉淀' : m.source === 'system' ? '系统' : '用户' }}</span>
+              <NButton size="tiny" text type="error" @click="deleteMemory(m)">
+                <Trash2 :size="14" />
+              </NButton>
+            </div>
+            <p class="memory-content">{{ m.content }}</p>
+          </li>
+        </ul>
+      </template>
     </div>
   </NModal>
 </template>
@@ -203,6 +259,33 @@ watch(
   gap: 8px;
   max-height: 420px;
   overflow-y: auto;
+}
+.batch-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--arc-border, #eee);
+  border-radius: 8px;
+  background: var(--arc-bg-weak, rgba(127,127,127,0.05));
+}
+.select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--arc-text-secondary, #666);
+}
+.memory-check {
+  accent-color: var(--arc-primary, #0ea5e9);
+  cursor: pointer;
+}
+.memory-item.selected {
+  border-color: var(--arc-primary, #0ea5e9);
+  background: color-mix(in srgb, var(--arc-primary, #0ea5e9) 8%, transparent);
 }
 .memory-item {
   border: 1px solid var(--arc-border, #eee);

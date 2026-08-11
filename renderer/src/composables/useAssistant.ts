@@ -644,9 +644,10 @@ export function useAssistant(options: UseAssistantOptions) {
   async function rollbackTurn(turnId: string, prompt?: string): Promise<void> {
     if (!activeSessionId.value || isStreaming.value) return
     await A.turnDelete({ sessionId: activeSessionId.value, turnId })
-    // 回退后把被回退的那轮对话提示词自动填入问答框，方便继续基于它调整
+    // 回退后把被回退的那轮对话提示词自动填入问答框，并标记为“已回填”，方便继续基于它调整
     if (typeof prompt === 'string' && prompt.trim()) {
       composerValue.value = prompt
+      restoredDraftLabel.value = '已回填 · 回退的对话原文'
     }
     // 重拉本轮之后的对话与暂存区，保持一致
     await reloadTurns()

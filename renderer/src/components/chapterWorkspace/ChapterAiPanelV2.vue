@@ -485,11 +485,7 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
 
 <style scoped>
 .v2-dock {
-  --arc-primary: #0d7d5a;
-  --arc-primary-hover: #0a6b4e;
-  --arc-primary-pressed: #085d43;
-  --arc-primary-soft: rgba(13, 125, 90, 0.08);
-  --v2-accent-line: rgba(13, 125, 90, 0.22);
+  --v2-accent-line: color-mix(in srgb, var(--arc-primary) 22%, transparent);
   --v2-warn: #b45309;
   --v2-warn-soft: rgba(180, 83, 9, 0.08);
   --v2-danger: #b91c1c;

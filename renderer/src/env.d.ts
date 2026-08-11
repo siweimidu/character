@@ -263,6 +263,14 @@ declare global {
         preview?: import('@shared/continuation-import').ContinuationNovelFilePreview & { sourceHash: string }
         error?: string
       }>
+      pickAssistantTextFile: () => Promise<{
+        success: boolean
+        canceled: boolean
+        filePath?: string
+        name?: string
+        content?: string
+        error?: string
+      }>
       generateAi: (payload: unknown) => Promise<{
         success: boolean
         result?: unknown

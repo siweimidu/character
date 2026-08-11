@@ -697,6 +697,43 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
   })
 
+  ipcMain.handle('characterarc:pick-assistant-text-file', async () => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) {
+      return { success: false, canceled: true }
+    }
+
+    const result = await dialog.showOpenDialog(window, {
+      title: '选择要上传的本地文件（txt / md）',
+      properties: ['openFile'],
+      filters: [
+        { name: '文本文件', extensions: ['txt', 'md', 'markdown', 'mdown', 'mkd'] },
+        { name: '所有文件', extensions: ['*'] }
+      ]
+    })
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, canceled: true }
+    }
+
+    try {
+      const filePath = result.filePaths[0]
+      const stat = await import('node:fs/promises').then((fs) => fs.stat(filePath))
+      if (stat.size > 4 * 1024 * 1024) {
+        return { success: false, canceled: false, error: '文件过大，请选择小于 4MB 的文本文件。' }
+      }
+      const buffer = await import('node:fs/promises').then((fs) => fs.readFile(filePath, 'utf-8'))
+      const baseName = filePath.split(/[\\/]/).pop() ?? filePath
+      return { success: true, canceled: false, filePath, name: baseName, content: buffer }
+    } catch (error) {
+      return {
+        success: false,
+        canceled: false,
+        error: error instanceof Error ? error.message : '读取文件失败'
+      }
+    }
+  })
+
   ipcMain.handle('characterarc:save-cover-image', async (_event, payload: unknown) => {
     const window = deps.windowManager.getActiveWindow()
     if (!window) {

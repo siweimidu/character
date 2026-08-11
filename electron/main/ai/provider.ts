@@ -78,7 +78,10 @@ export function isToolUseNotSupportedError(error: unknown): boolean {
     'unrecognized request argument.*tools',
     'invalid parameter.*tools',
     '不支持.*工具',
-    '不支持.*tool'
+    '不支持.*tool',
+    'thought_signature',
+    '缺少 thought_signature',
+    'functioncall.*thought_signature'
   ]
   return patterns.some((p) => new RegExp(p, 'i').test(msg))
 }
