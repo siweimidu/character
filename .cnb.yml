@@ -20,6 +20,11 @@ main:
         - name: list-output
           script: |
             ls -lh dist/*.exe
+        - name: upload-artifact
+          image: cnbcool/attachments:latest
+          settings:
+            attachments:
+              - dist/*.exe
 
 $:
   tag_push:
@@ -40,6 +45,11 @@ $:
         - name: list-output
           script: |
             ls -lh dist/*.exe
+        - name: upload-artifact
+          image: cnbcool/attachments:latest
+          settings:
+            attachments:
+              - dist/*.exe
   api_trigger:
     - name: build-windows-exe
       docker:
@@ -58,3 +68,8 @@ $:
         - name: list-output
           script: |
             ls -lh dist/*.exe
+        - name: upload-artifact
+          image: cnbcool/attachments:latest
+          settings:
+            attachments:
+              - dist/*.exe
