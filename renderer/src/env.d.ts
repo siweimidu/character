@@ -594,6 +594,24 @@ declare global {
         }>
         error?: string
       }>
+      importFromCcSwitch: () => Promise<{
+        success: boolean
+        configPath?: string
+        configError?: string
+        aiProfiles?: Array<{
+          name: string
+          type: string
+          baseUrl: string
+          apiKey: string
+          model: string
+          isCurrent: boolean
+        }>
+        importedSkills?: Array<{
+          id: string
+          path: string
+        }>
+        error?: string
+      }>
       publishWorkspaceSync: (payload: unknown) => Promise<{
         success: boolean
         error?: string

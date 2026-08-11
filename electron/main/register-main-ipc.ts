@@ -1,6 +1,7 @@
 import { BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { existsSync } from 'node:fs'
 import { cp, mkdir, readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import * as XLSX from 'xlsx'
@@ -1476,6 +1477,90 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
       return { success: true, skills: skillContextEntries(resolvedProjectId) }
     } catch {
       return { success: true, skills: [] }
+    }
+  })
+
+  // ── 从 CC Switch 导入 skills 与 AI 接口配置 ──
+  // CC Switch（https://github.com/farion1231/cc-switch）的配置保存在 ~/.cc-switch/config.json，
+  // 用于管理 Claude Code / Codex 的多供应商接入。这里解析其中的 AI 接口配置（映射为 AiProfile），
+  // 并把 Claude Code 的 skills（~/.claude/skills 与 ~/.cc-switch/skills）导入到共享 skills 目录。
+  ipcMain.handle('characterarc:cc-switch-import', async () => {
+    const home = homedir()
+    const ccSwitchConfigPath = join(home, '.cc-switch', 'config.json')
+
+    // 1. 解析 AI 接口配置
+    let aiProfiles: Array<{
+      name: string
+      type: string
+      baseUrl: string
+      apiKey: string
+      model: string
+      isCurrent: boolean
+    }> = []
+    let configError = ''
+    if (existsSync(ccSwitchConfigPath)) {
+      try {
+        const raw = await readFile(ccSwitchConfigPath, 'utf-8')
+        const parsed = JSON.parse(raw)
+        // config.json 形如：{ "Claude": [...], "Codex": [...] }
+        const groups = Array.isArray(parsed) ? { Claude: parsed } : (parsed ?? {})
+        for (const key of Object.keys(groups)) {
+          const entries = groups[key]
+          if (!Array.isArray(entries)) continue
+          for (const entry of entries) {
+            if (!entry || typeof entry !== 'object') continue
+            aiProfiles.push({
+              name: String(entry.name ?? entry.label ?? key ?? '').trim() || key || 'CC Switch',
+              type: String(entry.type ?? '').toLowerCase(),
+              baseUrl: String(entry.baseUrl ?? entry.base_url ?? entry.endpoint ?? '').trim(),
+              apiKey: String(entry.apiKey ?? entry.api_key ?? entry.token ?? '').trim(),
+              model: String(entry.model ?? entry.modelId ?? entry.defaultModel ?? '').trim(),
+              isCurrent: Boolean(entry.isCurrent ?? entry.is_active ?? false)
+            })
+          }
+        }
+      } catch (error) {
+        configError = error instanceof Error ? error.message : 'CC Switch 配置文件解析失败'
+      }
+    } else {
+      configError = `未找到 CC Switch 配置文件：${ccSwitchConfigPath}`
+    }
+
+    // 2. 导入 skills 到共享目录（_shared scope，所有项目可见）
+    const skillsRoot = getSkillsDirPath()
+    await mkdir(skillsRoot, { recursive: true })
+    const importedSkills: Array<{ id: string; path: string }> = []
+    const skillSourceRoots = [
+      join(home, '.claude', 'skills'),
+      join(home, '.cc-switch', 'skills')
+    ]
+    for (const sourceRoot of skillSourceRoots) {
+      if (!existsSync(sourceRoot)) continue
+      const entries = await readdir(sourceRoot, { withFileTypes: true }).catch(() => [])
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue
+        const skillDir = join(sourceRoot, entry.name)
+        if (!existsSync(join(skillDir, 'SKILL.md'))) continue
+        const targetDir = join(skillsRoot, entry.name)
+        await cp(skillDir, targetDir, { recursive: true, force: true })
+        importedSkills.push({ id: entry.name, path: `project-skills/${entry.name}` })
+      }
+    }
+
+    // 3. 刷新技能注册表（共享作用域）
+    if (importedSkills.length) {
+      await refreshSkillRegistry(undefined)
+    }
+
+    return {
+      success: true,
+      aiProfiles: aiProfiles
+        .map((profile, index) => ({ ...profile, index }))
+        .sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent) || a.index - b.index)
+        .map(({ index, ...profile }) => profile),
+      importedSkills: importedSkills,
+      configPath: ccSwitchConfigPath,
+      configError
     }
   })
 

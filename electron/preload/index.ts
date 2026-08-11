@@ -69,6 +69,8 @@ contextBridge.exposeInMainWorld('characterArc', {
   importProjectSkillsPackage: (projectId: string) => ipcRenderer.invoke('characterarc:project-skills-import', projectId),
   /** 读取当前项目可用 skills 的正文内容（供 AI 内部使用） */
   getProjectSkillsContext: (projectId: string) => ipcRenderer.invoke('characterarc:project-skills-context', projectId),
+  /** 从 CC Switch（~/.cc-switch/config.json）导入 AI 接口配置，并导入 Claude Code skills */
+  importFromCcSwitch: () => ipcRenderer.invoke('characterarc:cc-switch-import'),
 
   // ── AI 任务 ──
   /** 发送一次非流式 AI 生成请求，返回完整结果 */

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { Activity, Copy, Cpu, Download, Image, MonitorCog, Moon, Network, Palette, PlugZap, Plus, RefreshCw, Trash2 } from 'lucide-vue-next'
+import { Activity, Copy, Cpu, Download, FileInput, Image, MonitorCog, Moon, Network, Palette, PlugZap, Plus, RefreshCw, Trash2 } from 'lucide-vue-next'
 import { NButton, NFormItem, NInput, NInputNumber, NModal, NSelect, NSwitch, useMessage } from 'naive-ui'
 import { autoSaveOptions } from '@/features/settings/autoSave'
 import { getProviderPreset, providerOptions, resolveProviderDefaults } from '@/features/settings/providerPresets'
@@ -20,7 +20,7 @@ const emit = defineEmits<{
 
 // 根据主题主色亮度自动选择对比度更高的文字颜色（深色主色用白字，浅色主色用深字）
 function themeTextColor(color: string): string {
-  const match = color.match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/')
+  const match = color.match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/)
   if (!match) return '#ffffff'
   let hex = match[1]
   if (hex.length === 3) {
@@ -51,6 +51,22 @@ interface BenchmarkHistoryItem {
 /** 保留最近 N 条基准测试历史记录 */
 const BENCHMARK_HISTORY_LIMIT = 5
 const benchmarkHistory = ref<BenchmarkHistoryItem[]>([])
+
+// ── 从 CC Switch 导入 ──
+interface CcSwitchAiProfile {
+  name: string
+  type: string
+  baseUrl: string
+  apiKey: string
+  model: string
+  isCurrent: boolean
+}
+const isCcSwitchImporting = ref(false)
+const ccSwitchImportOpen = ref(false)
+const ccSwitchProfiles = ref<Array<CcSwitchAiProfile & { selected: boolean }>>([])
+const ccSwitchImportedSkills = ref<string[]>([])
+const ccSwitchConfigError = ref('')
+const ccSwitchConfigPath = ref('')
 const isTestingProxyConnection = ref(false)
 const proxyTestIp = ref('')
 const isFetchingModels = ref(false)
@@ -434,6 +450,79 @@ async function handleBenchmarkModel(): Promise<void> {
   }
 }
 
+// 将 CC Switch 的 type 映射为应用内 provider 值
+function mapCcSwitchType(type: string): string {
+  const t = type.trim().toLowerCase()
+  if (t === 'anthropic' || t === 'claude') return 'anthropic'
+  if (t === 'openai') return 'openai'
+  if (t === 'gemini' || t === 'google') return 'gemini'
+  if (t === 'deepseek') return 'deepseek'
+  if (t === 'ollama') return 'ollama'
+  return 'openai-compatible'
+}
+
+// 从 CC Switch（~/.cc-switch/config.json）导入 AI 接口配置与 skills
+async function handleCcSwitchImport(): Promise<void> {
+  if (isCcSwitchImporting.value) return
+  isCcSwitchImporting.value = true
+  try {
+    const result = await window.characterArc.importFromCcSwitch()
+    if (!result.success) {
+      throw new Error(result.error ?? 'CC Switch 导入失败')
+    }
+    ccSwitchConfigPath.value = result.configPath ?? ''
+    ccSwitchConfigError.value = result.configError ?? ''
+    ccSwitchImportedSkills.value = (result.importedSkills ?? []).map((s) => s.id)
+    ccSwitchProfiles.value = (result.aiProfiles ?? []).map((profile) => ({
+      ...profile,
+      selected: true
+    }))
+    ccSwitchImportOpen.value = true
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : 'CC Switch 导入失败')
+  } finally {
+    isCcSwitchImporting.value = false
+  }
+}
+
+function toggleCcSwitchProfile(profile: CcSwitchAiProfile & { selected: boolean }): void {
+  profile.selected = !profile.selected
+}
+
+// 确认将勾选的 CC Switch AI 接口加入 aiProfiles
+function confirmCcSwitchImport(): void {
+  const selected = ccSwitchProfiles.value.filter((p) => p.selected)
+  const existingKeys = new Set(
+    draftSettings.aiProfiles.map((p) => `${p.provider}|${p.baseUrl}|${p.model}`.toLowerCase())
+  )
+  for (const profile of selected) {
+    const provider = mapCcSwitchType(profile.type)
+    const key = `${provider}|${profile.baseUrl}|${profile.model}`.toLowerCase()
+    if (existingKeys.has(key)) continue
+    const defaults = resolveProviderDefaults(provider)
+    draftSettings.aiProfiles.push({
+      id: generateProfileId(),
+      name: generateUniqueName(profile.name.trim() || 'CC Switch'),
+      provider,
+      baseUrl: profile.baseUrl.trim() || defaults.baseUrl,
+      apiKey: profile.apiKey,
+      model: profile.model.trim() || defaults.model,
+      apiProtocol: 'auto',
+      temperature: undefined,
+      topP: undefined
+    })
+    existingKeys.add(key)
+  }
+  const skillCount = ccSwitchImportedSkills.value.length
+  ccSwitchImportOpen.value = false
+  ccSwitchProfiles.value = []
+  ccSwitchImportedSkills.value = []
+  ccSwitchConfigError.value = ''
+  message.success(
+    `已导入 ${selected.length} 个 AI 接口配置${skillCount ? `，${skillCount} 个 skills` : ''}`
+  )
+}
+
 async function saveSettings(): Promise<void> {
   const activeProfile = draftSettings.aiProfiles.find(p => p.id === draftSettings.activeAiProfileId)
   const nextSettings: AppSettings = {
@@ -511,6 +600,14 @@ async function saveSettings(): Promise<void> {
               </button>
             </div>
             <div class="profile-tab-actions">
+              <button
+                class="profile-action-btn"
+                title="从 CC Switch 导入 AI 接口配置与 skills"
+                :disabled="isCcSwitchImporting"
+                @click="handleCcSwitchImport"
+              >
+                <FileInput :size="14" />
+              </button>
               <button class="profile-action-btn" title="新建配置" @click="handleAddProfile">
                 <Plus :size="14" />
               </button>
@@ -896,6 +993,60 @@ async function saveSettings(): Promise<void> {
       <div class="settings-footer-actions">
         <n-button round strong @click="closeModal">取消</n-button>
         <n-button type="primary" round strong :disabled="!hasPendingChanges" @click="saveSettings">保存设置</n-button>
+      </div>
+    </template>
+  </n-modal>
+
+  <!-- 从 CC Switch 导入 AI 接口配置与 skills 的确认弹窗 -->
+  <n-modal
+    :show="ccSwitchImportOpen"
+    preset="card"
+    class="arc-settings-modal cc-switch-modal"
+    title="从 CC Switch 导入"
+    :bordered="false"
+    @close="ccSwitchImportOpen = false"
+  >
+    <div class="cc-switch-intro">
+      <p>已读取 CC Switch 配置（{{ ccSwitchConfigPath || '~/.cc-switch/config.json' }}）。选择要导入的 AI 接口配置，并确认 skills 导入结果。</p>
+      <p v-if="ccSwitchConfigError" class="cc-switch-warn">
+        配置读取提示：{{ ccSwitchConfigError }}
+      </p>
+    </div>
+
+    <div class="cc-switch-section-title">AI 接口配置</div>
+    <div v-if="ccSwitchProfiles.length" class="cc-switch-profile-list">
+      <label
+        v-for="profile in ccSwitchProfiles"
+        :key="profile.name + profile.baseUrl + profile.model"
+        class="cc-switch-profile-item"
+        :class="{ checked: profile.selected }"
+      >
+        <input type="checkbox" :checked="profile.selected" @change="toggleCcSwitchProfile(profile)" />
+        <span class="cc-switch-profile-main">
+          <strong>{{ profile.name }}</strong>
+          <span class="cc-switch-profile-sub">{{ profile.type }} · {{ profile.model || '默认模型' }}</span>
+        </span>
+        <code class="cc-switch-profile-url">{{ profile.baseUrl || '默认地址' }}</code>
+      </label>
+    </div>
+    <div v-else class="cc-switch-empty">
+      未在配置文件中识别到可导入的 AI 接口配置。
+    </div>
+
+    <div class="cc-switch-section-title">Skills</div>
+    <div v-if="ccSwitchImportedSkills.length" class="cc-switch-skill-list">
+      <span v-for="skillId in ccSwitchImportedSkills" :key="skillId" class="cc-switch-skill-tag">
+        {{ skillId }}
+      </span>
+    </div>
+    <div v-else class="cc-switch-empty">
+      未在 ~/.claude/skills 与 ~/.cc-switch/skills 中找到可导入的 skills。
+    </div>
+
+    <template #footer>
+      <div class="cc-switch-footer">
+        <n-button round strong @click="ccSwitchImportOpen = false">取消</n-button>
+        <n-button type="primary" round strong @click="confirmCcSwitchImport">导入选中</n-button>
       </div>
     </template>
   </n-modal>
@@ -1503,5 +1654,113 @@ async function saveSettings(): Promise<void> {
   .theme-dot {
     transition: none;
   }
+}
+
+/* ── CC Switch 导入弹窗 ── */
+.cc-switch-modal {
+  width: min(620px, calc(100vw - 48px));
+}
+
+.cc-switch-intro p {
+  margin: 0 0 8px;
+  color: var(--arc-text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.cc-switch-warn {
+  color: var(--arc-danger);
+}
+
+.cc-switch-section-title {
+  margin: 16px 0 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--arc-text-primary);
+}
+
+.cc-switch-profile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.cc-switch-profile-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  background: var(--arc-bg-surface);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.cc-switch-profile-item.checked {
+  border-color: color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border));
+  background: color-mix(in srgb, var(--arc-primary) 6%, var(--arc-bg-surface));
+}
+
+.cc-switch-profile-item input {
+  accent-color: var(--arc-primary);
+}
+
+.cc-switch-profile-main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cc-switch-profile-main strong {
+  font-size: 13px;
+  color: var(--arc-text-primary);
+}
+
+.cc-switch-profile-sub {
+  color: var(--arc-text-secondary);
+  font-size: 11px;
+}
+
+.cc-switch-profile-url {
+  margin-left: auto;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--arc-text-secondary);
+}
+
+.cc-switch-empty {
+  color: var(--arc-text-secondary);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.cc-switch-skill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cc-switch-skill-tag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--arc-primary) 10%, var(--arc-bg-surface));
+  color: var(--arc-primary);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+}
+
+.cc-switch-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 </style>
