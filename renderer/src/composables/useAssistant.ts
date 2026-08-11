@@ -86,6 +86,8 @@ export interface UseAssistantOptions {
 export interface AssistantSendOptions {
   intentHint?: string
   attachments?: TurnAttachment[]
+  /** 智能体 ID。不传时使用当前会话绑定的智能体。 */
+  agentId?: string
 }
 
 export function useAssistant(options: UseAssistantOptions) {
@@ -593,7 +595,8 @@ export function useAssistant(options: UseAssistantOptions) {
         scopeRef: options.scopeRef?.(),
         userMessage: trimmedText,
         intentHint: sendOptions.intentHint,
-        attachments: sendOptions.attachments
+        attachments: sendOptions.attachments,
+        agentId: sendOptions.agentId
       })
       // 事件流已经在 handler 里做了乐观 turn 的替换 + 状态更新，
       // 这里只兜底：若乐观 turn 依然存在（没有任何事件推来），清理掉。

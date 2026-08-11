@@ -32,9 +32,12 @@ import { makeStageChapterDeleteTool } from './tools/stage-chapter-delete'
 import { makeChapterManagementTools } from './tools/stage-chapter-management'
 import { makeStageEntitiesTools } from './tools/stage-entities'
 import { makeStageProjectEntityTools } from './tools/stage-project-entities'
+import { createMemoryTools } from './tools/memory-tools'
+import { createDelegateTools } from './tools/delegate-tools'
 import { type ToolFactory } from './agent-loop'
 import type { ResolveTurnExecutionPlan } from './ipc'
 import { getProjectView, type SnapshotAccessor } from './providers/shared'
+import { getSharedMemoryStore } from './state'
 import { saveRuntimeKnowledgeDocument } from './knowledge-writer'
 import { createEvidenceLedger, wrapToolsWithRuntimeBudget } from './evidence-ledger'
 import { createRuntimePlan, type AssistantRuntimePlan } from './planner'
@@ -72,6 +75,24 @@ export function createExecutionPlanner(
     // 与 validateSettings 一并调用，配置缺失时立即抛错而不是发出去空转。
     const settings = normalizeSettings(rawSettings)
     validateSettings(settings)
+
+    // 0. 获取智能体（Agent）的 system prompt。
+    //    如果请求指定了 agentId，用它；否则用默认（第一个内置）智能体。
+    let agentSystemPrompt = ''
+    let agentName = ''
+    try {
+      const { getSharedAgentStore } = await import('./state')
+      const store = await getSharedAgentStore()
+      const agent = request.agentId
+        ? store.get(request.agentId)
+        : store.getDefaultAgent()
+      if (agent) {
+        agentSystemPrompt = agent.systemPrompt
+        agentName = agent.name
+      }
+    } catch {
+      // 智能体 store 未就绪时忽略，回落到默认 core system prompt
+    }
 
     // 1. Planner：先决定本轮是轻量对话、审计、修正还是分批任务。
     const runtimePlan = createRuntimePlan({ surface, request })
@@ -111,6 +132,8 @@ export function createExecutionPlanner(
     const systemPrompt = buildAssistantSystemPrompt({
       surface: routedSurface,
       intentHint: request.intentHint,
+      agentName: agentName || undefined,
+      agentSystemPrompt: agentSystemPrompt || undefined,
       contextBlock: [
         `## Runtime v2 分批计划\n\n${runtimePlan.guidance}`,
         skillPromptBlock,
@@ -194,11 +217,24 @@ export function createExecutionPlanner(
         projectId: ctx.projectId,
         stagedStore: stagedChangesStore
       })
+      const memoryTools = createMemoryTools({
+        getStore: () => getSharedMemoryStore(),
+        projectId: ctx.projectId,
+        turnId: ctx.turnId
+      })
+      const delegateTools = createDelegateTools({
+        settings,
+        projectId: ctx.projectId,
+        systemPrompt
+      })
+
       const combined: Tool[] = [
         ...chapterReadTools,
         ...projectDataTools,
         ...knowledgeTools,
         ...skillTools,
+        ...memoryTools,
+        ...delegateTools,
         stageChapterEdit,
         stageChapterCreate,
         stageChapterDelete,

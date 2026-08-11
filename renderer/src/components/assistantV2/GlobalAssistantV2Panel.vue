@@ -17,6 +17,7 @@ import AssistantSessionList from './AssistantSessionList.vue'
 import AssistantMessages from './AssistantMessages.vue'
 import AssistantComposer from './AssistantComposer.vue'
 import StagedChangesView from './StagedChangesView.vue'
+import AgentSelector from './AgentSelector.vue'
 
 const props = defineProps<{
   activeViewLabel?: string
@@ -53,6 +54,29 @@ type PanelTab = 'chat' | 'staged' | 'sessions'
 const activeTab = ref<PanelTab>('chat')
 const activeMode = ref<AssistantMode>('ingest')
 const isCommitting = ref(false)
+
+// 智能体选择
+const selectedAgentId = ref<string>('')
+const AGENT_SELECT_KEY = 'arc-assistant-active-agent'
+
+function persistAgentSelection(id: string): void {
+  selectedAgentId.value = id
+  try {
+    window.localStorage.setItem(AGENT_SELECT_KEY, id)
+  } catch {
+    // ignore
+  }
+}
+
+function restoreAgentSelection(): void {
+  try {
+    const saved = window.localStorage.getItem(AGENT_SELECT_KEY)
+    if (saved) selectedAgentId.value = saved
+  } catch {
+    // ignore
+  }
+}
+restoreAgentSelection()
 
 const modeOptions: Array<{ id: AssistantMode; label: string; description: string }> = [
   { id: 'ingest', label: '录入', description: '沉淀设定、计划和创作记忆' },
@@ -107,10 +131,11 @@ function fillQuickAction(prompt: string): void {
   composerValue.value = prompt
 }
 
-function sendWithMode(intentHint?: string): void {
+function sendWithMode(): void {
   activeTab.value = 'chat'
   void assistant.send({
-    intentHint: intentHint || `global-assistant-v2:${activeMode.value}`
+    intentHint: `global-assistant-v2:${activeMode.value}`,
+    agentId: selectedAgentId.value || undefined
   })
 }
 
@@ -169,6 +194,10 @@ async function handleCommit(ids?: string[]): Promise<void> {
         </button>
       </div>
     </header>
+
+    <div class="agent-strip">
+      <AgentSelector v-model="selectedAgentId" @update:model-value="persistAgentSelection" />
+    </div>
 
     <div class="session-strip">
       <span>{{ activeSessionTitle }}</span>
@@ -234,6 +263,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
         :messages="assistant.messages.value"
         :is-streaming="assistant.isStreaming.value"
         :is-initializing="assistant.isInitializing.value"
+        assistant-name="智能体"
         @open-knowledge="openKnowledgeDocument"
         @continue="assistant.continueWithPrompt"
         @open-staged="activeTab = 'staged'"
@@ -396,6 +426,15 @@ async function handleCommit(ids?: string[]): Promise<void> {
   color: var(--arc-text-primary);
 }
 
+.agent-strip {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--arc-border);
+  background: var(--arc-bg-surface);
+}
 .session-strip {
   display: flex;
   min-height: 34px;

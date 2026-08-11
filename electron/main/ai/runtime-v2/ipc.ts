@@ -14,25 +14,36 @@ import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import {
   ASSISTANT_IPC_CHANNELS,
+  type AgentCreateRequest,
+  type AgentDeleteRequest,
+  type AgentGetRequest,
+  type AgentListRequest,
+  type AgentUpdateRequest,
+  type MemoryCreateRequest,
+  type MemoryDeleteRequest,
+  type MemoryListRequest,
   type AssistantEventPush,
   type AssistantSession,
   type StageAcceptRequest,
   type StageBindTargetRequest,
   type StageCommitRequest,
   type StageRejectRequest,
+  type StagedChange,
   type SurfaceDefinition,
   type TurnEvent,
   type TurnCancelRequest,
   type TurnDeleteRequest,
   type TurnSendRequest
 } from '@shared/assistant-runtime'
+import { presetAvatarDataUri } from '@shared/agent-avatars'
+import { seedBuiltinAgents } from './agent-profile-store'
 import type { AiTaskName, AppSettings } from '../shared-types'
 import type { Tool } from '../agent/tools/types'
 import { buildRunMeta } from '../runtime/run-meta'
 import type { ConversationManager } from './conversation-manager'
 import { stagedChangesStore, type StagedChangeCommitter } from './staged-changes-store'
 import { AgentLoop, type AgentLoopRunResult, type ToolFactory } from './agent-loop'
-import { configureRuntimeState, getSharedConversation } from './state'
+import { configureRuntimeState, getSharedAgentStore, getSharedConversation, getSharedMemoryStore } from './state'
 import type { EvidenceLedger } from './evidence-ledger'
 import type { AssistantRuntimePlan } from './planner'
 
@@ -207,6 +218,8 @@ export function registerAssistantIpcHandlers(injected: AssistantIpcDeps): void {
   registerSessionHandlers()
   registerTurnHandlers()
   registerStageHandlers()
+  registerAgentHandlers()
+  registerMemoryHandlers()
 }
 
 // ============================================================================
@@ -447,7 +460,10 @@ function registerStageHandlers(): void {
     ASSISTANT_IPC_CHANNELS.STAGE_REJECT,
     async (_event, payload: StageRejectRequest) => {
       await getConversation()
-      return stagedChangesStore.reject(payload.changeIds)
+      const rejected = stagedChangesStore.reject(payload.changeIds)
+      // 学习闭环：用户拒绝了暂存变更 → 把"这次方向不对"沉淀为教训记忆。
+      await captureRejectionMemories(rejected)
+      return rejected
     }
   )
 
@@ -474,4 +490,136 @@ function registerStageHandlers(): void {
       })
     }
   )
+}
+
+// ============================================================================
+// Agent（智能体）handlers
+// ============================================================================
+
+/**
+ * 注册智能体 CRUD 通道。
+ * 首次访问时确保内置智能体已 seed。
+ */
+function registerAgentHandlers(): void {
+  ipcMain.handle(
+    ASSISTANT_IPC_CHANNELS.AGENT_LIST,
+    async (_event, payload: AgentListRequest) => {
+      const store = await getSharedAgentStore()
+      return store.list(payload?.builtinOnly ?? false)
+    }
+  )
+
+  ipcMain.handle(
+    ASSISTANT_IPC_CHANNELS.AGENT_GET,
+    async (_event, payload: AgentGetRequest) => {
+      const store = await getSharedAgentStore()
+      return store.get(payload.id)
+    }
+  )
+
+  ipcMain.handle(
+    ASSISTANT_IPC_CHANNELS.AGENT_CREATE,
+    async (_event, payload: AgentCreateRequest) => {
+      const store = await getSharedAgentStore()
+      return store.create({
+        name: payload.name,
+        description: payload.description,
+        systemPrompt: payload.systemPrompt,
+        avatar: payload.avatar,
+        avatarType: payload.avatarType,
+        presetIndex: payload.presetIndex
+      })
+    }
+  )
+
+  ipcMain.handle(
+    ASSISTANT_IPC_CHANNELS.AGENT_UPDATE,
+    async (_event, payload: AgentUpdateRequest) => {
+      const store = await getSharedAgentStore()
+      return store.update(payload.id, {
+        name: payload.name,
+        description: payload.description,
+        systemPrompt: payload.systemPrompt,
+        avatar: payload.avatar,
+        avatarType: payload.avatarType,
+        presetIndex: payload.presetIndex
+      })
+    }
+  )
+
+  ipcMain.handle(
+    ASSISTANT_IPC_CHANNELS.AGENT_DELETE,
+    async (_event, payload: AgentDeleteRequest) => {
+      const store = await getSharedAgentStore()
+      return { ok: store.delete(payload.id) }
+    }
+  )
+}
+
+// ============================================================================
+// 创作记忆（Agent Memory / 学习闭环）handlers
+// ============================================================================
+
+function registerMemoryHandlers(): void {
+  ipcMain.handle(
+    ASSISTANT_IPC_CHANNELS.MEMORY_LIST,
+    async (_event, payload: MemoryListRequest) => {
+      const store = await getSharedMemoryStore()
+      return store.list(payload.projectId, payload.limit)
+    }
+  )
+
+  ipcMain.handle(
+    ASSISTANT_IPC_CHANNELS.MEMORY_CREATE,
+    async (_event, payload: MemoryCreateRequest) => {
+      const store = await getSharedMemoryStore()
+      return store.create({
+        projectId: payload.projectId,
+        kind: payload.kind,
+        content: payload.content,
+        source: payload.source,
+        importance: payload.importance,
+        sourceTurnId: payload.sourceTurnId
+      })
+    }
+  )
+
+  ipcMain.handle(
+    ASSISTANT_IPC_CHANNELS.MEMORY_DELETE,
+    async (_event, payload: MemoryDeleteRequest) => {
+      const store = await getSharedMemoryStore()
+      return { ok: store.remove(payload.id, payload.projectId) }
+    }
+  )
+}
+
+/**
+ * 学习闭环：把被用户拒绝的暂存变更沉淀为"教训"记忆。
+ *
+ * 用户拒绝 = 强信号，说明智能体这次的改法/方向不合意。把变更的
+ * 目标实体与失败原因记成一条 lesson，后续 turn 会自动召回，避免重复犯错。
+ */
+async function captureRejectionMemories(rejected: StagedChange[]): Promise<void> {
+  for (const change of rejected) {
+    const cm = await getConversation()
+    const session = cm.getSession(change.sessionId)
+    if (!session) continue
+
+    const store = await getSharedMemoryStore()
+    const kindLabel = change.kind
+    const content = [
+      `用户拒绝了智能体对「${change.entityTitle}」的${kindLabel}变更（操作：${change.action}）。`,
+      `智能体的理由/改法：${change.reason}`,
+      '请后续避免重蹈覆辙：除非用户再次明确要求，不要以同样的方向再次修改该项目标。'
+    ].join('\n')
+
+    store.create({
+      projectId: session.projectId,
+      kind: 'lesson',
+      content,
+      source: 'system',
+      importance: 4,
+      sourceTurnId: change.turnId
+    })
+  }
 }

@@ -202,6 +202,7 @@ export type ContextProviderId =
   | 'knowledge'
   | 'workflow-documents'
   | 'skill-index'
+  | 'memories'
 
 /**
  * 上下文切片：由 ContextProvider 产出，参与最终 system prompt 拼装。
@@ -232,6 +233,74 @@ export interface ContextBuildRequest {
 }
 
 // ============================================================================
+// 智能体（Agent）定义
+// ============================================================================
+
+/** 智能体头像类型。 */
+export type AgentAvatarType = 'svg' | 'image' | 'none'
+
+/**
+ * 智能体定义。
+ * 用户可创建自定义智能体（不同的 systemPrompt 即不同的角色），
+ * 也可选择预设的 SVG 头像或上传图片作为头像。
+ */
+export interface AgentProfile {
+  id: string
+  /** 智能体名称，如"大纲师""设定校对"。 */
+  name: string
+  /** 简短描述，展示在智能体选择器上。 */
+  description: string
+  /** 系统提示词，决定智能体的角色与行为。 */
+  systemPrompt: string
+  /** 头像：SVG 内联代码（data URI 或原始 SVG 字符串）、图片 data URI 或空。 */
+  avatar: string
+  /** 头像类型。 */
+  avatarType: AgentAvatarType
+  /** 是否内置智能体（不可删除）。 */
+  isBuiltin: boolean
+  /** 预设头像索引（仅内置智能体使用）。 */
+  presetIndex?: number
+  createdAt: string
+  updatedAt: string
+}
+
+/** 10 个预设 SVG 头像的索引范围。 */
+export const AGENT_PRESET_AVATAR_COUNT = 10
+
+// ============================================================================
+// 创作记忆（Agent Memory / 学习闭环）
+// ============================================================================
+
+/** 创作记忆的类型。 */
+export type AgentMemoryKind = 'preference' | 'lesson' | 'fact' | 'method'
+
+/** 创作记忆来源。 */
+export type AgentMemorySource = 'user' | 'agent' | 'system'
+
+/**
+ * 智能体跨会话记忆条目。
+ * 记录用户的创作偏好、被纠正过的教训、项目关键事实与方法，
+ * 在后续 turn 自动召回注入上下文，让智能体"越用越懂这个项目"。
+ */
+export interface AgentMemory {
+  id: string
+  projectId: string
+  kind: AgentMemoryKind
+  /** 记忆正文（已截断到上限长度）。 */
+  content: string
+  source: AgentMemorySource
+  /** 1~5，越高越重要，召回时优先。 */
+  importance: number
+  /** 来源 turn（用于回溯是哪次对话沉淀的）。 */
+  sourceTurnId?: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** 智能体头像上传时强制 1:1 正方形比例。 */
+export const AGENT_AVATAR_MAX_DIMENSION = 512
+
+// ============================================================================
 // 工具权限矩阵
 // ============================================================================
 
@@ -246,9 +315,9 @@ export type PermissionMatrix = Readonly<Record<SurfaceId, readonly ToolMatcher[]
  * 用 `*` 通配简化维护；后续新增工具时按前缀自动生效。
  */
 export const DEFAULT_PERMISSION_MATRIX: PermissionMatrix = {
-  'global-page': ['read_*', 'search_*', 'list_*', 'stage_*', 'skill_*', 'knowledge_*'],
-  'global-panel': ['read_*', 'search_*', 'list_*', 'stage_*', 'skill_*', 'knowledge_*'],
-  'chapter-panel': ['read_*', 'search_*', 'list_*', 'stage_chapter_edit', 'skill_*', 'knowledge_*'],
+  'global-page': ['read_*', 'search_*', 'list_*', 'stage_*', 'skill_*', 'knowledge_*', 'memory_*', 'delegate_*'],
+  'global-panel': ['read_*', 'search_*', 'list_*', 'stage_*', 'skill_*', 'knowledge_*', 'memory_*', 'delegate_*'],
+  'chapter-panel': ['read_*', 'search_*', 'list_*', 'stage_chapter_edit', 'skill_*', 'knowledge_*', 'memory_*', 'delegate_*'],
   'inline-selection': ['read_chapter', 'stage_chapter_edit']
 } as const
 
@@ -278,7 +347,17 @@ export const ASSISTANT_IPC_CHANNELS = {
   STAGE_ACCEPT: 'characterarc:assistant:stage:accept',
   STAGE_REJECT: 'characterarc:assistant:stage:reject',
   STAGE_COMMIT: 'characterarc:assistant:stage:commit',
-  STAGE_BIND_TARGET: 'characterarc:assistant:stage:bind-target'
+  STAGE_BIND_TARGET: 'characterarc:assistant:stage:bind-target',
+  // 智能体
+  AGENT_LIST: 'characterarc:assistant:agent:list',
+  AGENT_GET: 'characterarc:assistant:agent:get',
+  AGENT_CREATE: 'characterarc:assistant:agent:create',
+  AGENT_UPDATE: 'characterarc:assistant:agent:update',
+  AGENT_DELETE: 'characterarc:assistant:agent:delete',
+  // 创作记忆（Agent Memory / 学习闭环）
+  MEMORY_LIST: 'characterarc:assistant:memory:list',
+  MEMORY_CREATE: 'characterarc:assistant:memory:create',
+  MEMORY_DELETE: 'characterarc:assistant:memory:delete'
 } as const
 
 export type AssistantIpcChannel =
@@ -309,6 +388,8 @@ export interface TurnSendRequest {
   intentHint?: string
   /** 继续某个未完成批次时传入原 turnId，便于后端后续关联 phase state。 */
   resumeOfTurnId?: string
+  /** 智能体 ID：使用指定智能体的 systemPrompt。缺省时使用默认智能体。 */
+  agentId?: string
 }
 
 export interface TurnAttachment {
@@ -352,6 +433,65 @@ export interface StageCommitRequest {
 export interface StageBindTargetRequest {
   changeId: string
   entityId: string
+}
+
+// ============================================================================
+// 智能体 IPC payload
+// ============================================================================
+
+export interface AgentListRequest {
+  /** 只列出内置智能体。 */
+  builtinOnly?: boolean
+}
+
+export interface AgentGetRequest {
+  id: string
+}
+
+export interface AgentCreateRequest {
+  name: string
+  description?: string
+  systemPrompt: string
+  avatar?: string
+  avatarType?: AgentAvatarType
+  presetIndex?: number
+}
+
+export interface AgentUpdateRequest {
+  id: string
+  name?: string
+  description?: string
+  systemPrompt?: string
+  avatar?: string
+  avatarType?: AgentAvatarType
+  presetIndex?: number
+}
+
+export interface AgentDeleteRequest {
+  id: string
+}
+
+// ============================================================================
+// 创作记忆 IPC payload
+// ============================================================================
+
+export interface MemoryListRequest {
+  projectId: string
+  limit?: number
+}
+
+export interface MemoryCreateRequest {
+  projectId: string
+  kind: AgentMemoryKind
+  content: string
+  source?: AgentMemorySource
+  importance?: number
+  sourceTurnId?: string
+}
+
+export interface MemoryDeleteRequest {
+  id: string
+  projectId: string
 }
 
 // ============================================================================

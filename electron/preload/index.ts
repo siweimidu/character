@@ -275,6 +275,46 @@ contextBridge.exposeInMainWorld('characterArc', {
       ipcRenderer.invoke('characterarc:assistant:stage:commit', toIpcPayload(payload)),
     stageBindTarget: (payload: unknown) =>
       ipcRenderer.invoke('characterarc:assistant:stage:bind-target', toIpcPayload(payload)),
+    // Agent（智能体）
+    agentList: (payload?: { builtinOnly?: boolean }) =>
+      ipcRenderer.invoke('characterarc:assistant:agent:list', toIpcPayload(payload ?? {})),
+    agentGet: (payload: { id: string }) =>
+      ipcRenderer.invoke('characterarc:assistant:agent:get', toIpcPayload(payload)),
+    agentCreate: (payload: {
+      name: string
+      description?: string
+      systemPrompt: string
+      avatar?: string
+      avatarType?: string
+      presetIndex?: number
+    }) =>
+      ipcRenderer.invoke('characterarc:assistant:agent:create', toIpcPayload(payload)),
+    agentUpdate: (payload: {
+      id: string
+      name?: string
+      description?: string
+      systemPrompt?: string
+      avatar?: string
+      avatarType?: string
+      presetIndex?: number
+    }) =>
+      ipcRenderer.invoke('characterarc:assistant:agent:update', toIpcPayload(payload)),
+    agentDelete: (payload: { id: string }) =>
+      ipcRenderer.invoke('characterarc:assistant:agent:delete', toIpcPayload(payload)),
+    // 创作记忆（Agent Memory / 学习闭环）
+    memoryList: (payload: { projectId: string; limit?: number }) =>
+      ipcRenderer.invoke('characterarc:assistant:memory:list', toIpcPayload(payload)),
+    memoryCreate: (payload: {
+      projectId: string
+      kind?: string
+      content: string
+      source?: string
+      importance?: number
+      sourceTurnId?: string
+    }) =>
+      ipcRenderer.invoke('characterarc:assistant:memory:create', toIpcPayload(payload)),
+    memoryDelete: (payload: { id: string; projectId: string }) =>
+      ipcRenderer.invoke('characterarc:assistant:memory:delete', toIpcPayload(payload)),
     /** 订阅主进程推送的 TurnEvent 流。返回 unsubscribe 函数。 */
     onEvent: (callback: (payload: unknown) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload)

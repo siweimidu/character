@@ -18,6 +18,8 @@ const CORE_SYSTEM = `你是一位小说创作项目的资深创作助手。你�
 - 但不要过度追问：如果用户已经给出目标实体和核心方向（例如"重写宋砚设定：刑部、冷酷无情、权力欲、主角信息源"），就应基于已有项目框架补足合理细节，输出方案或调用对应 stage_* 生成待审阅变更。缺少非关键字段时自行做保守假设，并在回复里说明假设。
 - 用户说"根据已有故事框架给建议/方案"时，要承接最近对话中的目标实体，只围绕该实体给设定修改建议；不要转成全项目审计、泛泛列项目优化方向，除非用户明确要求审计整个项目。
 - 需要资料时，主动调用可用工具查找（read_* / search_* / list_*）。不要凭空杜撰设定。
+- 【创作记忆与学习闭环】上下文中可能提供了"创作记忆"（跨会话记住的用户偏好与教训）。这些是长期约定，你的工作应主动遵守。当用户本次明确表达出新的、稳定的创作偏好，或你总结出一条对后续创作有长期价值的经验时，用 memory_save 工具把它存进创作记忆；不要用它存临时内容。
+- 【委派并行】面对大而可拆的任务（批量审计多章、并行核对多个实体、一次收集多份独立资料）时，可用 delegate_subagent 把子任务委派给隔离的子智能体并行执行，你只消费蒸馏后的结论，避免主上下文膨胀。
 - 系统上下文若提供了"当前任务候选 SKILLS"，这是根据本轮对话自动匹配的候选方法论；先判断相关性，相关时主动调用 skill_load / skill_read_reference 加载后再回答或暂存变更，不相关则跳过。标为"强制生效"的 skill 已直接注入，无需再加载。
 - 采用渐进式检索，不要一次性读完整项目。除非用户明确要求全文/全量导出，否则按"索引/搜索 → 少量摘要 → 精确全文"推进：
   1. 先用 search_project、list_chapters 或 read_project_data（不传 entity_type）定位候选；注意 list_chapters 只列已生成/已写正文的章节，不列大纲节点。用户问"第十三章/后续章节/未写章节/大纲里的章节"时，优先用 read_project_data(entity_type="outline") 或 search_project(scope=["outline"])；
@@ -75,6 +77,10 @@ export interface BuildAssistantSystemPromptParams {
   intentHint?: string
   /** 由 ContextBuilder + assembleContextBlock 产出的项目上下文段。 */
   contextBlock: string
+  /** 智能体名称（用于展示）。 */
+  agentName?: string
+  /** 智能体自定义 system prompt，会作为角色的核心人格注入。 */
+  agentSystemPrompt?: string
 }
 
 function buildIntentHintBlock(intentHint?: string): string {
@@ -98,6 +104,25 @@ export function buildAssistantSystemPrompt(
 ): string {
   const surfaceHint = buildSurfaceHint(params.surface)
   const intentHint = buildIntentHintBlock(params.intentHint)
-  const sections = [CORE_SYSTEM, surfaceHint, intentHint, '', '---', '', params.contextBlock]
+  const sections: string[] = []
+
+  // 智能体自定义 system prompt 作为核心人格优先注入
+  if (params.agentSystemPrompt) {
+    sections.push(
+      params.agentSystemPrompt,
+      '',
+      '【以下是你作为小说创作助手的基础行为准则，与你的角色设定不冲突时始终遵守】',
+      CORE_SYSTEM
+    )
+  } else {
+    sections.push(CORE_SYSTEM)
+  }
+
+  sections.push(surfaceHint)
+  if (intentHint) sections.push(intentHint)
+  sections.push('')
+  sections.push('---')
+  sections.push('')
+  sections.push(params.contextBlock)
   return sections.filter(Boolean).join('\n\n')
 }

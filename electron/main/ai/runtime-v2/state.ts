@@ -8,8 +8,12 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { ConversationManager } from './conversation-manager'
 import { stagedChangesStore } from './staged-changes-store'
+import { AgentProfileStore } from './agent-profile-store'
+import { AgentMemoryStore } from './agent-memory-store'
 
 let sharedConversation: ConversationManager | null = null
+let sharedAgentStore: AgentProfileStore | null = null
+let sharedMemoryStore: AgentMemoryStore | null = null
 let ensureDbFn: (() => Promise<DatabaseSync>) | null = null
 
 /** bootstrap 阶段配置 db 获取器；ipc.ts 首次调用时用它建单例。 */
@@ -24,7 +28,20 @@ export async function getSharedConversation(): Promise<ConversationManager> {
   const db = await ensureDbFn()
   stagedChangesStore.configure(db)
   sharedConversation = new ConversationManager(db)
+  if (!sharedAgentStore) {
+    sharedAgentStore = new AgentProfileStore(db)
+  }
   return sharedConversation
+}
+
+/** 惰性拿到 AgentProfileStore 单例。 */
+export async function getSharedAgentStore(): Promise<AgentProfileStore> {
+  if (sharedAgentStore) return sharedAgentStore
+  if (!ensureDbFn) throw new Error('Runtime state not configured; call configureRuntimeState first.')
+  const db = await ensureDbFn()
+  stagedChangesStore.configure(db)
+  sharedAgentStore = new AgentProfileStore(db)
+  return sharedAgentStore
 }
 
 /**
@@ -34,4 +51,24 @@ export async function getSharedConversation(): Promise<ConversationManager> {
  */
 export function peekSharedConversation(): ConversationManager | null {
   return sharedConversation
+}
+
+/** 同步 peek AgentProfileStore。 */
+export function peekSharedAgentStore(): AgentProfileStore | null {
+  return sharedAgentStore
+}
+
+/** 惰性拿到 AgentMemoryStore 单例。 */
+export async function getSharedMemoryStore(): Promise<AgentMemoryStore> {
+  if (sharedMemoryStore) return sharedMemoryStore
+  if (!ensureDbFn) throw new Error('Runtime state not configured; call configureRuntimeState first.')
+  const db = await ensureDbFn()
+  stagedChangesStore.configure(db)
+  sharedMemoryStore = new AgentMemoryStore(db)
+  return sharedMemoryStore
+}
+
+/** 同步 peek AgentMemoryStore。 */
+export function peekSharedMemoryStore(): AgentMemoryStore | null {
+  return sharedMemoryStore
 }

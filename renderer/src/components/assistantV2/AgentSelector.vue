@@ -1,0 +1,433 @@
+<script setup lang="ts">
+import { computed, onMounted, ref, watch } from 'vue'
+import { ChevronDown, Pencil, Plus, Settings2, Trash2 } from 'lucide-vue-next'
+import { useMessage } from 'naive-ui'
+import type { AgentProfile } from '@shared/assistant-runtime'
+import { PRESET_AGENT_AVATARS } from '@shared/agent-avatars'
+import AgentManagerDialog from './AgentManagerDialog.vue'
+
+const props = defineProps<{
+  /** 当前选中的智能体 ID。 */
+  modelValue?: string
+}>()
+
+const emit = defineEmits<{
+  (e: 'update:modelValue', agentId: string): void
+}>()
+
+const message = useMessage()
+const agents = ref<AgentProfile[]>([])
+const isOpen = ref(false)
+const isLoaded = ref(false)
+const showManager = ref(false)
+const editingAgent = ref<AgentProfile | null>(null)
+
+async function loadAgents(): Promise<void> {
+  try {
+    const A = window.characterArc.assistant
+    const list = await A.agentList()
+    agents.value = list as unknown as AgentProfile[]
+    isLoaded.value = true
+    // 如果没有选中智能体，默认选第一个
+    if (!props.modelValue && agents.value.length > 0) {
+      emit('update:modelValue', agents.value[0].id)
+    }
+  } catch (err) {
+    console.error('加载智能体失败:', err)
+    isLoaded.value = true
+  }
+}
+
+const currentAgent = computed(() =>
+  agents.value.find((a) => a.id === props.modelValue) ?? agents.value[0] ?? null
+)
+
+function avatarUrl(agent: AgentProfile): string {
+  if (agent.avatarType === 'svg' && agent.avatar) {
+    // 已经是完整 SVG 字符串
+    if (agent.avatar.startsWith('data:') || agent.avatar.startsWith('<svg')) {
+      return agent.avatar
+    }
+    return `data:image/svg+xml,${encodeURIComponent(agent.avatar)}`
+  }
+  if (agent.avatarType === 'image' && agent.avatar) {
+    return agent.avatar
+  }
+  // 没有自定义头像时使用预设头像
+  if (agent.presetIndex !== undefined && agent.presetIndex >= 0) {
+    const preset = PRESET_AGENT_AVATARS.find((p) => p.index === agent.presetIndex)
+    if (preset) {
+      return `data:image/svg+xml,${encodeURIComponent(
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">${preset.inner}</svg>`
+      )}`
+    }
+  }
+  return ''
+}
+
+function handleSelect(agent: AgentProfile): void {
+  emit('update:modelValue', agent.id)
+  isOpen.value = false
+}
+
+function toggleOpen(): void {
+  if (!isLoaded.value) void loadAgents()
+  isOpen.value = !isOpen.value
+}
+
+function handleSaved(agent: AgentProfile): void {
+  // 刷新列表并选中新保存的智能体
+  void loadAgents()
+  emit('update:modelValue', agent.id)
+  showManager.value = false
+  editingAgent.value = null
+}
+
+function handleEdit(agent: AgentProfile): void {
+  editingAgent.value = agent
+  showManager.value = true
+}
+
+async function handleDelete(agent: AgentProfile): Promise<void> {
+  if (agent.isBuiltin) return
+  if (!confirm(`确定删除智能体"${agent.name}"吗？此操作不可恢复。`)) return
+  try {
+    const A = window.characterArc.assistant
+    const result = await A.agentDelete({ id: agent.id })
+    if (result.ok) {
+      message.success('智能体已删除')
+      await loadAgents()
+      if (props.modelValue === agent.id && agents.value.length > 0) {
+        emit('update:modelValue', agents.value[0].id)
+      }
+    }
+  } catch (err) {
+    message.error(err instanceof Error ? err.message : '删除失败')
+  }
+}
+
+onMounted(() => {
+  void loadAgents()
+})
+
+watch(() => props.modelValue, () => {
+  if (!props.modelValue && agents.value.length > 0) {
+    emit('update:modelValue', agents.value[0].id)
+  }
+})
+</script>
+
+<template>
+  <div class="agent-selector">
+    <div class="selector-trigger" @click="toggleOpen">
+      <div class="agent-avatar">
+        <img v-if="currentAgent && avatarUrl(currentAgent)" :src="avatarUrl(currentAgent)" alt="头像" />
+        <span v-else class="avatar-placeholder">✦</span>
+      </div>
+      <div class="agent-info">
+        <div class="agent-name">{{ currentAgent?.name ?? '智能体' }}</div>
+        <div class="agent-desc">{{ currentAgent?.description || '选择创作助手' }}</div>
+      </div>
+      <ChevronDown :size="14" class="chevron" :class="{ open: isOpen }" />
+    </div>
+
+    <transition name="dropdown">
+      <div v-if="isOpen" class="dropdown">
+        <div class="dropdown-header">
+          <span>选择智能体</span>
+          <button class="manage-btn" @click="editingAgent = null; showManager = true">
+            <Settings2 :size="13" />
+            管理
+          </button>
+        </div>
+        <div class="agent-list">
+          <div
+            v-for="agent in agents"
+            :key="agent.id"
+            class="agent-row"
+            :class="{ active: agent.id === (currentAgent?.id) }"
+          >
+            <button type="button" class="agent-item" @click="handleSelect(agent)">
+              <div class="item-avatar">
+                <img v-if="avatarUrl(agent)" :src="avatarUrl(agent)" alt="头像" />
+                <span v-else class="item-avatar-ph">✦</span>
+              </div>
+              <div class="item-info">
+                <div class="item-name">
+                  {{ agent.name }}
+                  <span v-if="agent.isBuiltin" class="builtin-tag">内置</span>
+                </div>
+                <div class="item-desc">{{ agent.description }}</div>
+              </div>
+            </button>
+            <div v-if="!agent.isBuiltin" class="item-actions">
+              <button type="button" class="action-btn" title="编辑" @click.stop="handleEdit(agent)">
+                <Pencil :size="13" />
+              </button>
+              <button type="button" class="action-btn danger" title="删除" @click.stop="handleDelete(agent)">
+                <Trash2 :size="13" />
+              </button>
+            </div>
+          </div>
+          <button type="button" class="create-item" @click="editingAgent = null; showManager = true">
+            <Plus :size="14" />
+            <span>创建新智能体</span>
+          </button>
+        </div>
+      </div>
+    </transition>
+
+    <AgentManagerDialog
+      :visible="showManager"
+      :agent="editingAgent"
+      @close="showManager = false; editingAgent = null"
+      @saved="handleSaved"
+    />
+  </div>
+</template>
+
+<style scoped>
+.agent-selector {
+  position: relative;
+}
+.selector-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  background: var(--arc-bg-surface);
+  border: 1px solid var(--arc-border);
+  transition: border-color 0.15s ease, background 0.15s ease;
+  max-width: 240px;
+}
+.selector-trigger:hover {
+  border-color: var(--arc-primary);
+  background: var(--arc-bg-surface-hover);
+}
+.agent-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--arc-bg-weak);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--arc-border);
+}
+.agent-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.avatar-placeholder {
+  font-size: 14px;
+  color: var(--arc-text-hint);
+}
+.agent-info {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.agent-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--arc-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agent-desc {
+  font-size: 11px;
+  color: var(--arc-text-hint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chevron {
+  color: var(--arc-text-hint);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+.chevron.open {
+  transform: rotate(180deg);
+}
+.dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 100;
+  width: 300px;
+  max-height: 400px;
+  background: var(--arc-bg-surface);
+  border: 1px solid var(--arc-border-strong);
+  border-radius: 12px;
+  box-shadow: var(--arc-shadow-lg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.dropdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--arc-border);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--arc-text-secondary);
+}
+.manage-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: var(--arc-primary);
+  cursor: pointer;
+  font-size: 12px;
+  border-radius: 6px;
+}
+.manage-btn:hover {
+  background: var(--arc-primary-soft);
+}
+.agent-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 6px;
+}
+.agent-row {
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+.agent-row:hover {
+  background: var(--arc-bg-weak);
+}
+.agent-row.active {
+  background: var(--arc-primary-soft);
+}
+.agent-row.active:hover {
+  background: var(--arc-primary-soft);
+}
+.agent-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 8px 4px 8px 10px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.item-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 6px;
+  flex-shrink: 0;
+}
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--arc-text-hint);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+.action-btn:hover {
+  color: var(--arc-primary);
+  background: var(--arc-primary-soft);
+}
+.action-btn.danger:hover {
+  color: var(--arc-danger);
+  background: var(--arc-danger-soft);
+}
+.item-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--arc-bg-weak);
+  border: 1px solid var(--arc-border);
+}
+.item-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.item-avatar-ph {
+  font-size: 14px;
+  color: var(--arc-text-hint);
+}
+.item-info {
+  flex: 1;
+  min-width: 0;
+}
+.item-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--arc-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.builtin-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--arc-primary-soft);
+  color: var(--arc-primary);
+  font-weight: 500;
+}
+.item-desc {
+  font-size: 11px;
+  color: var(--arc-text-hint);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.create-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px;
+  border: none;
+  background: transparent;
+  border-top: 1px solid var(--arc-border);
+  color: var(--arc-primary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+}
+.create-item:hover {
+  background: var(--arc-primary-soft);
+}
+.dropdown-enter-active,
+.dropdown-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.dropdown-enter-from,
+.dropdown-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+</style>

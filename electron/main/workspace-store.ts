@@ -15,6 +15,8 @@ import {
 } from './workspace-types'
 import { initStoryStateSchema } from './story-state-store'
 import { initAssistantRuntimeSchema } from './ai/runtime-v2/conversation-manager'
+import { initAgentProfilesSchema, seedBuiltinAgents } from './ai/runtime-v2/agent-profile-store'
+import { initAgentMemoriesSchema } from './ai/runtime-v2/agent-memory-store'
 import { initChapterProcessingSchema } from './ai/runtime/chapter-processing-store'
 import { initStateBackfillSchema } from './ai/state-backfill-store'
 import { migrateKnowledgeDocumentScopes } from './knowledge-document-schema'
@@ -389,6 +391,9 @@ export async function ensureWorkspaceDb(): Promise<DatabaseSync> {
   ensureKnowledgeDocumentSchema(db)
   initStoryStateSchema(db)
   initAssistantRuntimeSchema(db)
+  initAgentProfilesSchema(db)
+  seedBuiltinAgents(db)
+  initAgentMemoriesSchema(db)
   initChapterProcessingSchema(db)
   initStateBackfillSchema(db)
 

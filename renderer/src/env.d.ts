@@ -740,6 +740,23 @@ declare global {
           Promise<import('@shared/assistant-runtime').StagedChangeCommitResult[]>
         stageBindTarget: (payload: import('@shared/assistant-runtime').StageBindTargetRequest) =>
           Promise<import('@shared/assistant-runtime').StagedChange | null>
+        // Agent（智能体）
+        agentList: (payload?: { builtinOnly?: boolean }) =>
+          Promise<import('@shared/assistant-runtime').AgentProfile[]>
+        agentGet: (payload: { id: string }) =>
+          Promise<import('@shared/assistant-runtime').AgentProfile | null>
+        agentCreate: (payload: import('@shared/assistant-runtime').AgentCreateRequest) =>
+          Promise<import('@shared/assistant-runtime').AgentProfile>
+        agentUpdate: (payload: import('@shared/assistant-runtime').AgentUpdateRequest) =>
+          Promise<import('@shared/assistant-runtime').AgentProfile | null>
+        agentDelete: (payload: { id: string }) => Promise<{ ok: boolean }>
+        // 创作记忆（Agent Memory / 学习闭环）
+        memoryList: (payload: import('@shared/assistant-runtime').MemoryListRequest) =>
+          Promise<import('@shared/assistant-runtime').AgentMemory[]>
+        memoryCreate: (payload: import('@shared/assistant-runtime').MemoryCreateRequest) =>
+          Promise<import('@shared/assistant-runtime').AgentMemory>
+        memoryDelete: (payload: import('@shared/assistant-runtime').MemoryDeleteRequest) =>
+          Promise<{ ok: boolean }>
         onEvent: (
           callback: (payload: import('@shared/assistant-runtime').AssistantEventPush) => void
         ) => () => void

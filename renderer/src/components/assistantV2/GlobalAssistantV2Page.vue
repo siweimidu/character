@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import {
   BookMarked,
+  Brain,
   FileCheck2,
   Globe2,
   Network,
@@ -20,6 +21,8 @@ import AssistantSessionList from './AssistantSessionList.vue'
 import AssistantMessages from './AssistantMessages.vue'
 import AssistantComposer from './AssistantComposer.vue'
 import StagedChangesView from './StagedChangesView.vue'
+import AgentSelector from './AgentSelector.vue'
+import AgentMemoryDialog from './AgentMemoryDialog.vue'
 
 const appStore = useAppStore()
 const { selectedProjectId } = storeToRefs(appStore)
@@ -40,6 +43,37 @@ const assistant = useAssistant({
 const composerValue = computed({
   get: () => assistant.composerValue.value,
   set: (v) => { assistant.composerValue.value = v }
+})
+
+// 当前选中的智能体
+const selectedAgentId = ref<string>('')
+
+// 创作记忆对话框
+const memoryDialogVisible = ref(false)
+
+// 保存智能体选择到 localStorage，方便下次会话记住
+const AGENT_SELECT_KEY = 'arc-assistant-active-agent'
+
+function persistAgentSelection(id: string): void {
+  selectedAgentId.value = id
+  try {
+    window.localStorage.setItem(AGENT_SELECT_KEY, id)
+  } catch {
+    // ignore
+  }
+}
+
+function restoreAgentSelection(): void {
+  try {
+    const saved = window.localStorage.getItem(AGENT_SELECT_KEY)
+    if (saved) selectedAgentId.value = saved
+  } catch {
+    // ignore
+  }
+}
+
+onMounted(() => {
+  restoreAgentSelection()
 })
 
 type AssistantMode = 'ingest' | 'correct' | 'audit'
@@ -97,9 +131,10 @@ function fillQuickAction(prompt: string): void {
   composerValue.value = prompt
 }
 
-function sendWithMode(intentHint?: string): void {
+function sendWithMode(): void {
   void assistant.send({
-    intentHint: intentHint || `global-assistant-v2:${activeMode.value}`
+    intentHint: `global-assistant-v2:${activeMode.value}`,
+    agentId: selectedAgentId.value || undefined
   })
 }
 
@@ -341,10 +376,29 @@ async function handleCommit(ids?: string[]): Promise<void> {
         <span class="dot" /> 生成中…
       </div>
 
+      <!-- 智能体选择器 + 创作记忆 -->
+      <div class="agent-toolbar">
+        <AgentSelector v-model="selectedAgentId" @update:model-value="persistAgentSelection" />
+        <button
+          class="memory-toggle"
+          title="创作记忆（学习闭环）"
+          @click="memoryDialogVisible = true"
+        >
+          <Brain :size="14" />
+        </button>
+      </div>
+
+      <AgentMemoryDialog
+        :visible="memoryDialogVisible"
+        :project-id="selectedProjectId"
+        @close="memoryDialogVisible = false"
+      />
+
       <AssistantMessages
         v-if="assistant.messages.value.length > 0 || assistant.isStreaming.value"
         :messages="assistant.messages.value"
         :is-streaming="assistant.isStreaming.value"
+        assistant-name="智能体"
         @open-knowledge="openKnowledgeDocument"
         @continue="assistant.continueWithPrompt"
         @open-staged="reopenStagePanel"
@@ -354,7 +408,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
       <div v-else class="starter">
         <div class="starter-inner">
           <div class="starter-head">
-            <div class="starter-kicker">Global Assistant v2</div>
+            <div class="starter-kicker">智能体</div>
             <h2>需要我做点什么？</h2>
             <p class="starter-sub">{{ currentMode.description }}</p>
           </div>
@@ -560,6 +614,31 @@ async function handleCommit(ids?: string[]): Promise<void> {
   min-height: 0;
   min-width: 0;
   position: relative;
+}
+.agent-toolbar {
+  padding: 10px 32px 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  z-index: 10;
+}
+.memory-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--arc-border, #ddd);
+  background: transparent;
+  color: var(--arc-primary, #0ea5e9);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+.memory-toggle:hover {
+  background: rgba(127, 127, 127, 0.1);
 }
 .starter {
   flex: 1;

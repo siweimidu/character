@@ -63,7 +63,7 @@ const grouped = computed(() => {
     <div class="head">
       <div class="brand">
         <span class="dot" />
-        <span>全局助理</span>
+        <span>智能体</span>
         <span class="ver">v2</span>
       </div>
       <button class="collapse-side" title="收起对话记录" @click="emit('collapse')">

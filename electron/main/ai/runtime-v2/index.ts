@@ -41,6 +41,13 @@ export type {
   StageRejectRequest,
   StageCommitRequest,
   StageBindTargetRequest,
+  AgentProfile,
+  AgentAvatarType,
+  AgentListRequest,
+  AgentGetRequest,
+  AgentCreateRequest,
+  AgentUpdateRequest,
+  AgentDeleteRequest,
   AssistantIpcChannel
 } from '@shared/assistant-runtime'
 
@@ -93,6 +100,12 @@ export {
 } from './agent-loop'
 
 export {
+  AgentMemoryStore,
+  formatMemoriesBlock,
+  type MemoryInput
+} from './agent-memory-store'
+
+export {
   registerAssistantIpcHandlers,
   type AssistantIpcDeps,
   type ResolveTurnExecutionPlan
@@ -102,3 +115,11 @@ export {
   bootstrapAssistantRuntime,
   type BootstrapAssistantRuntimeDeps
 } from './bootstrap'
+
+export {
+  AgentProfileStore,
+  BUILTIN_AGENTS,
+  seedBuiltinAgents,
+  initAgentProfilesSchema,
+  type BuiltinAgentSeed
+} from './agent-profile-store'
