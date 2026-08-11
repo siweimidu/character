@@ -125,6 +125,49 @@ input {
   user-select: none;
 }
 
+.app-titlebar__nav {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.app-titlebar__nav-btn {
+  display: inline-flex;
+  width: 30px;
+  height: 28px;
+  flex: 0 0 30px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: var(--arc-radius-md);
+  background: transparent;
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.app-titlebar__nav-btn:hover {
+  border-color: var(--arc-border);
+  background: var(--arc-bg-surface-hover);
+  color: var(--arc-primary);
+}
+
+.app-titlebar__nav-btn:active {
+  transform: translateY(1px);
+}
+
+.app-titlebar__nav-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--arc-primary) 55%, transparent);
+  outline-offset: 2px;
+}
+
 .app-titlebar__version {
   color: var(--arc-text-hint);
   font-size: 11px;

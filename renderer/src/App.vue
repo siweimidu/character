@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
-import { Moon, Sun } from 'lucide-vue-next'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { Home, Image, Library, Moon, Settings, Sparkles, Sun, TrendingUp } from 'lucide-vue-next'
 import { createDiscreteApi, NConfigProvider, NDialogProvider, NGlobalStyle, NMessageProvider, NSpin, darkTheme } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import { createNaiveThemeOverrides, getThemeColorScheme } from '@/theme/presets'
@@ -15,12 +15,13 @@ import CoverWorkbenchPage from '@/pages/CoverWorkbenchPage.vue'
 import FanqieTrendsPage from '@/pages/FanqieTrendsPage.vue'
 import AiTaskProgressDock from '@/components/AiTaskProgressDock.vue'
 import TitlebarModelSwitcher from '@/components/TitlebarModelSwitcher.vue'
+import HomepageSettingsModal from '@/components/home/HomepageSettingsModal.vue'
 
 // 全局应用状态
 const appStore = useAppStore()
 // 当前运行平台（win32 / darwin / linux），用于适配标题栏高度
 const platform = window.characterArc?.platform ?? 'unknown'
-const appName = '弧光'
+const settingsVisible = ref(false)
 const { message } = createDiscreteApi(['message'])
 let themeTransitionFrame: number | null = null
 
@@ -177,10 +178,62 @@ onBeforeUnmount(() => {
         <n-global-style />
         <div class="app-shell" :class="{ 'platform-darwin': platform === 'darwin' }">
           <div class="app-titlebar">
-            <span class="app-titlebar__brand">
-              {{ appName }}
-              <span class="app-titlebar__tag">开源免费</span>
-            </span>
+            <div class="app-titlebar__nav">
+              <button
+                type="button"
+                class="app-titlebar__nav-btn"
+                title="回到主页"
+                aria-label="回到主页"
+                @click="appStore.backToProjects()"
+              >
+                <Home :size="16" />
+              </button>
+              <button
+                type="button"
+                class="app-titlebar__nav-btn"
+                title="设置"
+                aria-label="设置"
+                @click="settingsVisible = true"
+              >
+                <Settings :size="16" />
+              </button>
+              <button
+                type="button"
+                class="app-titlebar__nav-btn"
+                title="封面生图工作台"
+                aria-label="封面生图工作台"
+                @click="appStore.openCoverWorkbenchPage()"
+              >
+                <Image :size="16" />
+              </button>
+              <button
+                type="button"
+                class="app-titlebar__nav-btn"
+                title="内置 Skills 与项目扩展"
+                aria-label="内置 Skills 与项目扩展"
+                @click="appStore.openSkillsPage()"
+              >
+                <Sparkles :size="16" />
+              </button>
+              <button
+                type="button"
+                class="app-titlebar__nav-btn"
+                title="拆书知识库"
+                aria-label="拆书知识库"
+                @click="appStore.openDeconstructionLibrary()"
+              >
+                <Library :size="16" />
+              </button>
+              <button
+                type="button"
+                class="app-titlebar__nav-btn"
+                title="番茄风向标"
+                aria-label="番茄风向标"
+                @click="appStore.openFanqieTrends()"
+              >
+                <TrendingUp :size="16" />
+              </button>
+            </div>
             <div class="app-titlebar__tools">
               <TitlebarModelSwitcher />
               <button
@@ -219,6 +272,7 @@ onBeforeUnmount(() => {
           </div>
           <AiTaskProgressDock />
         </div>
+        <HomepageSettingsModal v-model:show="settingsVisible" />
       </n-dialog-provider>
     </n-message-provider>
   </n-config-provider>
