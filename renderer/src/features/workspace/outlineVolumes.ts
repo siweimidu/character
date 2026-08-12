@@ -108,15 +108,18 @@ export function ensureVolumeCollections(payload?: {
     }
   }
 
-  // 若无任何分卷，自动创建一个默认分卷
+  // 允许没有任何分卷（用户可删除最后一个分卷）。
+  // 仅当仍有章节/大纲节点引用分卷时才自动补一个分卷来承载它们，避免数据丢失。
   if (outlineVolumes.length === 0) {
     const firstReferencedVolumeId = Array.from(referencedVolumeIds)[0]
-    outlineVolumes.push(
-      createOutlineVolume({
-        id: firstReferencedVolumeId || `volume-${Date.now()}`
-      })
-    )
-    volumeMap.set(outlineVolumes[0].id, outlineVolumes[0])
+    if (firstReferencedVolumeId) {
+      outlineVolumes.push(
+        createOutlineVolume({
+          id: firstReferencedVolumeId
+        })
+      )
+      volumeMap.set(outlineVolumes[0].id, outlineVolumes[0])
+    }
   }
 
   // 补充被引用但不存在的分卷
@@ -131,8 +134,8 @@ export function ensureVolumeCollections(payload?: {
     }
   }
 
-  // 所有无效 volumeId 重定向到第一个分卷
-  const fallbackVolumeId = outlineVolumes[0].id
+  // 所有无效 volumeId 重定向到第一个分卷（若无分卷则不做重定向）
+  const fallbackVolumeId = outlineVolumes[0]?.id
 
   return {
     outlineVolumes,

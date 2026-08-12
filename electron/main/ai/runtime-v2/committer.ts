@@ -381,7 +381,7 @@ async function commitDelete(
     if (!existing) {
       return { changeId: change.id, ok: false, error: `章节不存在或已删除：${change.entityId}` }
     }
-    // 允许删除最后一章：不再强制保留一个章节（删除前由 UI/工具层提示确认）。
+    // 允许删除最后一个章节：不再强制保留一个章节（删除前由 UI/工具层提示确认）。
 
     db.exec('BEGIN')
     try {

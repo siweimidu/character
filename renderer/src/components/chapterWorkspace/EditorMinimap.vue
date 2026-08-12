@@ -30,15 +30,17 @@ const minimapRef = ref<HTMLDivElement | null>(null)
 
 const MINIMAP_WIDTH = 96
 const MINIMAP_PADDING = 8
-const LINE_HEIGHT_PX = 5 // 每行在缩略图中的固定高度（含字高+间距）
-const FONT_PX = 4.5 // 缩略文字字号
+const LINE_HEIGHT_PX = 6 // 每行在缩略图中的固定高度（含字高+间距）
+const FONT_PX = 5.5 // 缩略文字字号
 const CHAR_WIDTH_PX = Math.floor(FONT_PX * 0.6) // monospace 字符宽度 ≈ 0.6 * fontSize
 
 let rafId = 0
 let dragging = false
 
 function getContentLines(): string[] {
-  const text = props.getText() || ''
+  const text = (props.getText() || '').trim()
+  // 空内容时给一个占位行，避免 canvas 完全空白
+  if (!text) return [' ']
   return text.split('\n')
 }
 
@@ -69,23 +71,27 @@ function draw(): void {
 
   ctx.font = `${FONT_PX}px monospace`
   ctx.textBaseline = 'middle'
-  const color = getComputedStyle(el).color || '#888'
+  // 使用主题变量解析出可见文字颜色，并兜底为深灰，避免依赖 DOM 计算色导致透明/空白
+  const rootStyle = getComputedStyle(document.documentElement)
+  const color = rootStyle.getPropertyValue('--arc-text-secondary').trim()
+    || rootStyle.getPropertyValue('--arc-text-primary').trim()
+    || '#52525b'
 
   const maxChars = Math.max(1, Math.floor(cssW / CHAR_WIDTH_PX))
 
   // 逐行绘制，使用原始行号映射 y 坐标，保留文档空行结构（类似 VSCode）
   const topPad = 2
+  ctx.globalAlpha = 0.85
+  ctx.fillStyle = color
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     if (!line.trim()) continue
     const y = topPad + (i * LINE_HEIGHT_PX + LINE_HEIGHT_PX / 2) * scale
     if (y > cssH) break
     const clipped = line.length > maxChars ? line.slice(0, maxChars) : line
-    ctx.globalAlpha = 0.6
-    ctx.fillStyle = color
     ctx.fillText(clipped, 0, y, cssW)
-    ctx.globalAlpha = 1
   }
+  ctx.globalAlpha = 1
 
   drawViewport(ctx, cssW, cssH)
 }
@@ -151,7 +157,8 @@ watch(
   () => props.visible,
   (v) => {
     if (v) {
-      nextTick(scheduleDraw)
+      // 多等一帧确保容器尺寸稳定后再绘制
+      nextTick(() => requestAnimationFrame(scheduleDraw))
     }
   },
   { immediate: true }
@@ -159,7 +166,7 @@ watch(
 
 watch(
   () => props.scrollContainer,
-  () => nextTick(scheduleDraw)
+  () => nextTick(() => requestAnimationFrame(scheduleDraw))
 )
 
 onBeforeUnmount(() => {

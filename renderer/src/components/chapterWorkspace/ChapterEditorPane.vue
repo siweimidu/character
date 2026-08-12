@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Check, ChevronDown, ChevronRight, Folder, FocusIcon, History, Maximize2, Menu, MessageSquareQuote, Minus, Minimize2, Plus, RefreshCw, Save, Search, ShieldAlert, Sparkles, Type, Wand2 } from 'lucide-vue-next'
 import EditorCommandPalette from './EditorCommandPalette.vue'
 import type { CommandPaletteAction } from './editorCommandPalette'
@@ -59,12 +59,9 @@ const quickChapterOptions = computed(() =>
 )
 
 function openQuickCreateThread(): void {
-  if (appStore.outlineVolumes.length === 0) {
-    message.warning('当前没有分卷，无法新建伏笔。请先新建分卷。')
-    return
-  }
-  if (appStore.chapters.length === 0) {
-    message.warning('当前没有章节，无法新建伏笔。请先新建章节。')
+  // 无分卷或无章节时不允许新建伏笔
+  if (!appStore.outlineVolumes.length || !appStore.chapters.length) {
+    message.warning('当前没有分卷或者没有章节，无法新建伏笔')
     return
   }
   quickThreadForm.title = ''
@@ -263,8 +260,22 @@ const ctxMenuHasSelection = ref(false)
 
 function handleEditorContextMenu(e: MouseEvent): void {
   const target = e.target as HTMLElement | null
-  // 仅在 ProseMirror 编辑区域内拦截
-  if (!target?.closest('.ProseMirror')) return
+  // 扩大右键范围：整个正文编辑区（含 .ProseMirror 及其两侧留白、标题、摘要等）都弹出菜单
+  const scrollEl = scrollRef.value
+  if (!target || !scrollEl || !scrollEl.contains(target)) return
+  // 若右键点在可编辑/可输入控件（标题 input、按钮等）上，交给默认行为，避免干扰
+  const tag = target.tagName
+  if (
+    tag === 'INPUT' ||
+    tag === 'TEXTAREA' ||
+    tag === 'SELECT' ||
+    target.closest('.ep-title') ||
+    target.closest('button') ||
+    target.closest('.n-tag') ||
+    target.closest('a')
+  ) {
+    return
+  }
   e.preventDefault()
   const editor = tiptapEditor.value
   const sel = editor?.state.selection
@@ -514,6 +525,14 @@ function handleEditorScroll(): void {
   minimapRef.value?.redraw()
 }
 
+// 切换章节时重新绘制预览缩略图，确保新章节正文立即可见
+watch(
+  () => currentChapter.value?.id,
+  () => {
+    nextTick(() => minimapRef.value?.redraw())
+  }
+)
+
 onBeforeUnmount(() => {
   document.removeEventListener('selectionchange', handleSelectionChange)
   document.removeEventListener('mousedown', handleMouseDown)
@@ -531,13 +550,13 @@ onBeforeUnmount(() => {
       </button>
       <div class="breadcrumb">
         <Folder :size="13" />
-        <span>{{ volumeLabel }}</span>
+        <span class="crumb-volume">{{ volumeLabel }}</span>
         <ChevronRight :size="12" />
         <span class="crumb-current">{{ currentChapter?.title || '未命名章节' }}</span>
       </div>
 
       <div class="ep-actions">
-        <span class="save-indicator">
+        <span class="save-indicator" :title="saveStatusText">
           <span
             class="dot"
             :class="{
@@ -545,7 +564,7 @@ onBeforeUnmount(() => {
               failed: Boolean(appStore.persistenceError)
             }"
           />
-          {{ saveStatusText }}
+          <span class="save-label">{{ saveStatusText }}</span>
         </span>
         <span class="divider" />
 
@@ -599,17 +618,17 @@ onBeforeUnmount(() => {
           </template>
           历史版本
         </n-tooltip>
-        <button class="toolbtn" :disabled="!currentChapter" @click="emit('generateDraft')">
+        <button class="toolbtn" :disabled="!currentChapter" :title="'生成初稿'" @click="emit('generateDraft')">
           <Wand2 :size="13" />
-          <span>生成初稿</span>
+          <span class="btn-label" data-full="生成初稿">生成初稿</span>
         </button>
-        <button class="toolbtn" :disabled="!currentChapter" @click="openQuickCreateThread">
+        <button class="toolbtn" :disabled="!currentChapter" :title="'新建伏笔'" @click="openQuickCreateThread">
           <Plus :size="13" />
-          <span>新建伏笔</span>
+          <span class="btn-label" data-full="新建伏笔">新建伏笔</span>
         </button>
-        <button class="toolbtn" :class="{ primary: !aiOpen, active: aiOpen }" @click="emit('toggleAi')">
+        <button class="toolbtn" :class="{ primary: !aiOpen, active: aiOpen }" :title="'AI 助理'" @click="emit('toggleAi')">
           <Sparkles :size="13" />
-          <span>AI 助理</span>
+          <span class="btn-label" data-full="AI 助理">AI 助理</span>
         </button>
       </div>
     </header>
@@ -904,6 +923,8 @@ onBeforeUnmount(() => {
   gap: 12px;
   background: var(--arc-bg-surface);
   border-bottom: 1px solid var(--arc-border);
+  overflow: hidden;
+  min-width: 0;
 }
 
 .breadcrumb {
@@ -913,11 +934,22 @@ onBeforeUnmount(() => {
   font-size: 12px;
   color: var(--arc-text-secondary);
   min-width: 0;
+  flex: 1;
+  overflow: hidden;
 }
 
 .breadcrumb svg {
   flex-shrink: 0;
   color: var(--arc-text-hint);
+}
+
+.crumb-volume {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 40%;
 }
 
 .crumb-current {
@@ -926,12 +958,16 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .ep-actions {
   display: flex;
   align-items: center;
   gap: 4px;
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .save-indicator {
@@ -940,6 +976,42 @@ onBeforeUnmount(() => {
   gap: 6px;
   font-size: 11px;
   color: var(--arc-text-hint);
+  white-space: nowrap;
+}
+
+.save-label {
+  white-space: nowrap;
+}
+
+.btn-label {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+/* 窗口变窄时：已保存文字隐藏、生成初稿→初稿、新建伏笔→伏笔、AI 助理→AI */
+@media (max-width: 1500px) {
+  .save-label {
+    display: none;
+  }
+  .save-indicator {
+    gap: 4px;
+  }
+}
+@media (max-width: 1320px) {
+  .btn-label[data-full="生成初稿"] { font-size: 0; }
+  .btn-label[data-full="生成初稿"]::before { content: "初稿"; font-size: 12px; }
+  .btn-label[data-full="新建伏笔"] { font-size: 0; }
+  .btn-label[data-full="新建伏笔"]::before { content: "伏笔"; font-size: 12px; }
+  .btn-label[data-full="AI 助理"] { font-size: 0; }
+  .btn-label[data-full="AI 助理"]::before { content: "AI"; font-size: 12px; }
+}
+@media (max-width: 1180px) {
+  .font-picker-label { display: none; }
+  .font-picker-tool { min-width: 0; }
+}
+@media (max-width: 1080px) {
+  .font-stepper { display: none; }
+  .crumb-volume { max-width: 30%; }
 }
 
 .save-indicator .dot {
@@ -1043,6 +1115,8 @@ onBeforeUnmount(() => {
   color: var(--arc-text-secondary);
   background: transparent;
   transition: 0.15s;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .toolbtn:hover {

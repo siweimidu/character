@@ -518,6 +518,10 @@ export function useChapterFirstDraft(): {
     const chapter = appStore.selectedChapter
     const project = appStore.currentProject
     const chapterVolume = appStore.selectedChapterVolume
+    // 无分卷或无章节时不允许生成初稿
+    if (!appStore.outlineVolumes.length || !appStore.chapters.length) {
+      throw new Error('当前没有分卷或者没有章节，无法生成初稿')
+    }
     if (!chapter || !project || !chapterVolume) return
     if (isGenerating.value) return
 
