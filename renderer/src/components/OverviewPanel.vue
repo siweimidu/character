@@ -215,13 +215,20 @@ function openEntry(type: string, title: string): void {
       <div class="overview-heading">
         <span class="overview-kicker">作品概览</span>
         <h2>{{ currentProject?.title ?? '未命名作品' }}</h2>
-        <div class="project-meta">
-          <span v-if="projectMeta">{{ projectMeta }}</span>
-          <span v-if="projectMeta" class="meta-divider" aria-hidden="true" />
-          <span class="edited-time">
-            <Clock3 :size="13" />
-            {{ formatProjectEditedAt(currentProject?.lastEdited) }}
-          </span>
+        <div class="meta-bar">
+          <div class="project-meta">
+            <span v-if="projectMeta">{{ projectMeta }}</span>
+            <span v-if="projectMeta" class="meta-divider" aria-hidden="true" />
+            <span class="edited-time">
+              <Clock3 :size="13" />
+              {{ formatProjectEditedAt(currentProject?.lastEdited) }}
+            </span>
+          </div>
+
+          <button type="button" class="continue-action" @click="appStore.setPanel('chapters')">
+            <PenLine :size="16" />
+            <span>继续创作</span>
+          </button>
         </div>
 
         <div class="premise-row">
@@ -256,10 +263,6 @@ function openEntry(type: string, title: string): void {
             </div>
           </div>
 
-          <button type="button" class="continue-action" @click="appStore.setPanel('chapters')">
-            <PenLine :size="16" />
-            <span>继续创作</span>
-          </button>
         </div>
       </div>
     </header>
@@ -364,11 +367,19 @@ function openEntry(type: string, title: string): void {
   color: var(--arc-text-primary);
 }
 
+.meta-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 9px;
+}
+
 .project-meta {
   display: flex;
   align-items: center;
   gap: 9px;
-  margin-top: 9px;
+  min-width: 0;
   color: var(--arc-text-secondary);
   font-size: 12px;
 }
@@ -468,7 +479,6 @@ function openEntry(type: string, title: string): void {
   gap: 7px;
   min-height: 34px;
   flex-shrink: 0;
-  margin-top: 2px;
   border: 1px solid transparent;
   border-radius: var(--arc-radius-md);
   background: var(--arc-primary);
