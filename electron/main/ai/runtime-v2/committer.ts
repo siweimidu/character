@@ -198,41 +198,78 @@ async function detectBeforeConflict(
       }), '大纲')
     }
     case 'inspiration': {
-      const row = db.prepare('SELECT type, title, content, tags_json FROM inspiration_entries WHERE id = ? AND project_id = ?')
-        .get(change.entityId, projectId) as { type: string; title: string; content: string; tags_json: string } | undefined
+      const row = db.prepare('SELECT type, title, content, source, tags_json FROM inspiration_entries WHERE id = ? AND project_id = ?')
+        .get(change.entityId, projectId) as { type: string; title: string; content: string; source: string; tags_json: string } | undefined
       if (!row) return `目标灵感卡片已不存在（${change.entityId}）`
-      const tags = parseJson<Array<{ label?: string }>>(row.tags_json, [])
-      return checkText(renderInspirationText({ type: row.type, title: row.title, content: row.content, tags }), '灵感')
+      return checkText(renderInspirationText({
+        type: row.type,
+        title: row.title,
+        content: row.content,
+        source: row.source,
+        tags: parseJson<string[]>(row.tags_json, [])
+      }), '灵感')
     }
     case 'outline_volume': {
       const row = db.prepare('SELECT title, word_target, summary FROM outline_volumes WHERE id = ? AND project_id = ?')
         .get(change.entityId, projectId) as { title: string; word_target: string; summary: string } | undefined
       if (!row) return `目标分卷已不存在（${change.entityId}）`
-      return checkText(renderVolumeText(row), '分卷')
+      return checkText(renderVolumeText({ title: row.title, wordTarget: row.word_target, summary: row.summary }), '分卷')
     }
     case 'constraint': {
       const row = db.prepare(`
-        SELECT title, content, keywords_json FROM knowledge_documents
+        SELECT title, content, keywords_json, metadata_json FROM knowledge_documents
         WHERE id = ? AND project_id = ? AND source_type = 'canon-fact' AND source_label = 'global-constraint'
-      `).get(change.entityId, projectId) as { title: string; content: string; keywords_json: string } | undefined
+      `).get(change.entityId, projectId) as { title: string; content: string; keywords_json: string; metadata_json: string } | undefined
       if (!row) return `目标项目约束已不存在（${change.entityId}）`
-      return checkText(renderConstraintText(row), '项目约束')
+      const meta = parseJson<{ scope?: string; weight?: string; locked?: boolean }>(row.metadata_json, {})
+      return checkText(renderConstraintText({
+        title: row.title,
+        content: row.content,
+        scope: meta.scope ?? 'project',
+        weight: meta.weight ?? 'core',
+        locked: meta.locked !== false,
+        keywords: parseJson<string[]>(row.keywords_json, [])
+      }), '项目约束')
     }
     case 'plot_thread': {
-      const row = db.prepare('SELECT title, description, tags_json FROM plot_threads WHERE id = ? AND project_id = ?')
-        .get(change.entityId, projectId) as { title: string; description: string; tags_json: string } | undefined
+      const row = db.prepare(`
+        SELECT title, description, status, opened_in_chapter_id, closed_in_chapter_id, tags_json
+        FROM plot_threads WHERE id = ? AND project_id = ?
+      `).get(change.entityId, projectId) as {
+        title: string; description: string; status: string
+        opened_in_chapter_id: string | null; closed_in_chapter_id: string | null; tags_json: string
+      } | undefined
       if (!row) return `目标伏笔已不存在（${change.entityId}）`
       const tags = parseJson<string[]>(row.tags_json, [])
-      return checkText(renderPlotThreadText({ title: row.title, description: row.description, tags }), '伏笔')
+      return checkText(renderPlotThreadText({
+        title: row.title,
+        description: row.description,
+        status: row.status,
+        openedInChapterId: row.opened_in_chapter_id ?? undefined,
+        closedInChapterId: row.closed_in_chapter_id ?? undefined,
+        tags
+      }), '伏笔')
     }
     case 'knowledge_document': {
       const row = db.prepare(`
-        SELECT title, content FROM knowledge_documents
+        SELECT title, source_type, source_label, content, summary, keywords_json, metadata_json
+        FROM knowledge_documents
         WHERE id = ? AND project_id = ?
           AND NOT (source_type = 'canon-fact' AND source_label = 'global-constraint')
-      `).get(change.entityId, projectId) as { title: string; content: string } | undefined
+      `).get(change.entityId, projectId) as {
+        title: string; source_type: string; source_label: string; content: string; summary: string
+        keywords_json: string; metadata_json: string
+      } | undefined
       if (!row) return `目标知识文档已不存在（${change.entityId}）`
-      return checkText(renderKnowledgeText(row), '知识文档')
+      return checkText(renderKnowledgeText({
+        title: row.title,
+        sourceType: row.source_type,
+        sourceLabel: row.source_label,
+        content: row.content,
+        summary: row.summary,
+        keywords: parseJson<string[]>(row.keywords_json, []),
+        metadata: parseJson<Record<string, unknown>>(row.metadata_json, {})
+      }), '知识文档')
     }
     default:
       return null
@@ -300,51 +337,64 @@ function renderOrganizationText(entry: { name?: string; type?: string; descripti
 }
 
 function renderInspirationText(item: {
-  type?: string; title?: string; content?: string; tags?: Array<{ label?: string } | string>
+  type?: string; title?: string; content?: string; source?: string; tags?: string[]
 }): string {
-  const tagsStr = (item.tags ?? [])
-    .map((t) => (typeof t === 'string' ? t : t.label))
-    .join(' / ')
   return [
-    item.type ? `类型：${item.type}` : '',
-    item.title ? `标题：${item.title}` : '',
-    item.content ? `内容：${item.content}` : '',
-    tagsStr ? `标签：${tagsStr}` : ''
-  ].filter(Boolean).join('\n')
+    `类型：${item.type ?? ''}`,
+    `标题：${item.title ?? ''}`,
+    `来源：${item.source ?? ''}`,
+    `标签：${(item.tags ?? []).join(' / ') || '（空）'}`,
+    `内容：${item.content ?? ''}`
+  ].join('\n')
 }
 
-function renderVolumeText(item: { title?: string; word_target?: string; summary?: string }): string {
+function renderVolumeText(item: { title?: string; wordTarget?: string; summary?: string }): string {
   return [
-    item.title ? `标题：${item.title}` : '',
-    item.word_target ? `字数目标：${item.word_target}` : '',
-    item.summary ? `摘要：${item.summary}` : ''
-  ].filter(Boolean).join('\n')
+    `标题：${item.title ?? ''}`,
+    `字数目标：${item.wordTarget ?? ''}`,
+    `摘要：${item.summary || '（空）'}`
+  ].join('\n')
 }
 
-function renderConstraintText(item: { title?: string; content?: string; keywords_json?: string }): string {
-  const keywords = parseJson<string[]>(item.keywords_json, [])
+function renderConstraintText(item: {
+  title?: string; content?: string; scope?: string; weight?: string; locked?: boolean; keywords?: string[]
+}): string {
   return [
     item.title ? `标题：${item.title}` : '',
-    item.content ? `内容：${item.content}` : '',
-    keywords.length ? `关键词：${keywords.join(' / ')}` : ''
+    item.scope ? `范围：${item.scope}` : '',
+    item.weight ? `权重：${item.weight}` : '',
+    typeof item.locked === 'boolean' ? `锁定：${item.locked ? '是' : '否'}` : '',
+    item.keywords?.length ? `关键词：${item.keywords.join(' / ')}` : '',
+    item.content ? `内容：${item.content}` : ''
   ].filter(Boolean).join('\n')
 }
 
 function renderPlotThreadText(item: {
-  title?: string; description?: string; tags?: string[]
+  title?: string; description?: string; status?: string; openedInChapterId?: string; closedInChapterId?: string; tags?: string[]
 }): string {
   return [
     item.title ? `标题：${item.title}` : '',
-    item.description ? `描述：${item.description}` : '',
-    item.tags?.length ? `标签：${item.tags.join(' / ')}` : ''
+    item.status ? `状态：${item.status}` : '',
+    item.openedInChapterId ? `埋设章节：${item.openedInChapterId}` : '',
+    item.closedInChapterId ? `收束章节：${item.closedInChapterId}` : '',
+    item.tags?.length ? `标签：${item.tags.join(' / ')}` : '',
+    item.description ? `描述：${item.description}` : ''
   ].filter(Boolean).join('\n')
 }
 
-function renderKnowledgeText(item: { title?: string; content?: string }): string {
+function renderKnowledgeText(item: {
+  title?: string; sourceType?: string; sourceLabel?: string; content?: string; summary?: string
+  keywords?: string[]; metadata?: Record<string, unknown>
+}): string {
   return [
-    item.title ? `标题：${item.title}` : '',
-    item.content ? `内容：${item.content}` : ''
-  ].filter(Boolean).join('\n')
+    `标题：${item.title ?? ''}`,
+    `类型：${item.sourceType ?? ''}`,
+    `来源：${item.sourceLabel || '（空）'}`,
+    `摘要：${item.summary || '（空）'}`,
+    `关键词：${(item.keywords ?? []).join(' / ') || '（空）'}`,
+    `元数据：${JSON.stringify(item.metadata ?? {})}`,
+    `内容：${item.content ?? ''}`
+  ].join('\n')
 }
 
 /** 各实体 kind 对应的删除目标表（constraint 复用 knowledge_documents，需额外 scope 约束）。 */
