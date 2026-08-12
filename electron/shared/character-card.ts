@@ -8,6 +8,8 @@
  * 本模块运行在主进程（Node 环境），负责文件级别的解析与写入。
  */
 
+import { inflateSync } from 'node:zlib'
+
 /** 角色卡数据字段（与 renderer 端 CharacterCard 核心字段一一对应） */
 export interface StCharacterCardData {
   name: string
@@ -105,9 +107,10 @@ export function extractCharaJsonFromPng(buffer: Buffer): string | null {
             return decodeCharaValue(raw)
           }
           // iTXt：关键字 \0 压缩标志(1) 压缩方法(1) 语言标签\0 翻译关键字\0 文本
-          let cursor = nullIndex + 1
-          // 跳过压缩标志与压缩方法
-          cursor += 2
+          // 压缩标志：0 = 未压缩，1 = zlib 压缩（压缩方法字节固定为 0）
+          const compressionFlag = buffer[nullIndex + 1]
+          // 跳过压缩标志与压缩方法（各 1 字节）
+          let cursor = nullIndex + 3
           const langEnd = buffer.indexOf(0, cursor)
           if (langEnd < 0 || langEnd >= dataEnd) break
           cursor = langEnd + 1
@@ -115,7 +118,15 @@ export function extractCharaJsonFromPng(buffer: Buffer): string | null {
           if (transEnd < 0 || transEnd >= dataEnd) break
           cursor = transEnd + 1
           const textBuf = buffer.subarray(cursor, dataEnd)
-          // iTXt 若压缩标志为 1，则文本以 zlib 压缩存储
+          if (compressionFlag === 1) {
+            // zlib 压缩的 UTF-8 文本：解压后读回文本，失败则回退明文解码
+            try {
+              const inflated = inflateSync(textBuf)
+              return inflated.toString('utf-8')
+            } catch {
+              return textBuf.toString('utf-8')
+            }
+          }
           return textBuf.toString('utf-8')
         }
       }

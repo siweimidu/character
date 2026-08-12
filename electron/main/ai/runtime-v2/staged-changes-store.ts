@@ -506,6 +506,8 @@ export class StagedChangesStore {
       if (!targets.has(change.turnId)) continue
       if (change.status === 'committed') keptCommitted += 1
       else discarded += 1
+      // 同步清理数据库记录，避免撤回后暂存变更在重启/reload 时“复活”。
+      this.stmts?.delete.run(change.id)
       this.items.delete(change.id)
       this.indexRemove(change)
       this.emit({ type: 'removed', changeId: change.id, sessionId: change.sessionId })
