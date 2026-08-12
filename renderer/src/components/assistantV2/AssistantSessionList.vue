@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { PanelLeftClose, Trash2 } from 'lucide-vue-next'
+import { computed, nextTick, ref } from 'vue'
+import { PanelLeftClose, Pencil, Trash2 } from 'lucide-vue-next'
 import type { AssistantSession } from '@shared/assistant-runtime'
 
 const props = defineProps<{
@@ -12,11 +12,42 @@ const emit = defineEmits<{
   (e: 'switch', sessionId: string): void
   (e: 'create'): void
   (e: 'delete', sessionId: string): void
+  (e: 'rename', sessionId: string, title: string): void
   (e: 'collapse'): void
 }>()
 
 /** 待确认删除的会话 id */
 const pendingDeleteId = ref<string | null>(null)
+
+/** 正在重命名的会话 id */
+const renamingId = ref<string | null>(null)
+/** 重命名输入框内容 */
+const renameDraft = ref('')
+/** 重命名输入框 DOM 引用 */
+const renameInput = ref<HTMLInputElement | null>(null)
+
+function startRename(session: AssistantSession): void {
+  renamingId.value = session.id
+  renameDraft.value = session.title
+  nextTick(() => {
+    renameInput.value?.focus()
+    renameInput.value?.select()
+  })
+}
+
+function cancelRename(): void {
+  renamingId.value = null
+  renameDraft.value = ''
+}
+
+function confirmRename(): void {
+  const id = renamingId.value
+  const title = renameDraft.value.trim()
+  if (id && title) {
+    emit('rename', id, title)
+  }
+  cancelRename()
+}
 
 type GroupKey = 'today' | 'yesterday' | 'week' | 'earlier'
 const GROUP_LABEL: Record<GroupKey, string> = {
@@ -94,7 +125,28 @@ const grouped = computed(() => {
           :class="{ active: s.id === props.activeSessionId }"
           @click="emit('switch', s.id)"
         >
-          <div class="title">{{ s.title }}</div>
+          <div v-if="renamingId === s.id" class="rename-box" @click.stop>
+            <input
+              ref="renameInput"
+              v-model="renameDraft"
+              class="rename-input"
+              :placeholder="s.title"
+              @keydown.enter.prevent="confirmRename"
+              @keydown.esc.prevent="cancelRename"
+              @blur="cancelRename"
+            />
+          </div>
+          <div v-else class="title-row">
+            <span class="title">{{ s.title }}</span>
+            <button
+              class="rename-btn"
+              title="重命名会话"
+              aria-label="重命名会话"
+              @click.stop="startRename(s)"
+            >
+              <Pencil :size="12" />
+            </button>
+          </div>
           <div class="meta">
             <span>{{ formatTime(s.updatedAt) }}</span>
             <button
@@ -240,6 +292,12 @@ const grouped = computed(() => {
 .item:hover { background: var(--arc-bg-weak); }
 .item.active { background: var(--arc-primary-soft); }
 .item.active .title { color: var(--arc-primary); }
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
 .title {
   font-size: 12.5px;
   font-weight: 500;
@@ -248,6 +306,49 @@ const grouped = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.35;
+  min-width: 0;
+}
+.rename-btn {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: var(--arc-text-hint);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 3px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: all 0.15s ease;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.item:hover .rename-btn,
+.item.active .rename-btn {
+  opacity: 1;
+}
+.rename-btn:hover {
+  color: var(--arc-primary);
+  background: var(--arc-primary-soft);
+}
+.rename-box {
+  display: flex;
+  min-width: 0;
+}
+.rename-input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--arc-primary);
+  border-radius: 6px;
+  background: var(--arc-bg-body);
+  color: var(--arc-text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  padding: 3px 6px;
+  outline: none;
+  box-shadow: 0 0 0 3px var(--arc-primary-soft);
+  box-sizing: border-box;
 }
 .meta {
   display: flex;

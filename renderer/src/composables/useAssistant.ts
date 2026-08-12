@@ -497,6 +497,12 @@ export function useAssistant(options: UseAssistantOptions) {
   // 会话操作
   // ==========================================================================
 
+  /** 生成默认会话标题：完整时间（某年某月某日 某时某分某秒）。 */
+  function defaultSessionTitle(date: Date = new Date()): string {
+    const p = (n: number) => String(n).padStart(2, '0')
+    return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${p(date.getHours())}时${p(date.getMinutes())}分${p(date.getSeconds())}秒`
+  }
+
   async function createSession(title?: string): Promise<AssistantSession | null> {
     if (isStreaming.value) {
       lastError.value = '请先停止当前生成，再新建会话。'
@@ -508,7 +514,7 @@ export function useAssistant(options: UseAssistantOptions) {
       projectId: pid,
       surfaceId: options.surface.id,
       scopeRef: options.scopeRef?.(),
-      title: title || `新会话 · ${new Date().toLocaleString()}`
+      title: title || defaultSessionTitle()
     })
     sessions.value = [session, ...sessions.value]
     await switchSession(session.id)
@@ -560,7 +566,8 @@ export function useAssistant(options: UseAssistantOptions) {
 
   /** 会话标题是否仍是系统默认值（未被用户或自动摘要覆盖）。 */
   function isDefaultTitle(title: string): boolean {
-    return !title || title.startsWith('新会话')
+    // 默认标题为时间格式：xxxx年x月x日 xx时xx分xx秒
+    return !title || /^\d{4}年\d{1,2}月\d{1,2}日 \d{2}时\d{2}分\d{2}秒$/.test(title)
   }
 
   /** 从用户首条提问摘要出简短会话标题。 */
