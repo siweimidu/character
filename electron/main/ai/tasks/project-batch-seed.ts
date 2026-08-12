@@ -13,7 +13,8 @@ const handler: TaskHandler = {
   buildPrompt(input: PromptBuildInput) {
     const { context, capabilityPreamble } = input
     const writingStyle = resolveWritingStyleInstruction(context)
-    const count = Math.min(10, Math.max(1, Number(context.count) || 3))
+    // 数量不设硬限制：仅做最小值与合理上限兜底，避免单次请求输出过大导致超时
+    const count = Math.max(1, Math.min(50, Number(context.count) || 3))
     const requestedGenre = String(context.genre ?? '').trim()
     const requestedLength = String(context.novelLength ?? '').trim()
     const genreLabel = requestedGenre ? `统一题材：${requestedGenre}` : '题材：不指定（请为每个作品挑选差异化且合适的题材）'
@@ -33,7 +34,7 @@ const handler: TaskHandler = {
     const rawList = Array.isArray(parsed) ? parsed : Array.isArray((parsed as { entries?: unknown }).entries)
       ? ((parsed as { entries: unknown[] }).entries)
       : []
-    const list = rawList.slice(0, 10)
+    const list = rawList.slice(0, 50)
     const result: ProjectBatchSeedResult = list.map((item) => {
       const entry = item as Partial<{
         title: unknown

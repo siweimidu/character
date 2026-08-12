@@ -2,7 +2,7 @@ import { useAppStore } from '@/stores/app'
 import { toIpcPayload } from '@/utils/ipcPayload'
 import type { AiTaskKind } from '@/features/ai/taskRegistry'
 
-export type CatalogBatchMode = 'character' | 'organization' | 'relationship' | 'membership' | 'worldview' | 'inspiration'
+export type CatalogBatchMode = 'character' | 'organization' | 'relationship' | 'membership' | 'worldview' | 'inspiration' | 'plot-thread'
 export type CatalogBatchEntry = Record<string, unknown>
 
 export function normalizeCatalogTags(value: unknown): string[] {
@@ -32,8 +32,8 @@ interface CatalogBatchOptions {
 
 /** 批量并行度下限：同时并发至少多少个 AI 批次请求。 */
 const BATCH_CONCURRENCY_MIN = 3
-/** 批量并行度上限：避免一次性打爆单一 provider 的请求配额。 */
-const BATCH_CONCURRENCY_MAX = 6
+/** 批量并行度上限：避免一次性打爆单一 provider 的请求配额。并发越高提速越快，适度放宽到 8。 */
+const BATCH_CONCURRENCY_MAX = 8
 
 /** 单批最大条目数（与后端 catalog-batch 任务单批上限保持一致） */
 const BATCH_SIZE = 10
@@ -44,7 +44,8 @@ const BATCH_SIZE = 10
  */
 function resolveConcurrency(batchCount: number): number {
   if (batchCount <= 1) return 1
-  return Math.max(BATCH_CONCURRENCY_MIN, Math.min(BATCH_CONCURRENCY_MAX, Math.ceil(batchCount * 0.6)))
+  // 系数 0.8 让并发随批次更快爬升：8 批即达 7、10 批即封顶 8，提速明显。
+  return Math.max(BATCH_CONCURRENCY_MIN, Math.min(BATCH_CONCURRENCY_MAX, Math.ceil(batchCount * 0.8)))
 }
 
 export function useCatalogBatch() {
@@ -76,7 +77,8 @@ export function useCatalogBatch() {
   }
 
   async function generateCatalogBatch(options: CatalogBatchOptions): Promise<CatalogBatchEntry[]> {
-    const total = Math.max(1, Math.min(100, Math.floor(options.count)))
+    // 总数量不再设硬上限：仅在用户输入异常时做下限兜底，支持任意批量生成规模
+    const total = Math.max(1, Math.floor(options.count))
     const keyField = options.keyField
     const knownKeys = new Set((options.existingKeys ?? []).map((key) => key.trim().toLowerCase()).filter(Boolean))
     const taskKey = `catalog-batch:${options.mode}`

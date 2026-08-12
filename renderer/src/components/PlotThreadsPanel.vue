@@ -6,13 +6,14 @@ import {
 } from 'lucide-vue-next'
 import {
   NButton, NDivider, NDropdown, NDynamicTags, NEmpty, NForm, NFormItem,
-  NInput, NInputNumber, NModal, NSelect, NTag, NPopover, useDialog, useMessage
+  NInput, NInputNumber, NModal, NProgress, NSelect, NTag, NPopover, useDialog, useMessage
 } from 'naive-ui'
 import type { DropdownOption } from 'naive-ui'
 import BatchDeleteBar from './BatchDeleteBar.vue'
 import { useAppStore } from '@/stores/app'
 import type { PlotThread, PlotThreadPriority, PlotThreadStatus } from '@/types/app'
 import { useIncrementalList } from '@/composables/useIncrementalList'
+import { normalizeCatalogTags, useCatalogBatch } from '@/composables/useCatalogBatch'
 import { toIpcPayload } from '@/utils/ipcPayload'
 
 const props = defineProps<{
@@ -428,13 +429,17 @@ function formatTime(value: string): string {
 }
 
 // ── AI 批量生成伏笔 ──
-const BATCH_TASK_KEY = 'plot-thread-batch'
+// 复用 useCatalogBatch 的分批并行机制：单批 10 条、自适应并发（按批次数自动提升，最高 8 路），
+// 大幅缩短大量伏笔的生成耗时，且总数量不再设上限。
+const BATCH_TASK_KEY = 'catalog-batch:plot-thread'
 const batchLoading = computed(() => appStore.isAiTaskRunning(BATCH_TASK_KEY))
 const batchModalVisible = ref(false)
 const batchFocusModalVisible = ref(false)
 const batchFocus = ref('')
-const batchCount = ref(5)
+const batchCount = ref(10)
+const batchProgress = ref(0)
 const generatedThreads = ref<Array<{ title: string; description: string; tags: string[]; selected: boolean }>>([])
+const { generateCatalogBatch } = useCatalogBatch()
 
 function compactForAi(value: unknown, maxLength: number): string {
   const text = String(value ?? '').replace(/\s+/g, ' ').trim()
@@ -452,50 +457,39 @@ async function handleAiBatchGenerate(): Promise<void> {
   const existingThreads = appStore.plotThreads
     .map((t) => (t.status === 'pending' ? `${t.title}（${t.description}）` : t.title))
   batchFocusModalVisible.value = false
+  batchProgress.value = 0
 
   try {
-    const result = await appStore.runTrackedAiTask(
-      {
-        key: BATCH_TASK_KEY,
-        kind: 'plot-thread',
-        label: 'AI 批量生成伏笔',
-        description: '正在根据大纲/角色/世界观批量设计伏笔与悬念',
-        panel: 'plot-threads'
-      },
-      () =>
-        window.characterArc.generateAi(toIpcPayload({
-          task: 'plot-thread-batch',
-          settings: appStore.appSettings,
-          context: {
-            projectId: project.id,
-            projectTitle: project.title,
-            projectGenre: project.genre,
-            count: batchCount.value,
-            focus: batchFocus.value.trim(),
-            existingThreads,
-            worldviewEntries: appStore.worldviewEntries.slice(0, 12).map((e) => ({
-              type: e.type, title: e.title, content: compactForAi(e.content, 240)
-            })),
-            characters: appStore.characters.slice(0, 12).map((c) => ({
-              name: c.name, role: c.role, description: compactForAi(c.description, 200)
-            })),
-            organizations: appStore.organizations.slice(0, 8).map((o) => ({
-              name: o.name, type: o.type, description: compactForAi(o.description, 200)
-            })),
-            outlineItems: appStore.outlineItems.slice(-12).map((item) => ({
-              title: item.title, conflict: compactForAi(item.conflict, 140), summary: compactForAi(item.summary, 240)
-            }))
-          }
+    const entries = await generateCatalogBatch({
+      mode: 'plot-thread',
+      count: batchCount.value,
+      label: 'AI 批量生成伏笔',
+      panel: 'plot-threads',
+      kind: 'plot-thread',
+      keyField: 'title',
+      existingKeys: appStore.plotThreads.map((t) => t.title),
+      onProgress: (completed, total) => { batchProgress.value = Math.round(completed / total * 100) },
+      context: {
+        projectTitle: project.title,
+        projectGenre: project.genre,
+        focus: batchFocus.value.trim(),
+        existingThreads,
+        worldviewEntries: appStore.worldviewEntries.slice(0, 12).map((e) => ({
+          type: e.type, title: e.title, content: compactForAi(e.content, 240)
+        })),
+        characters: appStore.characters.slice(0, 12).map((c) => ({
+          name: c.name, role: c.role, description: compactForAi(c.description, 200)
+        })),
+        organizations: appStore.organizations.slice(0, 8).map((o) => ({
+          name: o.name, type: o.type, description: compactForAi(o.description, 200)
+        })),
+        characterRelationships: appStore.characterRelationships,
+        organizationMemberships: appStore.organizationMemberships,
+        outlineItems: appStore.outlineItems.slice(-12).map((item) => ({
+          title: item.title, conflict: compactForAi(item.conflict, 140), summary: compactForAi(item.summary, 240)
         }))
-    )
-
-    if (!result.success || !result.result) {
-      throw new Error(result.error ?? 'AI 批量生成伏笔失败')
-    }
-
-    const entries = Array.isArray((result.result as Record<string, unknown>)?.entries)
-      ? ((result.result as Record<string, unknown>).entries as Array<Record<string, unknown>>)
-      : []
+      }
+    })
 
     if (entries.length === 0) {
       message.warning('AI 未返回有效的伏笔')
@@ -505,7 +499,7 @@ async function handleAiBatchGenerate(): Promise<void> {
     generatedThreads.value = entries.map((e) => ({
       title: String(e.title ?? '未命名伏笔'),
       description: String(e.description ?? '暂无描述'),
-      tags: Array.isArray(e.tags) ? (e.tags as string[]).map(String).filter(Boolean) : [],
+      tags: normalizeCatalogTags(e.tags),
       selected: true
     }))
     batchModalVisible.value = true
@@ -516,7 +510,7 @@ async function handleAiBatchGenerate(): Promise<void> {
 
 function openBatchGenerate(): void {
   batchFocus.value = ''
-  batchCount.value = 5
+  batchCount.value = 10
   generatedThreads.value = []
   batchFocusModalVisible.value = true
 }
@@ -935,8 +929,12 @@ function confirmAddGeneratedThreads(): void {
       />
       <div class="ai-modal-count-row" style="margin-top: 12px; display: flex; align-items: center; gap: 10px">
         <span class="ai-modal-count-label">生成数量</span>
-        <n-input-number v-model:value="batchCount" :min="1" :max="10" :step="1" style="width: 120px" />
-        <span class="ai-modal-count-hint" style="color: var(--arc-text-hint); font-size: 12px">1~10 条</span>
+        <n-input-number v-model:value="batchCount" :min="1" :step="1" style="width: 120px" />
+        <span class="ai-modal-count-hint" style="color: var(--arc-text-hint); font-size: 12px">不限条数，建议 10~50 条</span>
+      </div>
+      <div v-if="batchLoading" class="ai-modal-progress" style="margin-top: 12px">
+        <n-progress type="line" :percentage="batchProgress" :show-indicator="false" />
+        <span class="ai-modal-count-hint" style="color: var(--arc-text-hint); font-size: 12px">已生成 {{ batchProgress }}%（分批并行中，请稍候）</span>
       </div>
       <div class="arc-modal-footer" style="margin-top: 16px">
         <div class="arc-modal-footer-right">

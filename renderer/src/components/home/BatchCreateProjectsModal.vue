@@ -63,8 +63,8 @@ function handleClose(): void {
 
 async function handleGenerate(): Promise<void> {
   const n = Number(count.value)
-  if (n < 1 || n > 10) {
-    message.warning('作品数量请控制在 1-10 个之间')
+  if (n < 1) {
+    message.warning('作品数量至少为 1 个')
     return
   }
   if (isGenerating.value) return
@@ -150,11 +150,10 @@ async function handleCreate(): Promise<void> {
           <n-input-number
             v-model:value="count"
             :min="1"
-            :max="10"
             :disabled="isGenerating"
             class="count-input"
           />
-          <span class="form-hint">1 - 10 个</span>
+          <span class="form-hint">不限数量</span>
         </div>
 
         <div class="form-row">

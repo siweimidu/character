@@ -18,7 +18,8 @@ const props = withDefaults(defineProps<{
   description: '',
   loading: false,
   progress: 0,
-  maxCount: 100,
+  // 默认不设数量上限：仅作为输入框的硬上限兜底，实际不限制批量生成规模
+  maxCount: 9999,
   typeOptions: () => [],
   defaultTypes: () => [],
   allowCustomTypes: false
