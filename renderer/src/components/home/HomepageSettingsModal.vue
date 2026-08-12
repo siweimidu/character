@@ -5,7 +5,7 @@ import { NButton, NFormItem, NInput, NInputNumber, NModal, NSelect, NSwitch, NTa
 import { autoSaveOptions } from '@/features/settings/autoSave'
 import { getProviderPreset, providerOptions, resolveProviderDefaults } from '@/features/settings/providerPresets'
 import { imageProviderOptions, resolveImageProviderDefaults } from '@/features/settings/imageProviderPresets'
-import { visionProviderOptions, resolveImageProviderWebsite, resolveVisionProviderWebsite } from '@/features/settings/visionProviderPresets'
+import { visionProviderOptions, resolveVisionProviderDefaults, resolveImageProviderWebsite, resolveVisionProviderWebsite } from '@/features/settings/visionProviderPresets'
 import { useAppStore } from '@/stores/app'
 import { darkModePresets, themePresets } from '@/theme/presets'
 import { toIpcPayload } from '@/utils/ipcPayload'
@@ -428,7 +428,7 @@ async function handleFetchImageModels(): Promise<void> {
 
 function handleVisionProviderChange(value: string): void {
   draftSettings.visionProvider = value
-  const defaults = resolveImageProviderDefaults(value)
+  const defaults = resolveVisionProviderDefaults(value)
   draftSettings.visionModel = defaults.model
   draftSettings.visionBaseUrl = defaults.baseUrl
   fetchedVisionModels.value = []

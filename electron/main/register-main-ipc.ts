@@ -1112,9 +1112,20 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
       await mkdir(targetDir, { recursive: true })
       let exported = 0
       const failed: string[] = []
+      // 已占用的文件基名集合，避免同名卡片互相覆盖（同名时追加序号）
+      const usedBaseNames = new Set<string>()
       for (const raw of cards) {
         const name = String(raw?.name ?? '角色卡').trim() || '角色卡'
-        const safeName = name.replace(/[\\\\/:*?"<>|]/g, '_')
+        const baseName = name.replace(/[\\\\/:*?"<>|]/g, '_') || '角色卡'
+        // 保证唯一文件名：同名或清洗后同名时追加序号，避免后写的文件覆盖先前的
+        let uniqueBase = baseName
+        let counter = 2
+        while (usedBaseNames.has(uniqueBase)) {
+          uniqueBase = `${baseName} (${counter})`
+          counter += 1
+        }
+        usedBaseNames.add(uniqueBase)
+        const safeName = uniqueBase
         const card = {
           name,
           description: String(raw?.description ?? ''),
