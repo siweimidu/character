@@ -75,6 +75,8 @@ contextBridge.exposeInMainWorld('characterArc', {
   batchExportCharacterCards: (payload: unknown) => ipcRenderer.invoke('characterarc:character-card-batch-export', toIpcPayload(payload)),
   /** 选择人物头像图片并返回 dataUrl */
   pickCharacterAvatar: () => ipcRenderer.invoke('characterarc:pick-character-avatar'),
+  /** 选择背景图片并返回 dataUrl（用于全局/项目自定义背景） */
+  pickBackgroundImage: () => ipcRenderer.invoke('characterarc:pick-background-image'),
   /** 导入参考小说并执行拆书分析 */
   importReferenceNovelAnalysis: (payload: unknown) => ipcRenderer.invoke('characterarc:import-reference-novel-analysis', toIpcPayload(payload)),
   /** 批量导入多本参考小说并发拆书分析 */

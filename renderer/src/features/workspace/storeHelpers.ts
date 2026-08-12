@@ -106,6 +106,11 @@ export function normalizeProjectSummary(project: ProjectSummary): ProjectSummary
     novelWorkflowStages: normalizeNovelWorkflowStages(project.novelWorkflowStages),
     projectSkills: normalizeProjectSkills(project.projectSkills),
     targetPlatform: project.targetPlatform?.trim() || '',
+    backgroundImage: typeof project.backgroundImage === 'string' ? project.backgroundImage : '',
+    backgroundOpacity:
+      typeof project.backgroundOpacity === 'number' && Number.isFinite(project.backgroundOpacity)
+        ? Math.min(1, Math.max(0, project.backgroundOpacity))
+        : 0,
     selectedReferenceWorkIds: Array.isArray(project.selectedReferenceWorkIds)
       ? project.selectedReferenceWorkIds.map((id) => String(id).trim()).filter(Boolean)
       : [],
@@ -258,7 +263,9 @@ export const defaultAppSettings: AppSettings = {
   uiScale: 1,
   darkMode: false,
   darkModeStyle: 'nord',
-  aiTimeoutSeconds: 180
+  aiTimeoutSeconds: 180,
+  backgroundImage: '',
+  backgroundOpacity: 0
 }
 
 // 合并用户设置与默认设置，uiScale 限制在 0.75-1.75 的合理范围内
@@ -444,7 +451,12 @@ export function normalizeAppSettings(settings?: Partial<AppSettings> | null): Ap
     aiTimeoutSeconds:
       typeof source.aiTimeoutSeconds === 'number' && Number.isFinite(source.aiTimeoutSeconds)
         ? Math.min(600, Math.max(30, source.aiTimeoutSeconds))
-        : defaultAppSettings.aiTimeoutSeconds
+        : defaultAppSettings.aiTimeoutSeconds,
+    backgroundImage: typeof source.backgroundImage === 'string' ? source.backgroundImage : '',
+    backgroundOpacity:
+      typeof source.backgroundOpacity === 'number' && Number.isFinite(source.backgroundOpacity)
+        ? Math.min(1, Math.max(0, source.backgroundOpacity))
+        : 0
   }
 }
 

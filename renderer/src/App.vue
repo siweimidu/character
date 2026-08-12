@@ -82,6 +82,20 @@ const appStyleVars = computed(() => {
   }
 })
 
+// 生效中的自定义背景：优先取当前项目的局部背景，否则回退到全局背景
+const activeBackground = computed(() => {
+  const project = appStore.currentProject
+  const projectImage = project?.backgroundImage?.trim() || ''
+  if (projectImage) {
+    return { image: projectImage, opacity: project?.backgroundOpacity ?? 0 }
+  }
+  const globalImage = appStore.appSettings.backgroundImage?.trim() || ''
+  if (globalImage) {
+    return { image: globalImage, opacity: appStore.appSettings.backgroundOpacity ?? 0 }
+  }
+  return null
+})
+
 // 监听 UI 缩放比例变化，限制在 0.75~1.75 倍之间并同步给 Electron 窗口
 watch(
   () => appStore.appSettings.uiScale,
@@ -178,6 +192,14 @@ onBeforeUnmount(() => {
       <n-dialog-provider>
         <n-global-style />
         <div class="app-shell" :class="{ 'platform-darwin': platform === 'darwin' }">
+          <div
+            v-if="activeBackground"
+            class="app-background"
+            :style="{
+              backgroundImage: `url('${activeBackground.image}')`,
+              opacity: activeBackground.opacity
+            }"
+          ></div>
           <div class="app-titlebar">
             <div class="app-titlebar__nav">
               <button

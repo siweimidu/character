@@ -347,6 +347,10 @@ export interface ProjectSummary {
   projectSkills: ProjectSkillItem[]
   /** 项目目标平台 */
   targetPlatform: string
+  /** 项目级自定义背景图（dataURL 或空字符串表示未设置，回退到全局背景） */
+  backgroundImage: string
+  /** 项目级自定义背景透明度 0-1 */
+  backgroundOpacity: number
   /** 本次用于生成创作记忆的参考作品 ID 列表（指向全局拆书库），可为空 */
   selectedReferenceWorkIds: string[]
   /** 封面生成历史记录 */
@@ -1054,6 +1058,10 @@ export interface AppSettings {
   darkMode: boolean
   /** 深色模式风格预设 */
   darkModeStyle: DarkModeStyle
+  /** 全局自定义背景图（dataURL 或空字符串表示未设置） */
+  backgroundImage: string
+  /** 全局自定义背景透明度 0-1 */
+  backgroundOpacity: number
   /** 旧数据兼容字段；AI 请求不再按时长自动取消。 */
   aiTimeoutSeconds: number
   /** 回收站全局配置：内容保留天数 */

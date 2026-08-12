@@ -141,6 +141,10 @@ export type WorkspacePayload = {
     createdAt?: string
     cover: string
     targetPlatform: string
+    /** 项目级自定义背景图（dataURL 或空字符串表示未设置，回退到全局背景） */
+    backgroundImage: string
+    /** 项目级自定义背景透明度 0-1，默认 0 表示不启用覆盖 */
+    backgroundOpacity: number
     coverHistory: Array<{
       id: string
       createdAt: string
@@ -392,6 +396,10 @@ export type WorkspacePayload = {
     uiScale: number
     darkMode: boolean
     darkModeStyle: string
+    /** 全局自定义背景图（dataURL 或空字符串表示未设置） */
+    backgroundImage: string
+    /** 全局自定义背景透明度 0-1 */
+    backgroundOpacity: number
   }
   coverWorkbenchHistory: Array<{
     id: string
@@ -597,7 +605,12 @@ export function normalizeAppSettings(
     darkModeStyle:
       settings?.darkModeStyle === 'nord'
         ? settings.darkModeStyle
-        : 'nord'
+        : 'nord',
+    backgroundImage: typeof settings?.backgroundImage === 'string' ? settings.backgroundImage : '',
+    backgroundOpacity:
+      typeof settings?.backgroundOpacity === 'number' && Number.isFinite(settings.backgroundOpacity)
+        ? Math.min(1, Math.max(0, settings.backgroundOpacity))
+        : 0
   }
 }
 
@@ -639,6 +652,11 @@ export function normalizeProjectRecord(
     createdAt: project.createdAt || '',
     cover: project.cover || 'linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%)',
     targetPlatform: project.targetPlatform || '',
+    backgroundImage: typeof project.backgroundImage === 'string' ? project.backgroundImage : '',
+    backgroundOpacity:
+      typeof project.backgroundOpacity === 'number' && Number.isFinite(project.backgroundOpacity)
+        ? Math.min(1, Math.max(0, project.backgroundOpacity))
+        : 0,
     coverHistory: Array.isArray(project.coverHistory) ? project.coverHistory : [],
     writingStylePresetId: project.writingStylePresetId || 'cinematic-cool',
     writingStylePrompt: project.writingStylePrompt || '',

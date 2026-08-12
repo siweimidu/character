@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { Activity, Copy, Cpu, Download, ExternalLink, FileInput, Image, MonitorCog, Moon, Network, Palette, PlugZap, Plus, RefreshCw, ScanEye, Trash2 } from 'lucide-vue-next'
-import { NButton, NFormItem, NInput, NInputNumber, NModal, NSelect, NSwitch, NTag, useMessage } from 'naive-ui'
+import { NButton, NFormItem, NInput, NInputNumber, NModal, NSelect, NSlider, NSwitch, NTag, useMessage } from 'naive-ui'
 import { autoSaveOptions } from '@/features/settings/autoSave'
 import { getProviderPreset, providerOptions, resolveProviderDefaults } from '@/features/settings/providerPresets'
 import { imageProviderOptions, resolveImageProviderDefaults } from '@/features/settings/imageProviderPresets'
@@ -30,6 +30,29 @@ function applyThemeImmediately(themeName: ThemeName): void {
 function applyDarkModeImmediately(value: boolean): void {
   draftSettings.darkMode = value
   appStore.updateAppSetting('darkMode', value, { flushWorkspace: false })
+}
+
+/** 全局自定义背景图即时上传并持久化 */
+async function handlePickGlobalBackground(): Promise<void> {
+  const result = await window.characterArc.pickBackgroundImage()
+  if (result.success && result.dataUrl) {
+    appStore.updateAppSetting('backgroundImage', result.dataUrl, { flushWorkspace: false })
+    message.success('全局背景图已更新')
+  } else if (!result.canceled) {
+    message.error(result.error ?? '背景图上传失败')
+  }
+}
+
+/** 移除全局自定义背景图 */
+function clearGlobalBackground(): void {
+  appStore.updateAppSetting('backgroundImage', '', { flushWorkspace: false })
+  message.success('已移除全局背景图')
+}
+
+/** 调节全局自定义背景透明度（即时生效） */
+function setGlobalBackgroundOpacity(value: number): void {
+  const safe = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0
+  appStore.updateAppSetting('backgroundOpacity', safe, { flushWorkspace: false })
 }
 
 function themeTextColor(color: string): string {
@@ -142,7 +165,9 @@ const draftSettings = reactive<AppSettings>({
   uiScale: 1,
   darkMode: false,
   darkModeStyle: 'nord',
-  aiTimeoutSeconds: 180
+  aiTimeoutSeconds: 180,
+  backgroundImage: '',
+  backgroundOpacity: 0
 })
 const draftTheme = ref<ThemeName>('ocean')
 const editingProfileId = ref<string>('')
@@ -1330,6 +1355,56 @@ async function saveSettings(): Promise<void> {
               <span class="theme-card__label">{{ preset.label }}</span>
             </button>
           </div>
+
+          <div class="custom-background-block">
+            <div class="custom-background-head">
+              <div>
+                <strong>自定义背景</strong>
+                <p>上传一张图片作为全局背景，并调节其不透明度。应用到所有页面。</p>
+              </div>
+            </div>
+            <div class="custom-background-preview" :class="{ 'has-image': !!appStore.appSettings.backgroundImage }">
+              <img
+                v-if="appStore.appSettings.backgroundImage"
+                :src="appStore.appSettings.backgroundImage"
+                alt="全局背景预览"
+                class="custom-background-img"
+              />
+              <div v-else class="custom-background-placeholder">
+                <Image :size="20" />
+                <span>未设置背景图</span>
+              </div>
+            </div>
+            <div class="custom-background-actions">
+              <n-button size="small" round strong @click="handlePickGlobalBackground">
+                <template #icon><Image :size="14" /></template>
+                {{ appStore.appSettings.backgroundImage ? '更换背景图' : '上传背景图' }}
+              </n-button>
+              <n-button
+                v-if="appStore.appSettings.backgroundImage"
+                size="small"
+                round
+                type="error"
+                ghost
+                @click="clearGlobalBackground"
+              >
+                移除背景图
+              </n-button>
+            </div>
+            <div class="custom-background-opacity">
+              <span class="opacity-label">背景不透明度</span>
+              <div class="opacity-control">
+                <n-slider
+                  :value="appStore.appSettings.backgroundOpacity"
+                  :min="0"
+                  :max="1"
+                  :step="0.05"
+                  @update:value="setGlobalBackgroundOpacity"
+                />
+                <span class="opacity-value">{{ Math.round((appStore.appSettings.backgroundOpacity || 0) * 100) }}%</span>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section id="sec-prefs" class="settings-section">
@@ -2060,6 +2135,104 @@ async function saveSettings(): Promise<void> {
 .theme-card.active {
   border-color: color-mix(in srgb, var(--arc-primary) 70%, var(--arc-border));
   box-shadow: 0 0 0 2px var(--arc-bg-surface), 0 0 0 4px color-mix(in srgb, var(--arc-primary) 34%, transparent);
+}
+
+.custom-background-block {
+  margin-top: 18px;
+  border: 1px solid var(--arc-border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: var(--arc-bg-surface);
+}
+
+.custom-background-head strong {
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--arc-text-primary);
+}
+
+.custom-background-head p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--arc-text-hint);
+}
+
+.custom-background-preview {
+  position: relative;
+  display: flex;
+  height: 120px;
+  margin-top: 12px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px dashed var(--arc-border-strong);
+  background:
+    linear-gradient(45deg, color-mix(in srgb, var(--arc-border) 45%, transparent) 25%, transparent 25%),
+    linear-gradient(-45deg, color-mix(in srgb, var(--arc-border) 45%, transparent) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, color-mix(in srgb, var(--arc-border) 45%, transparent) 75%),
+    linear-gradient(-45deg, transparent 75%, color-mix(in srgb, var(--arc-border) 45%, transparent) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+.custom-background-preview.has-image {
+  border-style: solid;
+  border-color: var(--arc-border);
+}
+
+.custom-background-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.custom-background-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: var(--arc-text-hint);
+  font-size: 12px;
+}
+
+.custom-background-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.custom-background-opacity {
+  margin-top: 14px;
+}
+
+.opacity-label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 620;
+  color: var(--arc-text-secondary);
+  margin-bottom: 6px;
+}
+
+.opacity-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.opacity-control :deep(.n-slider) {
+  flex: 1;
+}
+
+.opacity-value {
+  width: 40px;
+  text-align: right;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--arc-text-primary);
 }
 
 .dark-mode-row {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { Archive, BookMarked, FileJson, FileStack, FileText, Lightbulb, Network, PenTool, Save, Upload, Users } from 'lucide-vue-next'
-import { NButton, NCard, NFormItem, NInput, NSelect, useMessage } from 'naive-ui'
+import { Archive, BookMarked, FileJson, FileStack, FileText, Image, Lightbulb, Network, PenTool, Save, Upload, Users } from 'lucide-vue-next'
+import { NButton, NCard, NFormItem, NInput, NSelect, NSlider, useMessage } from 'naive-ui'
 import { getPlainTextFromEditorContent } from '@/features/chapters/editorContent'
 import { autoSaveOptions } from '@/features/settings/autoSave'
 import { buildProjectWritingStyleContext, defaultWritingStylePresetId, resolveStyleBoundSkillDetail } from '@/features/writingStyles/presets'
@@ -26,6 +26,41 @@ import type {
 
 const appStore = useAppStore()
 const message = useMessage()
+
+/** 当前项目的自定义背景图（未设置则回退到全局） */
+const currentProjectBackgroundImage = computed(() => appStore.currentProject?.backgroundImage ?? '')
+/** 当前项目的自定义背景透明度 */
+const currentProjectBackgroundOpacity = computed(() => appStore.currentProject?.backgroundOpacity ?? 0)
+
+/** 上传当前项目背景图并即时保存 */
+async function handlePickProjectBackground(): Promise<void> {
+  const project = appStore.currentProject
+  if (!project?.id) return
+  const result = await window.characterArc.pickBackgroundImage()
+  if (result.success && result.dataUrl) {
+    appStore.updateProject(project.id, { backgroundImage: result.dataUrl })
+    message.success('项目背景图已更新')
+  } else if (!result.canceled) {
+    message.error(result.error ?? '背景图上传失败')
+  }
+}
+
+/** 移除当前项目背景图 */
+function clearProjectBackground(): void {
+  const project = appStore.currentProject
+  if (!project?.id) return
+  appStore.updateProject(project.id, { backgroundImage: '' })
+  message.success('已移除项目背景图')
+}
+
+/** 调节当前项目背景透明度 */
+function setProjectBackgroundOpacity(value: number): void {
+  const project = appStore.currentProject
+  if (!project?.id) return
+  const safe = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0
+  appStore.updateProject(project.id, { backgroundOpacity: safe })
+}
+
 const archiveImportRef = ref<{
   pickArchive: () => Promise<void>
   isInspectingArchive: boolean
@@ -621,6 +656,55 @@ watch(
               <strong>章节 JSON</strong>
               <span>导出正文与元信息</span>
             </button>
+          </div>
+        </div>
+      </n-card>
+
+      <n-card class="setting-card" :bordered="false">
+        <template #header>
+          <div class="block-title">
+            <Image :size="18" />
+            <span>项目自定义背景</span>
+          </div>
+        </template>
+        <div class="project-bg-copy">
+          <div class="setting-name">自定义背景图与不透明度</div>
+          <div class="setting-hint">为当前小说单独设置背景图与不透明度，打开该项目时显示该背景；未设置则回退到全局背景。</div>
+        </div>
+        <div class="project-bg-preview" :class="{ 'has-image': !!currentProjectBackgroundImage }">
+          <img v-if="currentProjectBackgroundImage" :src="currentProjectBackgroundImage" alt="项目背景预览" class="project-bg-img" />
+          <div v-else class="project-bg-placeholder">
+            <Image :size="20" />
+            <span>未设置项目背景图</span>
+          </div>
+        </div>
+        <div class="project-bg-actions">
+          <n-button size="small" round strong @click="handlePickProjectBackground">
+            <template #icon><Image :size="14" /></template>
+            {{ currentProjectBackgroundImage ? '更换背景图' : '上传背景图' }}
+          </n-button>
+          <n-button
+            v-if="currentProjectBackgroundImage"
+            size="small"
+            round
+            type="error"
+            ghost
+            @click="clearProjectBackground"
+          >
+            移除背景图
+          </n-button>
+        </div>
+        <div class="project-bg-opacity">
+          <span class="opacity-label">背景不透明度</span>
+          <div class="opacity-control">
+            <n-slider
+              :value="currentProjectBackgroundOpacity"
+              :min="0"
+              :max="1"
+              :step="0.05"
+              @update:value="setProjectBackgroundOpacity"
+            />
+            <span class="opacity-value">{{ Math.round((currentProjectBackgroundOpacity || 0) * 100) }}%</span>
           </div>
         </div>
       </n-card>
@@ -1317,6 +1401,77 @@ watch(
 }
 .setting-mini-card .compact-select {
   width: 100%;
+}
+
+/* ── 项目自定义背景 ── */
+.project-bg-copy {
+  margin-bottom: 10px;
+}
+.project-bg-preview {
+  position: relative;
+  display: flex;
+  height: 140px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px dashed var(--arc-border-strong);
+  background:
+    linear-gradient(45deg, color-mix(in srgb, var(--arc-border) 45%, transparent) 25%, transparent 25%),
+    linear-gradient(-45deg, color-mix(in srgb, var(--arc-border) 45%, transparent) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, color-mix(in srgb, var(--arc-border) 45%, transparent) 75%),
+    linear-gradient(-45deg, transparent 75%, color-mix(in srgb, var(--arc-border) 45%, transparent) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+.project-bg-preview.has-image {
+  border-style: solid;
+  border-color: var(--arc-border);
+}
+.project-bg-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.project-bg-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: var(--arc-text-hint);
+  font-size: 12px;
+}
+.project-bg-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.project-bg-opacity {
+  margin-top: 14px;
+}
+.opacity-label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 620;
+  color: var(--arc-text-secondary);
+  margin-bottom: 6px;
+}
+.opacity-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.opacity-control :deep(.n-slider) {
+  flex: 1;
+}
+.opacity-value {
+  width: 40px;
+  text-align: right;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--arc-text-primary);
 }
 
 @media (max-width: 1240px) {

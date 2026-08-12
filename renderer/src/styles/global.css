@@ -86,6 +86,7 @@ input {
 }
 
 .app-shell {
+  position: relative;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -93,9 +94,24 @@ input {
   height: 100dvh;
   min-height: 100dvh;
   background: var(--arc-bg-body);
+  overflow: hidden;
+}
+
+/* 自定义背景层：置于主题背景之上、内容之下 */
+.app-background {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  transition: opacity 0.25s ease;
 }
 
 .app-titlebar {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -251,6 +267,8 @@ input {
 }
 
 .app-content {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex: 1;
   min-width: 0;

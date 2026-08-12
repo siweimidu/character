@@ -1184,6 +1184,32 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     return { success: true, canceled: false, dataUrl: `data:${mime};base64,${buffer.toString('base64')}`, fileName: basename(result.filePaths[0]) }
   })
 
+  ipcMain.handle('characterarc:pick-background-image', async () => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) return { success: false, canceled: true, dataUrl: '' }
+    const result = await dialog.showOpenDialog(window, {
+      title: '选择背景图片',
+      properties: ['openFile'],
+      filters: [
+        { name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] },
+        { name: '全部文件', extensions: ['*'] }
+      ]
+    })
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, canceled: true, dataUrl: '' }
+    }
+    const buffer = await readFile(result.filePaths[0])
+    const lower = result.filePaths[0].toLowerCase()
+    const mime = lower.endsWith('.png')
+      ? 'image/png'
+      : lower.endsWith('.webp')
+        ? 'image/webp'
+        : lower.endsWith('.gif')
+          ? 'image/gif'
+          : 'image/jpeg'
+    return { success: true, canceled: false, dataUrl: `data:${mime};base64,${buffer.toString('base64')}`, fileName: basename(result.filePaths[0]) }
+  })
+
   ipcMain.handle('characterarc:import-outline-spreadsheet', async () => {
     const window = deps.windowManager.getActiveWindow()
     if (!window) return { success: false, canceled: true }

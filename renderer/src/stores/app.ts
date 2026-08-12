@@ -114,6 +114,8 @@ interface ProjectWorkspacePayload {
     novelWorkflowStages?: ProjectSummary['novelWorkflowStages']
     projectSkills?: ProjectSummary['projectSkills']
     targetPlatform?: string
+    backgroundImage?: string
+    backgroundOpacity?: number
     selectedReferenceWorkIds?: ProjectSummary['selectedReferenceWorkIds']
     coverHistory?: ProjectSummary['coverHistory']
   }
@@ -747,6 +749,11 @@ export const useAppStore = defineStore('app', () => {
       novelWorkflowStages: payload.project?.novelWorkflowStages ?? createDefaultNovelWorkflowStages(),
       projectSkills: payload.project?.projectSkills ?? [],
       targetPlatform: payload.project?.targetPlatform?.trim() || '',
+      backgroundImage: payload.project?.backgroundImage?.trim() || '',
+      backgroundOpacity:
+        typeof payload.project?.backgroundOpacity === 'number' && Number.isFinite(payload.project.backgroundOpacity)
+          ? Math.min(1, Math.max(0, payload.project.backgroundOpacity))
+          : 0,
       selectedReferenceWorkIds: payload.project?.selectedReferenceWorkIds ?? [],
       coverHistory: payload.project?.coverHistory ?? []
     }
@@ -1132,6 +1139,11 @@ export const useAppStore = defineStore('app', () => {
       novelWorkflowStages: payload.project.novelWorkflowStages ?? createDefaultNovelWorkflowStages(),
       projectSkills: payload.project.projectSkills ?? [],
       targetPlatform: payload.project.targetPlatform?.trim() || '',
+      backgroundImage: payload.project.backgroundImage?.trim() || '',
+      backgroundOpacity:
+        typeof payload.project.backgroundOpacity === 'number' && Number.isFinite(payload.project.backgroundOpacity)
+          ? Math.min(1, Math.max(0, payload.project.backgroundOpacity))
+          : 0,
       selectedReferenceWorkIds: payload.project.selectedReferenceWorkIds ?? [],
       coverHistory: payload.project.coverHistory ?? []
     }))
@@ -1204,6 +1216,11 @@ export const useAppStore = defineStore('app', () => {
         novelWorkflowStages: payload.project.novelWorkflowStages ?? createDefaultNovelWorkflowStages(),
         projectSkills: payload.project.projectSkills ?? [],
         targetPlatform: payload.project.targetPlatform?.trim() || '',
+        backgroundImage: payload.project.backgroundImage?.trim() || '',
+        backgroundOpacity:
+          typeof payload.project.backgroundOpacity === 'number' && Number.isFinite(payload.project.backgroundOpacity)
+            ? Math.min(1, Math.max(0, payload.project.backgroundOpacity))
+            : 0,
         selectedReferenceWorkIds: payload.project.selectedReferenceWorkIds ?? [],
         coverHistory: payload.project.coverHistory ?? []
       }))
@@ -1656,6 +1673,12 @@ export const useAppStore = defineStore('app', () => {
               payload.novelWorkflowStages !== undefined ? payload.novelWorkflowStages : project.novelWorkflowStages,
             projectSkills: payload.projectSkills !== undefined ? payload.projectSkills : project.projectSkills,
             targetPlatform: payload.targetPlatform !== undefined ? payload.targetPlatform.trim() : project.targetPlatform,
+            backgroundImage:
+              payload.backgroundImage !== undefined ? payload.backgroundImage : project.backgroundImage,
+            backgroundOpacity:
+              payload.backgroundOpacity !== undefined
+                ? Math.min(1, Math.max(0, payload.backgroundOpacity))
+                : project.backgroundOpacity,
             selectedReferenceWorkIds: payload.selectedReferenceWorkIds !== undefined
               ? payload.selectedReferenceWorkIds
               : project.selectedReferenceWorkIds,
