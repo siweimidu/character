@@ -42,7 +42,7 @@
     "marked": "^18.0.3",
     "naive-ui": "^2.43.1",
     "pinia": "^3.0.3",
-    "undici": "6.27.0",
+    "undici": "8.5.0",
     "vue": "^3.5.18",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.19.3/xlsx-0.19.3.tgz",
     "zod": "^4.4.3"
@@ -134,7 +134,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@ai-sdk/provider-utils>undici": "6.24.0"
+      "@ai-sdk/provider-utils>undici": "8.5.0",
+      "undici": "8.5.0"
     }
   },
   "optionalDependencies": {
