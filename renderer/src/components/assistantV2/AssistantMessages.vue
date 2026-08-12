@@ -6,6 +6,7 @@ import { useMessage } from 'naive-ui'
 import {
   Brain,
   CheckCircle2,
+  CheckSquare,
   ChevronRight,
   CircleAlert,
   Copy,
@@ -108,6 +109,7 @@ const emit = defineEmits<{
   (e: 'edit-draft', value: string): void
   (e: 'resend'): void
   (e: 'undo', turnId: string): void
+  (e: 'delete-turns', turnIds: string[]): void
 }>()
 
 const scrollRef = ref<HTMLDivElement | null>(null)
@@ -184,6 +186,55 @@ function confirmRollback(): void {
     const msg = props.messages.find((m) => m.turnId === turnId)
     emit('rollback', turnId, msg?.userMessage ?? '')
   }
+}
+
+// ── 多选批量删除 ──
+const selectionMode = ref(false)
+const selectedTurnIds = ref<string[]>([])
+
+const allSelected = computed(() =>
+  props.messages.length > 0 && selectedTurnIds.value.length === props.messages.length
+)
+
+function enterSelectionMode(): void {
+  selectionMode.value = true
+  selectedTurnIds.value = []
+}
+
+function exitSelectionMode(): void {
+  selectionMode.value = false
+  selectedTurnIds.value = []
+}
+
+function toggleSelect(turnId: string): void {
+  if (selectedTurnIds.value.includes(turnId)) {
+    selectedTurnIds.value = selectedTurnIds.value.filter((id) => id !== turnId)
+  } else {
+    selectedTurnIds.value = [...selectedTurnIds.value, turnId]
+  }
+}
+
+function toggleSelectAll(): void {
+  if (allSelected.value) {
+    selectedTurnIds.value = []
+  } else {
+    selectedTurnIds.value = props.messages.map((m) => m.turnId)
+  }
+}
+
+const confirmDeleteTurnsVisible = ref(false)
+function requestDeleteSelected(): void {
+  if (selectedTurnIds.value.length === 0) return
+  confirmDeleteTurnsVisible.value = true
+}
+function cancelDeleteTurnsConfirm(): void {
+  confirmDeleteTurnsVisible.value = false
+}
+function confirmDeleteSelectedTurns(): void {
+  const ids = [...selectedTurnIds.value]
+  confirmDeleteTurnsVisible.value = false
+  exitSelectionMode()
+  emit('delete-turns', ids)
 }
 
 // ── opencode 风格：右侧透明横杠，悬浮放大，点击跳转到对应对话 ──
@@ -417,6 +468,27 @@ const hasContent = computed(() => props.messages.length > 0)
 
 <template>
   <div ref="scrollRef" class="messages arc-scrollbar" @scroll.passive="handleScroll">
+    <!-- 多选工具栏 -->
+    <div class="multi-select-toolbar">
+      <button
+        v-if="!selectionMode"
+        type="button"
+        class="ms-tool-btn"
+        :disabled="props.isStreaming || props.isMutating"
+        @click="enterSelectionMode"
+      >
+        <CheckSquare :size="14" />
+        多选
+      </button>
+      <template v-else>
+        <label class="ms-select-all">
+          <input type="checkbox" :checked="allSelected" @change="toggleSelectAll" />
+          全选
+        </label>
+        <button type="button" class="ms-tool-btn" @click="exitSelectionMode">取消</button>
+      </template>
+    </div>
+
     <!-- 骨架屏：初始加载中 -->
     <div v-if="props.isInitializing && !hasContent" class="skeleton">
       <div class="skeleton-item user">
@@ -498,7 +570,18 @@ const hasContent = computed(() => props.messages.length > 0)
       </div>
 
       <template v-else>
-      <div class="user-entry">
+      <div class="user-entry" :class="{ 'is-selected': selectionMode && selectedTurnIds.includes(msg.turnId) }">
+        <label
+          v-if="selectionMode"
+          class="turn-select-box"
+          :class="{ checked: selectedTurnIds.includes(msg.turnId) }"
+        >
+          <input
+            type="checkbox"
+            :checked="selectedTurnIds.includes(msg.turnId)"
+            @change="toggleSelect(msg.turnId)"
+          />
+        </label>
         <div class="user-avatar">
           <UserRound :size="14" :stroke-width="1.9" />
         </div>
@@ -659,6 +742,37 @@ const hasContent = computed(() => props.messages.length > 0)
       </div>
       </template>
     </article>
+
+    <!-- 多选批量删除操作条 -->
+    <div v-if="selectionMode && props.messages.length > 0" class="ms-action-bar" :class="{ 'has-selection': selectedTurnIds.length > 0 }">
+      <span class="ms-action-count">{{ selectedTurnIds.length }} / {{ props.messages.length }} 已选</span>
+      <div class="ms-action-btns">
+        <button
+          type="button"
+          class="ms-del-btn"
+          :disabled="selectedTurnIds.length === 0"
+          @click="requestDeleteSelected"
+        >
+          <Trash2 :size="14" />
+          批量删除
+        </button>
+        <button type="button" class="ms-cancel-btn" @click="exitSelectionMode">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 批量删除确认弹层 -->
+  <div v-if="confirmDeleteTurnsVisible" class="rollback-overlay" @click.self="cancelDeleteTurnsConfirm">
+    <div class="rollback-dialog">
+      <div class="rollback-dialog-title">批量删除选中的对话？</div>
+      <div class="rollback-dialog-body">
+        将删除选中的 <strong>{{ selectedTurnIds.length }}</strong> 轮对话及其之后的所有对话和暂存变更，且不可恢复。
+      </div>
+      <div class="rollback-dialog-actions">
+        <button type="button" class="rollback-cancel" @click="cancelDeleteTurnsConfirm">取消</button>
+        <button type="button" class="rollback-confirm" @click="confirmDeleteSelectedTurns">确认删除</button>
+      </div>
+    </div>
   </div>
 
   <!-- opencode 风格：右侧透明横杠，悬浮放大，点击跳转到对应对话 -->
@@ -850,6 +964,131 @@ const hasContent = computed(() => props.messages.length > 0)
   border-color: var(--v2-danger);
   color: var(--v2-danger);
 }
+/* ── 多选批量删除 ── */
+.multi-select-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+  min-height: 0;
+  padding: 0 2px 8px;
+}
+.ms-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--arc-border);
+  border-radius: 7px;
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.ms-tool-btn:hover:not(:disabled) {
+  border-color: var(--arc-primary);
+  color: var(--arc-primary);
+}
+.ms-tool-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ms-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.ms-select-all input[type='checkbox'],
+.turn-select-box input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--arc-danger);
+  cursor: pointer;
+}
+.turn-select-box {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 26px;
+  margin-top: 2px;
+  cursor: pointer;
+}
+.user-entry.is-selected .user-content {
+  color: var(--arc-primary);
+}
+.ms-action-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+  padding: 10px 14px;
+  border: 1px dashed var(--arc-border);
+  border-radius: 10px;
+  background: var(--arc-bg-weak);
+}
+.ms-action-bar.has-selection {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--arc-danger) 35%, var(--arc-border));
+  background: color-mix(in srgb, var(--arc-danger) 6%, var(--arc-bg-surface));
+}
+.ms-action-count {
+  font-size: 12px;
+  color: var(--arc-text-secondary);
+}
+.ms-action-btns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ms-del-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border: 1px solid var(--arc-danger);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--arc-danger) 8%, var(--arc-bg-surface));
+  color: var(--arc-danger);
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ms-del-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--arc-danger) 14%, var(--arc-bg-surface));
+}
+.ms-del-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ms-cancel-btn {
+  padding: 6px 12px;
+  border: 1px solid var(--arc-border);
+  border-radius: 7px;
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.ms-cancel-btn:hover {
+  border-color: var(--arc-primary);
+  color: var(--arc-text-primary);
+}
+
 /* ── opencode 风格右侧透明横杠 ── */
 .turn-rail {
   position: absolute;

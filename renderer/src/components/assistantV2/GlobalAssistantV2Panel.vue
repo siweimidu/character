@@ -392,6 +392,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
         @edit-draft="assistant.updateEditingDraft"
         @resend="handleResendTurn"
         @undo="handleUndoTurn"
+        @delete-turns="(ids) => assistant.deleteTurns(ids)"
       />
 
       <div v-else class="starter">
@@ -796,19 +797,39 @@ async function handleCommit(ids?: string[]): Promise<void> {
 .prompt-name-input,
 .prompt-text-input {
   width: 100%;
-  border: 1px solid var(--arc-border);
+  border: 1px solid var(--arc-border-strong);
   border-radius: 6px;
   background: var(--arc-bg-body);
   color: var(--arc-text-primary);
   font-size: 12.5px;
-  padding: 6px 8px;
+  padding: 7px 9px;
   resize: vertical;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.prompt-name-input::placeholder,
+.prompt-text-input::placeholder {
+  color: var(--arc-text-hint);
+  opacity: 1;
+}
+
+.prompt-name-input:hover,
+.prompt-text-input:hover {
+  border-color: color-mix(in srgb, var(--arc-primary) 45%, var(--arc-border));
 }
 
 .prompt-name-input:focus,
 .prompt-text-input:focus {
   outline: none;
   border-color: var(--arc-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--arc-primary) 18%, transparent);
+}
+
+.prompt-name-input:disabled,
+.prompt-text-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .prompt-save-btn {
@@ -828,6 +849,11 @@ async function handleCommit(ids?: string[]): Promise<void> {
 
 .prompt-save-btn:hover {
   background: color-mix(in srgb, var(--arc-primary) 18%, var(--arc-bg-surface));
+}
+
+.prompt-save-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .prompt-empty {

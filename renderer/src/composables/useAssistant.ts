@@ -716,6 +716,23 @@ export function useAssistant(options: UseAssistantOptions) {
     await reloadStaged()
   }
 
+  /**
+   * 批量删除选中的多轮对话。
+   *
+   * 后端 turn 删除为级联语义（删除某一轮会连带删除它之后的所有轮次，以保持对话连续），
+   * 因此批量删除时取“最早被选中”的那一轮作为删除起点，一次级联删除即可覆盖全部选中轮次。
+   */
+  async function deleteTurns(turnIds: string[]): Promise<void> {
+    if (!activeSessionId.value || isStreaming.value || turnIds.length === 0) return
+    const order = turns.value.map((t) => t.id)
+    const valid = turnIds.filter((id) => order.includes(id))
+    if (valid.length === 0) return
+    const earliest = valid.sort((a, b) => order.indexOf(a) - order.indexOf(b))[0]
+    await A.turnDelete({ sessionId: activeSessionId.value, turnId: earliest })
+    await reloadTurns()
+    await reloadStaged()
+  }
+
   async function cancel(): Promise<void> {
     if (!streamingTurnId.value || !activeSessionId.value || isCanceling.value) return
     isCanceling.value = true
@@ -952,6 +969,7 @@ export function useAssistant(options: UseAssistantOptions) {
     send,
     continueWithPrompt,
     rollbackTurn,
+    deleteTurns,
     cancel,
     startEditingTurn,
     startEditingLastTurn,
