@@ -764,6 +764,11 @@ declare global {
         fileName?: string
         error?: string
       }>
+      getProjectSkillsPaths: (projectId: string) => Promise<{
+        success: boolean
+        builtinDir?: string
+        projectDir?: string
+      }>
       getLocalSqlPath: () => Promise<{
         success: boolean
         path?: string

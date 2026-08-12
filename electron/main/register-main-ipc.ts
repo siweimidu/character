@@ -2512,6 +2512,21 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
   })
 
+  // ── 内置 / 项目级 skills 目录的绝对路径 ──
+  // 返回内置 skills 与项目级 skills 所在目录的完整绝对路径，供 UI 展示“每个电脑上都通用”的真实路径。
+  ipcMain.handle('characterarc:project-skills-paths', async (_event, projectId: unknown) => {
+    try {
+      const resolvedProjectId = String(projectId ?? '').trim() || undefined
+      return {
+        success: true,
+        builtinDir: getBuiltinSkillsDirPath(),
+        projectDir: getSkillsDirPath(resolvedProjectId || undefined)
+      }
+    } catch {
+      return { success: true, builtinDir: '', projectDir: '' }
+    }
+  })
+
   ipcMain.handle('characterarc:project-skills-scan', async (_event, projectId: unknown) => {
     try {
       const resolvedProjectId = String(projectId ?? '').trim() || undefined

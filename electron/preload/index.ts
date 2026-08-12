@@ -95,6 +95,8 @@ contextBridge.exposeInMainWorld('characterArc', {
   readReferenceNovelText: (refId: string) => ipcRenderer.invoke('characterarc:read-reference-novel-text', refId),
   /** 章节/分卷本地文件导入：弹窗选择 txt/md 并读取内容 */
   pickChapterImportFile: () => ipcRenderer.invoke('characterarc:pick-chapter-import-file'),
+  /** 读取内置 / 项目级 skills 目录的绝对路径（用于 UI 展示完整通用路径） */
+  getProjectSkillsPaths: (projectId: string) => ipcRenderer.invoke('characterarc:project-skills-paths', projectId),
   /** 加载当前项目可用的 skills（软件内置 + 项目扩展） */
   scanProjectSkills: (projectId: string) => ipcRenderer.invoke('characterarc:project-skills-scan', projectId),
   /** 从本地目录导入一组项目扩展 skills 到应用数据目录（targetGroup 可选，导入到指定分组） */

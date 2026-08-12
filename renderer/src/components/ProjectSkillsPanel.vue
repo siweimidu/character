@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { BookOpenText, ChevronDown, Trash2 } from 'lucide-vue-next'
-import { NButton, NInput, NModal, NTag, useDialog, useMessage } from 'naive-ui'
+import { NButton, NInput, NModal, NTag, NTooltip, useDialog, useMessage } from 'naive-ui'
 import { novelWorkflowStageDefinitions } from '@/features/novelWorkflow/stages'
 import { useAppStore } from '@/stores/app'
 import type { NovelWorkflowStageId, ProjectSkillItem } from '@/types/app'
@@ -14,6 +14,8 @@ const isScanningProjectSkills = ref(false)
 const isImportingProjectSkills = ref(false)
 const isImportingCcSwitchSkills = ref(false)
 const projectSkillItems = ref<ProjectSkillItem[]>([])
+const builtinSkillsDir = ref('')
+const projectSkillsDir = ref('')
 
 const currentProject = computed(() => appStore.currentProject)
 const workflowStages = computed(() => novelWorkflowStageDefinitions)
@@ -81,6 +83,23 @@ const groupedSkills = computed(() => {
     })
   }
 
+  // 把「已创建但还没有 skill」的空分组也补进来，保证新建分组能在列表顶部看到。
+  // skillGroups 来自主进程扫描 project-skills/<group>/，count=0 表示空分组；
+  // 仅补项目分组，避免与内置分组重复。
+  const existingProjectNames = new Set(
+    groups.filter((g) => g.scope === 'project').map((g) => g.name)
+  )
+  for (const g of skillGroups.value) {
+    if (g.name === '_ungrouped' || g.name.startsWith('__builtin__')) continue
+    if (existingProjectNames.has(g.name)) continue
+    groups.push({
+      name: g.name,
+      label: g.name,
+      scope: 'project',
+      skills: []
+    })
+  }
+
   // 内置分组排前，未分组与自定义分组按名称排序在后
   return groups.sort((a, b) => {
     if (a.scope !== b.scope) return a.scope === 'builtin' ? -1 : 1
@@ -94,11 +113,22 @@ function toggleGroup(groupName: string): void {
   collapsedGroups[groupName] = !collapsedGroups[groupName]
 }
 
+async function refreshSkillDirPaths(): Promise<void> {
+  try {
+    const result = await window.characterArc.getProjectSkillsPaths(currentProject.value?.id ?? '')
+    builtinSkillsDir.value = result.builtinDir ?? ''
+    projectSkillsDir.value = result.projectDir ?? ''
+  } catch {
+    // 静默失败，展示默认说明
+  }
+}
+
 watch(
   () => currentProject.value?.id,
   () => {
     void scanProjectSkills()
     void refreshSkillGroups()
+    void refreshSkillDirPaths()
   },
   { immediate: true }
 )
@@ -475,7 +505,7 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
         <div>
           <span class="skills-kicker">Skills</span>
           <h2>内置 Skills 与项目扩展</h2>
-          <p>软件内置 skills 来自 `resources/skills`。项目导入的 skills 会按当前项目叠加在其上，打包版和开发版都走同一套结构。支持扫描本地文件夹，或导入 .zip 压缩包格式的 skills。</p>
+          <p>软件内置 skills 来自安装目录下的 <code>{{ builtinSkillsDir || 'resources/skills' }}</code>；项目导入的 skills 保存在数据目录 <code>{{ projectSkillsDir || '…/project-skills' }}</code>，按当前项目叠加在其上。支持扫描本地文件夹，或导入 .zip 压缩包格式的 skills。</p>
         </div>
         <div class="skills-panel-actions">
           <n-button round strong secondary @click="openCreateGroupDialog">
@@ -487,9 +517,14 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
           <n-button round strong :disabled="isImportingProjectSkills" @click="importProjectSkillsPackage">
             {{ isImportingProjectSkills ? '批量导入中...' : '批量导入 Skill（目录 / .zip）' }}
           </n-button>
-          <n-button round strong secondary :disabled="isScanningProjectSkills" @click="scanProjectSkills">
-            {{ isScanningProjectSkills ? '扫描中...' : '重新扫描' }}
-          </n-button>
+          <n-tooltip trigger="hover">
+            <template #trigger>
+              <n-button round strong secondary :disabled="isScanningProjectSkills" @click="scanProjectSkills">
+                {{ isScanningProjectSkills ? '扫描中...' : '重新扫描' }}
+              </n-button>
+            </template>
+            重新扫描软件内置与当前项目的 skills 目录，把磁盘上新放入（或手动修改）的 skill 重新识别出来。
+          </n-tooltip>
         </div>
       </div>
 
@@ -556,6 +591,7 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
             <span class="skill-group-enabled">{{ group.skills.filter(s => s.enabled).length }} 已启用</span>
           </button>
           <div v-if="!collapsedGroups[group.name]" class="project-skill-list">
+            <p v-if="group.skills.length === 0" class="skill-group-empty-hint">该分组还没有 skill，可在「批量导入」时选择归入此分组。</p>
             <article v-for="skill in group.skills" :key="skill.id" class="project-skill-card">
               <div class="project-skill-select-row">
                 <label class="project-skill-select-item">
@@ -742,6 +778,16 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
   line-height: 1.75;
 }
 
+.skills-panel-head p code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--arc-text-secondary) 12%, transparent);
+  color: var(--arc-text-primary);
+  font-family: ui-monospace, 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
 .skills-kicker {
   color: var(--arc-text-hint);
   font-size: 11px;
@@ -819,6 +865,15 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
   flex-direction: column;
   gap: 0;
   padding: 0 18px 14px;
+}
+
+.skill-group-empty-hint {
+  margin: 8px 0 0;
+  padding: 12px 14px;
+  border: 1px dashed var(--arc-border);
+  border-radius: 8px;
+  color: var(--arc-text-hint);
+  font-size: 12px;
 }
 
 .project-skill-bulkbar {
