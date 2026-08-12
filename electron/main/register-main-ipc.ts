@@ -2886,13 +2886,15 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
 
   // ── 从 CC Switch 导入 AI 接口配置 ──
   // CC Switch（https://github.com/farion1231/cc-switch）的配置用于管理多供应商接入。
-  // 配置默认保存在 ~/.cc-switch/config.json，但不同安装版本路径可能不同，
-  // 因此这里按常见位置依次探测，仍找不到时允许用户手动选择 config.json。
+  // 新版 CC Switch 将供应商配置保存在 SQLite 数据库 ~/.cc-switch/cc-switch.db（providers 表），
+  // 旧版则以 JSON 保存（config.json）。两者都可能在常见路径下，因此这里按优先级依次探测：
+  // 优先读取 cc-switch.db，找不到时回退到 config.json；仍找不到则允许用户手动选择文件。
   // 注意：skills 的导入已改由「内置 Skills 与项目扩展」页面负责，这里只导入 AI 接口配置。
   ipcMain.handle('characterarc:cc-switch-import', async () => {
     const home = homedir()
     // 依次探测 CC Switch 配置文件的常见位置
     const candidatePaths = [
+      join(home, '.cc-switch', 'cc-switch.db'),
       join(home, '.cc-switch', 'config.json'),
       join(home, '.cc-switch', 'cc-switch', 'config.json'),
       join(home, '.cc-switch', 'config', 'config.json'),
@@ -2901,19 +2903,19 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     ]
     let ccSwitchConfigPath = candidatePaths.find((p) => existsSync(p)) ?? ''
 
-    // 若常见位置都找不到，弹出文件选择框让用户手动指定 config.json
+    // 若常见位置都找不到，弹出文件选择框让用户手动指定 cc-switch.db / config.json
     if (!ccSwitchConfigPath) {
       const ownerWindow = deps.windowManager.getMainWindow() ?? BrowserWindow.getFocusedWindow()
       const pick = ownerWindow
         ? await dialog.showOpenDialog(ownerWindow, {
-            title: '请选择 CC Switch 的 config.json 配置文件',
+            title: '请选择 CC Switch 的 cc-switch.db / config.json 配置文件',
             properties: ['openFile'],
-            filters: [{ name: '配置文件', extensions: ['json'] }]
+            filters: [{ name: '配置文件', extensions: ['db', 'json'] }]
           })
         : await dialog.showOpenDialog({
-            title: '请选择 CC Switch 的 config.json 配置文件',
+            title: '请选择 CC Switch 的 cc-switch.db / config.json 配置文件',
             properties: ['openFile'],
-            filters: [{ name: '配置文件', extensions: ['json'] }]
+            filters: [{ name: '配置文件', extensions: ['db', 'json'] }]
           })
       if (pick.canceled || !pick.filePaths[0]) {
         return { success: true, aiProfiles: [], importedSkills: [], configPath: '', configError: '已取消选择配置文件' }
@@ -2931,133 +2933,228 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
       isCurrent: boolean
     }> = []
     let configError = ''
+
+    // 字段名统一小写并去掉 -/_/空格 后再匹配，兼容 baseURL、APIKey、base_url 等大小写变体。
+    const normalizeKey = (k: string): string => String(k).toLowerCase().replace(/[\s_-]/g, '')
+    const pickField = (e: Record<string, unknown>, names: string[]): unknown => {
+      for (const n of names) {
+        const key = normalizeKey(n)
+        for (const k of Object.keys(e)) {
+          if (normalizeKey(k) === key && e[k] != null && e[k] !== '') return e[k]
+        }
+      }
+      return undefined
+    }
+
+    // 从一条供应商配置对象中提取通用字段（兼容顶层 / env 子对象嵌套，兼容各类环境变量命名）。
+    const extractProfileFromEntry = (e: Record<string, unknown>, group: string): {
+      name: string
+      type: string
+      baseUrl: string
+      apiKey: string
+      model: string
+      isCurrent: boolean
+    } => {
+      // 将嵌套的 env / settings / auth 等子对象拍平到同一层，便于用通用 key 匹配到
+      // ANTHROPIC_BASE_URL、OPENAI_API_KEY、GEMINI_API_KEY 等各类环境变量命名。
+      const flat: Record<string, unknown> = { ...e }
+      for (const key of Object.keys(e)) {
+        const val = e[key]
+        if (val && typeof val === 'object' && !Array.isArray(val)) {
+          const obj = val as Record<string, unknown>
+          // 只合并像 env / environment / settings / config / auth 这类“容器”子对象，避免误合并供应商分组
+          const nk = normalizeKey(key)
+          if (['env', 'environment', 'settings', 'config', 'auth'].includes(nk)) {
+            for (const subKey of Object.keys(obj)) {
+              flat[subKey] = obj[subKey]
+            }
+          }
+        }
+      }
+      const baseUrl = String(
+        pickField(flat, [
+          'baseUrl', 'base_url', 'baseURL', 'endpoint', 'host', 'api_base', 'apiBase', 'url',
+          'ANTHROPIC_BASE_URL', 'OPENAI_BASE_URL', 'OPENAI_API_BASE', 'OPENAI_API_BASE_URL',
+          'GOOGLE_GEMINI_BASE_URL', 'GEMINI_BASE_URL', 'BASE_URL'
+        ]) ?? ''
+      ).trim()
+      const apiKey = String(
+        pickField(flat, [
+          'apiKey', 'api_key', 'APIKey', 'token', 'secret', 'api_keys',
+          'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY',
+          'GEMINI_API_KEY', 'GOOGLE_API_KEY'
+        ]) ?? ''
+      ).trim()
+      const name = String(pickField(e, ['name', 'label', 'title', 'remark']) ?? group ?? '').trim() || group || 'CC Switch'
+      const type = String(pickField(e, ['provider', 'type', 'vendor', 'platform']) ?? group ?? '').trim().toLowerCase()
+      const model = String(
+        pickField(flat, ['model', 'modelId', 'defaultModel', 'default_model', 'modelName', 'ANTHROPIC_MODEL', 'OPENAI_MODEL']) ?? ''
+      ).trim()
+      const isCurrent = Boolean(pickField(e, ['isCurrent', 'is_active', 'iscurrent', 'active']) ?? false)
+      return { name, type, baseUrl, apiKey, model, isCurrent }
+    }
+
     if (ccSwitchConfigPath) {
+      const isDbFile = ccSwitchConfigPath.toLowerCase().endsWith('.db')
       try {
-        const raw = await readFile(ccSwitchConfigPath, 'utf-8')
-        const parsed = JSON.parse(raw)
-        // CC Switch 的 config.json 存在多种版本结构，需兼容解析：
-        //   ① { "Claude": [...], "Codex": [...] }   —— 旧版按分组数组
-        //   ② { "current": {...}, "providers": { "Claude": [...], ... } }  —— 新版 providers 对象
-        //   ③ { "current": "...", "providers": [ {...} ] }                  —— 新版 providers 数组
-        //   ④ [ {...}, {...} ]                        —— 直接为数组
-        //   ⑤ { "provider": { "Claude": [...] } }   —— provider 作为分组容器
-        //   ⑥ { "name":..., "baseUrl":... }         —— 顶层直接是单条配置
-        //   ⑦ { "current": { "name":..., "baseUrl":... } }  —— current 直接为配置对象
-        // 统一展开为「供应商条目数组」后逐条映射。
-        // 字段名统一小写并去掉 -/_/空格 后再匹配，兼容 baseURL、APIKey、base_url 等大小写变体。
-        const normalizeKey = (k: string): string => String(k).toLowerCase().replace(/[\s_-]/g, '')
-        const pickField = (e: Record<string, unknown>, names: string[]): unknown => {
-          for (const n of names) {
-            const key = normalizeKey(n)
-            for (const k of Object.keys(e)) {
-              if (normalizeKey(k) === key && e[k] != null && e[k] !== '') return e[k]
-            }
-          }
-          return undefined
-        }
-        // 判断一个对象是否像「配置条目」（包含地址、凭据、供应商等特征字段）
-        const isEntryLike = (o: unknown): boolean => {
-          if (!o || typeof o !== 'object' || Array.isArray(o)) return false
-          const kset = Object.keys(o as Record<string, unknown>).map(normalizeKey)
-          const hasEndpoint = ['baseurl', 'apiurl', 'apibase', 'apibaseurl', 'endpoint', 'host', 'base'].some((k) => kset.includes(k))
-          const hasCred = ['apikey', 'token', 'secret', 'apikeys'].some((k) => kset.includes(k))
-          const hasProvider = ['provider', 'type', 'vendor', 'platform', 'service'].some((k) => kset.includes(k))
-          const hasName = kset.includes('name')
-          return hasEndpoint || (hasCred && (hasProvider || hasName))
-        }
-
-        const collected: Array<{ entry: Record<string, unknown>; group: string }> = []
-        const seen = new Set<string>()
-        const pushEntry = (entry: unknown, group: string): void => {
-          if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return
-          const e = entry as Record<string, unknown>
-          const baseUrl = String(pickField(e, ['baseUrl', 'base_url', 'baseURL', 'endpoint', 'host', 'api_base', 'apiBase', 'url']) ?? '')
-          const apiKey = String(pickField(e, ['apiKey', 'api_key', 'APIKey', 'token', 'secret']) ?? '')
-          const name = String(pickField(e, ['name', 'label', 'title', 'remark']) ?? '')
-          const type = String(pickField(e, ['provider', 'type', 'vendor', 'platform']) ?? '')
-          const dedupeKey = [baseUrl, apiKey, name, type].join('|').toLowerCase()
-          if (!dedupeKey || seen.has(dedupeKey)) return
-          seen.add(dedupeKey)
-          collected.push({ entry: e, group })
-        }
-
-        const collectEntries = (node: unknown, group: string): void => {
-          if (!node || typeof node !== 'object') return
-          if (Array.isArray(node)) {
-            for (const item of node) {
-              if (!item || typeof item !== 'object') continue
-              if (Array.isArray(item)) {
-                collectEntries(item, group)
-                continue
-              }
-              if (isEntryLike(item)) pushEntry(item, group)
-              else collectEntries(item, group)
-            }
-            return
-          }
-          const obj = node as Record<string, unknown>
-          // 当前对象本身可能就是一条配置（顶层 / current / 分组值）
-          if (isEntryLike(obj)) {
-            pushEntry(obj, group)
-            return
-          }
-          // providers 字段（对象或数组）
-          const providerHolder = obj['providers'] ?? obj['providerList'] ?? obj['Provider']
-          if (providerHolder !== undefined && providerHolder !== null) {
-            collectEntries(providerHolder, group)
-          }
-          // current 字段：可能是指向供应商的 id/名称字符串，也可能是直接内嵌的配置对象
-          const current = obj['current']
-          if (current && typeof current === 'object' && !Array.isArray(current)) {
-            if (isEntryLike(current)) pushEntry(current, group)
-            else collectEntries(current, group)
-          }
-          // 按「分组名 -> 数组 / 对象」的旧版结构展开
-          for (const key of Object.keys(obj)) {
-            const nk = normalizeKey(key)
-            if (['providers', 'providerlist', 'current', 'version', 'settings', 'isactive'].includes(nk)) continue
-            const value = obj[key]
-            if (Array.isArray(value)) {
-              for (const item of value) {
-                if (!item || typeof item !== 'object') continue
-                if (Array.isArray(item)) {
-                  collectEntries(item, key)
+        if (isDbFile) {
+          // ── 从 SQLite 数据库（cc-switch.db）解析 ──
+          // CC Switch 新版将供应商配置存入 SQLite 的 providers 表：
+          //   id, app_type(claude/codex/gemini/...), name, settings_config(JSON),
+          //   is_current(0/1), category 等。settings_config 内通常为 { "env": {...} }。
+          const { DatabaseSync } = await import('node:sqlite')
+          const db = new DatabaseSync(ccSwitchConfigPath, { readOnly: true })
+          try {
+            const stmt = db.prepare(
+              'SELECT id, app_type, name, settings_config, is_current FROM providers'
+            )
+            const rows = stmt.all() as Array<{
+              id?: string
+              app_type?: string
+              name?: string
+              settings_config?: unknown
+              is_current?: number | boolean
+            }>
+            const seen = new Set<string>()
+            for (const row of rows) {
+              let config: Record<string, unknown> = {}
+              if (typeof row.settings_config === 'string') {
+                try {
+                  const parsed = JSON.parse(row.settings_config)
+                  if (parsed && typeof parsed === 'object') config = parsed as Record<string, unknown>
+                } catch {
+                  // 单条 settings_config 解析失败时跳过该条
                   continue
                 }
-                if (isEntryLike(item)) pushEntry(item, key)
-                else collectEntries(item, key)
+              } else if (row.settings_config && typeof row.settings_config === 'object') {
+                config = row.settings_config as Record<string, unknown>
               }
-            } else if (value && typeof value === 'object') {
-              // 某些版本嵌套了一层分组（如 providers 下的 Claude / provider 下的分组）
-              collectEntries(value, key)
+              const appType = String(row.app_type ?? '').trim()
+              // 组名取 app_type，同时作为 type 兜底（如 claude / codex / gemini）
+              const entry: Record<string, unknown> = {
+                ...config,
+                name: row.name ?? '',
+                type: appType || (config['type'] as string) || (config['provider'] as string) || '',
+                isCurrent: Boolean(row.is_current) || config['isCurrent'] === true
+              }
+              const profile = extractProfileFromEntry(entry, appType || 'CC Switch')
+              const dedupeKey = [profile.baseUrl, profile.apiKey, profile.name, profile.type].join('|').toLowerCase()
+              if (!dedupeKey || seen.has(dedupeKey)) continue
+              seen.add(dedupeKey)
+              aiProfiles.push(profile)
+            }
+          } finally {
+            db.close()
+          }
+        } else {
+          // ── 从 config.json 解析 ──
+          const raw = await readFile(ccSwitchConfigPath, 'utf-8')
+          const parsed = JSON.parse(raw)
+          // CC Switch 的 config.json 存在多种版本结构，需兼容解析：
+          //   ① { "Claude": [...], "Codex": [...] }   —— 旧版按分组数组
+          //   ② { "current": {...}, "providers": { "Claude": [...], ... } }  —— 新版 providers 对象
+          //   ③ { "current": "...", "providers": [ {...} ] }                  —— 新版 providers 数组
+          //   ④ [ {...}, {...} ]                        —— 直接为数组
+          //   ⑤ { "provider": { "Claude": [...] } }   —— provider 作为分组容器
+          //   ⑥ { "name":..., "baseUrl":... }         —— 顶层直接是单条配置
+          //   ⑦ { "current": { "name":..., "baseUrl":... } }  —— current 直接为配置对象
+          // 统一展开为「供应商条目数组」后逐条映射。
+          // 判断一个对象是否像「配置条目」（包含地址、凭据、供应商等特征字段）
+          const isEntryLike = (o: unknown): boolean => {
+            if (!o || typeof o !== 'object' || Array.isArray(o)) return false
+            const kset = Object.keys(o as Record<string, unknown>).map(normalizeKey)
+            const hasEndpoint = ['baseurl', 'apiurl', 'apibase', 'apibaseurl', 'endpoint', 'host', 'base'].some((k) => kset.includes(k))
+            const hasCred = ['apikey', 'token', 'secret', 'apikeys'].some((k) => kset.includes(k))
+            const hasProvider = ['provider', 'type', 'vendor', 'platform', 'service'].some((k) => kset.includes(k))
+            const hasName = kset.includes('name')
+            return hasEndpoint || (hasCred && (hasProvider || hasName))
+          }
+
+          const collected: Array<{ entry: Record<string, unknown>; group: string }> = []
+          const seen = new Set<string>()
+          const pushEntry = (entry: unknown, group: string): void => {
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return
+            const e = entry as Record<string, unknown>
+            const baseUrl = String(pickField(e, ['baseUrl', 'base_url', 'baseURL', 'endpoint', 'host', 'api_base', 'apiBase', 'url']) ?? '')
+            const apiKey = String(pickField(e, ['apiKey', 'api_key', 'APIKey', 'token', 'secret']) ?? '')
+            const name = String(pickField(e, ['name', 'label', 'title', 'remark']) ?? '')
+            const type = String(pickField(e, ['provider', 'type', 'vendor', 'platform']) ?? '')
+            const dedupeKey = [baseUrl, apiKey, name, type].join('|').toLowerCase()
+            if (!dedupeKey || seen.has(dedupeKey)) return
+            seen.add(dedupeKey)
+            collected.push({ entry: e, group })
+          }
+
+          const collectEntries = (node: unknown, group: string): void => {
+            if (!node || typeof node !== 'object') return
+            if (Array.isArray(node)) {
+              for (const item of node) {
+                if (!item || typeof item !== 'object') continue
+                if (Array.isArray(item)) {
+                  collectEntries(item, group)
+                  continue
+                }
+                if (isEntryLike(item)) pushEntry(item, group)
+                else collectEntries(item, group)
+              }
+              return
+            }
+            const obj = node as Record<string, unknown>
+            // 当前对象本身可能就是一条配置（顶层 / current / 分组值）
+            if (isEntryLike(obj)) {
+              pushEntry(obj, group)
+              return
+            }
+            // providers 字段（对象或数组）
+            const providerHolder = obj['providers'] ?? obj['providerList'] ?? obj['Provider']
+            if (providerHolder !== undefined && providerHolder !== null) {
+              collectEntries(providerHolder, group)
+            }
+            // current 字段：可能是指向供应商的 id/名称字符串，也可能是直接内嵌的配置对象
+            const current = obj['current']
+            if (current && typeof current === 'object' && !Array.isArray(current)) {
+              if (isEntryLike(current)) pushEntry(current, group)
+              else collectEntries(current, group)
+            }
+            // 按「分组名 -> 数组 / 对象」的旧版结构展开
+            for (const key of Object.keys(obj)) {
+              const nk = normalizeKey(key)
+              if (['providers', 'providerlist', 'current', 'version', 'settings', 'isactive'].includes(nk)) continue
+              const value = obj[key]
+              if (Array.isArray(value)) {
+                for (const item of value) {
+                  if (!item || typeof item !== 'object') continue
+                  if (Array.isArray(item)) {
+                    collectEntries(item, key)
+                    continue
+                  }
+                  if (isEntryLike(item)) pushEntry(item, key)
+                  else collectEntries(item, key)
+                }
+              } else if (value && typeof value === 'object') {
+                // 某些版本嵌套了一层分组（如 providers 下的 Claude / provider 下的分组）
+                collectEntries(value, key)
+              }
             }
           }
-        }
 
-        collectEntries(parsed, '')
-        for (const { entry, group } of collected) {
-          const e = entry as Record<string, unknown>
-          aiProfiles.push({
-            name: String(pickField(e, ['name', 'label', 'title', 'remark']) ?? group ?? '').trim() || group || 'CC Switch',
-            // CC Switch 用 provider 表示供应商类型，部分版本也用 type
-            type: String(pickField(e, ['provider', 'type', 'vendor', 'platform']) ?? '').toLowerCase(),
-            baseUrl: String(pickField(e, ['baseUrl', 'base_url', 'baseURL', 'endpoint', 'host', 'api_base', 'apiBase', 'url']) ?? '').trim(),
-            apiKey: String(pickField(e, ['apiKey', 'api_key', 'APIKey', 'token', 'secret']) ?? '').trim(),
-            model: String(pickField(e, ['model', 'modelId', 'defaultModel', 'default_model', 'modelName']) ?? '').trim(),
-            isCurrent: Boolean(pickField(e, ['isCurrent', 'is_active', 'iscurrent', 'active']) ?? false)
-          })
+          collectEntries(parsed, '')
+          for (const { entry, group } of collected) {
+            aiProfiles.push(extractProfileFromEntry(entry, group))
+          }
         }
       } catch (error) {
         configError = error instanceof Error ? error.message : 'CC Switch 配置文件解析失败'
       }
       // 解析成功但未识别到任何配置条目时，给出诊断提示
       if (!configError && aiProfiles.length === 0) {
-        configError = '已读取配置文件，但未能从中识别到 AI 接口配置（可导入 name/baseUrl/apiKey/model 等字段）。若为 CC Switch 配置文件，请确认其为 config.json 导出的标准格式。'
+        configError = isDbFile
+          ? '已读取数据库，但未能从 providers 表中识别到 AI 接口配置。请确认所选文件为 CC Switch 的 cc-switch.db（SQLite 数据库）。'
+          : '已读取配置文件，但未能从中识别到 AI 接口配置（可导入 name/baseUrl/apiKey/model 等字段）。若为 CC Switch 配置文件，请确认其为 config.json 导出的标准格式。'
       }
     } else {
       configError = `未找到 CC Switch 配置文件：${ccSwitchConfigPath}`
     }
-
     // 2. 导入 CC Switch / Claude Code 的 skills 到共享 skills 目录（所有项目可见）
     // CC Switch 及其底层的 Claude Code / Codex 会把 skills 存放到以下常见目录，
     // 这里递归收集其中包含 SKILL.md 的目录并拷贝到共享项目 skills 目录。

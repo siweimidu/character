@@ -1502,7 +1502,7 @@ async function saveSettings(): Promise<void> {
     @close="ccSwitchImportOpen = false"
   >
     <div class="cc-switch-intro">
-      <p>已读取 CC Switch 配置（{{ ccSwitchConfigPath || '~/.cc-switch/config.json' }}）。选择要导入的 AI 接口配置。</p>
+      <p>已读取 CC Switch 配置（{{ ccSwitchConfigPath || '~/.cc-switch/cc-switch.db' }}）。选择要导入的 AI 接口配置。</p>
       <p v-if="ccSwitchConfigError" class="cc-switch-warn">
         配置读取提示：{{ ccSwitchConfigError }}
       </p>
