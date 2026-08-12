@@ -359,15 +359,32 @@ function normalizeAiProfile(profile: AiProfile): AiProfile {
     apiKey: String(profile.apiKey ?? '').trim(),
     model: String(profile.model ?? '').trim(),
     models: normalizeProfileModels(profile.models),
-    apiProtocol:
-      profile.apiProtocol === 'openai-responses'
-      || profile.apiProtocol === 'openai-chat'
-      || profile.apiProtocol === 'anthropic'
-        ? profile.apiProtocol
-        : 'auto',
+    apiProtocol: normalizeApiProtocol(profile.apiProtocol),
     temperature: normalizeOptionalNumber(profile.temperature, 0, 2),
     topP: normalizeOptionalNumber(profile.topP, 0, 1)
   }
+}
+
+/** 线协议集合：与 types/app.ts 中 AppSettings.apiProtocol 定义保持一致。 */
+const API_PROTOCOLS = new Set<NonNullable<AppSettings['apiProtocol']>>([
+  'auto',
+  'openai-responses',
+  'openai-chat',
+  'openai-completions',
+  'anthropic',
+  'anthropic-complete',
+  'gemini',
+  'kobold',
+  'novelai',
+  'dashscope-native',
+  'volcengine-native'
+])
+
+/** 规范化线协议：仅接受已知协议，未知值回退为 'auto'，避免丢失多协议配置。 */
+function normalizeApiProtocol(value: unknown): NonNullable<AppSettings['apiProtocol']> {
+  return API_PROTOCOLS.has(value as NonNullable<AppSettings['apiProtocol']>)
+    ? value as NonNullable<AppSettings['apiProtocol']>
+    : 'auto'
 }
 
 /** 规范化模型列表：trim、去空、去重、限制条数 */
@@ -392,12 +409,7 @@ export function normalizeAppSettings(settings?: Partial<AppSettings> | null): Ap
   const model = sanitizeSettingString(source.model, defaultAppSettings.model)
   const apiKey = sanitizeSettingString(source.apiKey, defaultAppSettings.apiKey)
   const baseUrl = sanitizeSettingString(source.baseUrl, defaultAppSettings.baseUrl)
-  const apiProtocol =
-    source.apiProtocol === 'openai-responses'
-    || source.apiProtocol === 'openai-chat'
-    || source.apiProtocol === 'anthropic'
-      ? source.apiProtocol
-      : 'auto'
+  const apiProtocol = normalizeApiProtocol(source.apiProtocol)
   const temperature = normalizeOptionalNumber(source.temperature, 0, 2)
   const topP = normalizeOptionalNumber(source.topP, 0, 1)
 

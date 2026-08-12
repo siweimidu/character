@@ -376,6 +376,8 @@ export type WorkspacePayload = {
       baseUrl: string
       apiKey: string
       model: string
+      /** 该接口配置下保存的多个模型 ID，方便在同一接口下快速切换 */
+      models?: string[]
       apiProtocol?: 'auto' | 'openai-responses' | 'openai-chat' | 'openai-completions' | 'anthropic' | 'anthropic-complete' | 'gemini' | 'kobold' | 'novelai' | 'dashscope-native' | 'volcengine-native'
       temperature?: number
       topP?: number
@@ -393,9 +395,13 @@ export type WorkspacePayload = {
     visionSavedModels: string[]
     autoSaveInterval: string
     editorFont: string
+    /** 编辑器是否显示小地图 */
+    editorMinimap: boolean
     uiScale: number
     darkMode: boolean
     darkModeStyle: string
+    /** AI 请求超时秒数 */
+    aiTimeoutSeconds: number
     /** 全局自定义背景图（dataURL 或空字符串表示未设置） */
     backgroundImage: string
     /** 全局自定义背景透明度 0-1 */
@@ -569,6 +575,9 @@ export function normalizeAppSettings(
             baseUrl: String(item.baseUrl ?? '').trim(),
             apiKey: String(item.apiKey ?? '').trim(),
             model: String(item.model ?? '').trim(),
+            models: Array.isArray(item.models)
+              ? [...new Set(item.models.map((m) => String(m).trim()).filter(Boolean))].slice(0, 50)
+              : undefined,
             apiProtocol: normalizeApiProtocol(item.apiProtocol),
             temperature:
               typeof item.temperature === 'number' && Number.isFinite(item.temperature)
@@ -600,12 +609,17 @@ export function normalizeAppSettings(
       && ['clear-mono', 'modern-sans', 'classic-serif', 'relaxed-kai', 'system'].includes(settings.editorFont)
         ? settings.editorFont
         : 'clear-mono',
+    editorMinimap: typeof settings?.editorMinimap === 'boolean' ? settings.editorMinimap : false,
     uiScale,
     darkMode: Boolean(settings?.darkMode),
     darkModeStyle:
       settings?.darkModeStyle === 'nord'
         ? settings.darkModeStyle
         : 'nord',
+    aiTimeoutSeconds:
+      typeof settings?.aiTimeoutSeconds === 'number' && Number.isFinite(settings.aiTimeoutSeconds)
+        ? Math.min(600, Math.max(30, settings.aiTimeoutSeconds))
+        : 180,
     backgroundImage: typeof settings?.backgroundImage === 'string' ? settings.backgroundImage : '',
     backgroundOpacity:
       typeof settings?.backgroundOpacity === 'number' && Number.isFinite(settings.backgroundOpacity)
