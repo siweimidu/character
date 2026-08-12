@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 /**
  * 正文右侧预览缩略图（类似 VSCode minimap）。
  * 将正文内容按行绘制为极小的文字缩略，显示从上到下的整体预览，
  * 并叠加当前可视区域高亮框，支持点击/拖动快速定位。
+ *
+ * 实现参考 VSCode minimap：
+ * - 行高固定（LINE_HEIGHT_PX），字号与行高匹配
+ * - 内容总高度 = 总行数 × 行高，映射到 canvas 可视高度
+ * - 视口框通过编辑器 scrollTop/scrollHeight 映射
  */
 
 const props = defineProps<{
@@ -25,18 +30,24 @@ const minimapRef = ref<HTMLDivElement | null>(null)
 
 const MINIMAP_WIDTH = 96
 const MINIMAP_PADDING = 8
-const LINE_HEIGHT_PX = 4 // 每行在缩略图中的固定高度
-const FONT_PX = 3.2 // 缩略文字字号
+const LINE_HEIGHT_PX = 5 // 每行在缩略图中的固定高度（含字高+间距）
+const FONT_PX = 4.5 // 缩略文字字号
+const CHAR_WIDTH_PX = Math.floor(FONT_PX * 0.6) // monospace 字符宽度 ≈ 0.6 * fontSize
 
 let rafId = 0
 let dragging = false
+
+function getContentLines(): string[] {
+  const text = props.getText() || ''
+  return text.split('\n')
+}
 
 function draw(): void {
   const canvas = canvasRef.value
   const el = props.scrollContainer
   if (!canvas || !el) return
-  const text = props.getText()
-  const lines = text.split('\n')
+  const lines = getContentLines()
+
   const dpr = window.devicePixelRatio || 1
   const cssW = MINIMAP_WIDTH - MINIMAP_PADDING * 2
   const cssH = Math.max(40, el.clientHeight - 8)
@@ -50,41 +61,45 @@ function draw(): void {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.clearRect(0, 0, cssW, cssH)
 
-  const total = Math.max(1, el.scrollHeight)
-  const usable = cssH - 2
-  // 缩放比例：内容总高度 -> 缩略图可用高度
-  const scale = usable / total
+  // 内容总高度（按总行数 × 行高，保留空行结构）
+  const contentTotalH = Math.max(1, lines.length) * LINE_HEIGHT_PX
+  const usable = cssH - 4
+  // 缩放比例：内容总高度 -> canvas 可视高度
+  const scale = usable / contentTotalH
 
   ctx.font = `${FONT_PX}px monospace`
-  ctx.textBaseline = 'top'
+  ctx.textBaseline = 'middle'
   const color = getComputedStyle(el).color || '#888'
 
+  const maxChars = Math.max(1, Math.floor(cssW / CHAR_WIDTH_PX))
+
+  // 逐行绘制，使用原始行号映射 y 坐标，保留文档空行结构（类似 VSCode）
+  const topPad = 2
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     if (!line.trim()) continue
-    const lineY = (i * LINE_HEIGHT_PX) * scale
-    if (lineY > usable) break
-    // 绘制当前行文字（截断到可视宽度）
-    const maxChars = Math.floor(cssW / FONT_PX)
+    const y = topPad + (i * LINE_HEIGHT_PX + LINE_HEIGHT_PX / 2) * scale
+    if (y > cssH) break
     const clipped = line.length > maxChars ? line.slice(0, maxChars) : line
-    ctx.globalAlpha = 0.55
+    ctx.globalAlpha = 0.6
     ctx.fillStyle = color
-    ctx.fillText(clipped, 0, lineY)
+    ctx.fillText(clipped, 0, y, cssW)
     ctx.globalAlpha = 1
   }
 
-  drawViewport(ctx, cssW, cssH, scale)
+  drawViewport(ctx, cssW, cssH)
 }
 
-function drawViewport(ctx: CanvasRenderingContext2D, cssW: number, cssH: number, scale: number): void {
+function drawViewport(ctx: CanvasRenderingContext2D, cssW: number, cssH: number): void {
   const el = props.scrollContainer
   if (!el) return
   const vp = el.clientHeight
   const total = el.scrollHeight
   if (total <= 0) return
+  const scale = (cssH - 4) / total
   const top = el.scrollTop
-  const vpH = vp * scale
-  const vpY = top * scale
+  const vpH = Math.max(10, vp * scale)
+  const vpY = Math.max(0, top * scale)
   // 可视区域高亮
   ctx.fillStyle = 'rgba(128, 128, 128, 0.22)'
   ctx.fillRect(0, vpY, cssW, Math.min(vpH, cssH - vpY))
@@ -138,13 +153,18 @@ watch(
     if (v) {
       nextTick(scheduleDraw)
     }
-  }
+  },
+  { immediate: true }
 )
 
 watch(
   () => props.scrollContainer,
   () => nextTick(scheduleDraw)
 )
+
+onBeforeUnmount(() => {
+  cancelAnimationFrame(rafId)
+})
 
 // 由父组件通过 expose 触发重绘（编辑器内容/滚动变化时调用）
 defineExpose({ redraw: scheduleDraw })
