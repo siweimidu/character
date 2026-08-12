@@ -38,7 +38,9 @@ export function useCatalogBatch() {
     const keyField = options.keyField
     const knownKeys = new Set((options.existingKeys ?? []).map((key) => key.trim().toLowerCase()).filter(Boolean))
     const entries: CatalogBatchEntry[] = []
-    const maxAttempts = Math.ceil(total / 10) + 2
+    // 严格按用户设定的数量生成：预留充足尝试次数，即使批量结果出现重名/占位内容被过滤，
+    // 也能持续补足缺口，确保最终生成的条目数符合设定值。
+    const maxAttempts = Math.ceil(total / 10) * 4 + 8
 
     for (let attempt = 0; entries.length < total && attempt < maxAttempts; attempt += 1) {
       const batchCount = Math.min(10, total - entries.length)
