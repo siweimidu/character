@@ -290,6 +290,8 @@ export const useAppStore = defineStore('app', () => {
   const organizationMemberships = computed(() => currentWorkspace.value.organizationMemberships)
   /** 当前项目的灵感卡片列表 */
   const inspirationEntries = computed(() => currentWorkspace.value.inspirationEntries)
+  /** 当前项目的灵感自定义生成类型列表 */
+  const inspirationTypes = computed(() => currentWorkspace.value.inspirationTypes ?? [])
   /** 当前项目的大纲节点列表 */
   const outlineItems = computed(() => currentWorkspace.value.outlineItems)
   /** 当前项目的章节列表 */
@@ -1340,6 +1342,16 @@ export const useAppStore = defineStore('app', () => {
           ...workspace,
           plotThreads: [...workspace.plotThreads, data as unknown as import('@/types/app').PlotThread]
         }))
+        break
+      }
+      case 'inspiration-type': {
+        const restoredType = String((data as Record<string, unknown>)?.type ?? '').trim()
+        if (restoredType && !(currentWorkspace.value.inspirationTypes ?? []).includes(restoredType)) {
+          updateCurrentWorkspace((workspace) => ({
+            ...workspace,
+            inspirationTypes: [...(workspace.inspirationTypes ?? []), restoredType]
+          }))
+        }
         break
       }
       case 'chapter': {
@@ -2550,6 +2562,36 @@ export const useAppStore = defineStore('app', () => {
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       plotThreads: [...workspace.plotThreads, ...newThreads]
+    }))
+    schedulePersist('fast')
+  }
+
+  // ── 灵感自定义生成类型 CRUD ──
+  /** 新增一条自定义灵感生成类型，去重后保存 */
+  function addInspirationType(type: string): boolean {
+    const clean = String(type ?? '').trim()
+    if (!clean) return false
+    const current = currentWorkspace.value.inspirationTypes ?? []
+    if (current.includes(clean)) return false
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      inspirationTypes: [...(workspace.inspirationTypes ?? []), clean]
+    }))
+    schedulePersist('fast')
+    return true
+  }
+
+  /** 删除一条自定义灵感生成类型，并写入回收站 */
+  function deleteInspirationType(type: string): void {
+    const clean = String(type ?? '').trim()
+    if (!clean) return
+    const target = (currentWorkspace.value.inspirationTypes ?? []).find((item) => item === clean)
+    if (target) {
+      pushRecycleEntry('inspiration-type', target, { type: target })
+    }
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      inspirationTypes: (workspace.inspirationTypes ?? []).filter((item) => item !== clean)
     }))
     schedulePersist('fast')
   }
@@ -4105,6 +4147,7 @@ export const useAppStore = defineStore('app', () => {
     characterRelationships,
     characters,
     inspirationEntries,
+    inspirationTypes,
     closeWizard,
     createProject,
     createProjectWorkspace,
@@ -4154,6 +4197,8 @@ export const useAppStore = defineStore('app', () => {
     batchUpdatePlotThreadStatus,
     batchUpdatePlotThreadTags,
     importPlotThreads,
+    addInspirationType,
+    deleteInspirationType,
     deleteProject,
     deleteWorldviewEntry,
     deleteWorldviewEntries,

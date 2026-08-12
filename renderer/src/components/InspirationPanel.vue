@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
-import { MoreVertical, Plus, Search, Sparkles } from 'lucide-vue-next'
+import { MoreVertical, Plus, Search, Settings2, Sparkles } from 'lucide-vue-next'
 import { NButton, NDropdown, NDynamicTags, NForm, NFormItem, NInput, NModal, NSelect, NTag, useDialog, useMessage } from 'naive-ui'
 import { getPlainTextFromEditorContent } from '@/features/chapters/editorContent'
 import { buildProjectWritingStyleContext } from '@/features/writingStyles/presets'
@@ -41,7 +41,47 @@ const form = reactive({
 })
 
 const focusTypes = ['标题灵感', '开篇钩子', '场景火花', '剧情转折', '设定补完', '人物动机', '伏笔'] // 灵感焦点类型列表
-const batchTypeOptions = ['场景火花', '伏笔'].map((type) => ({ label: type, value: type }))
+// 批量生成默认可选类型：在原有基础上扩充更多生成类型
+const presetBatchTypes = [
+  '场景火花', '伏笔', '标题灵感', '开篇钩子', '剧情转折', '设定补完', '人物动机',
+  '世界观细节', '角色台词', '高光名场面', '冲突升级', '悬念收束', '环境氛围', '情感推进', '反转设计', '节奏控制', '支线线索'
+]
+// 合并预设批量类型 + 用户自定义生成类型，供批量生成下拉使用
+const batchTypeOptions = computed(() =>
+  [...new Set([...presetBatchTypes, ...appStore.inspirationTypes])]
+    .map((type) => ({ label: type, value: type }))
+)
+// 自定义生成类型管理弹窗状态
+const typeManagerVisible = ref(false)
+const newTypeName = ref('')
+// 待删除确认的自定义类型
+function openTypeManager(): void {
+  newTypeName.value = ''
+  typeManagerVisible.value = true
+}
+function handleAddType(): void {
+  const added = appStore.addInspirationType(newTypeName.value)
+  if (added) {
+    message.success(`已新增生成类型「${newTypeName.value.trim()}」`)
+    newTypeName.value = ''
+  } else {
+    message.warning('类型不能为空或已存在')
+  }
+}
+function handleDeleteType(type: string): void {
+  dialog.warning({
+    title: '删除生成类型',
+    content: `确定要删除生成类型“${type}”吗？删除后该类型将移入回收站。`,
+    positiveText: '确认删除',
+    negativeText: '取消',
+    autoFocus: false,
+    closable: false,
+    onPositiveClick: () => {
+      appStore.deleteInspirationType(type)
+      message.success(`已删除生成类型「${type}」并移入回收站`)
+    }
+  })
+}
 const typeOptions = computed(() =>
   [...new Set([...focusTypes, ...appStore.inspirationEntries.map((entry) => entry.type.trim()).filter(Boolean)])]
     .map((type) => ({ label: type, value: type }))
@@ -182,17 +222,32 @@ async function handleGeneratePack(payload: { count: number; prompt: string; type
         outlineItems: appStore.outlineItems
       }
     })
+    let syncedThreadCount = 0
     entries.forEach((entry, index) => {
+      const type = String(entry.type ?? payload.types[0] ?? typeFilter.value ?? '场景火花')
       appStore.createInspirationEntry({
-        type: String(entry.type ?? payload.types[0] ?? typeFilter.value ?? '场景火花'),
+        type,
         title: String(entry.title ?? `${payload.types[0] ?? typeFilter.value ?? '场景火花'} ${index + 1}`),
         content: String(entry.content ?? 'AI 未返回有效灵感内容'),
         tags: normalizeCatalogTags(entry.tags),
         source: 'ai'
       })
+      // 生成类型为「伏笔」的灵感同步创建到伏笔线索模块
+      if (type === '伏笔') {
+        appStore.createPlotThread({
+          title: String(entry.title ?? `伏笔 ${index + 1}`),
+          description: String(entry.content ?? ''),
+          openedInChapterId: appStore.selectedChapterId ?? '',
+          status: 'pending',
+          tags: normalizeCatalogTags(entry.tags),
+          remark: '来自灵感模块批量生成的伏笔'
+        })
+        syncedThreadCount += 1
+      }
     })
     batchVisible.value = false
-    message.success(`已生成 ${entries.length} 张灵感卡片`)
+    const syncSuffix = syncedThreadCount > 0 ? `，并同步 ${syncedThreadCount} 条到伏笔线索` : ''
+    message.success(`已生成 ${entries.length} 张灵感卡片${syncSuffix}`)
   } catch (error) {
     message.error(error instanceof Error ? error.message : 'AI 生成灵感失败，请稍后重试')
   }
@@ -252,6 +307,10 @@ function handleMenuSelect(action: string | number, entry: InspirationEntry): voi
           <template #icon><Sparkles :size="16" /></template>
           批量生成
         </n-button>
+        <n-button secondary strong @click="openTypeManager">
+          <template #icon><Settings2 :size="16" /></template>
+          类型管理
+        </n-button>
         <n-button type="primary" strong @click="openCreateEditor()">
           <template #icon><Plus :size="16" /></template>
           新建灵感
@@ -299,6 +358,7 @@ function handleMenuSelect(action: string | number, entry: InspirationEntry): voi
       :progress="batchProgress"
       :type-options="batchTypeOptions"
       :default-types="typeFilter && batchTypeOptions.some((option) => option.value === typeFilter) ? [typeFilter] : ['场景火花', '伏笔']"
+      :allow-custom-types="true"
       @close="batchVisible = false"
       @submit="handleGeneratePack"
     />
@@ -421,6 +481,49 @@ function handleMenuSelect(action: string | number, entry: InspirationEntry): voi
       <template #footer>
         <span />
       </template>
+    </n-modal>
+
+    <!-- 自定义生成类型管理弹窗 -->
+    <n-modal
+      v-model:show="typeManagerVisible"
+      preset="card"
+      title="灵感生成类型管理"
+      :bordered="false"
+      style="width: min(520px, calc(100vw - 32px))"
+      @close="typeManagerVisible = false"
+    >
+      <p class="type-manager-hint">管理批量生成灵感时可选用的生成类型。可手动新增自定义类型，删除的类型将移入回收站。</p>
+      <div class="type-manager-add">
+        <n-input
+          v-model:value="newTypeName"
+          placeholder="输入新的生成类型，如：反转设计"
+          clearable
+          @keyup.enter="handleAddType"
+        />
+        <n-button type="primary" @click="handleAddType">
+          <template #icon><Plus :size="16" /></template>
+          添加
+        </n-button>
+      </div>
+      <div class="type-manager-list">
+        <n-tag
+          v-for="type in appStore.inspirationTypes"
+          :key="type"
+          size="large"
+          closable
+          class="type-manager-tag"
+          @close="handleDeleteType(type)"
+        >
+          {{ type }}
+        </n-tag>
+        <span v-if="appStore.inspirationTypes.length === 0" class="type-manager-empty">
+          还没有自定义类型，可在上方添加。
+        </span>
+      </div>
+      <div class="type-manager-footer">
+        <span>预设类型：{{ presetBatchTypes.length }} 个</span>
+        <n-button round strong @click="typeManagerVisible = false">完成</n-button>
+      </div>
     </n-modal>
   </section>
 </template>
@@ -725,6 +828,51 @@ function handleMenuSelect(action: string | number, entry: InspirationEntry): voi
   border-color: color-mix(in srgb, var(--arc-primary) 34%, var(--arc-bg-mix));
   background: color-mix(in srgb, var(--arc-primary) 8%, var(--arc-bg-mix));
   color: var(--arc-primary);
+}
+
+.type-manager-hint {
+  margin: 0 0 16px;
+  color: var(--arc-text-muted);
+  line-height: 1.7;
+}
+
+.type-manager-add {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.type-manager-add .n-input {
+  flex: 1;
+}
+
+.type-manager-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.type-manager-tag {
+  padding: 6px 10px;
+}
+
+.type-manager-empty {
+  color: var(--arc-text-hint);
+  font-size: 13px;
+}
+
+.type-manager-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 18px;
+  color: var(--arc-text-hint);
+  font-size: 12px;
 }
 
 @media (max-width: 980px) {

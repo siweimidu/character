@@ -892,6 +892,8 @@ export interface ProjectWorkspaceData {
   workflowDocuments: WorkflowDocument[]
   /** 伏笔线索列表 */
   plotThreads: PlotThread[]
+  /** 灵感模块自定义生成类型列表 */
+  inspirationTypes: string[]
   /** 本项目回收站中的删除记录 */
   recycleBin: RecycleBinEntry[]
 }
@@ -907,6 +909,7 @@ export type RecycleBinCategory =
   | 'outline'
   | 'outline-volume'
   | 'plot-thread'
+  | 'inspiration-type'
   | 'chapter'
   | 'knowledge-document'
   | 'assistant-session'

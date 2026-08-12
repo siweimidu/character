@@ -493,6 +493,7 @@ export function normalizeProjectWorkspaceData(
     aiRuns: normalizeAiRuns(normalized.aiRuns),
     workflowDocuments: normalizeWorkflowDocuments(normalized.workflowDocuments),
     plotThreads: normalized.plotThreads,
+    inspirationTypes: normalized.inspirationTypes,
     recycleBin: normalized.recycleBin
   }
 }
