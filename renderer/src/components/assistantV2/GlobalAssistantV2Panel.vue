@@ -390,18 +390,6 @@ async function handleCommit(ids?: string[]): Promise<void> {
           <p>{{ currentMode.description }}</p>
         </div>
 
-        <div class="mode-switch" role="tablist" aria-label="助手模式">
-          <button
-            v-for="mode in modeOptions"
-            :key="mode.id"
-            type="button"
-            :class="{ active: activeMode === mode.id }"
-            @click="activeMode = mode.id"
-          >
-            {{ mode.label }}
-          </button>
-        </div>
-
         <div class="quick-list">
           <button
             v-for="action in quickActions[activeMode]"
@@ -441,6 +429,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
         @remove-attachment="(key) => assistant.removePendingAttachment(key)"
         @upload-file="handleUploadFile"
         @upload-files="handleUploadFiles"
+        @add-file="(file) => assistant.addPendingAttachment({ kind: 'file', ref: `file:${file.name}`, label: file.name, content: file.content, mime: file.mime, size: file.size })"
         @cancel="assistant.cancel()"
         @edit-last="assistant.startEditingLastTurn()"
         @clear-restored="assistant.clearRestoredDraft()"

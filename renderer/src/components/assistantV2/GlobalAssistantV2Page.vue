@@ -525,19 +525,6 @@ async function handleCommit(ids?: string[]): Promise<void> {
             <p class="starter-sub">{{ currentMode.description }}</p>
           </div>
 
-          <div class="mode-switch" role="tablist" aria-label="助手模式">
-            <button
-              v-for="mode in modeOptions"
-              :key="mode.id"
-              type="button"
-              :class="{ active: activeMode === mode.id }"
-              @click="activeMode = mode.id"
-            >
-              <component :is="modeIcon(mode.id)" :size="14" />
-              <span>{{ mode.label }}</span>
-            </button>
-          </div>
-
           <div class="quick-grid">
             <button
               v-for="action in quickActions[activeMode]"
@@ -592,6 +579,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
         @remove-attachment="(key) => assistant.removePendingAttachment(key)"
         @upload-file="handleUploadFile"
         @upload-files="handleUploadFiles"
+        @add-file="(file) => assistant.addPendingAttachment({ kind: 'file', ref: `file:${file.name}`, label: file.name, content: file.content, mime: file.mime, size: file.size })"
         @cancel="assistant.cancel()"
         @edit-last="assistant.startEditingLastTurn()"
         @clear-restored="assistant.clearRestoredDraft()"
@@ -752,9 +740,12 @@ async function handleCommit(ids?: string[]): Promise<void> {
   padding: 10px 32px 0;
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 8px;
   z-index: 10;
+}
+.agent-toolbar :deep(.agent-selector) {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .memory-toggle {
   display: inline-flex;

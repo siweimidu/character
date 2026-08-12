@@ -381,11 +381,7 @@ async function commitDelete(
     if (!existing) {
       return { changeId: change.id, ok: false, error: `章节不存在或已删除：${change.entityId}` }
     }
-    const count = db.prepare('SELECT COUNT(*) AS value FROM chapters WHERE project_id = ?')
-      .get(projectId) as { value: number }
-    if (Number(count.value) <= 1) {
-      return { changeId: change.id, ok: false, error: '项目至少需要保留一个章节，无法删除最后一章。' }
-    }
+    // 允许删除最后一章：不再强制保留一个章节（删除前由 UI/工具层提示确认）。
 
     db.exec('BEGIN')
     try {
@@ -412,30 +408,44 @@ async function commitDelete(
     if (!volume) return { changeId: change.id, ok: false, error: `分卷不存在或已删除：${change.entityId}` }
     const count = db.prepare('SELECT COUNT(*) AS value FROM outline_volumes WHERE project_id = ?')
       .get(projectId) as { value: number }
-    if (Number(count.value) <= 1) {
-      return { changeId: change.id, ok: false, error: '项目至少需要保留一个分卷，无法删除最后一个分卷。' }
-    }
     const payload = readPayload(change)
+    // 允许删除最后一个分卷：不再强制保留一个分卷（删除前由 UI/工具层提示确认）。
+    // 若删除的是最后一个分卷，其下章节/大纲一并删除；否则迁移到承接分卷。
+    const isLastVolume = Number(count.value) <= 1
     const requestedFallbackId = stringField(payload, 'fallbackVolumeId') || stringField(payload, 'fallback_volume_id')
-    const fallback = requestedFallbackId
-      ? db.prepare('SELECT id FROM outline_volumes WHERE id = ? AND project_id = ? AND id <> ?')
-        .get(requestedFallbackId, projectId, change.entityId) as { id: string } | undefined
-      : db.prepare(`
-          SELECT id FROM outline_volumes
-          WHERE project_id = ? AND id <> ?
-          ORDER BY ABS(sort_order - ?), sort_order
-          LIMIT 1
-        `).get(projectId, change.entityId, volume.sort_order) as { id: string } | undefined
-    if (!fallback) return { changeId: change.id, ok: false, error: '找不到承接数据的相邻分卷。' }
+    const fallback = isLastVolume
+      ? undefined
+      : requestedFallbackId
+        ? db.prepare('SELECT id FROM outline_volumes WHERE id = ? AND project_id = ? AND id <> ?')
+          .get(requestedFallbackId, projectId, change.entityId) as { id: string } | undefined
+        : db.prepare(`
+            SELECT id FROM outline_volumes
+            WHERE project_id = ? AND id <> ?
+            ORDER BY ABS(sort_order - ?), sort_order
+            LIMIT 1
+          `).get(projectId, change.entityId, volume.sort_order) as { id: string } | undefined
 
     db.exec('BEGIN')
     try {
-      db.prepare('UPDATE outline_items SET volume_id = ? WHERE project_id = ? AND volume_id = ?')
-        .run(fallback.id, projectId, change.entityId)
-      db.prepare('UPDATE chapters SET volume_id = ? WHERE project_id = ? AND volume_id = ?')
-        .run(fallback.id, projectId, change.entityId)
-      db.prepare('DELETE FROM outline_volumes WHERE id = ? AND project_id = ?')
-        .run(change.entityId, projectId)
+      if (fallback) {
+        db.prepare('UPDATE outline_items SET volume_id = ? WHERE project_id = ? AND volume_id = ?')
+          .run(fallback.id, projectId, change.entityId)
+        db.prepare('UPDATE chapters SET volume_id = ? WHERE project_id = ? AND volume_id = ?')
+          .run(fallback.id, projectId, change.entityId)
+      } else {
+        // 删除最后一个分卷：级联删除其下章节与大纲节点，并清理向量索引。
+        const removedChapterIds = (db.prepare('SELECT id FROM chapters WHERE project_id = ? AND volume_id = ?')
+          .all(projectId, change.entityId) as Array<{ id: string }>).map((r) => r.id)
+        for (const cid of removedChapterIds) {
+          db.prepare(`
+            DELETE FROM story_embeddings
+            WHERE project_id = ? AND source_type = 'chapter_segment' AND source_id = ?
+          `).run(projectId, cid)
+        }
+        db.prepare('DELETE FROM chapters WHERE project_id = ? AND volume_id = ?').run(projectId, change.entityId)
+        db.prepare('DELETE FROM outline_items WHERE project_id = ? AND volume_id = ?').run(projectId, change.entityId)
+      }
+      db.prepare('DELETE FROM outline_volumes WHERE id = ? AND project_id = ?').run(change.entityId, projectId)
       db.exec('COMMIT')
       return { changeId: change.id, ok: true, entityId: change.entityId }
     } catch (error) {

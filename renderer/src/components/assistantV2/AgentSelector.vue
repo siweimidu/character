@@ -217,18 +217,19 @@ watch(() => props.modelValue, () => {
 <style scoped>
 .agent-selector {
   position: relative;
+  width: 100%;
 }
 .selector-trigger {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
   padding: 6px 12px;
   border-radius: 10px;
   cursor: pointer;
   background: var(--arc-bg-surface);
   border: 1px solid var(--arc-border);
   transition: border-color 0.15s ease, background 0.15s ease;
-  max-width: 240px;
 }
 .selector-trigger:hover {
   border-color: var(--arc-primary);

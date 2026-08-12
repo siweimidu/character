@@ -59,6 +59,14 @@ const quickChapterOptions = computed(() =>
 )
 
 function openQuickCreateThread(): void {
+  if (appStore.outlineVolumes.length === 0) {
+    message.warning('当前没有分卷，无法新建伏笔。请先新建分卷。')
+    return
+  }
+  if (appStore.chapters.length === 0) {
+    message.warning('当前没有章节，无法新建伏笔。请先新建章节。')
+    return
+  }
   quickThreadForm.title = ''
   quickThreadForm.description = ''
   quickThreadForm.priority = 'medium'

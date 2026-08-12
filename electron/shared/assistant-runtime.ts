@@ -413,9 +413,15 @@ export interface TurnSendRequest {
 }
 
 export interface TurnAttachment {
-  kind: 'chapter' | 'selection' | 'entity' | 'skill'
-  ref: string        // 例如 'chapter:cha_042' / 'skill:polish-v2'
+  kind: 'chapter' | 'selection' | 'entity' | 'skill' | 'file'
+  ref: string        // 例如 'chapter:cha_042' / 'skill:polish-v2' / 'file:上传的文件名'
   label?: string
+  /** 文件附件专用：本地文件内容（按需读取后内联携带），避免中转读文件。 */
+  content?: string
+  /** 文件附件专用：文件 MIME 类型。 */
+  mime?: string
+  /** 文件附件专用：文件大小（字节）。 */
+  size?: number
 }
 
 export interface TurnCancelRequest {

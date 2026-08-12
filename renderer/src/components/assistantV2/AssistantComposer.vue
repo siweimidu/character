@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { NButton } from 'naive-ui'
-import { Paperclip, Square, Undo2, Upload, X } from 'lucide-vue-next'
+import { Paperclip, Plus, Square, Trash2, Undo2, Upload, X } from 'lucide-vue-next'
 import type { TurnAttachment } from '@shared/assistant-runtime'
 
 const props = defineProps<{
@@ -27,6 +27,7 @@ const emit = defineEmits<{
   (e: 'add-reference', ref: { kind: 'chapter' | 'volume' | 'skill'; id: string; label: string }): void
   (e: 'upload-file'): void
   (e: 'upload-files', files: File[]): void
+  (e: 'add-file', file: { name: string; content: string; mime: string; size: number }): void
   (e: 'cancel'): void
   (e: 'edit-last'): void
   (e: 'clear-restored'): void
@@ -37,33 +38,111 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 let lastEscapeAt = 0
 
 /** 斜杠命令快捷指令：输入框内以 / 触发，选中后填充模板并附带 intentHint。 */
-const SLASH_COMMANDS: Array<{
+interface SlashCommandDef {
   key: string
   label: string
   description: string
   template: string
   intentHint: string
-}> = [
-  { key: 'audit', label: '/audit', description: '全书审计：矛盾、OOC、伏笔', template: '请审计当前项目的一致性风险，包括世界观矛盾、人物 OOC、大纲断裂、伏笔未回收和硬约束冲突。', intentHint: 'slash:audit' },
-  { key: 'fix', label: '/fix', description: '修正一致性', template: '请检查项目里可能跑偏或重复的设定，并把需要修正的内容产出为可暂存的修正方案。', intentHint: 'slash:fix' },
-  { key: 'ingest', label: '/ingest', description: '录入设定草稿', template: '我会给你一段设定草稿，请拆成可写入的世界观、人物、组织、大纲或创作记忆暂存变更。', intentHint: 'slash:ingest' },
-  { key: 'summarize', label: '/summarize', description: '章节摘要', template: '请读取最近章节并生成摘要，补全章节创作记忆。', intentHint: 'slash:summarize' },
-  { key: 'continuation', label: '/continuation', description: '续写', template: '请基于当前章节进度和项目设定，续写后续内容。', intentHint: 'slash:continuation' }
+  /** 是否内置命令；内置命令不可删除。 */
+  builtin?: boolean
+}
+const BUILTIN_COMMANDS: SlashCommandDef[] = [
+  { key: 'audit', label: '/audit', description: '全书审计：矛盾、OOC、伏笔', template: '请审计当前项目的一致性风险，包括世界观矛盾、人物 OOC、大纲断裂、伏笔未回收和硬约束冲突。', intentHint: 'slash:audit', builtin: true },
+  { key: 'fix', label: '/fix', description: '修正一致性', template: '请检查项目里可能跑偏或重复的设定，并把需要修正的内容产出为可暂存的修正方案。', intentHint: 'slash:fix', builtin: true },
+  { key: 'ingest', label: '/ingest', description: '录入设定草稿', template: '我会给你一段设定草稿，请拆成可写入的世界观、人物、组织、大纲或创作记忆暂存变更。', intentHint: 'slash:ingest', builtin: true },
+  { key: 'summarize', label: '/summarize', description: '章节摘要', template: '请读取最近章节并生成摘要，补全章节创作记忆。', intentHint: 'slash:summarize', builtin: true },
+  { key: 'continuation', label: '/continuation', description: '续写', template: '请基于当前章节进度和项目设定，续写后续内容。', intentHint: 'slash:continuation', builtin: true }
 ]
+
+const CUSTOM_COMMAND_KEY = 'arc-assistant-custom-commands'
+/** 用户自定义命令（localStorage 持久化，可新增、可删除）。 */
+const customCommands = ref<SlashCommandDef[]>([])
+function loadCustomCommands(): void {
+  try {
+    const raw = window.localStorage.getItem(CUSTOM_COMMAND_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw) as SlashCommandDef[]
+      if (Array.isArray(parsed)) {
+        customCommands.value = parsed
+          .filter((c) => c && typeof c.key === 'string' && typeof c.label === 'string')
+          .map((c) => ({ ...c, builtin: false }))
+      }
+    }
+  } catch {
+    // 忽略损坏的本地数据
+  }
+}
+function persistCustomCommands(): void {
+  try {
+    window.localStorage.setItem(CUSTOM_COMMAND_KEY, JSON.stringify(customCommands.value))
+  } catch {
+    // ignore
+  }
+}
+/** 全部命令 = 内置 + 自定义。 */
+const allCommands = computed<SlashCommandDef[]>(() => [...BUILTIN_COMMANDS, ...customCommands.value])
+/** 添加用户自定义命令。 */
+function addCustomCommand(def: Omit<SlashCommandDef, 'builtin'>): void {
+  if (!def.key || !def.label) return
+  if (BUILTIN_COMMANDS.some((b) => b.key === def.key) || customCommands.value.some((c) => c.key === def.key)) {
+    return
+  }
+  customCommands.value = [...customCommands.value, { ...def, builtin: false }]
+  persistCustomCommands()
+}
+/** 删除用户自定义命令。 */
+function removeCustomCommand(key: string): void {
+  customCommands.value = customCommands.value.filter((c) => c.key !== key)
+  persistCustomCommands()
+}
+loadCustomCommands()
+
+// ── 新建命令弹窗 ──
+const addCommandVisible = ref(false)
+const addCommandForm = ref({ key: '', label: '', description: '', template: '' })
+function openAddCommand(): void {
+  addCommandForm.value = { key: '', label: '', description: '', template: '' }
+  addCommandVisible.value = true
+}
+function submitAddCommand(): void {
+  const key = addCommandForm.value.key.trim()
+  const label = addCommandForm.value.label.trim()
+  const template = addCommandForm.value.template.trim()
+  if (!key) return
+  addCustomCommand({
+    key,
+    label: label || `/${key}`,
+    description: addCommandForm.value.description.trim() || '自定义命令',
+    template: template || label || key,
+    intentHint: `slash:custom:${key}`
+  })
+  addCommandVisible.value = false
+  // 新建后切到命令栏并聚焦，方便立即使用
+  switchSlashTab('command')
+  if (textareaRef.value) textareaRef.value.focus()
+}
 
 // 斜杠命令弹层状态
 const slashQuery = ref('')
 const slashOpen = ref(false)
 const slashActiveIdx = ref(0)
 const slashMenuRef = ref<HTMLDivElement | null>(null)
+/** 斜杠弹窗当前选中栏：'command' 命令 / 'skill' Skills */
+const slashTab = ref<'command' | 'skill'>('command')
+
+/** 两栏各维持一个高亮索引，切换栏时不互相干扰 */
+const slashIdxByTab = { command: ref(0), skill: ref(0) }
+
 
 /** 统一把「命令」和「Skills」合并为一个可滑动选择的列表，供键盘/鼠标操作。 */
 type SlashEntry =
-  | { kind: 'command'; key: string; label: string; description: string; template: string; intentHint: string }
+  | { kind: 'command'; key: string; label: string; description: string; template: string; intentHint: string; builtin?: boolean }
   | { kind: 'skill'; id: string; label: string; name: string; description: string }
 
-const slashCommandEntries: Array<Extract<SlashEntry, { kind: 'command' }>> =
-  SLASH_COMMANDS.map((c) => ({ kind: 'command', ...c }))
+const slashCommandEntries = computed<Array<Extract<SlashEntry, { kind: 'command' }>>>(() =>
+  allCommands.value.map((c) => ({ kind: 'command', ...c }))
+)
 const slashSkillEntries = computed<Array<Extract<SlashEntry, { kind: 'skill' }>>>(() =>
   (props.skills ?? []).map((s) => ({
     kind: 'skill',
@@ -81,7 +160,7 @@ const slashGroups = computed(() => {
     if (!q) return true
     return label.toLowerCase().includes(q) || key.toLowerCase().includes(q)
   }
-  const commands = slashCommandEntries.filter((c) => match(c.label, c.key))
+  const commands = slashCommandEntries.value.filter((c) => match(c.label, c.key))
   const skills = slashSkillEntries.value.filter((s) => match(s.label, s.id))
   const groups: Array<{ title: string; items: SlashEntry[] }> = []
   if (commands.length) groups.push({ title: '命令', items: commands })
@@ -89,7 +168,9 @@ const slashGroups = computed(() => {
   return groups
 })
 
-const slashMatches = computed<SlashEntry[]>(() => slashGroups.value.flatMap((g) => g.items))
+const slashMatches = computed<SlashEntry[]>(() =>
+  slashGroups.value.find((g) => (g.title === '命令') === (slashTab.value === 'command'))?.items ?? []
+)
 
 function slashEntryKey(e: SlashEntry): string {
   return e.kind === 'command' ? `cmd:${e.key}` : `skill:${e.id}`
@@ -114,6 +195,13 @@ function autosize(el: HTMLTextAreaElement) {
   el.style.height = Math.min(180, el.scrollHeight) + 'px'
 }
 
+/** 切换斜杠弹窗栏位（命令 / Skills），并复位该栏的高亮。 */
+function switchSlashTab(tab: 'command' | 'skill'): void {
+  slashTab.value = tab
+  slashActiveIdx.value = 0
+  slashIdxByTab[tab].value = 0
+}
+
 /** 判断当前光标是否位于一个 / 斜杠命令输入中，并提取 query。 */
 function updateSlashMenu(value: string): void {
   const caret = textareaRef.value?.selectionStart ?? value.length
@@ -126,6 +214,7 @@ function updateSlashMenu(value: string): void {
       slashQuery.value = q
       slashOpen.value = true
       slashActiveIdx.value = 0
+      slashIdxByTab[slashTab.value].value = 0
       return
     }
   }
@@ -169,9 +258,10 @@ function applySlashCommand(idx: number): void {
 }
 
 function selectSlash(delta: number): void {
-  const len = slashMatches.value.length
-  if (len === 0) return
-  slashActiveIdx.value = (slashActiveIdx.value + delta + len) % len
+  const list = slashMatches.value
+  if (list.length === 0) return
+  slashActiveIdx.value = (slashActiveIdx.value + delta + list.length) % list.length
+  slashIdxByTab[slashTab.value].value = slashActiveIdx.value
 }
 
 // 选中斜杠命令后要携带的 intentHint，随发送一并上抛
@@ -194,9 +284,33 @@ function triggerNativeFilePick(): void {
 
 function handleNativeFileChange(event: Event): void {
   const input = event.target as HTMLInputElement
-  const files = Array.from(input.files ?? []).filter(isTextFile)
-  if (files.length > 0) emit('upload-files', files)
+  const files = Array.from(input.files ?? [])
+  if (files.length > 0) void addFilesAsAttachment(files)
   input.value = ''
+}
+
+/** 读取本地文件内容并作为「文件引用」加入待发送附件（以文件名按钮形式展示，而非整段文本输入）。 */
+async function addFilesAsAttachment(files: File[]): Promise<void> {
+  if (files.length === 0) return
+  for (const file of files) {
+    let content = ''
+    const isTextLike =
+      file.type.startsWith('text/') ||
+      /\.(txt|md|markdown|mdown|mkd|json|js|ts|py|css|html|xml|csv|log|ya?ml|ini|sql|sh)$/i.test(file.name)
+    if (isTextLike && file.size <= 2 * 1024 * 1024) {
+      try {
+        content = await file.text()
+      } catch {
+        content = ''
+      }
+    }
+    emit('add-file', {
+      name: file.name,
+      content,
+      mime: file.type || 'application/octet-stream',
+      size: file.size
+    })
+  }
 }
 
 // ── 本地文件拖拽上传 + 章节/分卷引用拖拽 ──
@@ -204,13 +318,6 @@ const isDragOver = ref(false)
 const ACCEPTED_TEXT_EXT = ['txt', 'md', 'markdown', 'mdown', 'mkd']
 
 const ARC_REF_MIME = 'application/x-arc-ref'
-
-function isTextFile(file: File): boolean {
-  const name = (file.name || '').toLowerCase()
-  if (file.type && file.type.startsWith('text/')) return true
-  const ext = name.split('.').pop() ?? ''
-  return ACCEPTED_TEXT_EXT.includes(ext)
-}
 
 function hasArcRef(event: DragEvent): boolean {
   return !!event.dataTransfer?.types?.includes(ARC_REF_MIME)
@@ -261,9 +368,7 @@ function handleDrop(event: DragEvent): void {
 
   const files = Array.from(event.dataTransfer?.files ?? [])
   if (files.length === 0) return
-  const textFiles = files.filter(isTextFile)
-  if (textFiles.length === 0) return
-  emit('upload-files', textFiles)
+  void addFilesAsAttachment(files)
 }
 
 function handleKeydown(event: KeyboardEvent) {
@@ -279,6 +384,14 @@ function handleKeydown(event: KeyboardEvent) {
       selectSlash(-1)
       return
     }
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault()
+      // 左右切换「命令 / Skills」两栏。
+      const tabs: Array<'command' | 'skill'> = ['command', 'skill']
+      const cur = tabs.indexOf(slashTab.value)
+      switchSlashTab(tabs[(cur + 1) % tabs.length])
+      return
+    }
     if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
       event.preventDefault()
       applySlashCommand(slashActiveIdx.value)
@@ -290,7 +403,10 @@ function handleKeydown(event: KeyboardEvent) {
     }
     if (event.key === 'Tab') {
       event.preventDefault()
-      applySlashCommand(slashActiveIdx.value)
+      // Tab 切换栏位，Shift+Tab 也切换（同向），避免与“应用命令”冲突。
+      const tabs: Array<'command' | 'skill'> = ['command', 'skill']
+      const cur = tabs.indexOf(slashTab.value)
+      switchSlashTab(tabs[(cur + 1) % tabs.length])
       return
     }
   }
@@ -312,6 +428,12 @@ function handleKeydown(event: KeyboardEvent) {
     if (props.isStreaming || props.isEditing) return
     sendWithIntent()
   }
+}
+
+/** 点击斜杠菜单项时用 mousedown 触发，避免 blur 先关闭菜单导致点击失效。 */
+function onSlashItemMouseDown(e: MouseEvent, idx: number): void {
+  e.preventDefault()
+  applySlashCommand(idx)
 }
 
 watch(
@@ -337,12 +459,11 @@ watch(
   >
     <div class="drag-overlay" v-if="isDragOver">
       <Upload :size="18" />
-      松开以上传本地文本文件
+      松开以上传本地文件
     </div>
     <input
       ref="fileInputRef"
       type="file"
-      accept=".txt,.md,.markdown,.mdown,.mkd,text/*"
       multiple
       class="native-file-input"
       @change="handleNativeFileChange"
@@ -375,23 +496,83 @@ watch(
           </button>
         </span>
       </div>
-      <!-- 斜杠命令菜单（命令 | Skills 分组） -->
+      <!-- 斜杠命令菜单（命令 | Skills 两栏，可切换、可上下滑动） -->
       <div v-if="slashOpen && slashMatches.length > 0" ref="slashMenuRef" class="slash-menu">
-        <template v-for="(group, gi) in slashGroups" :key="group.title">
-          <div class="slash-group-title">{{ group.title }}</div>
+        <div class="slash-tabs">
           <button
-            v-for="(entry, ei) in group.items"
-            :key="slashEntryKey(entry)"
             type="button"
-            class="slash-item"
-            :class="{ active: slashFlatIndex(gi, ei) === slashActiveIdx }"
-            @mouseenter="slashActiveIdx = slashFlatIndex(gi, ei)"
-            @click="applySlashCommand(slashFlatIndex(gi, ei))"
+            class="slash-tab"
+            :class="{ active: slashTab === 'command' }"
+            @mousedown.prevent="switchSlashTab('command')"
           >
-            <span class="slash-label">{{ entry.label }}</span>
-            <span class="slash-desc">{{ entry.description }}</span>
+            命令
+            <span v-if="slashCommandEntries.length" class="slash-tab-count">{{ slashCommandEntries.length }}</span>
           </button>
-        </template>
+          <button
+            type="button"
+            class="slash-tab"
+            :class="{ active: slashTab === 'skill' }"
+            @mousedown.prevent="switchSlashTab('skill')"
+          >
+            Skills
+            <span v-if="slashSkillEntries.length" class="slash-tab-count">{{ slashSkillEntries.length }}</span>
+          </button>
+        </div>
+        <div class="slash-col">
+          <div v-if="slashTab === 'command'" class="slash-items">
+            <template v-if="slashCommandEntries.length">
+              <div class="slash-head-row">
+                <div class="slash-group-title">命令</div>
+                <button type="button" class="slash-add" title="新建命令" @mousedown.prevent="openAddCommand">
+                  <Plus :size="12" /> 新建
+                </button>
+              </div>
+              <button
+                v-for="(entry, ei) in slashCommandEntries"
+                :key="slashEntryKey(entry)"
+                type="button"
+                class="slash-item"
+                :class="{ active: ei === slashActiveIdx }"
+                @mousedown.prevent="onSlashItemMouseDown($event, ei)"
+                @mouseenter="slashActiveIdx = ei"
+              >
+                <span class="slash-label">{{ entry.label }}</span>
+                <span class="slash-desc">{{ entry.description }}</span>
+                <button
+                  v-if="!entry.builtin"
+                  type="button"
+                  class="slash-del"
+                  title="删除命令"
+                  @mousedown.stop="removeCustomCommand(entry.key)"
+                >
+                  <Trash2 :size="12" />
+                </button>
+              </button>
+            </template>
+            <div v-else class="slash-empty">
+              没有命令
+              <button type="button" class="slash-add" @mousedown.prevent="openAddCommand"><Plus :size="12" /> 新建命令</button>
+            </div>
+          </div>
+          <div v-else class="slash-items">
+            <template v-if="slashSkillEntries.length">
+              <div class="slash-group-title">Skills</div>
+              <button
+                v-for="(entry, ei) in slashSkillEntries"
+                :key="slashEntryKey(entry)"
+                type="button"
+                class="slash-item"
+                :class="{ active: ei === slashActiveIdx }"
+                @mousedown.prevent="onSlashItemMouseDown($event, ei)"
+                @mouseenter="slashActiveIdx = ei"
+              >
+                <span class="slash-label">{{ entry.label }}</span>
+                <span class="slash-desc">{{ entry.description }}</span>
+              </button>
+            </template>
+            <div v-else class="slash-empty">没有匹配的 Skills</div>
+          </div>
+        </div>
       </div>
       <textarea
         ref="textareaRef"
@@ -404,7 +585,6 @@ watch(
       />
       <div class="foot">
         <div class="hint">
-          <span v-if="props.modeLabel" class="mode-chip">{{ props.modeLabel }}</span>
           <span v-if="props.isEditing">正在编辑历史提问</span>
           <span v-else-if="props.isStreaming" class="streaming-hint">
             <span class="streaming-dot" />AI 正在回答<template v-if="props.streamingCharCount && props.streamingCharCount > 0"> · 已生成 {{ props.streamingCharCount }} 字</template>
@@ -422,7 +602,7 @@ watch(
           </NButton>
           <NButton
             size="small"
-            title="上传本地文件（txt/md）"
+            title="上传本地文件（支持所有格式）"
             quaternary
             :disabled="props.isStreaming"
             @click="triggerNativeFilePick"
@@ -449,6 +629,39 @@ watch(
           >
             发送
           </NButton>
+        </div>
+      </div>
+      <!-- 新建命令弹窗 -->
+      <div v-if="addCommandVisible" class="add-cmd-overlay" @mousedown.self="addCommandVisible = false">
+        <div class="add-cmd-dialog">
+          <div class="add-cmd-title">新建命令</div>
+          <label class="add-cmd-field">
+            <span>命令标识（如 audit）</span>
+            <input v-model="addCommandForm.key" placeholder="audit" @keydown.enter="submitAddCommand" />
+          </label>
+          <label class="add-cmd-field">
+            <span>显示名称（可选，默认 /标识）</span>
+            <input v-model="addCommandForm.label" placeholder="全书审计" @keydown.enter="submitAddCommand" />
+          </label>
+          <label class="add-cmd-field">
+            <span>说明</span>
+            <input v-model="addCommandForm.description" placeholder="简要描述该命令的作用" @keydown.enter="submitAddCommand" />
+          </label>
+          <label class="add-cmd-field">
+            <span>触发提示词（发送给智能体的内容）</span>
+            <textarea v-model="addCommandForm.template" rows="3" placeholder="请告诉我这个命令要让智能体做什么…" />
+          </label>
+          <div class="add-cmd-actions">
+            <button type="button" class="add-cmd-btn" @click="addCommandVisible = false">取消</button>
+            <button
+              type="button"
+              class="add-cmd-btn primary"
+              :disabled="!addCommandForm.key.trim()"
+              @click="submitAddCommand"
+            >
+              保存命令
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -512,16 +725,168 @@ watch(
   right: 12px;
   bottom: calc(100% + 8px);
   z-index: 20;
-  max-height: 260px;
-  overflow-y: auto;
+  max-height: 320px;
   border: 1px solid var(--arc-border-strong);
   border-radius: 10px;
   background: var(--arc-bg-surface);
   box-shadow: var(--arc-shadow-lg);
-  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.slash-tabs {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--arc-border);
+  background: color-mix(in srgb, var(--arc-bg-surface) 92%, var(--arc-bg-body));
+}
+.slash-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 10px;
+  background: transparent;
+  color: var(--arc-text-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.slash-tab.active {
+  background: var(--arc-primary-soft);
+  color: var(--arc-primary);
+}
+.slash-tab-count {
+  font-family: var(--v2-mono);
+  font-size: 10.5px;
+  color: var(--arc-text-hint);
+}
+.slash-col {
+  min-height: 0;
+  overflow-y: auto;
+  max-height: 240px;
+}
+.slash-items {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  padding: 4px;
+}
+.slash-empty {
+  padding: 14px 12px;
+  font-size: 12px;
+  color: var(--arc-text-hint);
+  text-align: center;
+}
+.slash-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 4px;
+}
+.slash-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  border-radius: 6px;
+  padding: 2px 8px;
+  background: var(--arc-primary-soft);
+  color: var(--arc-primary);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.slash-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  margin-left: auto;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--arc-text-hint);
+  cursor: pointer;
+}
+.slash-del:hover {
+  background: var(--v2-del-bg, rgba(185, 28, 28, 0.1));
+  color: var(--v2-del, #b91c1c);
+}
+.add-cmd-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.32);
+}
+.add-cmd-dialog {
+  width: min(420px, calc(100vw - 48px));
+  background: var(--arc-bg-surface);
+  border: 1px solid var(--arc-border-strong);
+  border-radius: 12px;
+  box-shadow: var(--arc-shadow-lg);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.add-cmd-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--arc-text-primary);
+}
+.add-cmd-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.add-cmd-field span {
+  font-size: 12px;
+  color: var(--arc-text-secondary);
+}
+.add-cmd-field input,
+.add-cmd-field textarea {
+  width: 100%;
+  border: 1px solid var(--arc-border-strong);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--arc-bg-body);
+  color: var(--arc-text-primary);
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+.add-cmd-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+.add-cmd-btn {
+  border: 1px solid var(--arc-border-strong);
+  border-radius: 8px;
+  padding: 6px 14px;
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+.add-cmd-btn.primary {
+  background: var(--arc-primary);
+  border-color: var(--arc-primary);
+  color: #fff;
+}
+.add-cmd-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .slash-item {
   display: flex;

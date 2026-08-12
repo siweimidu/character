@@ -2,12 +2,11 @@
  * stage_chapter_delete · 删除章节暂存工具（Runtime v2）
  *
  * 只生成 kind='chapter'、action='delete' 的暂存变更。用户确认后由
- * committer 真正删除章节；项目始终至少保留一个章节。
+ * committer 真正删除章节；允许删除最后一章（项目可能没有章节）。
  */
 
 import type { Tool } from '../../agent/tools/types'
 import {
-  listProjectChapters,
   readChapterFromDb,
   resolveProjectChapterId
 } from '../../agent/tools/chapter-data-access'
@@ -37,7 +36,7 @@ export function makeStageChapterDeleteTool(deps: StageChapterDeleteToolDeps): To
     definition: {
       name: 'stage_chapter_delete',
       description:
-        '暂存删除已有章节，不直接写库。chapter_id 可传真实 ID、章节标题、序号或“第一章/第1章”等自然引用；省略时删除当前激活章节。删除属破坏性操作，必须有明确用户要求，并在 reason 中说明依据。项目至少保留一个章节。用户在暂存区确认后才真正删除。',
+        '暂存删除已有章节，不直接写库。chapter_id 可传真实 ID、章节标题、序号或“第一章/第1章”等自然引用；省略时删除当前激活章节。删除属破坏性操作，必须有明确用户要求，并在 reason 中说明依据。允许删除最后一章（删除后项目可能没有章节）。用户在暂存区确认后才真正删除。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -59,10 +58,7 @@ export function makeStageChapterDeleteTool(deps: StageChapterDeleteToolDeps): To
         }
       }
 
-      const chapters = await listProjectChapters(deps.projectId)
-      if (chapters.length <= 1) {
-        return { content: '项目至少需要保留一个章节，无法删除最后一章。', isError: true }
-      }
+      // 允许删除最后一章：不再强制保留一个章节（用户在暂存区确认后才真正删除）。
 
       let chapterId = ''
       try {

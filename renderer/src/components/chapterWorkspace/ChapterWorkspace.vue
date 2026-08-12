@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { Minimize } from 'lucide-vue-next'
-import { NButton, NModal } from 'naive-ui'
+import { NButton, NModal, useMessage } from 'naive-ui'
 import ChapterTreeSidebar from './ChapterTreeSidebar.vue'
 import ChapterEditorPane from './ChapterEditorPane.vue'
 import ChapterAiPanelV2 from './ChapterAiPanelV2.vue'
@@ -14,6 +14,7 @@ import { useAppStore } from '@/stores/app'
 
 const appStore = useAppStore()
 const { selectedProjectId, selectedChapter } = storeToRefs(appStore)
+const message = useMessage()
 
 // 章节 AI 助手实例：上移到此处，不依赖 ChapterAiPanelV2 是否挂载
 const CHAPTER_SURFACE: SurfaceDefinition = {
@@ -91,6 +92,14 @@ function handleSelectionAction(action: string, text: string): void {
 }
 
 function handleGenerateDraft(): void {
+  if (appStore.outlineVolumes.length === 0) {
+    message.warning('当前没有分卷，无法生成初稿。请先新建分卷。')
+    return
+  }
+  if (appStore.chapters.length === 0) {
+    message.warning('当前没有章节，无法生成初稿。请先新建章节。')
+    return
+  }
   draftConfigVisible.value = true
 }
 

@@ -392,6 +392,16 @@ async function expandAttachmentReferences(
       }).filter(Boolean)
       if (parts.length === 0) continue
       blocks.push(`【引用分卷 ${rows.length} 章】\n${parts.join('\n\n')}`)
+    } else if (kind === 'file') {
+      // 上传文件：直接使用内联 content（若为空则给出占位说明）。
+      const content = typeof att.content === 'string' && att.content.trim()
+        ? att.content.slice(0, 60000)
+        : ''
+      const name = att.label || att.ref.replace(/^file:/, '') || '上传文件'
+      blocks.push(
+        `【上传文件：${name}】` +
+        (content ? `\n${content}` : '\n（文件内容为空或为二进制格式，无法以文本直接携带。如有需要请告诉我文件里应包含的内容。）')
+      )
     }
   }
 

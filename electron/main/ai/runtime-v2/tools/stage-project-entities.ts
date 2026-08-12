@@ -364,7 +364,7 @@ export function makeStageOutlineVolumeTool(deps: StageProjectEntitiesToolDeps): 
     definition: {
       name: 'stage_outline_volume',
       description:
-        '暂存分卷新增、修改或删除。update/delete 可用 match_id 或 match_title；删除时会把章节和大纲节点迁移到 fallback_volume_id（缺省为相邻分卷），且项目至少保留一个分卷。',
+        '暂存分卷新增、修改或删除。update/delete 可用 match_id 或 match_title；删除非最后一个分卷时会把章节和大纲节点迁移到 fallback_volume_id（缺省为相邻分卷）；删除最后一个分卷时其下章节/大纲将一并删除。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -396,22 +396,28 @@ export function makeStageOutlineVolumeTool(deps: StageProjectEntitiesToolDeps): 
       ].join('\n')
       const beforeText = before ? render({ title: before.title, wordTarget: before.word_target, summary: before.summary }) : ''
       if (action === 'delete') {
-        if (rows.length <= 1) return { content: '项目至少需要保留一个分卷，无法删除最后一个分卷。', isError: true }
         const requestedFallback = readString(input, 'fallback_volume_id')
         const beforeIndex = rows.findIndex((row) => row.id === before!.id)
-        const fallback = requestedFallback
-          ? rows.find((row) => row.id === requestedFallback && row.id !== before!.id)
-          : rows.filter((row) => row.id !== before!.id)[Math.max(0, beforeIndex - 1)] ?? rows.find((row) => row.id !== before!.id)
-        if (!fallback) return { content: 'fallback_volume_id 无效或指向待删除分卷。', isError: true }
+        const isLastVolume = rows.length <= 1
+        // 允许删除最后一个分卷；非最后一个分卷时迁移章节/大纲到承接分卷。
+        const fallback = isLastVolume
+          ? undefined
+          : requestedFallback
+            ? rows.find((row) => row.id === requestedFallback && row.id !== before!.id)
+            : rows.filter((row) => row.id !== before!.id)[Math.max(0, beforeIndex - 1)] ?? rows.find((row) => row.id !== before!.id)
+        if (!isLastVolume && !fallback) return { content: 'fallback_volume_id 无效或指向待删除分卷。', isError: true }
         const chapterCount = (db.prepare('SELECT COUNT(*) AS value FROM chapters WHERE project_id = ? AND volume_id = ?').get(deps.projectId, before!.id) as { value: number }).value
         const outlineCount = (db.prepare('SELECT COUNT(*) AS value FROM outline_items WHERE project_id = ? AND volume_id = ?').get(deps.projectId, before!.id) as { value: number }).value
         const workflowCount = (db.prepare('SELECT COUNT(*) AS value FROM workflow_documents WHERE project_id = ? AND volume_id = ?').get(deps.projectId, before!.id) as { value: number }).value
+        const migrateNote = fallback
+          ? `删除后迁移：${chapterCount} 个章节、${outlineCount} 个大纲节点 → ${fallback.title}`
+          : `删除的是最后一个分卷，其下 ${chapterCount} 个章节与 ${outlineCount} 个大纲节点将一并删除。`
         const change = stageChange(deps, input, {
           kind: 'outline_volume', action, entityId: before!.id, entityTitle: before!.title,
-          before: [beforeText, `删除后迁移：${chapterCount} 个章节、${outlineCount} 个大纲节点 → ${fallback.title}`, `该分卷的 ${workflowCount} 份创作记忆将随分卷删除。`].join('\n'),
-          after: '', payload: { fallbackVolumeId: fallback.id }
+          before: [beforeText, migrateNote, `该分卷的 ${workflowCount} 份创作记忆将随分卷删除。`].join('\n'),
+          after: '', payload: fallback ? { fallbackVolumeId: fallback.id } : { cascade: true }
         })
-        return { content: `已暂存分卷删除（change_id=${change.id}）：${before!.title}；章节和大纲将迁移到 ${fallback.title}。尚未写回，需用户确认。` }
+        return { content: `已暂存分卷删除（change_id=${change.id}）：${before!.title}；${fallback ? `章节和大纲将迁移到 ${fallback.title}` : '其下章节与大纲将一并删除'}。尚未写回，需用户确认。` }
       }
       const title = hasOwn(input, 'title') ? readString(input, 'title') : before?.title ?? ''
       const wordTarget = hasOwn(input, 'word_target') ? readString(input, 'word_target') : before?.word_target ?? '目标 5万字'

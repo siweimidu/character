@@ -101,15 +101,50 @@ function captureStreamingToolCallDeltas(toolCallDeltas: unknown[]): void {
 /**
  * 从一条 OpenAI Chat 的 tool_calls 元素（流式 delta 或非流式 message）中提取
  * `extra_content.google.thought_signature`。
+ *
+ * 不同的中转/兼容实现会把签名放在不同的字段里，这里尽量多兜底几种常见位置：
+ *   - `extra_content.google.thought_signature`（Gemini 官方 openai 兼容入口）
+ *   - `tool_call.thought_signature`（顶层直接带签名）
+ *   - `providerMetadata.openaiCompatible.thoughtSignature`（AI SDK 归一化字段）
+ *   - `metadata.thought_signature`（部分聚合网关）
  */
 function readThoughtSignature(toolCall: unknown): string {
   if (!isRecord(toolCall)) return ''
+
+  // 1) extra_content.google.thought_signature
   const extra = toolCall.extra_content
-  if (!isRecord(extra)) return ''
-  const google = extra.google
-  if (!isRecord(google)) return ''
-  const value = google.thought_signature
-  return typeof value === 'string' && value.trim() ? value : ''
+  if (isRecord(extra)) {
+    const google = extra.google
+    if (isRecord(google)) {
+      const v = google.thought_signature
+      if (typeof v === 'string' && v.trim()) return v
+    }
+  }
+
+  // 2) 顶层 thought_signature / thoughtSignature
+  const direct = toolCall.thought_signature ?? toolCall.thoughtSignature
+  if (typeof direct === 'string' && direct.trim()) return direct
+
+  // 3) providerMetadata.openaiCompatible.thoughtSignature（AI SDK 归一化）
+  const metadata = toolCall.providerMetadata ?? toolCall.provider_metadata
+  if (isRecord(metadata)) {
+    const oc = metadata.openaiCompatible ?? metadata.openai_compatible
+    if (isRecord(oc)) {
+      const sig = oc.thoughtSignature ?? oc.thought_signature
+      if (typeof sig === 'string' && sig.trim()) return sig
+    }
+    const sig = metadata.thought_signature ?? metadata.thoughtSignature
+    if (typeof sig === 'string' && sig.trim()) return sig
+  }
+
+  // 4) 泛化 metadata.thought_signature
+  const meta = toolCall.metadata
+  if (isRecord(meta)) {
+    const sig = meta.thought_signature ?? meta.thoughtSignature
+    if (typeof sig === 'string' && sig.trim()) return sig
+  }
+
+  return ''
 }
 
 /** 从响应体中解析出 choices[0]（若直接传入的就是 choice 对象也能识别）。 */
@@ -142,12 +177,23 @@ export function injectThoughtSignaturesIntoMessages(messages: unknown): boolean 
       const signature = signatureByToolCallId.get(id)
       if (!signature) continue
 
-      // 构造 extra_content.google.thought_signature 并回填。
+      // 构造 extra_content.google.thought_signature 并回填（Gemini 官方 openai 兼容入口）。
       const extra = isRecord(toolCall.extra_content) ? toolCall.extra_content : {}
       const google = isRecord(extra.google) ? extra.google : {}
       google.thought_signature = signature
       extra.google = google
       toolCall.extra_content = extra
+
+      // 兜底：顶层也写一份 thought_signature，兼容把签名放在顶层读取的中转。
+      toolCall.thought_signature = signature
+
+      // 兜底：providerMetadata.openaiCompatible.thoughtSignature（AI SDK 归一化）。
+      const metadata = isRecord(toolCall.providerMetadata) ? toolCall.providerMetadata : {}
+      const oc = isRecord(metadata.openaiCompatible) ? metadata.openaiCompatible : {}
+      oc.thoughtSignature = signature
+      oc.thought_signature = signature
+      metadata.openaiCompatible = oc
+      toolCall.providerMetadata = metadata
 
       // 注入后即删除，避免跨会话/跨请求残留串扰。
       signatureByToolCallId.delete(id)
