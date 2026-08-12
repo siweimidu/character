@@ -87,6 +87,7 @@ export type AiTaskName =
   | 'plot-thread-batch'
   | 'fanqie-seed'
   | 'project-bootstrap'
+  | 'project-batch-seed'
   | 'premise-enhance'
   | 'spiral-seed'
   | 'spiral-expand'
@@ -368,6 +369,16 @@ export type ProjectBootstrapResult = {
   outlineItems: OutlineResult[]
 }
 
+/** 批量生成作品结果：一次生成多个作品的名称、简介、题材、篇幅、世界观与前 3 章大纲 */
+export type ProjectBatchSeedResult = Array<{
+  title: string
+  premise: string
+  genre: string
+  novelLength: 'short' | 'long'
+  worldviewEntries: WorldviewResult[]
+  outlineItems: OutlineResult[]
+}>
+
 /** 小说创建向导中的简介优化结果 */
 export type PremiseEnhanceResult = {
   premise: string
@@ -576,6 +587,7 @@ export type AiTaskResult =
   | AssistantIntentResult
   | AssistantActionProposalResult
   | ProjectBootstrapResult
+  | ProjectBatchSeedResult
   | PremiseEnhanceResult
   | WorkflowDocumentsResult
   | WorkflowStageDocumentsResult

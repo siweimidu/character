@@ -10,6 +10,7 @@ import HomepageProjectCollection from '@/components/home/HomepageProjectCollecti
 import HomepageSettingsModal from '@/components/home/HomepageSettingsModal.vue'
 import ProjectArchiveImportModal from '@/components/ProjectArchiveImportModal.vue'
 import ProjectEditorModal from '@/components/home/ProjectEditorModal.vue'
+import BatchCreateProjectsModal from '@/components/home/BatchCreateProjectsModal.vue'
 import { useAppStore } from '@/stores/app'
 import { useStartupCheck } from '@/composables/useStartupCheck'
 import type { ProjectSummary } from '@/types/app'
@@ -21,6 +22,7 @@ const { announcementStatus, updateStatus, markAnnouncementRead, markUpdateRead }
 
 const settingsVisible = ref(false)
 const editorVisible = ref(false)
+const batchCreateVisible = ref(false)
 const announcementVisible = ref(false)
 const tutorialVisible = ref(false)
 const updateVisible = ref(false)
@@ -201,6 +203,7 @@ function requestBatchDeleteProjects(projectIds: string[]): void {
         @open="openProject"
         @menu-select="handleMenuSelect"
         @batch-delete="requestBatchDeleteProjects"
+        @batch-create="batchCreateVisible = true"
       />
     </div>
 
@@ -210,6 +213,8 @@ function requestBatchDeleteProjects(projectIds: string[]): void {
       @pick-cover="handlePickCover"
       @submit="submitProject"
     />
+
+    <BatchCreateProjectsModal v-model:show="batchCreateVisible" />
 
     <HomepageSettingsModal v-model:show="settingsVisible" />
     <ProjectArchiveImportModal ref="archiveImportRef" />

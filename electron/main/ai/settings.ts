@@ -104,6 +104,10 @@ export function resolveMaxTokens(task?: AiTaskPayload): number | undefined {
   switch (task?.task) {
     case 'project-bootstrap':
       return 1500
+    case 'project-batch-seed': {
+      const batchCount = Math.min(10, Math.max(1, Number(task?.context?.count) || 3))
+      return Math.min(8000, 2500 + batchCount * 800)
+    }
     case 'chapter-analysis':
     case 'reference-style-chunk':
     case 'reference-style-analysis':

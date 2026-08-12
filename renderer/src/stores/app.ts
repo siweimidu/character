@@ -580,10 +580,22 @@ export const useAppStore = defineStore('app', () => {
     ensureProjectWorkspace(selectedProjectId.value)
     updateProjectWorkspace(selectedProjectId.value, updater)
     syncProjectWordCount(selectedProjectId.value)
+    touchProjectEditedAt(selectedProjectId.value)
     syncSelectedChapter()
     if (options.syncWorkspace !== false) {
       scheduleWorkspaceSync()
     }
+  }
+
+  /** 刷新指定项目的最近编辑时间（用于工作区内容编辑时同步首页展示） */
+  function touchProjectEditedAt(projectId: string): void {
+    if (!projectId || !projects.value.some((project) => project.id === projectId)) {
+      return
+    }
+    const nextEditedAt = createProjectEditedAt()
+    projects.value = projects.value.map((project) =>
+      project.id === projectId ? { ...project, lastEdited: nextEditedAt } : project
+    )
   }
 
   function syncProjectWordCount(projectId: string): void {
@@ -1164,6 +1176,63 @@ export const useAppStore = defineStore('app', () => {
     })
   }
 
+  /** 批量创建多个项目（批量生成作品用）。与 createProjectWorkspace 不同，本方法不切换当前选中项目与视图。 */
+  function batchCreateProjects(payloads: ProjectWorkspacePayload[]): number {
+    let createdCount = 0
+    const nextProjects = [...projects.value]
+    const nextWorkspaces = { ...projectWorkspaces.value }
+
+    for (const payload of payloads) {
+      const projectId = uniqueId('project')
+      const nextVolumes = payload.outlineVolumes?.length ? payload.outlineVolumes : [createWorkspaceVolume()]
+      const nextChapters = payload.chapters?.length ? payload.chapters : [buildStarterChapter(nextVolumes[0].id)]
+      const computedWordCount = formatProjectWordCount(nextChapters)
+
+      nextProjects.unshift(normalizeProjectSummary({
+        id: projectId,
+        title: payload.project.title,
+        premise: payload.project.premise ?? '',
+        genre: payload.project.genre,
+        novelLength: payload.project.novelLength,
+        wordCount: computedWordCount,
+        lastEdited: createProjectEditedAt(),
+        createdAt: new Date().toISOString(),
+        cover: payload.project.cover || 'linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%)',
+        writingStylePresetId: payload.project.writingStylePresetId?.trim() || 'cinematic-cool',
+        writingStylePrompt: payload.project.writingStylePrompt?.trim() || '',
+        chapterAssistantTemplates: normalizeChapterAssistantTemplates(payload.project.chapterAssistantTemplates),
+        novelWorkflowStages: payload.project.novelWorkflowStages ?? createDefaultNovelWorkflowStages(),
+        projectSkills: payload.project.projectSkills ?? [],
+        targetPlatform: payload.project.targetPlatform?.trim() || '',
+        selectedReferenceWorkIds: payload.project.selectedReferenceWorkIds ?? [],
+        coverHistory: payload.project.coverHistory ?? []
+      }))
+
+      nextWorkspaces[projectId] = normalizeProjectWorkspaceData({
+        worldviewEntries: payload.worldviewEntries,
+        characters: payload.characters,
+        organizations: payload.organizations,
+        characterRelationships: payload.characterRelationships,
+        organizationMemberships: payload.organizationMemberships,
+        inspirationEntries: payload.inspirationEntries,
+        outlineVolumes: nextVolumes,
+        outlineItems: payload.outlineItems,
+        chapters: nextChapters,
+        chapterVersions: payload.chapterVersions,
+        plotThreads: payload.plotThreads,
+        messages: payload.messages
+      })
+      createdCount += 1
+    }
+
+    projects.value = nextProjects
+    projectWorkspaces.value = nextWorkspaces
+    if (createdCount > 0) {
+      schedulePersist('fast')
+    }
+    return createdCount
+  }
+
   // ── 回收站 ──
 
   /** 计算某条回收站记录默认的到期时间（基于全局保留天数） */
@@ -1546,6 +1615,23 @@ export const useAppStore = defineStore('app', () => {
     schedulePersist('fast')
   }
 
+  /** 判定本次 updateProject 是否真正编辑了项目元数据（标题/题材/简介/封面等），用于决定是否刷新最近编辑时间 */
+  function isProjectMetaEdit(payload: Partial<ProjectSummary>): boolean {
+    return (
+      payload.title !== undefined
+      || payload.premise !== undefined
+      || payload.genre !== undefined
+      || payload.novelLength !== undefined
+      || payload.cover !== undefined
+      || payload.writingStylePresetId !== undefined
+      || payload.writingStylePrompt !== undefined
+      || payload.chapterAssistantTemplates !== undefined
+      || payload.novelWorkflowStages !== undefined
+      || payload.targetPlatform !== undefined
+      || payload.coverHistory !== undefined
+    )
+  }
+
   /** 更新项目摘要信息（标题、题材、封面等） */
   function updateProject(projectId: string, payload: Partial<ProjectSummary>): void {
     projects.value = projects.value.map((project) =>
@@ -1556,7 +1642,8 @@ export const useAppStore = defineStore('app', () => {
             premise: payload.premise !== undefined ? payload.premise.trim() : project.premise,
             genre: payload.genre?.trim() || project.genre,
             novelLength: payload.novelLength !== undefined ? payload.novelLength : project.novelLength,
-            lastEdited: payload.lastEdited?.trim() || createProjectEditedAt(),
+            lastEdited: payload.lastEdited?.trim()
+              || (isProjectMetaEdit(payload) ? createProjectEditedAt() : project.lastEdited),
             cover: payload.cover || project.cover,
             writingStylePresetId: payload.writingStylePresetId?.trim() || project.writingStylePresetId,
             writingStylePrompt:
@@ -4252,6 +4339,7 @@ export const useAppStore = defineStore('app', () => {
     closeWizard,
     createProject,
     createProjectWorkspace,
+    batchCreateProjects,
     reserveProjectId,
     createCharacter,
     createCharacterRelationship,

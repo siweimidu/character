@@ -117,6 +117,7 @@ const taskLabelMap: Record<string, string> = {
   'plot-thread-detect': '伏笔检测',
   'premise-enhance': '小说简介优化',
   'project-bootstrap': '项目初始化',
+  'project-batch-seed': '批量生成作品',
   'spiral-seed': '项目核心设计',
   'spiral-expand': '角色关系与大纲扩展',
   'spiral-characters': '深度构建配角',

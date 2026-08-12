@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { NButton, NEmpty } from 'naive-ui'
-import { CheckSquare, Square, Trash2, X } from 'lucide-vue-next'
+import { CheckSquare, Square, Trash2, Wand2, X } from 'lucide-vue-next'
 import type { DropdownOption } from 'naive-ui'
 import type { ProjectSummary } from '@/types/app'
 import HomepageProjectCard from './HomepageProjectCard.vue'
@@ -15,6 +15,7 @@ const emit = defineEmits<{
   (e: 'open', projectId: string): void
   (e: 'menuSelect', action: string | number, projectId: string): void
   (e: 'batchDelete', projectIds: string[]): void
+  (e: 'batchCreate'): void
 }>()
 
 const selectMode = ref(false)
@@ -93,6 +94,10 @@ function handleBatchDelete(): void {
       <div class="project-collection-header">
         <div class="project-collection-tools">
           <template v-if="!selectMode">
+            <button class="batch-create-btn" title="批量生成作品" @click="emit('batchCreate')">
+              <Wand2 :size="14" />
+              批量生成作品
+            </button>
             <button class="batch-mode-btn" title="批量管理" @click="enterSelectMode">
               <CheckSquare :size="14" />
               批量管理
@@ -157,6 +162,27 @@ function handleBatchDelete(): void {
 .project-collection-tools {
   display: flex;
   align-items: center;
+  gap: 8px;
+}
+
+.batch-create-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--arc-primary) 35%, var(--arc-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--arc-primary) 8%, var(--arc-bg-surface));
+  color: var(--arc-primary);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 12px;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+
+.batch-create-btn:hover {
+  border-color: var(--arc-primary);
+  background: color-mix(in srgb, var(--arc-primary) 14%, var(--arc-bg-surface));
 }
 
 .batch-mode-btn {

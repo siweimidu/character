@@ -194,6 +194,14 @@ const taskObjectSchemas: Partial<Record<AiTaskName, z.ZodTypeAny>> = {
     worldviewEntries: z.array(worldviewEntrySchema),
     outlineItems: z.array(outlineItemSchema)
   }),
+  'project-batch-seed': z.array(z.object({
+    title: stringField,
+    premise: stringField,
+    genre: stringField,
+    novelLength: z.enum(['short', 'long']),
+    worldviewEntries: z.array(worldviewEntrySchema),
+    outlineItems: z.array(outlineItemSchema)
+  })),
   'inspiration-pack': z.object({
     entries: z.array(z.object({
       type: stringField,

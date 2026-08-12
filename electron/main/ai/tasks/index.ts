@@ -8,6 +8,7 @@ import outlineItem from './outline-item'
 import outlineBatch from './outline-batch'
 import outlineChain from './outline-chain'
 import projectBootstrap from './project-bootstrap'
+import projectBatchSeed from './project-batch-seed'
 import premiseEnhance from './premise-enhance'
 import chapterAnalysis from './chapter-analysis'
 import inspirationPack from './inspiration-pack'
@@ -69,6 +70,7 @@ register(outlineItem)
 register(outlineBatch)
 register(outlineChain)
 register(projectBootstrap)
+register(projectBatchSeed)
 register(premiseEnhance)
 register(chapterAnalysis)
 register(inspirationPack)

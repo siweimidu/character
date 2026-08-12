@@ -447,3 +447,33 @@ export function createProjectWorkspaceSeed(
     chapters
   }
 }
+
+/** 批量生成作品（AI project-batch-seed 返回）中单个作品的数据 */
+export interface BatchSeedProject {
+  title: string
+  premise: string
+  genre: string
+  novelLength: NovelLength
+  worldviewEntries?: Array<{ type?: string; title?: string; content?: string }>
+  outlineItems?: Array<{ title?: string; wordTarget?: string; conflict?: string; summary?: string }>
+}
+
+/** 将 AI 批量生成结果转换为可用于批量创建项目的 workspace payload 数组 */
+export function createProjectBatchSeedPayloads(projects: BatchSeedProject[]): ProjectWorkspaceSeed[] {
+  return projects
+    .filter((project) => project && typeof project.title === 'string' && project.title.trim())
+    .map((project) => {
+      const novelLength: NovelLength = project.novelLength === 'short' ? 'short' : 'long'
+      const values: ProjectWizardValues = {
+        title: project.title.trim(),
+        genre: project.genre?.trim() || '未分类',
+        novelLength,
+        premise: project.premise?.trim() || '',
+        shouldGenerate: false
+      }
+      return createProjectWorkspaceSeed(values, {
+        worldviewEntries: project.worldviewEntries ?? [],
+        outlineItems: project.outlineItems ?? []
+      })
+    })
+}
