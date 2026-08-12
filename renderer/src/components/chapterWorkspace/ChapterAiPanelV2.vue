@@ -43,15 +43,14 @@ const message = useMessage()
 const assistant = props.assistant
 
 // ============ 智能体选择（取代原章节助理）============
-// 章节默认使用本项目局部智能体，用户可手动切到全局智能体。
+// 只保留一个选择智能体的卡片（AgentSelector），作用范围（本小说/全局）
+// 由卡片内的下拉标签页决定，不再额外提供右侧的独立切换按钮。
 const selectedAgentId = ref<string | undefined>(undefined)
-const selectedAgentScope = ref<'local' | 'global'>('local')
 
-/** 发送时携带当前选中的智能体 ID 与作用范围。 */
+/** 发送时携带当前选中的智能体 ID 与所属项目。作用范围由选中的智能体自身决定。 */
 function agentSendOptions() {
   return {
     agentId: selectedAgentId.value || undefined,
-    agentScope: selectedAgentScope.value,
     agentProjectId: appStore.selectedProjectId
   }
 }
@@ -336,24 +335,6 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
 
     <div class="agent-strip">
       <AgentSelector v-model="selectedAgentId" :project-id="appStore.selectedProjectId" />
-      <div class="agent-scope-switch">
-        <button
-          type="button"
-          :class="{ active: selectedAgentScope === 'local' }"
-          @click="selectedAgentScope = 'local'"
-          title="使用本项目局部智能体"
-        >
-          本小说
-        </button>
-        <button
-          type="button"
-          :class="{ active: selectedAgentScope === 'global' }"
-          @click="selectedAgentScope = 'global'"
-          title="切换到全局智能体"
-        >
-          全局
-        </button>
-      </div>
     </div>
 
     <div class="session-strip">
@@ -642,34 +623,19 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
 .agent-strip {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   flex-shrink: 0;
   gap: 8px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--arc-border);
   background: var(--arc-bg-surface);
 }
-.agent-scope-switch {
-  display: inline-flex;
-  flex-shrink: 0;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--arc-bg-weak);
+.agent-strip :deep(.agent-selector) {
+  flex: 1;
+  min-width: 0;
 }
-.agent-scope-switch button {
-  padding: 4px 9px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--arc-text-secondary);
-  cursor: pointer;
-  font-size: 11.5px;
-}
-.agent-scope-switch button.active {
-  background: var(--arc-primary-soft);
-  color: var(--arc-primary);
-  font-weight: 600;
+.agent-strip :deep(.selector-trigger) {
+  width: 100%;
+  max-width: none;
 }
 
 .session-strip span {

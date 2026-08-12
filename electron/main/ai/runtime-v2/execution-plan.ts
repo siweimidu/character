@@ -20,7 +20,7 @@ import { createProjectDataTools } from '../agent/tools/project-data-tools'
 import { createFileTools } from '../agent/tools/file-tools'
 import { createKnowledgeTools } from '../agent/tools/knowledge-tools'
 import { createSkillTools } from '../agent/tools/skill-tools'
-import { getAllSkills, getSkillById, resolveTaskSkills, isSkillEnabledForTask } from '../skills'
+import { getAllSkills, getSkillById, refreshRegistry, resolveTaskSkills, isSkillEnabledForTask } from '../skills'
 import type { SkillDefinition, SkillStageId } from '../skills'
 import { normalizeSettings, validateSettings } from '../settings'
 import { assembleContextBlock, contextBuilder, estimateTokens } from './context-builder'
@@ -155,9 +155,14 @@ export function createExecutionPlanner(
       .filter((skill): skill is SkillDefinition => Boolean(skill))
 
     // 智能体绑定的 skill 每次调用时自动注入（视为强制生效）。
-    // 从已导入的 skill 中按 id 解析，绑定的 skill 一定进入候选池。
+    // 先确保 skill 注册表已就绪（内置 + 项目级），再从已导入的 skill 中按 id 解析，
+    // 绑定的 skill 一定进入候选池，避免因注册表未初始化而解析不到导致不生效。
+    const agentProjectId = request.agentProjectId ?? session.projectId
+    if (agentBoundSkills.length > 0 && agentProjectId) {
+      await refreshRegistry(agentProjectId).catch(() => {})
+    }
     const agentBoundSkillDefs = agentBoundSkills
-      .map((skillId) => getSkillById(skillId, projectId || undefined))
+      .map((skillId) => getSkillById(skillId, agentProjectId || undefined))
       .filter((skill): skill is SkillDefinition => Boolean(skill))
     // 合并去重：绑定 skill 优先，普通匹配 skill 补齐
     const boundIds = new Set(agentBoundSkillDefs.map((s) => s.id))

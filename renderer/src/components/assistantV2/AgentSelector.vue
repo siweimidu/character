@@ -148,7 +148,7 @@ watch(() => props.modelValue, () => {
           <span>选择智能体</span>
           <button class="manage-btn" @click="editingAgent = null; showManager = true">
             <Settings2 :size="13" />
-            管理
+            新建
           </button>
         </div>
         <div v-if="projectId" class="scope-tabs">
