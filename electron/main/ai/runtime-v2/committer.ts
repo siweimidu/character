@@ -55,6 +55,19 @@ export function createCommitter(deps: CreateCommitterDeps): StagedChangeCommitte
       return result
     }
 
+    // update 冲突检测：若目标实体已被外部（非暂存区流程）修改，且 before 与
+    // 数据库当前内容不一致，则拒绝写回并返回 stale 提示，避免覆盖用户手动修改。
+    if (change.action === 'update' && change.entityId && change.before) {
+      const conflict = await detectBeforeConflict(change, projectId)
+      if (conflict) {
+        return {
+          changeId: change.id,
+          ok: false,
+          error: conflict
+        }
+      }
+    }
+
     switch (change.kind) {
       case 'chapter':
         result = await commitChapter(change, projectId)
@@ -118,6 +131,220 @@ function readPayload(change: StagedChange): Record<string, unknown> {
     throw new Error('变更缺少结构化 entityPayload，无法写回')
   }
   return change.entityPayload
+}
+
+/**
+ * update 写回前的冲突检测：读取目标实体当前的完整数据，用与 stage_* 相同的
+ * 文本渲染格式重新生成 before 文本，与暂存时的 before 对比。
+ * 若不一致说明实体已被外部修改，返回冲突描述；一致返回 null。
+ * chapter 类不走这里（chapterHtml.old 已做对比）。
+ */
+async function detectBeforeConflict(
+  change: StagedChange,
+  projectId: string
+): Promise<string | null> {
+  if (!change.entityId) return null
+  const db = await ensureWorkspaceDb()
+
+  const checkText = (dbBefore: string, label: string): string | null => {
+    if (dbBefore.trim() !== change.before.trim()) {
+      return `${label}「${change.entityTitle}」已被外部修改，请重新审阅后再确认`
+    }
+    return null
+  }
+
+  switch (change.kind) {
+    case 'worldview': {
+      const row = db.prepare('SELECT type, title, content FROM worldview_entries WHERE id = ? AND project_id = ?')
+        .get(change.entityId, projectId) as { type: string; title: string; content: string } | undefined
+      if (!row) return `目标世界观条目已不存在（${change.entityId}）`
+      return checkText(renderWorldviewText(row), '世界观')
+    }
+    case 'character': {
+      const row = db.prepare('SELECT name, role, description, tags_json FROM characters WHERE id = ? AND project_id = ?')
+        .get(change.entityId, projectId) as { name: string; role: string; description: string; tags_json: string } | undefined
+      if (!row) return `目标人物已不存在（${change.entityId}）`
+      const tags = parseJson<Array<{ label?: string }>>(row.tags_json, [])
+      return checkText(renderCharacterText({ ...row, tags }), '人物')
+    }
+    case 'organization': {
+      const row = db.prepare('SELECT name, type, description, motto FROM organizations WHERE id = ? AND project_id = ?')
+        .get(change.entityId, projectId) as { name: string; type: string; description: string; motto: string } | undefined
+      if (!row) return `目标组织已不存在（${change.entityId}）`
+      return checkText(renderOrganizationText(row), '组织')
+    }
+    case 'outline': {
+      const row = db.prepare(`
+        SELECT oi.title, oi.word_target, oi.conflict, oi.summary, ov.title AS volumeTitle,
+          oi.related_character_ids_json, oi.related_organization_ids_json, oi.related_worldview_ids_json
+        FROM outline_items oi
+        LEFT JOIN outline_volumes ov ON ov.id = oi.volume_id AND ov.project_id = oi.project_id
+        WHERE oi.id = ? AND oi.project_id = ?
+      `).get(change.entityId, projectId) as {
+        title: string; word_target: string; conflict: string; summary: string
+        volumeTitle: string | null
+        related_character_ids_json: string; related_organization_ids_json: string; related_worldview_ids_json: string
+      } | undefined
+      if (!row) return `目标大纲节点已不存在（${change.entityId}）`
+      return checkText(renderOutlineText({
+        title: row.title,
+        wordTarget: row.word_target,
+        conflict: row.conflict,
+        summary: row.summary,
+        volumeTitle: row.volumeTitle ?? '',
+        relatedCharacterIds: parseJson<string[]>(row.related_character_ids_json, []),
+        relatedOrganizationIds: parseJson<string[]>(row.related_organization_ids_json, []),
+        relatedWorldviewIds: parseJson<string[]>(row.related_worldview_ids_json, [])
+      }), '大纲')
+    }
+    case 'inspiration': {
+      const row = db.prepare('SELECT type, title, content, tags_json FROM inspiration_entries WHERE id = ? AND project_id = ?')
+        .get(change.entityId, projectId) as { type: string; title: string; content: string; tags_json: string } | undefined
+      if (!row) return `目标灵感卡片已不存在（${change.entityId}）`
+      const tags = parseJson<Array<{ label?: string }>>(row.tags_json, [])
+      return checkText(renderInspirationText({ type: row.type, title: row.title, content: row.content, tags }), '灵感')
+    }
+    case 'outline_volume': {
+      const row = db.prepare('SELECT title, word_target, summary FROM outline_volumes WHERE id = ? AND project_id = ?')
+        .get(change.entityId, projectId) as { title: string; word_target: string; summary: string } | undefined
+      if (!row) return `目标分卷已不存在（${change.entityId}）`
+      return checkText(renderVolumeText(row), '分卷')
+    }
+    case 'constraint': {
+      const row = db.prepare(`
+        SELECT title, content, keywords_json FROM knowledge_documents
+        WHERE id = ? AND project_id = ? AND source_type = 'canon-fact' AND source_label = 'global-constraint'
+      `).get(change.entityId, projectId) as { title: string; content: string; keywords_json: string } | undefined
+      if (!row) return `目标项目约束已不存在（${change.entityId}）`
+      return checkText(renderConstraintText(row), '项目约束')
+    }
+    case 'plot_thread': {
+      const row = db.prepare('SELECT title, description, tags_json FROM plot_threads WHERE id = ? AND project_id = ?')
+        .get(change.entityId, projectId) as { title: string; description: string; tags_json: string } | undefined
+      if (!row) return `目标伏笔已不存在（${change.entityId}）`
+      const tags = parseJson<string[]>(row.tags_json, [])
+      return checkText(renderPlotThreadText({ title: row.title, description: row.description, tags }), '伏笔')
+    }
+    case 'knowledge_document': {
+      const row = db.prepare(`
+        SELECT title, content FROM knowledge_documents
+        WHERE id = ? AND project_id = ?
+          AND NOT (source_type = 'canon-fact' AND source_label = 'global-constraint')
+      `).get(change.entityId, projectId) as { title: string; content: string } | undefined
+      if (!row) return `目标知识文档已不存在（${change.entityId}）`
+      return checkText(renderKnowledgeText(row), '知识文档')
+    }
+    default:
+      return null
+  }
+}
+
+// ============================================================================
+// before 文本渲染（与 stage_* 工具保持一致，用于冲突检测）
+// ============================================================================
+
+function parseJson<T>(text: string | undefined, fallback: T): T {
+  if (!text) return fallback
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    return fallback
+  }
+}
+
+function renderWorldviewText(entry: { type?: string; title?: string; content?: string }): string {
+  return [
+    entry.type ? `分类：${entry.type}` : '',
+    entry.title ? `标题：${entry.title}` : '',
+    entry.content ? `内容：${entry.content}` : ''
+  ].filter(Boolean).join('\n')
+}
+
+function renderCharacterText(c: {
+  name?: string; role?: string; description?: string; tags?: Array<{ label?: string } | string>
+}): string {
+  const tagsStr = (c.tags ?? [])
+    .map((t) => (typeof t === 'string' ? t : t.label))
+    .join(' / ')
+  return [
+    c.name ? `姓名：${c.name}` : '',
+    c.role ? `定位：${c.role}` : '',
+    c.description ? `描述：${c.description}` : '',
+    tagsStr ? `标签：${tagsStr}` : ''
+  ].filter(Boolean).join('\n')
+}
+
+function renderOutlineText(item: {
+  title?: string; conflict?: string; summary?: string; wordTarget?: string; volumeTitle?: string
+  relatedCharacterIds?: string[]; relatedOrganizationIds?: string[]; relatedWorldviewIds?: string[]
+}): string {
+  return [
+    item.volumeTitle ? `所属分卷：${item.volumeTitle}` : '',
+    item.title ? `标题：${item.title}` : '',
+    item.wordTarget ? `字数目标：${item.wordTarget}` : '',
+    item.conflict ? `核心冲突：${item.conflict}` : '',
+    item.summary ? `摘要：${item.summary}` : '',
+    item.relatedCharacterIds?.length ? `关联角色 ID：${item.relatedCharacterIds.join(' / ')}` : '',
+    item.relatedOrganizationIds?.length ? `关联组织 ID：${item.relatedOrganizationIds.join(' / ')}` : '',
+    item.relatedWorldviewIds?.length ? `关联设定 ID：${item.relatedWorldviewIds.join(' / ')}` : ''
+  ].filter(Boolean).join('\n')
+}
+
+function renderOrganizationText(entry: { name?: string; type?: string; description?: string; motto?: string }): string {
+  return [
+    entry.name ? `名称：${entry.name}` : '',
+    entry.type ? `类型：${entry.type}` : '',
+    entry.motto ? `信条：${entry.motto}` : '',
+    entry.description ? `描述：${entry.description}` : ''
+  ].filter(Boolean).join('\n')
+}
+
+function renderInspirationText(item: {
+  type?: string; title?: string; content?: string; tags?: Array<{ label?: string } | string>
+}): string {
+  const tagsStr = (item.tags ?? [])
+    .map((t) => (typeof t === 'string' ? t : t.label))
+    .join(' / ')
+  return [
+    item.type ? `类型：${item.type}` : '',
+    item.title ? `标题：${item.title}` : '',
+    item.content ? `内容：${item.content}` : '',
+    tagsStr ? `标签：${tagsStr}` : ''
+  ].filter(Boolean).join('\n')
+}
+
+function renderVolumeText(item: { title?: string; word_target?: string; summary?: string }): string {
+  return [
+    item.title ? `标题：${item.title}` : '',
+    item.word_target ? `字数目标：${item.word_target}` : '',
+    item.summary ? `摘要：${item.summary}` : ''
+  ].filter(Boolean).join('\n')
+}
+
+function renderConstraintText(item: { title?: string; content?: string; keywords_json?: string }): string {
+  const keywords = parseJson<string[]>(item.keywords_json, [])
+  return [
+    item.title ? `标题：${item.title}` : '',
+    item.content ? `内容：${item.content}` : '',
+    keywords.length ? `关键词：${keywords.join(' / ')}` : ''
+  ].filter(Boolean).join('\n')
+}
+
+function renderPlotThreadText(item: {
+  title?: string; description?: string; tags?: string[]
+}): string {
+  return [
+    item.title ? `标题：${item.title}` : '',
+    item.description ? `描述：${item.description}` : '',
+    item.tags?.length ? `标签：${item.tags.join(' / ')}` : ''
+  ].filter(Boolean).join('\n')
+}
+
+function renderKnowledgeText(item: { title?: string; content?: string }): string {
+  return [
+    item.title ? `标题：${item.title}` : '',
+    item.content ? `内容：${item.content}` : ''
+  ].filter(Boolean).join('\n')
 }
 
 /** 各实体 kind 对应的删除目标表（constraint 复用 knowledge_documents，需额外 scope 约束）。 */

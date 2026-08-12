@@ -26,8 +26,10 @@ import {
   type AssistantSession,
   type StageAcceptRequest,
   type StageBindTargetRequest,
+  type StageClearFinishedRequest,
   type StageCommitRequest,
   type StageRejectRequest,
+  type StageRemoveRequest,
   type StagedChange,
   type SurfaceDefinition,
   type TurnEvent,
@@ -514,6 +516,24 @@ function registerStageHandlers(): void {
         sessionId: payload.sessionId,
         changeIds: payload.changeIds
       })
+    }
+  )
+
+  // 批量硬删除暂存变更（清理已提交/已忽略，或用户主动移除单条）
+  ipcMain.handle(
+    ASSISTANT_IPC_CHANNELS.STAGE_REMOVE,
+    async (_event, payload: StageRemoveRequest) => {
+      await getConversation()
+      return stagedChangesStore.removeMany(payload.changeIds)
+    }
+  )
+
+  // 清理已提交与已忽略的变更，保持暂存区列表清爽
+  ipcMain.handle(
+    ASSISTANT_IPC_CHANNELS.STAGE_CLEAR_FINISHED,
+    async (_event, payload: StageClearFinishedRequest) => {
+      await getConversation()
+      return stagedChangesStore.clearFinished(payload?.sessionId)
     }
   )
 }

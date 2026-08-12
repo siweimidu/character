@@ -361,6 +361,8 @@ export const ASSISTANT_IPC_CHANNELS = {
   STAGE_REJECT: 'characterarc:assistant:stage:reject',
   STAGE_COMMIT: 'characterarc:assistant:stage:commit',
   STAGE_BIND_TARGET: 'characterarc:assistant:stage:bind-target',
+  STAGE_REMOVE: 'characterarc:assistant:stage:remove',
+  STAGE_CLEAR_FINISHED: 'characterarc:assistant:stage:clear-finished',
   // 智能体
   AGENT_LIST: 'characterarc:assistant:agent:list',
   AGENT_GET: 'characterarc:assistant:agent:get',
@@ -462,6 +464,16 @@ export interface StageCommitRequest {
 export interface StageBindTargetRequest {
   changeId: string
   entityId: string
+}
+
+export interface StageRemoveRequest {
+  /** 批量硬删除的变更 id。 */
+  changeIds: string[]
+}
+
+export interface StageClearFinishedRequest {
+  /** 只清理某个会话的已提交/已忽略变更；缺省清理全库。 */
+  sessionId?: string
 }
 
 // ============================================================================

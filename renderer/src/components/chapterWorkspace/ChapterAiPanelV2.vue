@@ -411,6 +411,8 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
         @reject="(ids) => assistant.rejectChanges(ids)"
         @bind-target="(changeId, entityId) => assistant.bindTarget(changeId, entityId)"
         @commit="(ids) => handleCommit(ids)"
+        @remove="(ids) => assistant.removeChanges(ids)"
+        @clear-finished="() => assistant.clearFinishedStaged()"
       />
     </div>
 

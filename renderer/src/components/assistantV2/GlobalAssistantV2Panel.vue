@@ -334,6 +334,8 @@ async function handleCommit(ids?: string[]): Promise<void> {
         @reject="(ids) => assistant.rejectChanges(ids)"
         @bind-target="(changeId, entityId) => assistant.bindTarget(changeId, entityId)"
         @commit="(ids) => handleCommit(ids)"
+        @remove="(ids) => assistant.removeChanges(ids)"
+        @clear-finished="() => assistant.clearFinishedStaged()"
       />
     </div>
 

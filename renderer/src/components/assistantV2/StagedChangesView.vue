@@ -14,6 +14,8 @@ const emit = defineEmits<{
   (e: 'reject', ids: string[]): void
   (e: 'commit', ids?: string[]): void
   (e: 'bind-target', changeId: string, entityId: string): void
+  (e: 'remove', ids: string[]): void
+  (e: 'clear-finished'): void
 }>()
 
 const activeFilter = ref<'all' | 'chapter' | 'setting' | 'pending'>('all')
@@ -26,7 +28,7 @@ const filtered = computed(() => {
     case 'setting':
       return list.filter((c) => c.kind !== 'chapter')
     case 'pending':
-      return list.filter((c) => c.status === 'pending' || c.status === 'streaming')
+      return list.filter((c) => c.status === 'pending' || c.status === 'streaming' || c.status === 'stale')
     default:
       return list
   }
@@ -38,9 +40,12 @@ const pendingCount = computed(() =>
 const acceptedCount = computed(() =>
   props.changes.filter((c) => c.status === 'accepted').length
 )
+const finishedCount = computed(() =>
+  props.changes.filter((c) => c.status === 'committed' || c.status === 'rejected').length
+)
 const visiblePendingIds = computed(() =>
   filtered.value
-    .filter((c) => c.status === 'pending')
+    .filter((c) => c.status === 'pending' || c.status === 'streaming' || c.status === 'stale')
     .map((c) => c.id)
 )
 
@@ -255,7 +260,7 @@ function bindTarget(changeId: string, entityId: string): void {
           :disabled="reviewingChange.status === 'committed'"
           @click="emit('accept', [reviewingChange.id])"
         >
-          {{ reviewingChange.status === 'accepted' ? '已确认' : reviewingChange.status === 'rejected' ? '恢复这项' : '确认这项' }}
+          {{ reviewingChange.status === 'accepted' ? '已确认' : reviewingChange.status === 'rejected' ? '恢复这项' : reviewingChange.status === 'stale' ? '重新确认这项' : '确认这项' }}
         </NButton>
         <NButton
           size="small"
@@ -263,6 +268,15 @@ function bindTarget(changeId: string, entityId: string): void {
           @click="emit('reject', [reviewingChange.id])"
         >
           忽略这项
+        </NButton>
+        <NButton
+          v-if="reviewingChange.status === 'committed' || reviewingChange.status === 'rejected' || reviewingChange.status === 'stale'"
+          size="small"
+          tertiary
+          type="error"
+          @click="emit('remove', [reviewingChange.id])"
+        >
+          移除这项
         </NButton>
         <NButton size="small" quaternary @click="reviewNext">
           下一项
@@ -347,7 +361,7 @@ function bindTarget(changeId: string, entityId: string): void {
             :disabled="c.status === 'committed'"
             @click="emit('accept', [c.id])"
           >
-            {{ c.status === 'accepted' ? '✓ 已确认' : c.status === 'rejected' ? '恢复' : '确认' }}
+            {{ c.status === 'accepted' ? '✓ 已确认' : c.status === 'rejected' ? '恢复' : c.status === 'stale' ? '重新确认' : '确认' }}
           </NButton>
           <NButton
             size="tiny"
@@ -361,6 +375,15 @@ function bindTarget(changeId: string, entityId: string): void {
           </NButton>
           <NButton size="tiny" quaternary @click="reviewChange(c.id)">
             审阅
+          </NButton>
+          <NButton
+            v-if="c.status === 'committed' || c.status === 'rejected' || c.status === 'stale'"
+            size="tiny"
+            tertiary
+            type="error"
+            @click="emit('remove', [c.id])"
+          >
+            移除
           </NButton>
         </div>
       </div>
@@ -383,6 +406,16 @@ function bindTarget(changeId: string, entityId: string): void {
           全部忽略
         </NButton>
       </div>
+      <NButton
+        v-if="finishedCount > 0"
+        class="clear-finished-btn"
+        size="small"
+        quaternary
+        block
+        @click="emit('clear-finished')"
+      >
+        清理 {{ finishedCount }} 项已提交/已忽略记录
+      </NButton>
       <NButton
         class="commit-btn"
         size="medium"
@@ -681,11 +714,10 @@ function bindTarget(changeId: string, entityId: string): void {
   border: none;
   padding: 5px 8px;
   border-radius: 6px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--arc-text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
-  font-family: monospace;
 }
 .filter button.active {
   background: var(--arc-bg-surface);
@@ -883,6 +915,13 @@ strong.action-create {
 }
 .foot-actions :deep(.n-button) {
   flex: 1;
+}
+.clear-finished-btn {
+  color: var(--arc-text-hint);
+  font-size: 12px;
+}
+.clear-finished-btn:hover {
+  color: var(--arc-text-secondary);
 }
 .commit-btn {
   font-weight: 600;

@@ -297,6 +297,10 @@ contextBridge.exposeInMainWorld('characterArc', {
       ipcRenderer.invoke('characterarc:assistant:stage:commit', toIpcPayload(payload)),
     stageBindTarget: (payload: unknown) =>
       ipcRenderer.invoke('characterarc:assistant:stage:bind-target', toIpcPayload(payload)),
+    stageRemove: (payload: unknown) =>
+      ipcRenderer.invoke('characterarc:assistant:stage:remove', toIpcPayload(payload)),
+    stageClearFinished: (payload: unknown) =>
+      ipcRenderer.invoke('characterarc:assistant:stage:clear-finished', toIpcPayload(payload)),
     // Agent（智能体）
     agentList: (payload?: { builtinOnly?: boolean; scope?: string; projectId?: string }) =>
       ipcRenderer.invoke('characterarc:assistant:agent:list', toIpcPayload(payload ?? {})),

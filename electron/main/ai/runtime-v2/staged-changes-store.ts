@@ -86,6 +86,7 @@ interface StagedChangeStatements {
   upsert: StatementSync
   delete: StatementSync
   deleteBySession: StatementSync
+  deleteByStatus: StatementSync
 }
 
 function parseJson<T>(text: string | undefined, fallback: T): T {
@@ -166,7 +167,8 @@ export class StagedChangesStore {
           updated_at = excluded.updated_at
       `),
       delete: db.prepare(`DELETE FROM assistant_staged_changes WHERE id = ?`),
-      deleteBySession: db.prepare(`DELETE FROM assistant_staged_changes WHERE session_id = ?`)
+      deleteBySession: db.prepare(`DELETE FROM assistant_staged_changes WHERE session_id = ?`),
+      deleteByStatus: db.prepare(`DELETE FROM assistant_staged_changes WHERE status IN (?, ?)`)
     }
     this.reloadFromDatabase()
   }
@@ -301,12 +303,12 @@ export class StagedChangesStore {
     })
   }
 
-  /** 批量接受。pending/rejected 均可转 accepted（rejected→accepted 即"恢复"）。 */
+  /** 批量接受。pending/rejected/stale 均可转 accepted（rejected→accepted 即"恢复"）。 */
   accept(ids: readonly string[]): StagedChange[] {
     const changed: StagedChange[] = []
     for (const id of ids) {
       const c = this.transition(id, (c) => {
-        if (c.status !== 'pending' && c.status !== 'rejected') return false
+        if (c.status !== 'pending' && c.status !== 'rejected' && c.status !== 'stale') return false
         c.status = 'accepted'
         return true
       })
@@ -315,12 +317,12 @@ export class StagedChangesStore {
     return changed
   }
 
-  /** 批量拒绝。pending/accepted 都可转 rejected。 */
+  /** 批量拒绝。pending/accepted/stale 都可转 rejected。 */
   reject(ids: readonly string[]): StagedChange[] {
     const changed: StagedChange[] = []
     for (const id of ids) {
       const c = this.transition(id, (c) => {
-        if (c.status !== 'pending' && c.status !== 'accepted') return false
+        if (c.status !== 'pending' && c.status !== 'accepted' && c.status !== 'stale') return false
         c.status = 'rejected'
         return true
       })
@@ -357,6 +359,13 @@ export class StagedChangesStore {
         this.transition(change.id, (c) => {
           c.status = 'committed'
           if (result.entityId) c.entityId = result.entityId
+          return true
+        })
+      } else if (result.error?.includes('已被外部修改')) {
+        // 冲突检测失败：目标实体已被外部修改 → 标记为 stale，提示用户重新审阅
+        this.transition(change.id, (c) => {
+          if (c.status === 'stale') return false
+          c.status = 'stale'
           return true
         })
       }
@@ -415,6 +424,65 @@ export class StagedChangesStore {
     this.items.delete(id)
     this.indexRemove(c)
     this.emit({ type: 'removed', changeId: id, sessionId: c.sessionId })
+  }
+
+  /** 批量硬删除多条变更。返回实际删除数量。 */
+  removeMany(ids: readonly string[]): number {
+    let count = 0
+    for (const id of ids) {
+      const c = this.items.get(id)
+      if (!c) continue
+      this.stmts?.delete.run(id)
+      this.items.delete(id)
+      this.indexRemove(c)
+      this.emit({ type: 'removed', changeId: id, sessionId: c.sessionId })
+      count += 1
+    }
+    return count
+  }
+
+  /**
+   * 目标实体被外部（非暂存区流程）修改后调用：将同实体上待处理（pending/accepted）
+   * 的暂存变更标记为 stale，提示用户重新审阅，避免写回时覆盖用户手动修改。
+   * 返回被标记为 stale 的变更数量。
+   */
+  markStaleByEntity(
+    kind: StagedChangeKind,
+    entityId: string,
+    sessionId?: string
+  ): number {
+    const staleIds: string[] = []
+    for (const change of this.items.values()) {
+      if (change.kind !== kind || change.entityId !== entityId) continue
+      if (sessionId && change.sessionId !== sessionId) continue
+      if (change.status !== 'pending' && change.status !== 'accepted') continue
+      // 已 committed 的不影响；rejected 也不需要 stale
+      staleIds.push(change.id)
+    }
+    const marked: StagedChange[] = []
+    for (const id of staleIds) {
+      const c = this.transition(id, (ch) => {
+        if (ch.status === 'stale') return false
+        ch.status = 'stale'
+        return true
+      })
+      if (c) marked.push(c)
+    }
+    return marked.length
+  }
+
+  /**
+   * 清理已提交(committed)和已忽略(rejected)的变更记录，避免暂存区列表无限增长。
+   * 可指定 sessionId 只清理某个会话；缺省时清理全库。返回清理数量。
+   */
+  clearFinished(sessionId?: string): number {
+    const finishedIds: string[] = []
+    for (const change of this.items.values()) {
+      if (change.status !== 'committed' && change.status !== 'rejected') continue
+      if (sessionId && change.sessionId !== sessionId) continue
+      finishedIds.push(change.id)
+    }
+    return this.removeMany(finishedIds)
   }
 
   /** 清空某个 session 的全部变更。会话删除时调用。 */

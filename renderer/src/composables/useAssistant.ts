@@ -809,6 +809,22 @@ export function useAssistant(options: UseAssistantOptions) {
     await reloadStaged()
   }
 
+  /** 批量硬删除暂存变更（已提交/已忽略的历史记录，或用户主动移除单条）。 */
+  async function removeChanges(ids: string[]): Promise<number> {
+    if (!ids.length) return 0
+    const removed = await A.stageRemove({ changeIds: ids })
+    await reloadStaged()
+    return removed
+  }
+
+  /** 清理当前会话中已提交与已忽略的变更，保持暂存区列表清爽。 */
+  async function clearFinishedStaged(): Promise<number> {
+    if (!activeSessionId.value) return 0
+    const cleared = await A.stageClearFinished({ sessionId: activeSessionId.value })
+    await reloadStaged()
+    return cleared
+  }
+
   // ==========================================================================
   // 生命周期
   // ==========================================================================
@@ -887,6 +903,8 @@ export function useAssistant(options: UseAssistantOptions) {
     rejectChanges,
     commitAccepted,
     bindTarget,
+    removeChanges,
+    clearFinishedStaged,
     reloadSessions,
     reloadStaged
   }

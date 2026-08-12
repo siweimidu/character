@@ -854,6 +854,10 @@ declare global {
           Promise<import('@shared/assistant-runtime').StagedChangeCommitResult[]>
         stageBindTarget: (payload: import('@shared/assistant-runtime').StageBindTargetRequest) =>
           Promise<import('@shared/assistant-runtime').StagedChange | null>
+        stageRemove: (payload: import('@shared/assistant-runtime').StageRemoveRequest) =>
+          Promise<number>
+        stageClearFinished: (payload: import('@shared/assistant-runtime').StageClearFinishedRequest) =>
+          Promise<number>
         // Agent（智能体）
         agentList: (payload?: import('@shared/assistant-runtime').AgentListRequest) =>
           Promise<import('@shared/assistant-runtime').AgentProfile[]>
