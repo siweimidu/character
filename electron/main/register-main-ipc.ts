@@ -2666,54 +2666,119 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
         //   ② { "current": {...}, "providers": { "Claude": [...], ... } }  —— 新版 providers 对象
         //   ③ { "current": "...", "providers": [ {...} ] }                  —— 新版 providers 数组
         //   ④ [ {...}, {...} ]                        —— 直接为数组
+        //   ⑤ { "provider": { "Claude": [...] } }   —— provider 作为分组容器
+        //   ⑥ { "name":..., "baseUrl":... }         —— 顶层直接是单条配置
+        //   ⑦ { "current": { "name":..., "baseUrl":... } }  —— current 直接为配置对象
         // 统一展开为「供应商条目数组」后逐条映射。
-        const collectEntries = (node: unknown, out: Array<{ entry: Record<string, unknown>; group: string }>): void => {
+        // 字段名统一小写并去掉 -/_/空格 后再匹配，兼容 baseURL、APIKey、base_url 等大小写变体。
+        const normalizeKey = (k: string): string => String(k).toLowerCase().replace(/[\s_-]/g, '')
+        const pickField = (e: Record<string, unknown>, names: string[]): unknown => {
+          for (const n of names) {
+            const key = normalizeKey(n)
+            for (const k of Object.keys(e)) {
+              if (normalizeKey(k) === key && e[k] != null && e[k] !== '') return e[k]
+            }
+          }
+          return undefined
+        }
+        // 判断一个对象是否像「配置条目」（包含地址、凭据、供应商等特征字段）
+        const isEntryLike = (o: unknown): boolean => {
+          if (!o || typeof o !== 'object' || Array.isArray(o)) return false
+          const kset = Object.keys(o as Record<string, unknown>).map(normalizeKey)
+          const hasEndpoint = ['baseurl', 'apiurl', 'apibase', 'apibaseurl', 'endpoint', 'host', 'base'].some((k) => kset.includes(k))
+          const hasCred = ['apikey', 'token', 'secret', 'apikeys'].some((k) => kset.includes(k))
+          const hasProvider = ['provider', 'type', 'vendor', 'platform', 'service'].some((k) => kset.includes(k))
+          const hasName = kset.includes('name')
+          return hasEndpoint || (hasCred && (hasProvider || hasName))
+        }
+
+        const collected: Array<{ entry: Record<string, unknown>; group: string }> = []
+        const seen = new Set<string>()
+        const pushEntry = (entry: unknown, group: string): void => {
+          if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return
+          const e = entry as Record<string, unknown>
+          const baseUrl = String(pickField(e, ['baseUrl', 'base_url', 'baseURL', 'endpoint', 'host', 'api_base', 'apiBase', 'url']) ?? '')
+          const apiKey = String(pickField(e, ['apiKey', 'api_key', 'APIKey', 'token', 'secret']) ?? '')
+          const name = String(pickField(e, ['name', 'label', 'title', 'remark']) ?? '')
+          const type = String(pickField(e, ['provider', 'type', 'vendor', 'platform']) ?? '')
+          const dedupeKey = [baseUrl, apiKey, name, type].join('|').toLowerCase()
+          if (!dedupeKey || seen.has(dedupeKey)) return
+          seen.add(dedupeKey)
+          collected.push({ entry: e, group })
+        }
+
+        const collectEntries = (node: unknown, group: string): void => {
           if (!node || typeof node !== 'object') return
           if (Array.isArray(node)) {
             for (const item of node) {
-              if (!item || typeof item !== 'object' || Array.isArray(item)) continue
-              out.push({ entry: item as Record<string, unknown>, group: '' })
+              if (!item || typeof item !== 'object') continue
+              if (Array.isArray(item)) {
+                collectEntries(item, group)
+                continue
+              }
+              if (isEntryLike(item)) pushEntry(item, group)
+              else collectEntries(item, group)
             }
             return
           }
           const obj = node as Record<string, unknown>
-          // 若存在 providers 字段，优先展开它（兼容新版结构）
-          const providerHolder = obj['providers']
-          if (providerHolder !== undefined) {
-            collectEntries(providerHolder, out)
+          // 当前对象本身可能就是一条配置（顶层 / current / 分组值）
+          if (isEntryLike(obj)) {
+            pushEntry(obj, group)
             return
           }
-          // 否则按「分组名 -> 数组」的旧版结构展开
+          // providers 字段（对象或数组）
+          const providerHolder = obj['providers'] ?? obj['providerList'] ?? obj['Provider']
+          if (providerHolder !== undefined && providerHolder !== null) {
+            collectEntries(providerHolder, group)
+          }
+          // current 字段：可能是指向供应商的 id/名称字符串，也可能是直接内嵌的配置对象
+          const current = obj['current']
+          if (current && typeof current === 'object' && !Array.isArray(current)) {
+            if (isEntryLike(current)) pushEntry(current, group)
+            else collectEntries(current, group)
+          }
+          // 按「分组名 -> 数组 / 对象」的旧版结构展开
           for (const key of Object.keys(obj)) {
+            const nk = normalizeKey(key)
+            if (['providers', 'providerlist', 'current', 'version', 'settings', 'isactive'].includes(nk)) continue
             const value = obj[key]
             if (Array.isArray(value)) {
               for (const item of value) {
-                if (!item || typeof item !== 'object' || Array.isArray(item)) continue
-                out.push({ entry: item as Record<string, unknown>, group: key })
+                if (!item || typeof item !== 'object') continue
+                if (Array.isArray(item)) {
+                  collectEntries(item, key)
+                  continue
+                }
+                if (isEntryLike(item)) pushEntry(item, key)
+                else collectEntries(item, key)
               }
             } else if (value && typeof value === 'object') {
-              // 某些版本嵌套了一层分组（如 providers 下的 Claude）
-              collectEntries(value, out)
+              // 某些版本嵌套了一层分组（如 providers 下的 Claude / provider 下的分组）
+              collectEntries(value, key)
             }
           }
         }
 
-        const collected: Array<{ entry: Record<string, unknown>; group: string }> = []
-        collectEntries(parsed, collected)
+        collectEntries(parsed, '')
         for (const { entry, group } of collected) {
           const e = entry as Record<string, unknown>
           aiProfiles.push({
-            name: String(e.name ?? e.label ?? group ?? '').trim() || group || 'CC Switch',
+            name: String(pickField(e, ['name', 'label', 'title', 'remark']) ?? group ?? '').trim() || group || 'CC Switch',
             // CC Switch 用 provider 表示供应商类型，部分版本也用 type
-            type: String(e.provider ?? e.type ?? '').toLowerCase(),
-            baseUrl: String(e.baseUrl ?? e.base_url ?? e.endpoint ?? e.host ?? '').trim(),
-            apiKey: String(e.apiKey ?? e.api_key ?? e.token ?? '').trim(),
-            model: String(e.model ?? e.modelId ?? e.defaultModel ?? e.default_model ?? '').trim(),
-            isCurrent: Boolean(e.isCurrent ?? e.is_active ?? false)
+            type: String(pickField(e, ['provider', 'type', 'vendor', 'platform']) ?? '').toLowerCase(),
+            baseUrl: String(pickField(e, ['baseUrl', 'base_url', 'baseURL', 'endpoint', 'host', 'api_base', 'apiBase', 'url']) ?? '').trim(),
+            apiKey: String(pickField(e, ['apiKey', 'api_key', 'APIKey', 'token', 'secret']) ?? '').trim(),
+            model: String(pickField(e, ['model', 'modelId', 'defaultModel', 'default_model', 'modelName']) ?? '').trim(),
+            isCurrent: Boolean(pickField(e, ['isCurrent', 'is_active', 'iscurrent', 'active']) ?? false)
           })
         }
       } catch (error) {
         configError = error instanceof Error ? error.message : 'CC Switch 配置文件解析失败'
+      }
+      // 解析成功但未识别到任何配置条目时，给出诊断提示
+      if (!configError && aiProfiles.length === 0) {
+        configError = '已读取配置文件，但未能从中识别到 AI 接口配置（可导入 name/baseUrl/apiKey/model 等字段）。若为 CC Switch 配置文件，请确认其为 config.json 导出的标准格式。'
       }
     } else {
       configError = `未找到 CC Switch 配置文件：${ccSwitchConfigPath}`
