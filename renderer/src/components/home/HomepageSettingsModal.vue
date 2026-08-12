@@ -1374,9 +1374,12 @@ async function saveSettings(): Promise<void> {
               打开模型厂商官网
             </n-button>
           </div>
-          <div v-if="(draftSettings.visionSavedModels ?? []).length" class="saved-models-block">
-            <div class="saved-models-head">已保存模型</div>
-            <div class="saved-models-list">
+          <div v-if="(draftSettings.visionSavedModels ?? []).length" class="saved-models-block vision-saved-models">
+            <div class="saved-models-head">
+              <span class="saved-models-title">已保存模型</span>
+              <span class="saved-models-count">{{ draftSettings.visionSavedModels.length }} 个</span>
+            </div>
+            <div class="saved-models-list vision-saved-models-list">
               <n-tag
                 v-for="model in draftSettings.visionSavedModels"
                 :key="model"
@@ -1771,6 +1774,22 @@ async function saveSettings(): Promise<void> {
   border: 1px solid var(--arc-border);
   border-radius: 8px;
   background: var(--arc-bg-weak);
+}
+
+/* 图片识别配置下的已保存模型卡片：与上方操作按钮拉开间距，避免重叠 */
+.vision-saved-models {
+  margin: 18px 0 0;
+  padding: 12px 14px;
+}
+
+/* 模型数量较多时可纵向滚动，避免撑高页面 */
+.vision-saved-models-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 132px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .saved-models-head {
