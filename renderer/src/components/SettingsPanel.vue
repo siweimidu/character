@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { Archive, BookMarked, FileJson, FileStack, FileText, Lightbulb, Moon, Network, PenTool, Save, Upload, Users } from 'lucide-vue-next'
-import { NButton, NCard, NFormItem, NInput, NSelect, NSwitch, useMessage } from 'naive-ui'
+import { Archive, BookMarked, FileJson, FileStack, FileText, Lightbulb, Network, PenTool, Save, Upload, Users } from 'lucide-vue-next'
+import { NButton, NCard, NFormItem, NInput, NSelect, useMessage } from 'naive-ui'
 import { getPlainTextFromEditorContent } from '@/features/chapters/editorContent'
 import { autoSaveOptions } from '@/features/settings/autoSave'
 import { buildProjectWritingStyleContext, defaultWritingStylePresetId, resolveStyleBoundSkillDetail } from '@/features/writingStyles/presets'
@@ -257,6 +257,90 @@ async function handleExportText(): Promise<void> {
   }
 }
 
+// 导出章节数据为 JSON 文件
+async function handleExportJson(): Promise<void> {
+  const payload = {
+    project: appStore.currentProject,
+    outlineVolumes: appStore.outlineVolumes,
+    chapters: appStore.chapters.map((chapter) => ({
+      volumeId: chapter.volumeId,
+      title: chapter.title,
+      content: getPlainTextFromEditorContent(chapter.content)
+    })),
+    exportedAt: new Date().toISOString()
+  }
+
+  const result = await window.characterArc.exportJson(toIpcPayload({
+    data: payload,
+    title: '导出章节 JSON',
+    defaultPath: `${buildExportStem('chapters')}.json`
+  }))
+  if (result.success) {
+    message.success('章节数据已导出为 JSON')
+    return
+  }
+
+  if (!result.canceled) {
+    message.error('导出 JSON 失败，请稍后重试')
+  }
+}
+
+// 导出章节内容为 Markdown 文件
+async function handleExportMarkdown(): Promise<void> {
+  const payload = {
+    project: appStore.currentProject,
+    outlineVolumes: appStore.outlineVolumes,
+    chapters: appStore.chapters.map((chapter) => ({
+      volumeId: chapter.volumeId,
+      title: chapter.title,
+      content: getPlainTextFromEditorContent(chapter.content)
+    })),
+    exportedAt: new Date().toISOString()
+  }
+
+  const result = await window.characterArc.exportMarkdown(toIpcPayload({
+    data: payload,
+    title: '导出章节 Markdown',
+    defaultPath: `${buildExportStem('chapters')}.md`
+  }))
+  if (result.success) {
+    message.success('章节内容已导出为 Markdown')
+    return
+  }
+
+  if (!result.canceled) {
+    message.error('导出 Markdown 失败，请稍后重试')
+  }
+}
+
+// 导出章节内容为 Excel 表格
+async function handleExportExcel(): Promise<void> {
+  const payload = {
+    project: appStore.currentProject,
+    outlineVolumes: appStore.outlineVolumes,
+    chapters: appStore.chapters.map((chapter) => ({
+      volumeId: chapter.volumeId,
+      title: chapter.title,
+      content: getPlainTextFromEditorContent(chapter.content)
+    })),
+    exportedAt: new Date().toISOString()
+  }
+
+  const result = await window.characterArc.exportExcel(toIpcPayload({
+    data: payload,
+    title: '导出章节 Excel',
+    defaultPath: `${buildExportStem('chapters')}.xlsx`
+  }))
+  if (result.success) {
+    message.success('章节数据已导出为 Excel 表格')
+    return
+  }
+
+  if (!result.canceled) {
+    message.error('导出 Excel 失败，请稍后重试')
+  }
+}
+
 // 导出角色资料为 JSON 文件
 async function handleExportCharacters(): Promise<void> {
   const result = await window.characterArc.exportJson(toIpcPayload({
@@ -456,23 +540,7 @@ watch(
               @update:value="(value) => appStore.updateAppSetting('uiScale', value ?? 1)"
             />
           </div>
-          <div class="setting-mini-card">
-            <div class="setting-mini-head">
-              <Moon :size="16" class="setting-mini-icon" />
-              <div>
-                <div class="setting-name">深色模式</div>
-                <div class="setting-hint">将界面切换为深色背景，适合夜间长时间写作。</div>
-              </div>
-            </div>
-            <div class="setting-scope-tag">
-              <span class="setting-scope-dot"></span>
-              仅对当前项目生效，不影响全局与其它项目
-            </div>
-            <n-switch
-              :value="appStore.appSettings.darkMode"
-              @update:value="(value) => appStore.updateAppSetting('darkMode', value)"
-            />
-          </div>
+
         </div>
         <div class="setting-actions">
           <n-button type="primary" round strong :loading="isExportingArchive" @click="handleExportProjectArchive">
@@ -493,6 +561,29 @@ watch(
             </template>
             导出为 TXT
           </n-button>
+        </div>
+        <div class="module-export-block">
+          <div class="module-export-copy">
+            <div class="setting-name">导出项目为其他格式</div>
+            <div class="setting-hint">将章节内容导出为 JSON、Markdown 或 Excel 表格，便于分发和二次处理。</div>
+          </div>
+          <div class="module-export-grid">
+            <button class="module-export-card" @click="handleExportJson">
+              <FileJson :size="18" />
+              <strong>导出为 JSON</strong>
+              <span>导出结构化章节数据</span>
+            </button>
+            <button class="module-export-card" @click="handleExportMarkdown">
+              <FileText :size="18" />
+              <strong>导出为 Markdown</strong>
+              <span>导出 Markdown 文档</span>
+            </button>
+            <button class="module-export-card" @click="handleExportExcel">
+              <FileStack :size="18" />
+              <strong>导出为 Excel 表格</strong>
+              <span>导出章节明细表格</span>
+            </button>
+          </div>
         </div>
         <div class="module-export-block">
           <div class="module-export-copy">

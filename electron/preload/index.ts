@@ -43,6 +43,10 @@ contextBridge.exposeInMainWorld('characterArc', {
   importProjectArchive: (payload: unknown) => ipcRenderer.invoke('characterarc:import-project-archive', toIpcPayload(payload)),
   /** 将当前项目导出为纯文本文件 */
   exportText: (payload: unknown) => ipcRenderer.invoke('characterarc:export-text', toIpcPayload(payload)),
+  /** 将当前项目导出为 Markdown 文档 */
+  exportMarkdown: (payload: unknown) => ipcRenderer.invoke('characterarc:export-markdown', toIpcPayload(payload)),
+  /** 将当前项目导出为 Excel 表格 */
+  exportExcel: (payload: unknown) => ipcRenderer.invoke('characterarc:export-excel', toIpcPayload(payload)),
   /** 将单个章节导出为 TXT */
   exportChapterTxt: (payload: unknown) => ipcRenderer.invoke('characterarc:export-chapter-txt', toIpcPayload(payload)),
   /** 将单个章节导出为 DOCX */

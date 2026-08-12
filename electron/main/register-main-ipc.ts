@@ -431,6 +431,76 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
   })
 
+  ipcMain.handle('characterarc:export-markdown', async (_event, payload: unknown) => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) return { success: false, canceled: true }
+    const request = (payload && typeof payload === 'object' && 'data' in (payload as Record<string, unknown>) ? payload : { data: payload }) as ExportRequest
+    const result = await dialog.showSaveDialog(window, {
+      title: request.title ?? '导出章节 Markdown',
+      defaultPath: request.defaultPath ?? 'characterarc-export.md',
+      filters: [{ name: 'Markdown 文档', extensions: ['md'] }]
+    })
+    if (result.canceled || !result.filePath) return { success: false, canceled: true }
+    const data = request.data as {
+      project?: { title?: string } | null
+      outlineVolumes?: Array<{ id?: string; title?: string }>
+      chapters?: Array<{ volumeId?: string; title?: string; content?: string }>
+    }
+    const volumeTitleMap = new Map((data.outlineVolumes ?? []).map((volume) => [volume.id ?? '', volume.title?.trim() || '未命名分卷']))
+    let activeVolumeId = ''
+    const md = [
+      data.project?.title ? `# ${data.project.title}` : '# CharacterArc 导出',
+      '',
+      ...(data.chapters ?? []).flatMap((chapter, index) => {
+        const shouldPrintVolume = chapter.volumeId && chapter.volumeId !== activeVolumeId
+        if (chapter.volumeId) activeVolumeId = chapter.volumeId
+        return [
+          ...(shouldPrintVolume ? [`## ${volumeTitleMap.get(chapter.volumeId ?? '') || '未命名分卷'}`, ''] : []),
+          `### 第${index + 1}章 ${chapter.title ?? '未命名章节'}`,
+          '',
+          chapter.content?.trim() || '（暂无正文内容）',
+          ''
+        ]
+      })
+    ].join('\n')
+    await writeFile(result.filePath, md, 'utf-8')
+    return { success: true, canceled: false, filePath: result.filePath }
+  })
+
+  ipcMain.handle('characterarc:export-excel', async (_event, payload: unknown) => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) return { success: false, canceled: true }
+    const request = (payload && typeof payload === 'object' && 'data' in (payload as Record<string, unknown>) ? payload : { data: payload }) as ExportRequest
+    const result = await dialog.showSaveDialog(window, {
+      title: request.title ?? '导出章节 Excel',
+      defaultPath: request.defaultPath ?? 'characterarc-export.xlsx',
+      filters: [{ name: 'Excel 表格', extensions: ['xlsx'] }]
+    })
+    if (result.canceled || !result.filePath) return { success: false, canceled: true }
+    const data = request.data as {
+      project?: { title?: string } | null
+      outlineVolumes?: Array<{ id?: string; title?: string }>
+      chapters?: Array<{ volumeId?: string; title?: string; content?: string }>
+    }
+    const volumeTitleMap = new Map((data.outlineVolumes ?? []).map((volume) => [volume.id ?? '', volume.title?.trim() || '未命名分卷']))
+    const rows = (data.chapters ?? []).map((chapter, index) => {
+      const volumeTitle = chapter.volumeId ? (volumeTitleMap.get(chapter.volumeId ?? '') || '未命名分卷') : ''
+      return {
+        '序号': index + 1,
+        '分卷': volumeTitle,
+        '章节标题': chapter.title ?? '未命名章节',
+        '正文内容': chapter.content?.trim() || ''
+      }
+    })
+    const { utils, write } = await import('xlsx')
+    const worksheet = utils.json_to_sheet(rows)
+    const workbook = utils.book_new()
+    utils.book_append_sheet(workbook, worksheet, '章节')
+    const buffer = write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer
+    await writeFile(result.filePath, buffer)
+    return { success: true, canceled: false, filePath: result.filePath }
+  })
+
   ipcMain.handle('characterarc:export-chapter-txt', async (_event, payload: unknown) => {
     const window = deps.windowManager.getActiveWindow()
     if (!window) {

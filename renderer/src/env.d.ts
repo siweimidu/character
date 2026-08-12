@@ -502,6 +502,16 @@ declare global {
         canceled: boolean
         filePath?: string
       }>
+      exportMarkdown: (payload: CharacterArcExportRequest | unknown) => Promise<{
+        success: boolean
+        canceled: boolean
+        filePath?: string
+      }>
+      exportExcel: (payload: CharacterArcExportRequest | unknown) => Promise<{
+        success: boolean
+        canceled: boolean
+        filePath?: string
+      }>
       exportChapterTxt: (payload: { title?: string; content?: string; defaultFileName?: string }) => Promise<{
         success: boolean
         canceled: boolean
