@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, toRaw, watch } from 'vue'
 import { Download, MoreVertical, Plus, Search, Sparkles, Tags, Upload } from 'lucide-vue-next'
 import { NButton, NDropdown, NDynamicTags, NForm, NFormItem, NInput, NModal, NSelect, NTag, useDialog, useMessage } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
@@ -300,15 +300,26 @@ async function handleBatchImport(): Promise<void> {
 // 批量导出世界观词条为 txt / md / json
 async function handleBatchExport(format: 'txt' | 'md' | 'json'): Promise<void> {
   const ids = selectedEntryIds.value
-  const entries = (ids.length ? filteredEntries.value.filter((e) => ids.includes(e.id)) : appStore.worldviewEntries)
-    .map((entry) => ({ type: entry.type, title: entry.title, content: entry.content, tags: entry.tags ?? [] }))
+  // 多选时仅导出勾选的内容；未勾选则导出当前全部词条
+  const source = ids.length
+    ? filteredEntries.value.filter((e) => ids.includes(e.id))
+    : appStore.worldviewEntries
+  // 解包 Vue reactive 代理并生成纯净的普通对象，避免 IPC 结构化克隆报错
+  const entries = source
+    .map((entry) => toRaw(entry))
+    .map((entry) => ({
+      type: String(entry?.type ?? ''),
+      title: String(entry?.title ?? ''),
+      content: String(entry?.content ?? ''),
+      tags: Array.isArray(entry?.tags) ? entry.tags.map((tag) => String(tag ?? '')) : []
+    }))
   if (!entries.length) {
     message.warning('当前没有可导出的世界观词条')
     return
   }
   exportLoading.value = true
   try {
-    const result = await window.characterArc.worldviewExport({ format, entries })
+    const result = await window.characterArc.worldviewExport(toIpcPayload({ format, entries }))
     if (!result.success) {
       if (!result.canceled) message.error(result.error ?? '导出失败')
       return
