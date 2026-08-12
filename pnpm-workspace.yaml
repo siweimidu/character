@@ -2,3 +2,6 @@ allowBuilds:
   electron: true
   electron-winstaller: true
   esbuild: true
+overrides:
+  undici: 8.9.0
+  '@ai-sdk/provider-utils>undici': 8.9.0
