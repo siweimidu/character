@@ -3,16 +3,19 @@ import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import {
+  Bookmark,
   History,
   MessageSquareText,
   Plus,
   Sparkles,
   SquareStack,
+  Trash2,
   X
 } from 'lucide-vue-next'
 import type { SurfaceDefinition, TurnTruncateResult } from '@shared/assistant-runtime'
 import { useAppStore } from '@/stores/app'
 import { useAssistant } from '@/composables/useAssistant'
+import { usePromptStore } from '@/composables/usePromptStore'
 import AssistantSessionList from './AssistantSessionList.vue'
 import AssistantMessages from './AssistantMessages.vue'
 import AssistantComposer from './AssistantComposer.vue'
@@ -49,12 +52,15 @@ const composerValue = computed({
   set: (value) => { assistant.composerValue.value = value }
 })
 
-type AssistantMode = 'ingest' | 'correct' | 'audit'
 type PanelTab = 'chat' | 'staged' | 'sessions'
 
 const activeTab = ref<PanelTab>('chat')
-const activeMode = ref<AssistantMode>('ingest')
 const isCommitting = ref(false)
+
+// ── 提示词库（存储/新建/删除常用提示词，与章节创作智能体共用同一套）──
+const newPromptLabel = ref('')
+const newPromptText = ref('')
+const promptStore = usePromptStore(selectedProjectId)
 
 // 引用选择对话框（多选章节/分卷）
 const referencePickerVisible = ref(false)
@@ -101,33 +107,15 @@ function restoreAgentSelection(): void {
 }
 restoreAgentSelection()
 
-const modeOptions: Array<{ id: AssistantMode; label: string; description: string }> = [
-  { id: 'ingest', label: '录入', description: '沉淀设定、计划和创作记忆' },
-  { id: 'correct', label: '修正', description: '生成可审阅的最小修正' },
-  { id: 'audit', label: '审计', description: '检查矛盾、OOC 与连续性' }
+/** 统一快捷入口：录入 / 修正 / 审计等常用动作合并为一份，避免重复造轮子。 */
+const quickActions: Array<{ label: string; prompt: string }> = [
+  { label: '整理项目现状', prompt: '请读取项目资料，整理当前项目概况、下一步创作计划和需要沉淀的创作记忆。' },
+  { label: '录入设定草稿', prompt: '我会给你一段设定草稿，请拆成可写入的世界观、人物、组织、大纲或创作记忆暂存变更。' },
+  { label: '补全创作记忆', prompt: '请基于现有项目资料，补全当前状态、创作计划、待回收伏笔和素材清单。' },
+  { label: '全项目审计', prompt: '请审计当前项目的一致性风险，包括世界观矛盾、人物 OOC、大纲断裂、伏笔未回收和硬约束冲突。' },
+  { label: '统一人物口径', prompt: '请检查主要人物的定位、动机和关系是否有矛盾，并给出可暂存的修正方案。' },
+  { label: '伏笔审计', prompt: '请读取伏笔线索、章节摘要和创作记忆，列出待回收伏笔、风险和建议处理顺序。' }
 ]
-
-const quickActions: Record<AssistantMode, Array<{ label: string; prompt: string }>> = {
-  ingest: [
-    { label: '整理项目现状', prompt: '请读取项目资料，整理当前项目概况、下一步创作计划和需要沉淀的创作记忆。' },
-    { label: '录入设定草稿', prompt: '我会给你一段设定草稿，请拆成可写入的世界观、人物、组织、大纲或创作记忆暂存变更。' },
-    { label: '补全创作记忆', prompt: '请基于现有项目资料，补全当前状态、创作计划、待回收伏笔和素材清单。' }
-  ],
-  correct: [
-    { label: '修正跑偏设定', prompt: '请检查项目里可能跑偏或重复的设定，并把需要修正的内容产出为暂存变更。' },
-    { label: '统一人物口径', prompt: '请检查主要人物的定位、动机和关系是否有矛盾，并给出可暂存的修正方案。' },
-    { label: '调整大纲承接', prompt: '请检查大纲与现有章节的承接问题，必要时产出大纲或创作记忆的暂存修改。' }
-  ],
-  audit: [
-    { label: '全项目审计', prompt: '请审计当前项目的一致性风险，包括世界观矛盾、人物 OOC、大纲断裂、伏笔未回收和硬约束冲突。' },
-    { label: '伏笔审计', prompt: '请读取伏笔线索、章节摘要和创作记忆，列出待回收伏笔、风险和建议处理顺序。' },
-    { label: '章节连续性审计', prompt: '请检查最近章节和大纲之间的连续性，指出问题并给出最小修正方案。' }
-  ]
-}
-
-const currentMode = computed(() =>
-  modeOptions.find((mode) => mode.id === activeMode.value) ?? modeOptions[0]
-)
 
 /** 当前项目已启用的 skills，供输入 / 唤起时快速选择 */
 const availableSkills = computed(() =>
@@ -161,10 +149,33 @@ function fillQuickAction(prompt: string): void {
   composerValue.value = prompt
 }
 
+// ── 提示词库操作 ──
+function handleSavePrompt(): void {
+  if (!newPromptText.value.trim()) {
+    message.warning('请输入提示词内容')
+    return
+  }
+  promptStore.savePrompt(newPromptLabel.value, newPromptText.value)
+  newPromptLabel.value = ''
+  newPromptText.value = ''
+  message.success('提示词已保存')
+}
+
+function handleUsePrompt(promptText: string): void {
+  activeTab.value = 'chat'
+  composerValue.value = promptText
+}
+
+function handleDeletePrompt(id: string, label: string): void {
+  if (!confirm(`确定删除提示词「${label}」吗？`)) return
+  promptStore.deletePrompt(id)
+  message.success('提示词已删除')
+}
+
 function sendWithMode(): void {
   activeTab.value = 'chat'
   void assistant.send({
-    intentHint: `global-assistant-v2:${activeMode.value}`,
+    intentHint: 'global-assistant-v2:chat',
     agentId: selectedAgentId.value || undefined
   })
 }
@@ -235,7 +246,7 @@ async function handleUndoTurn(turnId: string): Promise<void> {
 
 async function handleResendTurn(): Promise<void> {
   const result = await assistant.resendEditedTurn({
-    intentHint: `global-assistant-v2:${activeMode.value}`
+    intentHint: 'global-assistant-v2:chat'
   })
   if (result) notifyTruncate(result, '重新分叉')
 }
@@ -387,18 +398,64 @@ async function handleCommit(ids?: string[]): Promise<void> {
         <div class="starter-head">
           <div class="starter-kicker">Runtime v2</div>
           <h3>从哪里开始？</h3>
-          <p>{{ currentMode.description }}</p>
+          <p>沉淀设定、修正跑偏、审计一致性——所有能力都汇聚在此。</p>
         </div>
 
         <div class="quick-list">
           <button
-            v-for="action in quickActions[activeMode]"
+            v-for="action in quickActions"
             :key="action.label"
             type="button"
             @click="fillQuickAction(action.prompt)"
           >
             {{ action.label }}
           </button>
+        </div>
+
+        <div class="prompt-section">
+          <div class="prompt-section-title">
+            <Bookmark :size="13" />
+            提示词库
+          </div>
+          <div class="prompt-form">
+            <input
+              v-model="newPromptLabel"
+              class="prompt-name-input"
+              placeholder="提示词名称（可选）"
+              maxlength="30"
+            />
+            <textarea
+              v-model="newPromptText"
+              class="prompt-text-input"
+              placeholder="输入要保存的常用提示词…"
+              rows="2"
+            ></textarea>
+            <button type="button" class="prompt-save-btn" @click="handleSavePrompt">
+              <Plus :size="13" />
+              保存提示词
+            </button>
+          </div>
+          <div v-if="promptStore.prompts.value.length === 0" class="prompt-empty">
+            <Bookmark :size="14" />
+            还没有保存的提示词，填入并保存一条吧。
+          </div>
+          <div v-else class="prompt-list">
+            <div v-for="p in promptStore.prompts.value" :key="p.id" class="prompt-item">
+              <button type="button" class="prompt-item-main" @click="handleUsePrompt(p.prompt)">
+                <span class="prompt-item-label">{{ p.label }}</span>
+                <span class="prompt-item-text">{{ p.prompt }}</span>
+              </button>
+              <button
+                type="button"
+                class="prompt-del-btn"
+                title="删除提示词"
+                aria-label="删除提示词"
+                @click="handleDeletePrompt(p.id, p.label)"
+              >
+                <Trash2 :size="13" />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -413,7 +470,6 @@ async function handleCommit(ids?: string[]): Promise<void> {
         :streaming-char-count="assistant.streamingCharCount.value"
         :is-editing="Boolean(assistant.editingTurnId.value)"
         :restored-label="assistant.restoredDraftLabel.value"
-        :mode-label="currentMode.label"
         :attachments="assistant.pendingAttachments.value"
         :skills="availableSkills"
         @send="sendWithMode"
@@ -684,32 +740,6 @@ async function handleCommit(ids?: string[]): Promise<void> {
   line-height: 1.5;
 }
 
-.mode-switch {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--arc-border);
-  border-radius: 8px;
-  background: var(--arc-bg-surface);
-}
-
-.mode-switch button {
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--arc-text-secondary);
-  cursor: pointer;
-  font-size: 12px;
-  padding: 6px 7px;
-}
-
-.mode-switch button.active {
-  background: var(--arc-primary-soft);
-  color: var(--arc-primary);
-  font-weight: 600;
-}
-
 .quick-list {
   display: flex;
   flex-direction: column;
@@ -732,6 +762,156 @@ async function handleCommit(ids?: string[]): Promise<void> {
 .quick-list button:hover {
   border-color: var(--arc-primary);
   background: var(--arc-primary-soft);
+}
+
+/* ── 提示词库 ── */
+.prompt-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--arc-border);
+}
+
+.prompt-section-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--arc-text-hint);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.prompt-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  background: var(--arc-bg-surface);
+}
+
+.prompt-name-input,
+.prompt-text-input {
+  width: 100%;
+  border: 1px solid var(--arc-border);
+  border-radius: 6px;
+  background: var(--arc-bg-body);
+  color: var(--arc-text-primary);
+  font-size: 12.5px;
+  padding: 6px 8px;
+  resize: vertical;
+}
+
+.prompt-name-input:focus,
+.prompt-text-input:focus {
+  outline: none;
+  border-color: var(--arc-primary);
+}
+
+.prompt-save-btn {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--arc-primary);
+  border-radius: 7px;
+  background: var(--arc-primary-soft);
+  color: var(--arc-primary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+}
+
+.prompt-save-btn:hover {
+  background: color-mix(in srgb, var(--arc-primary) 18%, var(--arc-bg-surface));
+}
+
+.prompt-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 14px 10px;
+  border: 1px dashed var(--arc-border);
+  border-radius: 8px;
+  color: var(--arc-text-hint);
+  font-size: 12px;
+  text-align: center;
+}
+
+.prompt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.prompt-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  background: var(--arc-bg-surface);
+  padding: 4px 4px 4px 10px;
+}
+
+.prompt-item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: none;
+  background: transparent;
+  color: var(--arc-text-primary);
+  text-align: left;
+  cursor: pointer;
+  padding: 6px 0;
+}
+
+.prompt-item-main:hover .prompt-item-label {
+  color: var(--arc-primary);
+}
+
+.prompt-item-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prompt-item-text {
+  font-size: 11.5px;
+  color: var(--arc-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prompt-del-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--arc-text-hint);
+  cursor: pointer;
+}
+
+.prompt-del-btn:hover {
+  color: var(--v2-danger);
+  background: var(--v2-del-bg);
 }
 
 .err-banner {

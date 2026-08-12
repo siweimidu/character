@@ -3,11 +3,13 @@ import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import {
+  Bookmark,
   History,
   MessageSquareText,
   Plus,
   Sparkles,
   SquareStack,
+  Trash2,
   X
 } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/app'
@@ -21,6 +23,7 @@ import AssistantComposer from '@/components/assistantV2/AssistantComposer.vue'
 import StagedChangesView from '@/components/assistantV2/StagedChangesView.vue'
 import ChapterFirstDraftDialog from './ChapterFirstDraftDialog.vue'
 import { useChapterFirstDraft, type FirstDraftConfig } from './useChapterFirstDraft'
+import { usePromptStore } from '@/composables/usePromptStore'
 
 const props = defineProps<{
   /** 由父级 ChapterWorkspace 持有的 assistant 实例，避免 v-if 销毁时丢失暂存状态 */
@@ -36,7 +39,7 @@ const emit = defineEmits<{
 }>()
 
 const appStore = useAppStore()
-const { selectedChapter } = storeToRefs(appStore)
+const { selectedChapter, selectedProjectId } = storeToRefs(appStore)
 const message = useMessage()
 
 // 使用父级传入的实例
@@ -61,18 +64,31 @@ const composerValue = computed({
 })
 
 type PanelTab = 'chat' | 'staged' | 'sessions'
-type ChapterMode = 'chat' | 'diagnose' | 'polish'
+type ChapterMode = 'chat' | 'diagnose' | 'polish' | 'prompts'
 
 const activeTab = ref<PanelTab>('chat')
 const activeMode = ref<ChapterMode>('chat')
 const isCommitting = ref(false)
+
+// ── 提示词库（存储/新建/删除常用提示词）──
+const newPromptLabel = ref('')
+const newPromptText = ref('')
+const promptStore = usePromptStore(selectedProjectId)
+
+/** 当前项目已启用的 skills，供输入 / 唤起时快速选择（与工作台智能体对齐） */
+const availableSkills = computed(() =>
+  (appStore.currentProject?.projectSkills ?? [])
+    .filter((s) => s.enabled)
+    .map((s) => ({ id: s.id, name: s.name, description: s.description }))
+)
 
 const draft = useChapterFirstDraft()
 
 const modeOptions: Array<{ id: ChapterMode; label: string; description: string }> = [
   { id: 'chat', label: '对话', description: '问答、分析、建议' },
   { id: 'diagnose', label: '诊断', description: '检查问题并给建议' },
-  { id: 'polish', label: '改写', description: '直接输出修改提案' }
+  { id: 'polish', label: '改写', description: '直接输出修改提案' },
+  { id: 'prompts', label: '提示词', description: '存储、新建和删除常用提示词' }
 ]
 
 const quickActions: Record<ChapterMode, Array<{ label: string; prompt: string }>> = {
@@ -90,7 +106,8 @@ const quickActions: Record<ChapterMode, Array<{ label: string; prompt: string }>
     { label: '压缩拖沓段落', prompt: '找出拖沓冗余的段落并直接改写压缩' },
     { label: '拆分长句', prompt: '找出过长的句子并拆分改写，让句子长短交替' },
     { label: '降低AI感', prompt: '改写AI味较重的句子，让表达更自然' }
-  ]
+  ],
+  prompts: []
 }
 
 const currentMode = computed(() =>
@@ -123,6 +140,76 @@ const selectionHint = computed(() => {
 function fillQuickAction(prompt: string): void {
   activeTab.value = 'chat'
   composerValue.value = prompt
+}
+
+// ── 提示词库操作 ──
+function handleSavePrompt(): void {
+  if (!newPromptText.value.trim()) {
+    message.warning('请输入提示词内容')
+    return
+  }
+  promptStore.savePrompt(newPromptLabel.value, newPromptText.value)
+  newPromptLabel.value = ''
+  newPromptText.value = ''
+  message.success('提示词已保存')
+}
+
+function handleUsePrompt(promptText: string): void {
+  activeTab.value = 'chat'
+  composerValue.value = promptText
+}
+
+function handleDeletePrompt(id: string, label: string): void {
+  if (!confirm(`确定删除提示词「${label}」吗？`)) return
+  promptStore.deletePrompt(id)
+  message.success('提示词已删除')
+}
+
+/** 选中技能作为引用芯片加入待发送附件（与工作台智能体对齐） */
+function handleApplySkill(skill: { id: string; label: string }): void {
+  assistant.addPendingAttachment({ kind: 'skill', ref: `skill:${skill.id}`, label: skill.label })
+}
+
+/** 上传本地 txt/md 文件到对话（与工作台智能体对齐） */
+async function handleUploadFile(): Promise<void> {
+  try {
+    const result = await window.characterArc.pickAssistantTextFile()
+    if (!result?.success) {
+      if (result?.error) message.warning(result.error)
+      return
+    }
+    const name = result.name ?? '本地文件'
+    const content = result.content ?? ''
+    if (content.length > 60000) {
+      message.warning('文件内容过长，已截断前 6 万字，如需完整内容请精简后重试')
+    }
+    activeTab.value = 'chat'
+    composerValue.value = `【已上传本地文件：${name}】\n${content.slice(0, 60000)}\n${composerValue.value}`
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : '上传文件失败')
+  }
+}
+
+function handleUploadFiles(files: File[]): void {
+  activeTab.value = 'chat'
+  const readers = files.map(
+    (file) =>
+      new Promise<string>((resolve) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result as string)
+        reader.onerror = () => resolve('')
+        reader.readAsText(file)
+      })
+  )
+  void Promise.all(readers).then((contents) => {
+    const parts: string[] = []
+    files.forEach((file, idx) => {
+      const content = (contents[idx] ?? '').slice(0, 60000)
+      parts.push(`【已上传本地文件：${file.name}】\n${content}`)
+    })
+    composerValue.value = `${parts.join('\n\n')}\n${composerValue.value}`
+    message.success(`已上传 ${files.length} 个文件`)
+  })
 }
 
 function sendWithMode(): void {
@@ -438,7 +525,49 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
           </button>
         </div>
 
-        <div class="quick-list">
+        <div v-if="activeMode === 'prompts'" class="prompt-manager">
+          <div class="prompt-form">
+            <input
+              v-model="newPromptLabel"
+              class="prompt-name-input"
+              placeholder="提示词名称（可选）"
+              maxlength="30"
+            />
+            <textarea
+              v-model="newPromptText"
+              class="prompt-text-input"
+              placeholder="输入要保存的常用提示词…"
+              rows="2"
+            ></textarea>
+            <button type="button" class="prompt-save-btn" @click="handleSavePrompt">
+              <Plus :size="13" />
+              保存提示词
+            </button>
+          </div>
+          <div v-if="promptStore.prompts.value.length === 0" class="prompt-empty">
+            <Bookmark :size="14" />
+            还没有保存的提示词，先在左侧填入并保存一条吧。
+          </div>
+          <div v-else class="prompt-list">
+            <div v-for="p in promptStore.prompts.value" :key="p.id" class="prompt-item">
+              <button type="button" class="prompt-item-main" @click="handleUsePrompt(p.prompt)">
+                <span class="prompt-item-label">{{ p.label }}</span>
+                <span class="prompt-item-text">{{ p.prompt }}</span>
+              </button>
+              <button
+                type="button"
+                class="prompt-del-btn"
+                title="删除提示词"
+                aria-label="删除提示词"
+                @click="handleDeletePrompt(p.id, p.label)"
+              >
+                <Trash2 :size="13" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="quick-list">
           <button
             v-for="action in quickActions[activeMode]"
             :key="action.label"
@@ -449,7 +578,7 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
           </button>
         </div>
 
-        <div class="draft-entry">
+        <div v-if="activeMode !== 'prompts'" class="draft-entry">
           <button type="button" class="draft-btn" @click="emit('generate-draft')">
             <Sparkles :size="14" />
             生成章节初稿
@@ -469,8 +598,21 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
         :is-editing="Boolean(assistant.editingTurnId.value)"
         :restored-label="assistant.restoredDraftLabel.value"
         :mode-label="hasSelection ? selectionHint : currentMode.label"
+        :attachments="assistant.pendingAttachments.value"
+        :skills="availableSkills"
         @send="sendWithMode"
         @attach="handleAttachFile"
+        @apply-skill="handleApplySkill"
+        @add-reference="(ref) => {
+          if (ref.kind === 'volume') {
+            assistant.addPendingAttachment({ kind: 'chapter', ref: `volume:${ref.id}`, label: `分卷《${ref.label}》` })
+          } else {
+            assistant.addPendingAttachment({ kind: 'chapter', ref: `chapter:${ref.id}`, label: `章节《${ref.label}》` })
+          }
+        }"
+        @remove-attachment="(key) => assistant.removePendingAttachment(key)"
+        @upload-file="handleUploadFile"
+        @upload-files="handleUploadFiles"
         @cancel="assistant.cancel()"
         @edit-last="assistant.startEditingLastTurn()"
         @clear-restored="assistant.clearRestoredDraft()"
@@ -750,7 +892,7 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
 
 .mode-switch {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
   padding: 4px;
   border: 1px solid var(--arc-border);
@@ -766,6 +908,145 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
   cursor: pointer;
   font-size: 12px;
   padding: 6px 7px;
+}
+
+/* ── 提示词库 ── */
+.prompt-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.prompt-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  background: var(--arc-bg-surface);
+}
+
+.prompt-name-input,
+.prompt-text-input {
+  width: 100%;
+  border: 1px solid var(--arc-border);
+  border-radius: 6px;
+  background: var(--arc-bg-body);
+  color: var(--arc-text-primary);
+  font-size: 12.5px;
+  padding: 6px 8px;
+  resize: vertical;
+}
+
+.prompt-name-input:focus,
+.prompt-text-input:focus {
+  outline: none;
+  border-color: var(--arc-primary);
+}
+
+.prompt-save-btn {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--arc-primary);
+  border-radius: 7px;
+  background: var(--arc-primary-soft);
+  color: var(--arc-primary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+}
+
+.prompt-save-btn:hover {
+  background: color-mix(in srgb, var(--arc-primary) 18%, var(--arc-bg-surface));
+}
+
+.prompt-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 18px 10px;
+  border: 1px dashed var(--arc-border);
+  border-radius: 8px;
+  color: var(--arc-text-hint);
+  font-size: 12px;
+  text-align: center;
+}
+
+.prompt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.prompt-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  background: var(--arc-bg-surface);
+  padding: 4px 4px 4px 10px;
+}
+
+.prompt-item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: none;
+  background: transparent;
+  color: var(--arc-text-primary);
+  text-align: left;
+  cursor: pointer;
+  padding: 6px 0;
+}
+
+.prompt-item-main:hover .prompt-item-label {
+  color: var(--arc-primary);
+}
+
+.prompt-item-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prompt-item-text {
+  font-size: 11.5px;
+  color: var(--arc-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prompt-del-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--arc-text-hint);
+  cursor: pointer;
+}
+
+.prompt-del-btn:hover {
+  color: var(--v2-danger);
+  background: var(--v2-del-bg);
 }
 
 .mode-switch button.active {
