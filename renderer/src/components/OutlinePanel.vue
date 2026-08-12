@@ -828,16 +828,12 @@ function submitVolume(): void {
 }
 
 function handleDeleteVolume(volume: OutlineVolume): void {
-  const volumeIndex = appStore.outlineVolumes.findIndex((item) => item.id === volume.id)
-  const remainingVolumes = appStore.outlineVolumes.filter((item) => item.id !== volume.id)
-  const fallbackVolume = remainingVolumes[Math.max(0, volumeIndex - 1)] ?? remainingVolumes[0]
   const outlineCount = appStore.outlineItems.filter((item) => item.volumeId === volume.id).length
   const chapterCount = appStore.chapters.filter((chapter) => chapter.volumeId === volume.id).length
-  const fallbackTitle = fallbackVolume?.title ? `「${fallbackVolume.title}」` : '相邻分卷'
 
   dialog.warning({
     title: '确认删除分卷',
-    content: `确定要删除"${volume.title}"吗？该分卷下的 ${outlineCount} 个大纲节点和 ${chapterCount} 个章节会移至${fallbackTitle}，分卷级创作记忆将一并删除。`,
+    content: `确定要删除"${volume.title}"吗？该分卷下的 ${outlineCount} 个大纲节点和 ${chapterCount} 个章节将一并删除，分卷级创作记忆将一并删除。删除后可在回收站中找回。`,
     positiveText: '确认删除',
     negativeText: '取消',
     autoFocus: false,

@@ -2677,44 +2677,35 @@ export const useAppStore = defineStore('app', () => {
       pushRecycleEntry('outline-volume', targetVolume.title, { ...targetVolume })
     }
 
-    let fallbackVolumeId = ''
-    updateCurrentWorkspace((workspace) => {
-      const nextVolumes = workspace.outlineVolumes.filter((volume) => volume.id !== volumeId)
-      const fallbackVolume = nextVolumes[Math.max(0, volumeIndex - 1)] ?? nextVolumes[0]
-      fallbackVolumeId = fallbackVolume?.id ?? ''
+    // 删除分卷时不再迁移其下内容：将该分卷下的大纲节点与章节一并删除，并写入回收站
+    currentWorkspace.value.outlineItems
+      .filter((item) => item.volumeId === volumeId)
+      .forEach((item) => pushRecycleEntry('outline', item.title, { ...item }))
+    currentWorkspace.value.chapters
+      .filter((chapter) => chapter.volumeId === volumeId)
+      .forEach((chapter) => pushRecycleEntry('chapter', chapter.title, { ...chapter }))
 
-      // 删除最后一个分卷时仍允许删除：原分卷下的章节与大纲节点改为“未分卷”状态
-      if (!fallbackVolumeId) {
-        return {
-          ...workspace,
-          outlineVolumes: nextVolumes,
-          outlineItems: reindexOutlineItems(
-            workspace.outlineItems.map((item) =>
-              item.volumeId === volumeId ? { ...item, volumeId: '' } : item
-            )
-          ),
-          chapters: workspace.chapters.map((chapter) =>
-            chapter.volumeId === volumeId ? { ...chapter, volumeId: '' } : chapter
-          )
-        }
-      }
+    updateCurrentWorkspace((workspace) => {
+      const removedChapterIds = new Set(
+        workspace.chapters.filter((chapter) => chapter.volumeId === volumeId).map((chapter) => chapter.id)
+      )
 
       return {
         ...workspace,
-        outlineVolumes: nextVolumes,
+        outlineVolumes: workspace.outlineVolumes.filter((volume) => volume.id !== volumeId),
         outlineItems: reindexOutlineItems(
-          workspace.outlineItems.map((item) =>
-            item.volumeId === volumeId ? { ...item, volumeId: fallbackVolumeId } : item
-          )
+          workspace.outlineItems.filter((item) => item.volumeId !== volumeId)
         ),
-        chapters: workspace.chapters.map((chapter) =>
-          chapter.volumeId === volumeId ? { ...chapter, volumeId: fallbackVolumeId } : chapter
-        )
+        chapters: workspace.chapters.filter((chapter) => chapter.volumeId !== volumeId),
+        chapterVersions: workspace.chapterVersions.filter((version) => !removedChapterIds.has(version.chapterId))
       }
     })
 
     if (activeWorkflowVolumeId.value === volumeId) {
-      activeWorkflowVolumeId.value = fallbackVolumeId
+      activeWorkflowVolumeId.value = outlineVolumes.value[0]?.id ?? ''
+    }
+    if (selectedChapterId.value && !currentWorkspace.value.chapters.some((chapter) => chapter.id === selectedChapterId.value)) {
+      selectedChapterId.value = currentWorkspace.value.chapters[0]?.id ?? ''
     }
     schedulePersist('fast')
   }
