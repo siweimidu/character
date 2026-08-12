@@ -123,17 +123,23 @@ function parseCharactersUpdated(yaml: string, _warnings: string[]): StateDelta['
     const powerLevel = extractValue(block, 'power_level')
     if (powerLevel) changes.power_level = powerLevel
 
-    const added = extractList(block, 'added')
-    const removed = extractList(block, 'removed')
-    if (added.length || removed.length) {
-      changes.inventory_delta = { added, removed }
+    // 注意：inventory_delta 与 goals_update 各自都含 `added` 字段。若直接对整个
+    // character 块用 extractList(block, 'added')，`indexOf` 只会命中第一个 `added:`，
+    // 导致 goals_update.added 误取到 inventory_delta.added（或反之），取决于字段顺序。
+    // 因此必须先把每个子块（inventory_delta / goals_update）切出来，再在子块内取值。
+    const inventorySection = extractSection(block, 'inventory_delta')
+    const inventoryAdded = inventorySection ? extractList(inventorySection, 'added') : []
+    const inventoryRemoved = inventorySection ? extractList(inventorySection, 'removed') : []
+    if (inventoryAdded.length || inventoryRemoved.length) {
+      changes.inventory_delta = { added: inventoryAdded, removed: inventoryRemoved }
     }
 
     const newKnowledge = extractList(block, 'new_knowledge')
     if (newKnowledge.length) changes.new_knowledge = newKnowledge
 
-    const completedGoals = extractList(block, 'completed')
-    const addedGoals = extractList(block, 'added')
+    const goalsSection = extractSection(block, 'goals_update')
+    const completedGoals = goalsSection ? extractList(goalsSection, 'completed') : []
+    const addedGoals = goalsSection ? extractList(goalsSection, 'added') : []
     if (completedGoals.length || addedGoals.length) {
       changes.goals_update = { completed: completedGoals, added: addedGoals }
     }

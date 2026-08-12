@@ -669,10 +669,8 @@ export function useChapterAi(): {
     }
 
     if (payload.type === 'canceled') {
-      console.log('[useChapterAi] canceled event received, streamingMsgId:', streamingMsgId)
       finalizeStreamingMsg()
       const msg = messages.value.find((m) => m.id === streamingMsgId)
-      console.log('[useChapterAi] found message:', msg ? { id: msg.id, content: msg.content, turns: msg.turns } : null)
 
       // 添加取消提示到消息中
       if (msg) {
@@ -684,35 +682,26 @@ export function useChapterAi(): {
         // 新结构：确保 turns 存在并添加取消消息
         if (!msg.turns) {
           msg.turns = []
-          console.log('[useChapterAi] created empty turns array')
         }
 
         if (msg.turns.length === 0) {
           // 没有任何 turn，创建一个显示取消消息
           msg.turns.push({ text: '已停止生成', toolCalls: [], editEvents: [] })
-          console.log('[useChapterAi] added cancel message to new turn')
         } else {
           const lastTurn = msg.turns[msg.turns.length - 1]
-          console.log('[useChapterAi] last turn:', { text: lastTurn.text, toolCallsCount: lastTurn.toolCalls.length })
 
           // 如果最后一个 turn 有工具调用但没有文本，创建新 turn 显示取消消息
           if (lastTurn.toolCalls.length > 0 && !lastTurn.text.trim()) {
             msg.turns.push({ text: '已停止生成', toolCalls: [], editEvents: [] })
-            console.log('[useChapterAi] added cancel message to new turn after tool calls')
           } else if (!lastTurn.text.trim()) {
             // 如果最后一个 turn 没有内容，直接设置文本
             lastTurn.text = '已停止生成'
-            console.log('[useChapterAi] set cancel message to last turn')
-          } else {
-            console.log('[useChapterAi] last turn already has text, not adding cancel message')
           }
+          // 如果最后一个 turn 已经有文本，不添加取消消息
         }
 
         // 标记为取消状态
         msg.isCanceled = true
-        console.log('[useChapterAi] marked message as canceled, final turns:', msg.turns)
-      } else {
-        console.log('[useChapterAi] ERROR: message not found!')
       }
 
       const reject = rejectStream
