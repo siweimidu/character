@@ -489,15 +489,48 @@ const fullGenLoading = computed(() => appStore.isAiTaskRunning(FULL_TASK_KEY))
 const fullGenVisible = ref(false)
 const fullGenSetting = ref('')
 
+// 可选字段定义，默认全部勾选
+const FULL_GEN_FIELD_OPTIONS = [
+  { key: 'name', label: '名称' },
+  { key: 'role', label: '定位' },
+  { key: 'appearance', label: '外貌' },
+  { key: 'personality', label: '性格' },
+  { key: 'background', label: '背景' },
+  { key: 'scenario', label: '场景' },
+  { key: 'greeting', label: '开场白' },
+  { key: 'dialogueExamples', label: '对话示例' },
+  { key: 'description', label: '简介' },
+  { key: 'tags', label: '标签' }
+] as const
+const fullGenFields = reactive<Record<string, boolean>>(
+  Object.fromEntries(FULL_GEN_FIELD_OPTIONS.map((opt) => [opt.key, true]))
+)
+const allFullGenFieldsSelected = computed(() =>
+  FULL_GEN_FIELD_OPTIONS.every((opt) => fullGenFields[opt.key])
+)
+function toggleAllFullGenFields(): void {
+  const next = !allFullGenFieldsSelected.value
+  FULL_GEN_FIELD_OPTIONS.forEach((opt) => { fullGenFields[opt.key] = next })
+}
+
 async function handleFullGenerate(): Promise<void> {
   if (fullGenLoading.value) return
+  const selectedFields = FULL_GEN_FIELD_OPTIONS
+    .filter((opt) => fullGenFields[opt.key])
+    .map((opt) => opt.key)
+  if (!selectedFields.includes('name')) {
+    // name 必须保留
+    selectedFields.unshift('name')
+    fullGenFields.name = true
+  }
+
   try {
     const result = await appStore.runTrackedAiTask(
       {
         key: FULL_TASK_KEY,
         kind: 'character',
         label: 'AI 生成人物卡片',
-        description: '正在根据设定自动填充整套人设',
+        description: '正在根据设定自动填充选中的人设字段',
         panel: 'characters'
       },
       () =>
@@ -507,6 +540,7 @@ async function handleFullGenerate(): Promise<void> {
           context: {
             projectId: appStore.currentProject?.id,
             userPrompt: fullGenSetting.value,
+            selectedFields,
             projectTitle: appStore.currentProject?.title,
             projectGenre: appStore.currentProject?.genre,
             writingStyleLabel: writingStyle.value.label,
@@ -531,17 +565,20 @@ async function handleFullGenerate(): Promise<void> {
       background?: string; scenario?: string; greeting?: string; dialogueExamples?: string;
       description?: string; tags?: string[]
     }
-    form.name = suggested.name?.trim() || form.name
-    form.role = suggested.role?.trim() || form.role
-    form.appearance = suggested.appearance?.trim() || form.appearance
-    form.personality = suggested.personality?.trim() || form.personality
-    form.background = suggested.background?.trim() || form.background
-    form.scenario = suggested.scenario?.trim() || form.scenario
-    form.greeting = suggested.greeting?.trim() || form.greeting
-    form.dialogueExamples = suggested.dialogueExamples?.trim() || form.dialogueExamples
-    form.description = suggested.description?.trim() || form.description
-    form.tags = (suggested.tags ?? []).map((t) => String(t))
-    form.customTags = (suggested.tags ?? []).map((t) => String(t))
+    // 仅填入用户勾选的字段
+    if (fullGenFields.name) form.name = suggested.name?.trim() || form.name
+    if (fullGenFields.role) form.role = suggested.role?.trim() || form.role
+    if (fullGenFields.appearance) form.appearance = suggested.appearance?.trim() || form.appearance
+    if (fullGenFields.personality) form.personality = suggested.personality?.trim() || form.personality
+    if (fullGenFields.background) form.background = suggested.background?.trim() || form.background
+    if (fullGenFields.scenario) form.scenario = suggested.scenario?.trim() || form.scenario
+    if (fullGenFields.greeting) form.greeting = suggested.greeting?.trim() || form.greeting
+    if (fullGenFields.dialogueExamples) form.dialogueExamples = suggested.dialogueExamples?.trim() || form.dialogueExamples
+    if (fullGenFields.description) form.description = suggested.description?.trim() || form.description
+    if (fullGenFields.tags) {
+      form.tags = (suggested.tags ?? []).map((t) => String(t))
+      form.customTags = (suggested.tags ?? []).map((t) => String(t))
+    }
     fullGenVisible.value = false
     message.success('人设已自动生成，请检查后保存')
   } catch (error) {
@@ -929,8 +966,29 @@ watch(
     </n-modal>
 
     <!-- AI 完整人设生成 -->
-    <n-modal :show="fullGenVisible" preset="card" title="AI 生成人物卡片" :bordered="false" style="width: min(520px, 92vw)" @close="fullGenVisible = false">
-      <p class="fullgen-hint">输入一段角色设定要点，AI 将自动填充整套人设（外貌、性格、背景、场景、开场白、对话示例、标签）。</p>
+    <n-modal :show="fullGenVisible" preset="card" title="AI 生成人物卡片" :bordered="false" style="width: min(620px, 92vw)" @close="fullGenVisible = false">
+      <p class="fullgen-hint">输入一段角色设定要点，选择需要生成的字段，AI 将自动填充勾选的人设字段（默认全部勾选）。</p>
+      <div class="fullgen-fields">
+        <div class="fullgen-fields-head">
+          <strong>生成字段</strong>
+          <label class="fullgen-toggle-all">
+            <input type="checkbox" :checked="allFullGenFieldsSelected" @change="toggleAllFullGenFields" />
+            <span>{{ allFullGenFieldsSelected ? '取消全选' : '全选' }}</span>
+          </label>
+        </div>
+        <div class="fullgen-field-grid">
+          <label v-for="opt in FULL_GEN_FIELD_OPTIONS" :key="opt.key" class="fullgen-field-item">
+            <input
+              type="checkbox"
+              :checked="fullGenFields[opt.key]"
+              :disabled="opt.key === 'name'"
+              @change="fullGenFields[opt.key] = !fullGenFields[opt.key]"
+            />
+            <span>{{ opt.label }}</span>
+            <small v-if="opt.key === 'name'" class="required-tag">必选</small>
+          </label>
+        </div>
+      </div>
       <n-input v-model:value="fullGenSetting" type="textarea" :rows="4" placeholder="例如：一名身世神秘的古代女医师，表面温和实则背负复仇使命，擅长用毒..." />
       <div class="fullgen-actions">
         <n-button round @click="fullGenVisible = false">取消</n-button>
@@ -1063,6 +1121,16 @@ watch(
 .preview-section b { color: var(--arc-text-primary); }
 .preview-greeting { color: var(--arc-primary); }
 .fullgen-hint { color: var(--arc-text-secondary); font-size: 13px; margin-bottom: 10px; }
+.fullgen-fields { border: 1px solid var(--arc-border); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+.fullgen-fields-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.fullgen-fields-head strong { color: var(--arc-text-primary); font-size: 13px; }
+.fullgen-toggle-all { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--arc-primary); cursor: pointer; }
+.fullgen-toggle-all input { accent-color: var(--arc-primary); }
+.fullgen-field-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; }
+.fullgen-field-item { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--arc-border); border-radius: 6px; padding: 6px 8px; font-size: 12px; color: var(--arc-text-secondary); cursor: pointer; transition: border-color 0.16s ease, background 0.16s ease; }
+.fullgen-field-item:hover { border-color: color-mix(in srgb, var(--arc-primary) 30%, var(--arc-border)); }
+.fullgen-field-item input { accent-color: var(--arc-primary); }
+.fullgen-field-item .required-tag { color: var(--arc-primary); font-size: 10px; font-weight: 800; }
 .fullgen-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
 .prompt-pre { white-space: pre-wrap; word-break: break-word; max-height: 55vh; overflow-y: auto; background: var(--arc-bg-mix); border: 1px solid var(--arc-border); border-radius: 6px; padding: 14px; font-size: 13px; line-height: 1.6; color: var(--arc-text-secondary); }
 .snapshot-list { display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow-y: auto; }

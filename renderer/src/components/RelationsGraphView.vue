@@ -12,10 +12,12 @@ import {
   Search,
   Sparkles,
   Target,
+  Trash2,
   Users,
   ZoomIn,
   ZoomOut
 } from 'lucide-vue-next'
+import { useDialog, useMessage } from 'naive-ui'
 import {
   buildCharacterOrganizationLabels,
   buildOrganizationMemberIds,
@@ -44,6 +46,8 @@ const emit = defineEmits<{
 }>()
 
 const appStore = useAppStore()
+const dialog = useDialog()
+const message = useMessage()
 const isDarkMode = computed(() => appStore.appSettings.darkMode)
 
 const containerRef = ref<HTMLDivElement | null>(null)
@@ -86,6 +90,24 @@ const organizationOptions = computed(() =>
 const selectedOrganization = computed(
   () => organizationOptions.value.find((item) => item.entityId === selectedOrganizationId.value) ?? null
 )
+
+function confirmDeleteOrganization(org: { entityId: string; label: string }): void {
+  dialog.warning({
+    title: '确认删除组织',
+    content: `确定要删除“${org.label}”吗？该组织下的成员归属也会一起清理。`,
+    positiveText: '确认删除',
+    negativeText: '取消',
+    autoFocus: false,
+    closable: false,
+    onPositiveClick: () => {
+      if (selectedOrganizationId.value === org.entityId) {
+        selectedOrganizationId.value = null
+      }
+      appStore.deleteOrganization(org.entityId)
+      message.success('组织已删除')
+    }
+  })
+}
 
 const selectedOrganizationMemberIds = computed(() => buildOrganizationMemberIds(props.graph, selectedOrganizationId.value))
 const displayGraph = computed(() => {
@@ -813,17 +835,30 @@ function syncNodeLabels(): void {
         >
           全部角色
         </button>
-        <button
+        <div
           v-for="organization in organizationOptions"
           :key="organization.entityId"
-          class="organization-chip"
-          :class="{ active: selectedOrganizationId === organization.entityId }"
-          type="button"
-          @click="selectedOrganizationId = organization.entityId"
+          class="organization-chip-wrap"
         >
-          <span class="organization-chip-dot" :style="{ background: organization.accent }"></span>
-          <span>{{ organization.label }}</span>
-        </button>
+          <button
+            class="organization-chip"
+            :class="{ active: selectedOrganizationId === organization.entityId }"
+            type="button"
+            @click="selectedOrganizationId = organization.entityId"
+          >
+            <span class="organization-chip-dot" :style="{ background: organization.accent }"></span>
+            <span>{{ organization.label }}</span>
+          </button>
+          <button
+            class="organization-chip-delete"
+            type="button"
+            title="删除组织"
+            aria-label="删除组织"
+            @click.stop="confirmDeleteOrganization({ entityId: organization.entityId, label: organization.label })"
+          >
+            <Trash2 :size="12" />
+          </button>
+        </div>
       </div>
       <button
         class="subgraph-toggle"
@@ -904,20 +939,20 @@ function syncNodeLabels(): void {
               <component :is="isFullscreen ? Minimize2 : Maximize2" :size="16" />
             </button>
           </div>
-        </div>
 
-        <div class="graph-legend">
-          <div class="legend-item">
-            <span class="legend-dot character"></span>
-            <span>角色节点</span>
-          </div>
-          <div class="legend-item">
-            <span class="legend-line relationship"></span>
-            <span>普通关系</span>
-          </div>
-          <div class="legend-item">
-            <span class="legend-line internal"></span>
-            <span>阵营内高亮关系</span>
+          <div class="graph-legend">
+            <div class="legend-item">
+              <span class="legend-dot character"></span>
+              <span>角色节点</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-line relationship"></span>
+              <span>普通关系</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-line internal"></span>
+              <span>阵营内高亮关系</span>
+            </div>
           </div>
         </div>
       </div>
@@ -1238,6 +1273,46 @@ function syncNodeLabels(): void {
   flex-wrap: wrap;
 }
 
+.organization-chip-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.organization-chip-wrap:hover .organization-chip-delete {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.organization-chip-delete {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--arc-border);
+  border-radius: 999px;
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-hint);
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.8);
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    background 0.16s ease;
+  padding: 0;
+}
+
+.organization-chip-delete:hover {
+  border-color: rgba(239, 68, 68, 0.36);
+  color: #dc2626;
+  background: rgba(239, 68, 68, 0.08);
+}
+
 .organization-chip {
   display: inline-flex;
   align-items: center;
@@ -1418,6 +1493,9 @@ function syncNodeLabels(): void {
 
 .graph-canvas-shell {
   position: relative;
+  overflow: hidden;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--arc-border);
 }
 
 .graph-controls {
@@ -1488,7 +1566,7 @@ function syncNodeLabels(): void {
   height: 660px;
   border-radius: 10px;
   background: var(--arc-bg-body);
-  box-shadow: inset 0 0 0 1px var(--arc-border);
+  overflow: hidden;
 }
 
 .graph-node-label-layer {
@@ -1533,11 +1611,21 @@ function syncNodeLabels(): void {
 }
 
 .graph-legend {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 20;
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 12px;
   flex-wrap: wrap;
-  padding: 12px 4px 0;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--arc-bg-surface) 90%, transparent);
+  padding: 6px 10px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
 }
 
 .legend-item {

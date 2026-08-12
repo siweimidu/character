@@ -171,6 +171,18 @@ const taskObjectSchemas: Partial<Record<AiTaskName, z.ZodTypeAny>> = {
     description: stringField,
     tags: stringList
   }),
+  'character-card-full': z.object({
+    name: stringField,
+    role: stringField.optional(),
+    appearance: stringField.optional(),
+    personality: stringField.optional(),
+    background: stringField.optional(),
+    scenario: stringField.optional(),
+    greeting: stringField.optional(),
+    dialogueExamples: stringField.optional(),
+    description: stringField.optional(),
+    tags: stringList.optional()
+  }),
   'outline-item': outlineItemSchema,
   'outline-batch': z.object({
     entries: z.array(outlineItemSchema)
