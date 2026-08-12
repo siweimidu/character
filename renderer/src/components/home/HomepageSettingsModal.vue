@@ -33,33 +33,33 @@ function applyDarkModeImmediately(value: boolean): void {
   appStore.updateAppSetting('darkMode', value, { flushWorkspace: false })
 }
 
-/** 全局自定义背景图即时上传并持久化 */
+/** 全局自定义背景图：写入草稿状态，点击「保存设置」后统一生效并持久化 */
 async function handlePickGlobalBackground(): Promise<void> {
   const result = await window.characterArc.pickBackgroundImage()
   if (result.success && result.dataUrl) {
-    appStore.updateAppSetting('backgroundImage', result.dataUrl, { flushWorkspace: false })
+    draftSettings.backgroundImage = result.dataUrl
     // 上传背景图时若透明度仍为默认的 0（未设置），将其默认设为 1（完全不透明），
     // 否则背景会被 opacity:0 完全隐藏，表现为「上传了但看不到」。
-    const currentOpacity = appStore.appSettings.backgroundOpacity
+    const currentOpacity = draftSettings.backgroundOpacity
     if (typeof currentOpacity !== 'number' || currentOpacity <= 0) {
-      appStore.updateAppSetting('backgroundOpacity', 1, { flushWorkspace: false })
+      draftSettings.backgroundOpacity = 1
     }
-    message.success('全局背景图已更新')
+    message.success('已选择全局背景图，点击「保存设置」生效')
   } else if (!result.canceled) {
     message.error(result.error ?? '背景图上传失败')
   }
 }
 
-/** 移除全局自定义背景图 */
+/** 移除全局自定义背景图（写入草稿状态） */
 function clearGlobalBackground(): void {
-  appStore.updateAppSetting('backgroundImage', '', { flushWorkspace: false })
-  message.success('已移除全局背景图')
+  draftSettings.backgroundImage = ''
+  message.success('已移除全局背景图，点击「保存设置」生效')
 }
 
-/** 调节全局自定义背景透明度（即时生效） */
+/** 调节全局自定义背景透明度（写入草稿状态） */
 function setGlobalBackgroundOpacity(value: number): void {
   const safe = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0
-  appStore.updateAppSetting('backgroundOpacity', safe, { flushWorkspace: false })
+  draftSettings.backgroundOpacity = safe
 }
 
 function themeTextColor(color: string): string {
@@ -283,6 +283,8 @@ const hasPendingChanges = computed(() =>
   || draftSettings.darkMode !== appStore.appSettings.darkMode
   || draftSettings.darkModeStyle !== appStore.appSettings.darkModeStyle
   || draftSettings.aiTimeoutSeconds !== appStore.appSettings.aiTimeoutSeconds
+  || (draftSettings.backgroundImage ?? '') !== (appStore.appSettings.backgroundImage ?? '')
+  || (draftSettings.backgroundOpacity ?? 0) !== (appStore.appSettings.backgroundOpacity ?? 0)
 )
 
 function syncDraftFromStore(): void {
@@ -313,6 +315,8 @@ function syncDraftFromStore(): void {
   draftSettings.darkMode = appStore.appSettings.darkMode
   draftSettings.darkModeStyle = appStore.appSettings.darkModeStyle
   draftSettings.aiTimeoutSeconds = appStore.appSettings.aiTimeoutSeconds
+  draftSettings.backgroundImage = appStore.appSettings.backgroundImage ?? ''
+  draftSettings.backgroundOpacity = appStore.appSettings.backgroundOpacity ?? 0
   draftTheme.value = appStore.theme
 }
 
@@ -1410,10 +1414,10 @@ async function saveSettings(): Promise<void> {
                 <p>上传一张图片作为全局背景，并调节其不透明度。应用到所有页面。</p>
               </div>
             </div>
-            <div class="custom-background-preview" :class="{ 'has-image': !!appStore.appSettings.backgroundImage }">
+            <div class="custom-background-preview" :class="{ 'has-image': !!draftSettings.backgroundImage }">
               <img
-                v-if="appStore.appSettings.backgroundImage"
-                :src="appStore.appSettings.backgroundImage"
+                v-if="draftSettings.backgroundImage"
+                :src="draftSettings.backgroundImage"
                 alt="全局背景预览"
                 class="custom-background-img"
               />
@@ -1425,10 +1429,10 @@ async function saveSettings(): Promise<void> {
             <div class="custom-background-actions">
               <n-button size="small" round strong @click="handlePickGlobalBackground">
                 <template #icon><Image :size="14" /></template>
-                {{ appStore.appSettings.backgroundImage ? '更换背景图' : '上传背景图' }}
+                {{ draftSettings.backgroundImage ? '更换背景图' : '上传背景图' }}
               </n-button>
               <n-button
-                v-if="appStore.appSettings.backgroundImage"
+                v-if="draftSettings.backgroundImage"
                 size="small"
                 round
                 type="error"
@@ -1442,13 +1446,13 @@ async function saveSettings(): Promise<void> {
               <span class="opacity-label">背景不透明度</span>
               <div class="opacity-control">
                 <n-slider
-                  :value="appStore.appSettings.backgroundOpacity"
+                  :value="draftSettings.backgroundOpacity"
                   :min="0"
                   :max="1"
                   :step="0.05"
                   @update:value="setGlobalBackgroundOpacity"
                 />
-                <span class="opacity-value">{{ Math.round((appStore.appSettings.backgroundOpacity || 0) * 100) }}%</span>
+                <span class="opacity-value">{{ Math.round((draftSettings.backgroundOpacity || 0) * 100) }}%</span>
               </div>
             </div>
           </div>
