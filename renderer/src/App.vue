@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Home, Image, Library, Moon, Settings, Sparkles, Sun, TrendingUp } from 'lucide-vue-next'
+import { Home, Image, Library, Moon, Settings, Sparkles, Sun, Trash2, TrendingUp } from 'lucide-vue-next'
 import { createDiscreteApi, NConfigProvider, NDialogProvider, NGlobalStyle, NMessageProvider, NSpin, darkTheme } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import { createNaiveThemeOverrides, getThemeColorScheme } from '@/theme/presets'
@@ -13,6 +13,7 @@ import DeconstructionLibraryPage from '@/pages/DeconstructionLibraryPage.vue'
 import SkillsPage from '@/pages/SkillsPage.vue'
 import CoverWorkbenchPage from '@/pages/CoverWorkbenchPage.vue'
 import FanqieTrendsPage from '@/pages/FanqieTrendsPage.vue'
+import RecycleBinPage from '@/pages/RecycleBinPage.vue'
 import AiTaskProgressDock from '@/components/AiTaskProgressDock.vue'
 import TitlebarModelSwitcher from '@/components/TitlebarModelSwitcher.vue'
 import HomepageSettingsModal from '@/components/home/HomepageSettingsModal.vue'
@@ -233,6 +234,15 @@ onBeforeUnmount(() => {
               >
                 <TrendingUp :size="16" />
               </button>
+              <button
+                type="button"
+                class="app-titlebar__nav-btn"
+                title="回收站"
+                aria-label="回收站"
+                @click="appStore.openRecycleBin()"
+              >
+                <Trash2 :size="16" />
+              </button>
             </div>
             <div class="app-titlebar__tools">
               <TitlebarModelSwitcher />
@@ -267,6 +277,7 @@ onBeforeUnmount(() => {
               <SkillsPage v-else-if="appStore.currentView === 'skills'" key="skills" />
               <CoverWorkbenchPage v-else-if="appStore.currentView === 'cover-workbench'" key="cover-workbench" />
               <FanqieTrendsPage v-else-if="appStore.currentView === 'fanqie-trends'" key="fanqie-trends" />
+              <RecycleBinPage v-else-if="appStore.currentView === 'recycle-bin'" key="recycle-bin" />
               <WorkbenchPage v-else key="workbench" />
             </Transition>
           </div>

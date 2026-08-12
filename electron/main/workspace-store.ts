@@ -367,6 +367,17 @@ export async function ensureWorkspaceDb(): Promise<DatabaseSync> {
       updated_at TEXT NOT NULL,
       FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
     ) STRICT;
+
+    CREATE TABLE IF NOT EXISTS recycle_bin (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL DEFAULT '',
+      category TEXT NOT NULL,
+      title TEXT NOT NULL,
+      summary TEXT NOT NULL DEFAULT '',
+      data_json TEXT NOT NULL DEFAULT '{}',
+      deleted_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL
+    ) STRICT;
   `)
 
   const worldviewColumns = db.prepare(`PRAGMA table_info(worldview_entries)`).all() as Array<{ name: string }>
@@ -940,7 +951,8 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
         targetPlatform: row.targetPlatform,
         authorName: row.authorName,
         extraNotes: row.extraNotes
-      }))
+      })),
+      globalRecycleBin: []
     }
   }
 
@@ -1225,6 +1237,27 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
     extraNotes: string
   }>
 
+  const recycleBinRows = db.prepare(`
+    SELECT id, project_id AS projectId, category, title, summary, data_json AS dataJson, deleted_at AS deletedAt, expires_at AS expiresAt
+    FROM recycle_bin
+  `).all() as Array<{
+    id: string
+    projectId: string
+    category: string
+    title: string
+    summary: string
+    dataJson: string
+    deletedAt: string
+    expiresAt: string
+  }>
+
+  const globalRecycleBin = recycleBinRows
+    .filter((row) => !row.projectId)
+    .map(({ projectId: _p, dataJson, ...entry }) => ({
+      ...entry,
+      data: parseJson(dataJson, {})
+    }))
+
   const settings = db.prepare(`
     SELECT theme, selected_project_id AS selectedProjectId, provider, api_key AS apiKey, base_url AS baseUrl, proxy_url AS proxyUrl, temperature, top_p AS topP, auto_save_interval AS autoSaveInterval, editor_font AS editorFont
     , model, ai_profiles_json AS aiProfilesJson, active_ai_profile_id AS activeAiProfileId, image_provider AS imageProvider, image_model AS imageModel, image_api_key AS imageApiKey, image_base_url AS imageBaseUrl, ui_scale AS uiScale, dark_mode AS darkMode, dark_mode_style AS darkModeStyle
@@ -1283,6 +1316,22 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
   const messagesByProject = groupBy(messages)
   const assistantSessionsByProject = groupBy(assistantSessions)
   const plotThreadsByProject = groupBy(plotThreads)
+  const recycleBinByProject = new Map<string, Array<{ id: string; category: string; title: string; summary: string; data: Record<string, unknown>; deletedAt: string; expiresAt: string }>>()
+  for (const row of recycleBinRows) {
+    if (!row.projectId) continue
+    const list = recycleBinByProject.get(row.projectId)
+    const mapped = {
+      id: row.id,
+      category: row.category,
+      title: row.title,
+      summary: row.summary,
+      data: parseJson(row.dataJson, {}),
+      deletedAt: row.deletedAt,
+      expiresAt: row.expiresAt
+    }
+    if (list) list.push(mapped)
+    else recycleBinByProject.set(row.projectId, [mapped])
+  }
 
   // workflow documents need compound key: projectId + volumeId
   const workflowByProjectVolume = new Map<string, typeof workflowDocuments>()
@@ -1339,7 +1388,8 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
             ...thread,
             tags: parseJson(tagsJson, [] as string[]),
             characterIds: parseJson(characterIdsJson, [] as string[])
-          }))
+          })),
+        recycleBin: recycleBinByProject.get(project.id) ?? []
       }
     ])
   ) as WorkspacePayload['workspaces']
@@ -1373,6 +1423,7 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
         darkMode: Boolean(settings.darkMode)
       })
     },
+    globalRecycleBin,
     coverWorkbenchHistory: coverWorkbenchHistoryRows.map((row) => ({
       id: row.id,
       createdAt: row.createdAt,
@@ -1410,7 +1461,8 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
       workflow_documents: new Set(),
       plot_threads: new Set(),
       assistant_sessions: new Set(),
-      cover_workbench_history: new Set()
+      cover_workbench_history: new Set(),
+      recycle_bin: new Set()
     }
 
     const insertProject = db.prepare(`
@@ -1543,6 +1595,11 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
+    const insertRecycleBin = db.prepare(`
+      INSERT OR REPLACE INTO recycle_bin (id, project_id, category, title, summary, data_json, deleted_at, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+
     for (const project of payload.projects) {
       const workspace = payload.workspaces[project.id] ?? {
         worldviewEntries: [],
@@ -1561,7 +1618,8 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
         knowledgeDocuments: [],
         aiRuns: [],
         workflowDocuments: [],
-        plotThreads: []
+        plotThreads: [],
+        recycleBin: []
       }
 
       workspace.worldviewEntries.forEach((entry, index) => {
@@ -1799,7 +1857,35 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
           thread.updatedAt
         )
       })
+
+      ;(workspace.recycleBin ?? []).forEach((entry) => {
+        allIds.recycle_bin.add(entry.id)
+        insertRecycleBin.run(
+          entry.id,
+          String(entry.projectId ?? project.id),
+          entry.category,
+          entry.title,
+          String(entry.summary ?? ''),
+          JSON.stringify(entry.data ?? {}),
+          entry.deletedAt,
+          entry.expiresAt
+        )
+      })
     }
+
+    ;(payload.globalRecycleBin ?? []).forEach((entry) => {
+      allIds.recycle_bin.add(entry.id)
+      insertRecycleBin.run(
+        entry.id,
+        String(entry.projectId ?? ''),
+        entry.category,
+        entry.title,
+        String(entry.summary ?? ''),
+        JSON.stringify(entry.data ?? {}),
+        entry.deletedAt,
+        entry.expiresAt
+      )
+    })
 
     const normalizedAppSettings = normalizeAppSettings(payload.appSettings)
 

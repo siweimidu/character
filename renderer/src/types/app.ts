@@ -892,6 +892,51 @@ export interface ProjectWorkspaceData {
   workflowDocuments: WorkflowDocument[]
   /** 伏笔线索列表 */
   plotThreads: PlotThread[]
+  /** 本项目回收站中的删除记录 */
+  recycleBin: RecycleBinEntry[]
+}
+
+/** 回收站条目类别：软件内所有可删除内容的来源归类 */
+export type RecycleBinCategory =
+  | 'worldview'
+  | 'character'
+  | 'organization'
+  | 'relationship'
+  | 'membership'
+  | 'inspiration'
+  | 'outline'
+  | 'outline-volume'
+  | 'plot-thread'
+  | 'chapter'
+  | 'knowledge-document'
+  | 'assistant-session'
+  | 'ai-profile'
+  | 'reference-work'
+
+/** 回收站中的单条删除记录，保存被删除实体的完整快照用于恢复 */
+export interface RecycleBinEntry {
+  /** 回收站记录唯一标识 */
+  id: string
+  /** 来源类别 */
+  category: RecycleBinCategory
+  /** 所属项目 ID；全局数据（AI 接口、参考作品等）为空字符串 */
+  projectId?: string
+  /** 展示标题（用于列表展示） */
+  title: string
+  /** 简短摘要 / 描述片段 */
+  summary?: string
+  /** 被删除实体的完整快照，用于一键恢复 */
+  data: Record<string, unknown>
+  /** 删除时间 ISO 时间戳 */
+  deletedAt: string
+  /** 到期自动删除时间 ISO 时间戳 */
+  expiresAt: string
+}
+
+/** 回收站全局配置 */
+export interface RecycleBinSettings {
+  /** 内容保留天数，默认 5 天 */
+  retentionDays: number
 }
 
 /** 导入/导出的模块类型标识 */
@@ -993,6 +1038,8 @@ export interface AppSettings {
   darkModeStyle: DarkModeStyle
   /** 旧数据兼容字段；AI 请求不再按时长自动取消。 */
   aiTimeoutSeconds: number
+  /** 回收站全局配置：内容保留天数 */
+  recycleBinSettings?: RecycleBinSettings
 }
 
 /** 封面工作台独立生图历史条目 */

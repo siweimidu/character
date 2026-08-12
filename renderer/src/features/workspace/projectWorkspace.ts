@@ -15,6 +15,7 @@ import type {
   OutlineVolume,
   PlotThread,
   ProjectWorkspaceData,
+  RecycleBinEntry,
   WorkflowDocument,
   WorldviewEntry
 } from '@/types/app'
@@ -97,6 +98,20 @@ function normalizeInspirationEntries(inspirationEntries?: InspirationEntry[]): I
     sortOrder: index,
     createdAt: toIsoTimestamp(entry.createdAt),
     updatedAt: toIsoTimestamp(entry.updatedAt || entry.createdAt)
+  }))
+}
+
+// 校正回收站条目：确保字段完整、时间戳合法
+function normalizeRecycleBin(entries?: RecycleBinEntry[]): RecycleBinEntry[] {
+  return (entries ?? []).map((entry) => ({
+    ...entry,
+    id: String(entry.id ?? '').trim() || `recycle-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    category: entry.category,
+    title: String(entry.title ?? '未命名').trim() || '未命名',
+    summary: entry.summary ? String(entry.summary) : '',
+    data: entry.data && typeof entry.data === 'object' ? entry.data : {},
+    deletedAt: toIsoTimestamp(entry.deletedAt),
+    expiresAt: toIsoTimestamp(entry.expiresAt || entry.deletedAt)
   }))
 }
 
@@ -456,7 +471,8 @@ export function createEmptyWorkspace(overrides?: Partial<ProjectWorkspaceData>):
     activeGlobalAssistantSessionId: assistantSessionState.activeSessionId,
     aiRuns: cloneAiRuns(overrides?.aiRuns),
     workflowDocuments: normalizeWorkflowDocuments(overrides?.workflowDocuments as WorkflowDocument[] | undefined),
-    plotThreads: Array.isArray(overrides?.plotThreads) ? (overrides.plotThreads as PlotThread[]) : []
+    plotThreads: Array.isArray(overrides?.plotThreads) ? (overrides.plotThreads as PlotThread[]) : [],
+    recycleBin: normalizeRecycleBin(overrides?.recycleBin)
   }
 }
 
@@ -514,6 +530,7 @@ export function normalizeWorkspace(
     activeGlobalAssistantSessionId: assistantSessionState.activeSessionId,
     aiRuns: cloneAiRuns(workspace.aiRuns),
     workflowDocuments: normalizeWorkflowDocuments(projectLevelDocs),
-    plotThreads: Array.isArray(workspace.plotThreads) ? (workspace.plotThreads as PlotThread[]) : []
+    plotThreads: Array.isArray(workspace.plotThreads) ? (workspace.plotThreads as PlotThread[]) : [],
+    recycleBin: normalizeRecycleBin(workspace.recycleBin)
   }
 }

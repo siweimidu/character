@@ -218,7 +218,7 @@ export const useAppStore = defineStore('app', () => {
   /** 是否已完成初始化水合（从 SQLite 加载数据） */
   const hasHydrated = ref(false)
   /** 当前视图：项目列表 / 新建向导 / 工作台 / 章节写作 / 独立能力页 */
-  const currentView = ref<'projects' | 'wizard' | 'continuation-import' | 'workbench' | 'chapter-studio' | 'deconstruction-library' | 'skills' | 'cover-workbench' | 'fanqie-trends'>('projects')
+  const currentView = ref<'projects' | 'wizard' | 'continuation-import' | 'workbench' | 'chapter-studio' | 'deconstruction-library' | 'skills' | 'cover-workbench' | 'fanqie-trends' | 'recycle-bin'>('projects')
   /** 工作台中当前激活的面板 */
   const activePanel = ref<PanelName>('outline')
   /** 上一次在工作台中查看的面板（非 chapters），用于从章节写作返回时恢复 */
@@ -325,6 +325,21 @@ export const useAppStore = defineStore('app', () => {
   )
   /** 全局拆书库参考作品（跨项目共享） */
   const referenceWorks = ref<ReferenceWorkItem[]>(stored.referenceWorks ?? [])
+  /** 全局回收站：存放 AI 接口配置、参考作品等全局数据的删除快照 */
+  const globalRecycleBin = ref<import('@/types/app').RecycleBinEntry[]>(stored.globalRecycleBin ?? [])
+  /** 当前项目的回收站条目（项目级删除内容） */
+  const projectRecycleBin = computed(() => currentWorkspace.value.recycleBin)
+  /** 汇总全部回收站条目：项目级 + 全局级，按删除时间倒序 */
+  const allRecycleBinEntries = computed<import('@/types/app').RecycleBinEntry[]>(() =>
+    [...(projectRecycleBin.value ?? []), ...globalRecycleBin.value].sort((a, b) =>
+      (b.deletedAt || '').localeCompare(a.deletedAt || '')
+    )
+  )
+  /** 回收站配置：内容保留天数，默认 5 天 */
+  const recycleBinRetentionDays = computed<number>(() => {
+    const configured = appSettings.value.recycleBinSettings?.retentionDays
+    return Number.isFinite(configured) && (configured as number) > 0 ? (configured as number) : 5
+  })
   /** 当前项目关联的 AI 运行记录列表 */
   const aiRuns = computed(() => globalAiRuns.value.filter((run) => run.projectId === selectedProjectId.value))
   /**
@@ -622,6 +637,9 @@ export const useAppStore = defineStore('app', () => {
     referenceWorks.value = Array.isArray((payload as Partial<StoredState>).referenceWorks)
       ? (payload as Partial<StoredState>).referenceWorks!
       : []
+    globalRecycleBin.value = Array.isArray((payload as Partial<StoredState>).globalRecycleBin)
+      ? (payload as Partial<StoredState>).globalRecycleBin!
+      : []
     const workspaceAiRuns = Object.entries(projectWorkspaces.value).flatMap(([projectId, workspace]) =>
       (workspace.aiRuns ?? []).map((run) => ({ ...run, projectId: run.projectId || projectId }))
     )
@@ -651,7 +669,8 @@ export const useAppStore = defineStore('app', () => {
       referenceWorks: toSerializable(referenceWorks.value),
       aiRuns: toSerializable(globalAiRuns.value),
       appSettings: toSerializable(appSettings.value),
-      coverWorkbenchHistory: toSerializable(coverWorkbenchHistory.value)
+      coverWorkbenchHistory: toSerializable(coverWorkbenchHistory.value),
+      globalRecycleBin: toSerializable(globalRecycleBin.value)
     }
   }
 
@@ -671,6 +690,9 @@ export const useAppStore = defineStore('app', () => {
     }
 
     hasHydrated.value = true
+
+    // 启动时清理已过期的回收站条目（到期自动删除）
+    purgeExpiredRecycleBin()
   }
 
   // ── 项目导入 ──
@@ -1042,6 +1064,10 @@ export const useAppStore = defineStore('app', () => {
   }
 
   /** 返回项目列表页 */
+  function openRecycleBin(): void {
+    currentView.value = 'recycle-bin'
+  }
+
   function backToProjects(): void {
     currentView.value = 'projects'
   }
@@ -1131,6 +1157,269 @@ export const useAppStore = defineStore('app', () => {
       outlineVolumes: [starterVolume],
       chapters: [buildStarterChapter(starterVolume.id)]
     })
+  }
+
+  // ── 回收站 ──
+
+  /** 计算某条回收站记录默认的到期时间（基于全局保留天数） */
+  function resolveRecycleExpiry(deletedAt?: string): string {
+    const base = deletedAt ? new Date(deletedAt) : new Date()
+    const expiry = new Date(base.getTime() + recycleBinRetentionDays.value * 24 * 60 * 60 * 1000)
+    return expiry.toISOString()
+  }
+
+  /** 向当前项目回收站写入一条删除记录 */
+  function pushRecycleEntry(
+    category: import('@/types/app').RecycleBinCategory,
+    title: string,
+    data: Record<string, unknown>,
+    options: { projectId?: string; summary?: string } = {}
+  ): void {
+    const now = new Date().toISOString()
+    const entry: import('@/types/app').RecycleBinEntry = {
+      id: `recycle-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      category,
+      projectId: options.projectId ?? selectedProjectId.value,
+      title: String(title ?? '').trim() || '未命名',
+      summary: options.summary,
+      data: data ?? {},
+      deletedAt: now,
+      expiresAt: resolveRecycleExpiry(now)
+    }
+
+    // 全局类别（AI 接口、参考作品等）写入全局回收站
+    if (category === 'ai-profile' || category === 'reference-work') {
+      globalRecycleBin.value = [entry, ...globalRecycleBin.value]
+    } else {
+      updateCurrentWorkspace((workspace) => ({
+        ...workspace,
+        recycleBin: [entry, ...(workspace.recycleBin ?? [])]
+      }))
+    }
+    schedulePersist('fast')
+  }
+
+  /** 移除过期回收站条目（到期自动删除），并返回移除数量 */
+  function purgeExpiredRecycleBin(): number {
+    const now = Date.now()
+    let removed = 0
+
+    // 清理全局回收站过期项
+    const nextGlobal = globalRecycleBin.value.filter((entry) => {
+      const expired = new Date(entry.expiresAt).getTime() <= now
+      if (expired) removed += 1
+      return !expired
+    })
+    if (nextGlobal.length !== globalRecycleBin.value.length) {
+      globalRecycleBin.value = nextGlobal
+      schedulePersist('fast')
+    }
+
+    // 清理每个项目回收站的过期项
+    for (const [projectId, workspace] of Object.entries(projectWorkspaces.value)) {
+      const nextEntries = (workspace.recycleBin ?? []).filter((entry) => {
+        const expired = new Date(entry.expiresAt).getTime() <= now
+        if (expired) removed += 1
+        return !expired
+      })
+      if (nextEntries.length !== (workspace.recycleBin ?? []).length) {
+        projectWorkspaces.value = {
+          ...projectWorkspaces.value,
+          [projectId]: {
+            ...workspace,
+            recycleBin: nextEntries
+          }
+        }
+        schedulePersist('fast')
+      }
+    }
+
+    return removed
+  }
+
+  /** 从回收站永久删除一条记录 */
+  function permanentlyDeleteRecycleEntry(entryId: string): void {
+    const cleanedGlobal = globalRecycleBin.value.filter((entry) => entry.id !== entryId)
+    if (cleanedGlobal.length !== globalRecycleBin.value.length) {
+      globalRecycleBin.value = cleanedGlobal
+      schedulePersist('fast')
+      return
+    }
+
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      recycleBin: (workspace.recycleBin ?? []).filter((entry) => entry.id !== entryId)
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 清空回收站（永久删除全部条目） */
+  function emptyRecycleBin(): void {
+    const hasGlobal = globalRecycleBin.value.length > 0
+    const hasProject = (currentWorkspace.value.recycleBin ?? []).length > 0
+    if (hasGlobal) {
+      globalRecycleBin.value = []
+      schedulePersist('fast')
+    }
+    if (hasProject) {
+      updateCurrentWorkspace((workspace) => ({ ...workspace, recycleBin: [] }))
+      schedulePersist('fast')
+    }
+  }
+
+  /** 从回收站恢复一条记录：根据类别将快照写回对应集合 */
+  function restoreRecycleEntry(entryId: string): boolean {
+    // 查找条目（全局或当前项目）
+    let entry = globalRecycleBin.value.find((item) => item.id === entryId)
+    let isGlobal = Boolean(entry)
+    if (!entry) {
+      entry = currentWorkspace.value.recycleBin?.find((item) => item.id === entryId)
+    }
+    if (!entry) return false
+
+    const data = entry.data ?? {}
+    switch (entry.category) {
+      case 'worldview': {
+        updateCurrentWorkspace((workspace) => ({
+          ...workspace,
+          worldviewEntries: [...workspace.worldviewEntries, data as unknown as import('@/types/app').WorldviewEntry]
+        }))
+        break
+      }
+      case 'character': {
+        updateCurrentWorkspace((workspace) => ({
+          ...workspace,
+          characters: [...workspace.characters, data as unknown as import('@/types/app').CharacterCard]
+        }))
+        break
+      }
+      case 'organization': {
+        updateCurrentWorkspace((workspace) => ({
+          ...workspace,
+          organizations: [...workspace.organizations, data as unknown as import('@/types/app').OrganizationEntry]
+        }))
+        break
+      }
+      case 'relationship': {
+        updateCurrentWorkspace((workspace) => ({
+          ...workspace,
+          characterRelationships: [...workspace.characterRelationships, data as unknown as import('@/types/app').CharacterRelationship]
+        }))
+        break
+      }
+      case 'membership': {
+        updateCurrentWorkspace((workspace) => ({
+          ...workspace,
+          organizationMemberships: [...workspace.organizationMemberships, data as unknown as import('@/types/app').OrganizationMembership]
+        }))
+        break
+      }
+      case 'inspiration': {
+        updateCurrentWorkspace((workspace) => ({
+          ...workspace,
+          inspirationEntries: [...workspace.inspirationEntries, data as unknown as import('@/types/app').InspirationEntry]
+        }))
+        break
+      }
+      case 'outline': {
+        updateCurrentWorkspace((workspace) => ({
+          ...workspace,
+          outlineItems: [...workspace.outlineItems, data as unknown as import('@/types/app').OutlineItem]
+        }))
+        break
+      }
+      case 'outline-volume': {
+        updateCurrentWorkspace((workspace) => ({
+          ...workspace,
+          outlineVolumes: [...workspace.outlineVolumes, data as unknown as import('@/types/app').OutlineVolume]
+        }))
+        break
+      }
+      case 'plot-thread': {
+        updateCurrentWorkspace((workspace) => ({
+          ...workspace,
+          plotThreads: [...workspace.plotThreads, data as unknown as import('@/types/app').PlotThread]
+        }))
+        break
+      }
+      case 'chapter': {
+        updateCurrentWorkspace((workspace) => ({
+          ...workspace,
+          chapters: [...workspace.chapters, data as unknown as import('@/types/app').ChapterDraft]
+        }))
+        break
+      }
+      case 'knowledge-document': {
+        const doc = data as unknown as import('@/types/app').KnowledgeDocument
+        allKnowledgeDocuments.value = [...allKnowledgeDocuments.value, doc]
+        break
+      }
+      case 'assistant-session': {
+        const session = data as unknown as import('@/types/app').GlobalAssistantSession
+        updateCurrentWorkspace((workspace) => ({
+          ...workspace,
+          globalAssistantSessions: [...workspace.globalAssistantSessions, session]
+        }))
+        break
+      }
+      case 'ai-profile': {
+        const profile = data as unknown as import('@/types/app').AiProfile
+        if (!appSettings.value.aiProfiles.some((p) => p.id === profile.id)) {
+          appSettings.value.aiProfiles.push(profile)
+        }
+        scheduleSettingsPersist()
+        break
+      }
+      case 'reference-work': {
+        const work = data as unknown as import('@/types/app').ReferenceWorkItem
+        if (!referenceWorks.value.some((item) => item.id === work.id)) {
+          referenceWorks.value = [...referenceWorks.value, work]
+        }
+        schedulePersist('fast')
+        break
+      }
+      default:
+        return false
+    }
+
+    // 恢复成功后从回收站移除该记录
+    if (isGlobal) {
+      globalRecycleBin.value = globalRecycleBin.value.filter((item) => item.id !== entryId)
+    } else {
+      updateCurrentWorkspace((workspace) => ({
+        ...workspace,
+        recycleBin: (workspace.recycleBin ?? []).filter((item) => item.id !== entryId)
+      }))
+    }
+    schedulePersist('fast')
+    return true
+  }
+
+  /** 更新回收站保留天数配置 */
+  function setRecycleBinRetentionDays(days: number): void {
+    const safe = Number.isFinite(days) && days >= 1 ? Math.floor(days) : 5
+    appSettings.value = {
+      ...appSettings.value,
+      recycleBinSettings: {
+        retentionDays: safe
+      }
+    }
+    // 更新已有条目的到期时间按新配置重算（仅对未过期的保留）
+    const now = Date.now()
+    globalRecycleBin.value = globalRecycleBin.value.map((entry) => {
+      const base = new Date(entry.deletedAt)
+      const expiresAt = new Date(base.getTime() + safe * 24 * 60 * 60 * 1000)
+      return { ...entry, expiresAt: expiresAt.toISOString() }
+    })
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      recycleBin: (workspace.recycleBin ?? []).map((entry) => {
+        const base = new Date(entry.deletedAt)
+        const expiresAt = new Date(base.getTime() + safe * 24 * 60 * 60 * 1000)
+        return { ...entry, expiresAt: expiresAt.toISOString() }
+      })
+    }))
+    scheduleSettingsPersist()
   }
 
   /** 删除项目；若删除的是当前项目，自动切到剩余首个项目，删空时停留在项目中心空状态 */
@@ -1234,6 +1523,8 @@ export const useAppStore = defineStore('app', () => {
       return
     }
 
+    const removed = allKnowledgeDocuments.value.filter((document) => idSet.has(document.id))
+    removed.forEach((document) => pushRecycleEntry('knowledge-document', document.title, { ...document }))
     allKnowledgeDocuments.value = allKnowledgeDocuments.value.filter((document) => !idSet.has(document.id))
     schedulePersist('fast')
   }
@@ -1316,7 +1607,11 @@ export const useAppStore = defineStore('app', () => {
   function removeReferenceWork(referenceWorkId: string): void {
     const trimmedId = String(referenceWorkId ?? '').trim()
     if (!trimmedId) return
+    const target = referenceWorks.value.find((item) => item.id === trimmedId)
     referenceWorks.value = referenceWorks.value.filter((item) => item.id !== trimmedId)
+    if (target) {
+      pushRecycleEntry('reference-work', target.title, { ...target })
+    }
     for (const project of projects.value) {
       const ids = project.selectedReferenceWorkIds ?? []
       if (ids.includes(trimmedId)) {
@@ -1497,6 +1792,10 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function deleteWorldviewEntry(entryId: string): void {
+    const target = currentWorkspace.value.worldviewEntries.find((entry) => entry.id === entryId)
+    if (target) {
+      pushRecycleEntry('worldview', target.title, { ...target })
+    }
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       worldviewEntries: reindexWorldviewEntries(workspace.worldviewEntries.filter((entry) => entry.id !== entryId))
@@ -1508,6 +1807,9 @@ export const useAppStore = defineStore('app', () => {
   function deleteWorldviewEntries(entryIds: string[]): void {
     if (!entryIds.length) return
     const idSet = new Set(entryIds)
+    currentWorkspace.value.worldviewEntries
+      .filter((entry) => idSet.has(entry.id))
+      .forEach((entry) => pushRecycleEntry('worldview', entry.title, { ...entry }))
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       worldviewEntries: reindexWorldviewEntries(
@@ -1726,6 +2028,10 @@ export const useAppStore = defineStore('app', () => {
 
   /** 删除角色，同时清理其所有关系和组织归属 */
   function deleteCharacter(characterId: string): void {
+    const target = currentWorkspace.value.characters.find((character) => character.id === characterId)
+    if (target) {
+      pushRecycleEntry('character', target.name, { ...target })
+    }
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       characters: workspace.characters.filter((character) => character.id !== characterId),
@@ -1744,6 +2050,9 @@ export const useAppStore = defineStore('app', () => {
   function deleteCharacters(characterIds: string[]): void {
     if (!characterIds.length) return
     const idSet = new Set(characterIds)
+    currentWorkspace.value.characters
+      .filter((character) => idSet.has(character.id))
+      .forEach((character) => pushRecycleEntry('character', character.name, { ...character }))
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       characters: workspace.characters.filter((character) => !idSet.has(character.id)),
@@ -1810,6 +2119,10 @@ export const useAppStore = defineStore('app', () => {
 
   /** 删除组织，同时清理其所有成员归属关系 */
   function deleteOrganization(organizationId: string): void {
+    const target = currentWorkspace.value.organizations.find((organization) => organization.id === organizationId)
+    if (target) {
+      pushRecycleEntry('organization', target.name, { ...target })
+    }
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       organizations: reindexOrganizations(
@@ -1826,6 +2139,9 @@ export const useAppStore = defineStore('app', () => {
   function deleteOrganizations(organizationIds: string[]): void {
     if (!organizationIds.length) return
     const idSet = new Set(organizationIds)
+    currentWorkspace.value.organizations
+      .filter((organization) => idSet.has(organization.id))
+      .forEach((organization) => pushRecycleEntry('organization', organization.name, { ...organization }))
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       organizations: reindexOrganizations(
@@ -1897,6 +2213,10 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function deleteCharacterRelationship(relationshipId: string): void {
+    const target = currentWorkspace.value.characterRelationships.find((relationship) => relationship.id === relationshipId)
+    if (target) {
+      pushRecycleEntry('relationship', `关系：${target.type || '未命名'}`, { ...target })
+    }
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       characterRelationships: workspace.characterRelationships.filter(
@@ -1910,6 +2230,11 @@ export const useAppStore = defineStore('app', () => {
   function deleteCharacterRelationships(relationshipIds: string[]): void {
     if (!relationshipIds.length) return
     const idSet = new Set(relationshipIds)
+    currentWorkspace.value.characterRelationships
+      .filter((relationship) => idSet.has(relationship.id))
+      .forEach((relationship) =>
+        pushRecycleEntry('relationship', `关系：${relationship.type || '未命名'}`, { ...relationship })
+      )
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       characterRelationships: workspace.characterRelationships.filter(
@@ -1963,6 +2288,10 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function deleteOrganizationMembership(membershipId: string): void {
+    const target = currentWorkspace.value.organizationMemberships.find((membership) => membership.id === membershipId)
+    if (target) {
+      pushRecycleEntry('membership', `成员归属：${target.role || '成员'}`, { ...target })
+    }
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       organizationMemberships: workspace.organizationMemberships.filter(
@@ -1976,6 +2305,11 @@ export const useAppStore = defineStore('app', () => {
   function deleteOrganizationMemberships(membershipIds: string[]): void {
     if (!membershipIds.length) return
     const idSet = new Set(membershipIds)
+    currentWorkspace.value.organizationMemberships
+      .filter((membership) => idSet.has(membership.id))
+      .forEach((membership) =>
+        pushRecycleEntry('membership', `成员归属：${membership.role || '成员'}`, { ...membership })
+      )
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       organizationMemberships: workspace.organizationMemberships.filter(
@@ -2050,6 +2384,10 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function deleteInspirationEntry(entryId: string): void {
+    const target = currentWorkspace.value.inspirationEntries.find((entry) => entry.id === entryId)
+    if (target) {
+      pushRecycleEntry('inspiration', target.title, { ...target })
+    }
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       inspirationEntries: reindexInspirationEntries(
@@ -2063,6 +2401,9 @@ export const useAppStore = defineStore('app', () => {
   function deleteInspirationEntries(entryIds: string[]): void {
     if (!entryIds.length) return
     const idSet = new Set(entryIds)
+    currentWorkspace.value.inspirationEntries
+      .filter((entry) => idSet.has(entry.id))
+      .forEach((entry) => pushRecycleEntry('inspiration', entry.title, { ...entry }))
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       inspirationEntries: reindexInspirationEntries(
@@ -2122,6 +2463,10 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function deletePlotThread(threadId: string): void {
+    const target = currentWorkspace.value.plotThreads.find((thread) => thread.id === threadId)
+    if (target) {
+      pushRecycleEntry('plot-thread', target.title, { ...target })
+    }
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       plotThreads: workspace.plotThreads.filter((thread) => thread.id !== threadId)
@@ -2133,6 +2478,9 @@ export const useAppStore = defineStore('app', () => {
   function deletePlotThreads(threadIds: string[]): void {
     if (!threadIds.length) return
     const idSet = new Set(threadIds)
+    currentWorkspace.value.plotThreads
+      .filter((thread) => idSet.has(thread.id))
+      .forEach((thread) => pushRecycleEntry('plot-thread', thread.title, { ...thread }))
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       plotThreads: workspace.plotThreads.filter((thread) => !idSet.has(thread.id))
@@ -2280,6 +2628,11 @@ export const useAppStore = defineStore('app', () => {
     const volumeIndex = outlineVolumes.value.findIndex((volume) => volume.id === volumeId)
     if (volumeIndex === -1) {
       return
+    }
+
+    const targetVolume = outlineVolumes.value[volumeIndex]
+    if (targetVolume) {
+      pushRecycleEntry('outline-volume', targetVolume.title, { ...targetVolume })
     }
 
     let fallbackVolumeId = ''
@@ -2742,6 +3095,10 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function deleteOutlineItem(outlineId: string): void {
+    const target = currentWorkspace.value.outlineItems.find((item) => item.id === outlineId)
+    if (target) {
+      pushRecycleEntry('outline', target.title, { ...target })
+    }
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       outlineItems: reindexOutlineItems(workspace.outlineItems.filter((item) => item.id !== outlineId))
@@ -2753,6 +3110,9 @@ export const useAppStore = defineStore('app', () => {
   function deleteOutlineItems(outlineIds: string[]): void {
     if (!outlineIds.length) return
     const idSet = new Set(outlineIds)
+    currentWorkspace.value.outlineItems
+      .filter((item) => idSet.has(item.id))
+      .forEach((item) => pushRecycleEntry('outline', item.title, { ...item }))
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       outlineItems: reindexOutlineItems(
@@ -2833,6 +3193,10 @@ export const useAppStore = defineStore('app', () => {
       return
     }
 
+    const target = currentWorkspace.value.chapters.find((chapter) => chapter.id === chapterId)
+    if (target) {
+      pushRecycleEntry('chapter', target.title, { ...target })
+    }
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       chapters: workspace.chapters.filter((chapter) => chapter.id !== chapterId),
@@ -3109,7 +3473,11 @@ export const useAppStore = defineStore('app', () => {
 
   function deleteAiProfile(profileId: string): void {
     if (profileId === appSettings.value.activeAiProfileId) return
+    const target = appSettings.value.aiProfiles.find((p) => p.id === profileId)
     appSettings.value.aiProfiles = appSettings.value.aiProfiles.filter(p => p.id !== profileId)
+    if (target) {
+      pushRecycleEntry('ai-profile', target.name || target.model || '未命名接口', { ...target })
+    }
     scheduleSettingsPersist()
   }
 
@@ -3460,6 +3828,10 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function deleteAssistantSession(sessionId: string): void {
+    const target = currentWorkspace.value.globalAssistantSessions.find((session) => session.id === sessionId)
+    if (target) {
+      pushRecycleEntry('assistant-session', target.title || '智能体对话', { ...target })
+    }
     updateCurrentWorkspace((workspace) => {
       const nextSessions = workspace.globalAssistantSessions.filter((session) => session.id !== sessionId)
       const fallbackSession = nextSessions.find((session) => session.id === workspace.activeGlobalAssistantSessionId)
@@ -3713,10 +4085,19 @@ export const useAppStore = defineStore('app', () => {
     autoSaveIntervalLabel,
     aiRuns,
     allAiRuns,
+    allRecycleBinEntries,
+    emptyRecycleBin,
+    permanentlyDeleteRecycleEntry,
+    purgeExpiredRecycleBin,
+    recycleBinRetentionDays,
+    restoreRecycleEntry,
+    setRecycleBinRetentionDays,
+    projectRecycleBin,
     appSettings,
     activeGlobalAssistantSessionId,
     assistantFocusTarget,
     coverWorkbenchHistory,
+    openRecycleBin,
     backToProjects,
     backToWorkbench,
     chapterVersions,

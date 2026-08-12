@@ -333,8 +333,28 @@ export type WorkspacePayload = {
         createdAt: string
         updatedAt: string
       }>
+      recycleBin: Array<{
+        id: string
+        category: string
+        projectId?: string
+        title: string
+        summary?: string
+        data: Record<string, unknown>
+        deletedAt: string
+        expiresAt: string
+      }>
     }
   >
+  globalRecycleBin: Array<{
+    id: string
+    category: string
+    projectId?: string
+    title: string
+    summary?: string
+    data: Record<string, unknown>
+    deletedAt: string
+    expiresAt: string
+  }>
   appSettings: {
     provider: string
     model: string
@@ -797,7 +817,8 @@ export function normalizeWorkspacePayload(payload: WorkspacePayload | LegacyWork
         activeGlobalAssistantSessionId: '',
         aiRuns: [],
         workflowDocuments: [],
-        plotThreads: []
+        plotThreads: [],
+        recycleBin: []
       }
     ])
   )
@@ -818,6 +839,7 @@ export function normalizeWorkspacePayload(payload: WorkspacePayload | LegacyWork
     appSettings: normalizeAppSettings(legacyPayload.appSettings),
     coverWorkbenchHistory: normalizeCoverWorkbenchHistory(
       (legacyPayload as { coverWorkbenchHistory?: unknown }).coverWorkbenchHistory
-    )
+    ),
+    globalRecycleBin: []
   }
 }

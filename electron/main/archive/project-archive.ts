@@ -203,7 +203,8 @@ function createEmptyWorkspace(): ProjectWorkspace {
     activeGlobalAssistantSessionId: '',
     aiRuns: [],
     workflowDocuments: [],
-    plotThreads: []
+    plotThreads: [],
+    recycleBin: []
   }
 }
 
@@ -635,7 +636,8 @@ async function readArchiveContent(filePath: string): Promise<ProjectArchiveConte
     activeGlobalAssistantSessionId: assistantPayload.activeGlobalAssistantSessionId ?? '',
     aiRuns: await readZipJson(zip, 'workspace/aiRuns.json', []),
     workflowDocuments: await readZipJson(zip, 'workspace/workflowDocuments.json', []),
-    plotThreads: await readZipJson(zip, 'workspace/plotThreads.json', [])
+    plotThreads: await readZipJson(zip, 'workspace/plotThreads.json', []),
+    recycleBin: []
   }
   const assets = new Map<string, Buffer>()
   for (const fileName of Object.keys(zip.files)) {
@@ -856,7 +858,8 @@ function remapArchiveContent(
           openedInChapterId: mapId(idMap, thread.openedInChapterId),
           closedInChapterId: mapId(idMap, thread.closedInChapterId)
         }))
-      : []
+      : [],
+    recycleBin: []
   }
 
   const referenceWorks = modules.has('referenceWorks')
@@ -943,7 +946,8 @@ function mergeWorkspace(
       : current.workflowDocuments,
     plotThreads: modules.has('plotThreads')
       ? overwrite ? incoming.plotThreads : [...current.plotThreads, ...incoming.plotThreads]
-      : current.plotThreads
+      : current.plotThreads,
+    recycleBin: current.recycleBin
   }
 }
 
