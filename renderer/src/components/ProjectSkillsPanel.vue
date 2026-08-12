@@ -431,6 +431,52 @@ function deleteSingleSkill(skill: ProjectSkillItem): void {
   })
 }
 
+// 判断某分组是否可删除：仅项目级真实分组可删（未分组根、内置分组不可删）
+function canDeleteGroup(group: {
+  name: string
+  scope?: 'builtin' | 'project'
+  skills: unknown[]
+}): boolean {
+  return group.scope === 'project' && group.name !== '_ungrouped'
+}
+
+// 删除一个分组（连同分组内所有 skills 一起删除）
+function deleteGroup(group: {
+  name: string
+  label: string
+  skills: unknown[]
+}): void {
+  if (!currentProject.value?.id) return
+  if (group.name === '_ungrouped') return
+  const count = group.skills.length
+  dialog.warning({
+    title: '删除 Skills 分组',
+    content: `确定要删除分组「${group.label}」吗？${count > 0 ? `分组内共 ${count} 个 skills 会一并删除。` : '该分组当前为空。'}该操作不可恢复。`,
+    positiveText: '确认删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      isDeletingSkills.value = true
+      try {
+        const result = await window.characterArc.deleteProjectSkillGroup(currentProject.value!.id, group.name)
+        if (!result.success) {
+          throw new Error(result.error ?? '分组删除失败')
+        }
+        // 清除该分组下已选中的 skill 路径
+        selectedSkillPaths.value = selectedSkillPaths.value.filter(
+          (p) => !p.startsWith(`project-skills/${group.name}/`)
+        )
+        await scanProjectSkills()
+        await refreshSkillGroups()
+        message.success(`已删除分组「${result.deletedGroup ?? group.label}」`)
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : '分组删除失败')
+      } finally {
+        isDeletingSkills.value = false
+      }
+    }
+  })
+}
+
 async function exportSelectedSkills(): Promise<void> {
   if (selectedSkillPaths.value.length === 0) return
   isExportingSkills.value = true
@@ -584,12 +630,24 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
 
       <div v-if="resolvedProjectSkills.length > 0" class="project-skill-groups">
         <div v-for="group in groupedSkills" :key="group.name" class="skill-group">
-          <button class="skill-group-header" @click="toggleGroup(group.name)">
-            <ChevronDown :size="16" class="skill-group-chevron" :class="{ collapsed: collapsedGroups[group.name] }" />
-            <strong>{{ group.label }}</strong>
-            <span class="skill-group-count">{{ group.skills.length }} 个</span>
-            <span class="skill-group-enabled">{{ group.skills.filter(s => s.enabled).length }} 已启用</span>
-          </button>
+          <div class="skill-group-header">
+            <button class="skill-group-toggle" type="button" @click="toggleGroup(group.name)">
+              <ChevronDown :size="16" class="skill-group-chevron" :class="{ collapsed: collapsedGroups[group.name] }" />
+              <strong>{{ group.label }}</strong>
+              <span class="skill-group-count">{{ group.skills.length }} 个</span>
+              <span class="skill-group-enabled">{{ group.skills.filter(s => s.enabled).length }} 已启用</span>
+            </button>
+            <button
+              v-if="canDeleteGroup(group)"
+              class="skill-group-delete-btn"
+              type="button"
+              title="删除该分组及其中所有 skills"
+              :disabled="isDeletingSkills"
+              @click="deleteGroup(group)"
+            >
+              <Trash2 :size="14" />
+            </button>
+          </div>
           <div v-if="!collapsedGroups[group.name]" class="project-skill-list">
             <p v-if="group.skills.length === 0" class="skill-group-empty-hint">该分组还没有 skill，可在「批量导入」时选择归入此分组。</p>
             <article v-for="skill in group.skills" :key="skill.id" class="project-skill-card">
@@ -818,13 +876,10 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
 .skill-group-header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   width: 100%;
-  padding: 14px 18px;
   border: none;
   background: var(--arc-bg-body);
-  cursor: pointer;
-  text-align: left;
   font-family: inherit;
   transition: background 0.15s;
 }
@@ -833,10 +888,55 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
   background: var(--arc-bg-surface-hover);
 }
 
+.skill-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 14px 4px 14px 18px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
 .skill-group-header strong {
   color: var(--arc-text-primary);
   font-size: 14px;
   font-weight: 680;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-group-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  margin-right: 12px;
+  padding: 0;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--arc-text-hint);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.skill-group-delete-btn:hover {
+  color: var(--arc-error, #d03050);
+  border-color: var(--arc-error, #d03050);
+  background: color-mix(in srgb, var(--arc-error, #d03050) 8%, transparent);
+}
+
+.skill-group-delete-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .skill-group-count {

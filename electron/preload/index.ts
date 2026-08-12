@@ -105,6 +105,8 @@ contextBridge.exposeInMainWorld('characterArc', {
   listProjectSkillGroups: (projectId: string) => ipcRenderer.invoke('characterarc:project-skills-groups', projectId),
   /** 创建新的 skills 分组 */
   createProjectSkillGroup: (projectId: string, groupName: string) => ipcRenderer.invoke('characterarc:project-skills-create-group', projectId, groupName),
+  /** 删除一个 skills 分组（连同分组内所有 skills 一起删除，仅项目分组可删） */
+  deleteProjectSkillGroup: (projectId: string, groupName: string) => ipcRenderer.invoke('characterarc:project-skills-delete-group', projectId, groupName),
   /** 批量删除项目级 skills（仅项目导入，内置不可删），入参为 skill path 列表 */
   deleteProjectSkills: (projectId: string, paths: string[]) => ipcRenderer.invoke('characterarc:project-skills-delete', projectId, paths),
   /** 批量导出 skills（内置 + 项目导入）为 zip，入参为 skill path 列表 */

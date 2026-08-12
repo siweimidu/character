@@ -2581,7 +2581,43 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
   })
 
+  // 删除一个 skills 分组：连同分组内所有 skills 一起删除（仅项目级分组，内置分组不可删）。
+  ipcMain.handle('characterarc:project-skills-delete-group', async (_event, projectId: unknown, groupName: unknown) => {
+    try {
+      const resolvedProjectId = String(projectId ?? '').trim() || undefined
+      const name = String(groupName ?? '')
+        .split(/[\\/]+/)
+        .map((seg) => seg.trim())
+        .filter((seg) => seg && seg !== '.' && seg !== '..')
+        .map((seg) => seg.replace(/[^A-Za-z0-9\u4e00-\u9fa5-]/g, ''))
+        .filter(Boolean)
+        .join('/')
+      if (!name) {
+        return { success: false, error: '分组名称不能为空或非法' }
+      }
+      const skillsRoot = getSkillsDirPath(resolvedProjectId || undefined)
+      const groupDir = join(skillsRoot, name)
+      // 安全校验：分组目录必须位于项目 skills 根目录之内，且确实是一个分组容器（非顶层 skill）
+      if (!groupDir.startsWith(skillsRoot)) {
+        return { success: false, error: '非法的分组路径' }
+      }
+      if (!existsSync(groupDir)) {
+        return { success: false, error: '分组「' + name + '」不存在' }
+      }
+      if (existsSync(join(groupDir, 'SKILL.md'))) {
+        return { success: false, error: '该目录是一个 skill 而非分组，无法作为分组删除' }
+      }
+      await rm(groupDir, { recursive: true, force: true })
+      await refreshSkillRegistry(resolvedProjectId || undefined)
+      return { success: true, deletedGroup: name }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : '删除分组失败' }
+    }
+  })
+
   ipcMain.handle('characterarc:project-skills-import', async (_event, projectId: unknown, targetGroup: unknown, mode: unknown) => {
+    // 记录本次导入过程中创建的所有解压临时目录，统一在导入完成后清理（复制完成后再删）。
+    const pendingTempRoots: string[] = []
     try {
       const resolvedProjectId = String(projectId ?? '').trim() || undefined
       // 可选的目标分组名（导入到 project-skills/<group>/<skill>）。
@@ -2694,22 +2730,19 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
       const importFromZip = async (zipPath: string): Promise<string[]> => {
         const tempRoot = join(getWorkspaceDirPath(), '.skills-extract-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8))
         await mkdir(tempRoot, { recursive: true })
-        try {
-          // 逐层解压嵌套 .zip，直到不再产生新的压缩包为止
-          let pending = [zipPath]
-          let guard = 0
-          while (pending.length && guard < 20) {
-            guard++
-            const next: string[] = []
-            for (const p of pending) {
-              next.push(...(await extractZipRecursive(p, tempRoot)))
-            }
-            pending = next
+        pendingTempRoots.push(tempRoot)
+        // 逐层解压嵌套 .zip，直到不再产生新的压缩包为止
+        let pending = [zipPath]
+        let guard = 0
+        while (pending.length && guard < 20) {
+          guard++
+          const next: string[] = []
+          for (const p of pending) {
+            next.push(...(await extractZipRecursive(p, tempRoot)))
           }
-          return await collectSkillDirs(tempRoot)
-        } finally {
-          await rm(tempRoot, { recursive: true, force: true }).catch(() => undefined)
+          pending = next
         }
+        return await collectSkillDirs(tempRoot)
       }
 
       // 从选中的目录里收集 skill 目录；若目录内还含 .zip 包，也一并解出后再收集
@@ -2791,6 +2824,11 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
       }
     } catch (error) {
       return { success: false, canceled: false, error: error instanceof Error ? error.message : '项目技能导入失败' }
+    } finally {
+      // 所有 sourceDir 复制完成后，再统一删除解压产生的临时目录
+      await Promise.all(
+        pendingTempRoots.map((root) => rm(root, { recursive: true, force: true }).catch(() => undefined))
+      )
     }
   })
 

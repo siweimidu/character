@@ -799,6 +799,11 @@ declare global {
         name?: string
         error?: string
       }>
+      deleteProjectSkillGroup: (projectId: string, groupName: string) => Promise<{
+        success: boolean
+        deletedGroup?: string
+        error?: string
+      }>
       deleteProjectSkills: (projectId: string, paths: string[]) => Promise<{
         success: boolean
         deleted?: string[]
