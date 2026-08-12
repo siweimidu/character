@@ -2,7 +2,7 @@ import { BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { existsSync } from 'node:fs'
 import { cp, mkdir, readFile, readdir, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { basename, join } from 'node:path'
+import { basename, isAbsolute, join, relative } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import * as XLSX from 'xlsx'
 
@@ -2311,79 +2311,144 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
       const skillsRoot = getSkillsDirPath(resolvedProjectId)
       await mkdir(skillsRoot, { recursive: true })
 
-      // 从 zip 压缩包解压后的目录里，递归找出包含 SKILL.md 的 skill 目录
-      const findSkillDirsZip = async (root: string): Promise<string[]> => {
+      // ── 递归收集 skill 目录 ──
+      // 从任意根目录出发，沿目录树向下查找包含 SKILL.md 的目录，找到即收为一个 skill
+      // 并停止向下展开（skill 目录自包含）。天然支持：根目录即 skill、skills/ 子目录、
+      // 一层分组目录（group/skill/）、任意深度的嵌套结构，与磁盘扫描逻辑保持一致。
+      const collectSkillDirs = async (root: string): Promise<string[]> => {
         const found: string[] = []
         if (!existsSync(root)) return found
-        const nestedRoot = existsSync(join(root, 'skills')) ? join(root, 'skills') : root
-        if (existsSync(join(nestedRoot, 'SKILL.md'))) {
-          found.push(nestedRoot)
-          return found
-        }
-        const entries = await readdir(nestedRoot, { withFileTypes: true })
-        for (const entry of entries) {
-          if (entry.isDirectory() && existsSync(join(nestedRoot, entry.name, 'SKILL.md'))) {
-            found.push(join(nestedRoot, entry.name))
-          }
-        }
+        await walkSkillDirs(root, found)
         return found
       }
 
-      // 从目录里找出包含 SKILL.md 的 skill 目录
-      const findSkillDirs = async (root: string): Promise<string[]> => {
-        if (existsSync(join(root, 'SKILL.md'))) return [root]
-        if (!existsSync(root)) return []
-        const nestedRoot = join(root, 'skills')
-        const searchRoot = existsSync(nestedRoot) ? nestedRoot : root
-        const entries = await readdir(searchRoot, { withFileTypes: true })
-        return entries
-          .filter((entry) => entry.isDirectory() && existsSync(join(searchRoot, entry.name, 'SKILL.md')))
-          .map((entry) => join(searchRoot, entry.name))
+      // 深度优先遍历，收集包含 SKILL.md 的目录
+      const walkSkillDirs = async (dir: string, out: string[]): Promise<void> => {
+        if (existsSync(join(dir, 'SKILL.md'))) {
+          out.push(dir)
+          return
+        }
+        let entries: import('node:fs').Dirent[]
+        try {
+          entries = await readdir(dir, { withFileTypes: true })
+        } catch {
+          return
+        }
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue
+          // 跳过隐藏目录（如 .git/.skills-extract 等），避免误入
+          if (entry.name.startsWith('.')) continue
+          await walkSkillDirs(join(dir, entry.name), out)
+        }
       }
 
-      // 将解压后的 zip 内容临时落地，返回其中识别到的 skill 目录
-      const importFromZip = async (zipPath: string): Promise<string[]> => {
+      // 校验 child 是否严格位于 parent 之内，防止 zip 路径穿越
+      const isWithin = (parent: string, child: string): boolean => {
+        const rel = relative(parent, child)
+        return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel)
+      }
+
+      // 将 .zip 压缩包（含嵌套 .zip）安全解压到临时目录，返回解压后可见的 .zip 列表
+      // 递归展开：zip 内若还有 .zip 也会一并解出，保证深层打包也能被识别。
+      const extractZipRecursive = async (zipPath: string, tempRoot: string): Promise<string[]> => {
         const JSZip = (await import('jszip')).default
         const zip = await JSZip.loadAsync(await readFile(zipPath))
+        const nestedZips: string[] = []
+        for (const entry of Object.values(zip.files)) {
+          if (entry.dir) continue
+          // 规范化目标路径并阻止路径穿越（./、../、绝对路径一律拒绝）
+          const cleanName = entry.name.replace(/^[./\\]+/, '').replace(/\\/g, '/')
+          if (!cleanName) continue
+          const safePath = join(tempRoot, cleanName)
+          if (!isWithin(tempRoot, safePath)) continue
+          await mkdir(join(safePath, '..'), { recursive: true })
+          await writeFile(safePath, await entry.async('nodebuffer'))
+          if (cleanName.toLowerCase().endsWith('.zip')) {
+            nestedZips.push(safePath)
+          }
+        }
+        return nestedZips
+      }
+
+      // 把单个 .zip 包解压到独立临时目录，返回其中所有可导入的 skill 目录
+      const importFromZip = async (zipPath: string): Promise<string[]> => {
         const tempRoot = join(getWorkspaceDirPath(), '.skills-extract-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8))
         await mkdir(tempRoot, { recursive: true })
         try {
-          const entries = Object.values(zip.files)
-          for (const entry of entries) {
-            if (entry.dir) continue
-            const safePath = join(tempRoot, entry.name.replace(/^[./]+/, ''))
-            // 防止路径穿越
-            if (!safePath.startsWith(tempRoot)) continue
-            await mkdir(join(safePath, '..'), { recursive: true })
-            await writeFile(safePath, await entry.async('nodebuffer'))
+          // 逐层解压嵌套 .zip，直到不再产生新的压缩包为止
+          let pending = [zipPath]
+          let guard = 0
+          while (pending.length && guard < 20) {
+            guard++
+            const next: string[] = []
+            for (const p of pending) {
+              next.push(...(await extractZipRecursive(p, tempRoot)))
+            }
+            pending = next
           }
-          return await findSkillDirsZip(tempRoot)
+          return await collectSkillDirs(tempRoot)
         } finally {
           await rm(tempRoot, { recursive: true, force: true }).catch(() => undefined)
         }
       }
 
-      const importedSkillIds: string[] = []
-      let failedCount = 0
-      for (const selectedPath of result.filePaths) {
-        let sourceDirs: string[] = []
-        if (selectedPath.toLowerCase().endsWith('.zip')) {
-          sourceDirs = await importFromZip(selectedPath)
-          if (!sourceDirs.length) {
-            failedCount++
-            continue
-          }
-        } else {
-          sourceDirs = await findSkillDirs(selectedPath)
-          if (!sourceDirs.length) {
-            failedCount++
-            continue
+      // 从选中的目录里收集 skill 目录；若目录内还含 .zip 包，也一并解出后再收集
+      const importFromDir = async (dirPath: string): Promise<string[]> => {
+        const sourceDirs = await collectSkillDirs(dirPath)
+        // 找出目录内所有 .zip（递归）
+        const zips = await findZipsRecursive(dirPath)
+        for (const zipPath of zips) {
+          const extra = await importFromZip(zipPath)
+          sourceDirs.push(...extra)
+        }
+        return sourceDirs
+      }
+
+      // 递归查找目录下所有 .zip 文件
+      const findZipsRecursive = async (dir: string): Promise<string[]> => {
+        const out: string[] = []
+        if (!existsSync(dir)) return out
+        let entries: import('node:fs').Dirent[]
+        try {
+          entries = await readdir(dir, { withFileTypes: true })
+        } catch {
+          return out
+        }
+        for (const entry of entries) {
+          const full = join(dir, entry.name)
+          if (entry.isDirectory()) {
+            if (entry.name.startsWith('.')) continue
+            out.push(...(await findZipsRecursive(full)))
+          } else if (entry.name.toLowerCase().endsWith('.zip')) {
+            out.push(full)
           }
         }
+        return out
+      }
+
+      const importedSkillIds: string[] = []
+      const seenSkillIds = new Set<string>()
+      let failedCount = 0
+      for (const selectedPath of result.filePaths) {
+        const lower = selectedPath.toLowerCase()
+        let sourceDirs: string[] = []
+        if (lower.endsWith('.zip')) {
+          sourceDirs = await importFromZip(selectedPath)
+        } else if (existsSync(selectedPath)) {
+          sourceDirs = await importFromDir(selectedPath)
+        }
+        if (!sourceDirs.length) {
+          failedCount++
+          continue
+        }
         for (const sourceDir of sourceDirs) {
-          const targetDir = join(skillsRoot, basename(sourceDir))
+          const skillId = basename(sourceDir)
+          // 去重：同名 skill 只导入一次，避免重复覆盖
+          if (seenSkillIds.has(skillId)) continue
+          seenSkillIds.add(skillId)
+          const targetDir = join(skillsRoot, skillId)
           await cp(sourceDir, targetDir, { recursive: true, force: true })
-          importedSkillIds.push(basename(sourceDir))
+          importedSkillIds.push(skillId)
         }
       }
 
