@@ -8,6 +8,10 @@ export interface WritingStyleEntry extends WritingStylePreset {
   source: 'builtin' | 'custom' | 'skill'
   /** 最近更新时间（ISO），用于排序 */
   updatedAt: string
+  /** 绑定的 skill id 列表：使用该风格时自动注入这些 skill */
+  skillIds?: string[]
+  /** 缓存绑定 skill 的完整方法论内容，保存时实时抓取并合并，供同步注入 */
+  skillContent?: string
 }
 
 /** 自定义/导入写作风格的上限 */
@@ -59,7 +63,11 @@ export function loadCustomWritingStyles(): WritingStyleEntry[] {
         accent: String(item.accent ?? nextCustomColor(index).accent),
         accentDark: String(item.accentDark ?? nextCustomColor(index).accentDark),
         source: item.source === 'skill' ? 'skill' : 'custom',
-        updatedAt: String(item.updatedAt ?? new Date().toISOString())
+        updatedAt: String(item.updatedAt ?? new Date().toISOString()),
+        skillIds: Array.isArray(item.skillIds)
+          ? item.skillIds.filter((id: unknown) => typeof id === 'string').map(String)
+          : undefined,
+        skillContent: typeof item.skillContent === 'string' ? item.skillContent : undefined
       }))
   } catch {
     return []

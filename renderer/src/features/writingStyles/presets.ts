@@ -87,8 +87,11 @@ export function resolveWritingStylePreset(presetId?: string | null): WritingStyl
 // 自定义 prompt 会追加在预设 prompt 之后，实现风格微调
 const CUSTOM_STYLE_STORAGE_KEY = 'characterarc:writing-styles'
 
+/** 本地自定义风格预设：在 WritingStylePreset 基础上额外带绑定的 skill id 列表 */
+type LocalStylePreset = WritingStylePreset & { skillIds?: string[]; skillContent?: string }
+
 /** 读取本地自定义/导入的写作风格，用于解析项目选中的非内置风格 */
-function loadLocalCustomStylePreset(presetId?: string | null): WritingStylePreset | null {
+function loadLocalCustomStylePreset(presetId?: string | null): LocalStylePreset | null {
   if (!presetId) return null
   try {
     const raw = localStorage.getItem(CUSTOM_STYLE_STORAGE_KEY)
@@ -103,7 +106,11 @@ function loadLocalCustomStylePreset(presetId?: string | null): WritingStylePrese
       description: String(match.description ?? ''),
       prompt: String(match.prompt),
       accent: String(match.accent ?? 'linear-gradient(135deg, #dbeafe, #e0f2fe)'),
-      accentDark: String(match.accentDark ?? 'linear-gradient(135deg, #1e3a5f, #1a3550)')
+      accentDark: String(match.accentDark ?? 'linear-gradient(135deg, #1e3a5f, #1a3550)'),
+      skillIds: Array.isArray(match.skillIds)
+        ? match.skillIds.filter((id: unknown) => typeof id === 'string').map(String)
+        : undefined,
+      skillContent: typeof match.skillContent === 'string' ? match.skillContent : undefined
     }
   } catch {
     return null
@@ -117,17 +124,88 @@ export function buildProjectWritingStyleContext(project?: Pick<ProjectSummary, '
   prompt: string
   accent: string
   accentDark: string
+  skillIds?: string[]
 } {
   const preset = loadLocalCustomStylePreset(project?.writingStylePresetId)
     ?? resolveWritingStylePreset(project?.writingStylePresetId)
   const customPrompt = project?.writingStylePrompt?.trim() || ''
+  const localStyle = preset as LocalStylePreset
+  const skillPrompt = (localStyle.skillContent ?? '').trim()
 
   return {
     presetId: preset.id,
     label: preset.label,
     description: preset.description,
-    prompt: [preset.prompt, customPrompt].filter(Boolean).join('\n'),
+    prompt: [preset.prompt, skillPrompt && `\n## 本风格绑定的 Skill 方法论（必须遵循）\n${skillPrompt}`, customPrompt]
+      .filter(Boolean)
+      .join('\n'),
     accent: preset.accent,
-    accentDark: preset.accentDark
+    accentDark: preset.accentDark,
+    skillIds: localStyle.skillIds
   }
+}
+
+/**
+ * 解析写作风格绑定的 skill 明细（id / 名称 / 描述）。
+ * 用于在自定义风格卡片中展示当前已绑定的 skill，以及在后端注入前做校验。
+ */
+export async function resolveStyleBoundSkillDetail(projectId: string, skillIds?: string[]): Promise<
+  Array<{ id: string; name: string; description: string; content: string }>
+> {
+  if (!projectId || !Array.isArray(skillIds) || skillIds.length === 0) {
+    return []
+  }
+  try {
+    const result = await window.characterArc.getProjectSkillsContext(projectId)
+    if (!result.success || !Array.isArray(result.skills)) return []
+    const idSet = new Set(skillIds)
+    return result.skills.filter((skill) => idSet.has(skill.id))
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 深度后端逻辑：把写作风格绑定的 skill 方法论合并进写作风格指令，
+ * 使项目选中该风格时，绑定 skill 每次都会自动生效（强制注入，无需显式 skill_load）。
+ * 返回带 boundSkills 元信息的完整写作风格上下文。
+ */
+export async function buildStyleContextWithBoundSkills(
+  project?: Pick<ProjectSummary, 'id' | 'writingStylePresetId' | 'writingStylePrompt'> | null
+): Promise<
+  ReturnType<typeof buildProjectWritingStyleContext> & {
+    boundSkills: Array<{ id: string; name: string; description: string }>
+    promptWithSkills: string
+  }
+> {
+  const base = buildProjectWritingStyleContext(project)
+  const projectId = project?.id ?? ''
+  const skills = await resolveStyleBoundSkillDetail(projectId, base.skillIds)
+  const boundSkills = skills.map((s) => ({
+    id: s.id,
+    name: s.name,
+    description: s.description
+  }))
+
+  if (skills.length === 0) {
+    // 无法实时加载绑定 skill（项目未打开或已移除），回退到保存时缓存的 skillContent。
+    return { ...base, boundSkills, promptWithSkills: base.prompt }
+  }
+
+  // 实时加载成功：重建 prompt，用最新的 skill 方法论替换缓存内容，避免重复注入。
+  const localStyle = loadLocalCustomStylePreset(project?.writingStylePresetId) as LocalStylePreset | null
+  const basePrompt = localStyle?.prompt ?? base.prompt
+  const customPrompt = project?.writingStylePrompt?.trim() || ''
+  const skillBlock = skills
+    .map((s) => `### 绑定 Skill · ${s.name}\n${(s.content || s.description || '').trim()}`)
+    .join('\n\n')
+  const promptWithSkills = [
+    basePrompt,
+    `\n## 本风格绑定的 Skill 方法论（必须遵循）\n${skillBlock}`,
+    customPrompt
+  ]
+    .filter(Boolean)
+    .join('\n')
+
+  return { ...base, boundSkills, promptWithSkills }
 }

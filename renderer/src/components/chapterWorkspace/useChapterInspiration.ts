@@ -1,7 +1,7 @@
 import { computed } from 'vue'
 import type { ComputedRef } from 'vue'
 import { getPlainTextFromEditorContent } from '@/features/chapters/editorContent'
-import { buildProjectWritingStyleContext } from '@/features/writingStyles/presets'
+import { buildStyleContextWithBoundSkills } from '@/features/writingStyles/presets'
 import { useAppStore } from '@/stores/app'
 import { toIpcPayload } from '@/utils/ipcPayload'
 
@@ -32,7 +32,7 @@ export function useChapterInspiration(): {
     if (isGenerating.value) return { ok: false, reason: '已在生成灵感' }
 
     try {
-      const writingStyle = buildProjectWritingStyleContext(appStore.currentProject)
+      const writingStyle = await buildStyleContextWithBoundSkills(appStore.currentProject)
       const result = await appStore.runTrackedAiTask(
         {
           key: TASK_KEY,
@@ -49,7 +49,7 @@ export function useChapterInspiration(): {
               projectTitle: appStore.currentProject?.title,
               projectGenre: appStore.currentProject?.genre,
               writingStyleLabel: writingStyle.label,
-              writingStylePrompt: writingStyle.prompt,
+              writingStylePrompt: writingStyle.promptWithSkills,
               chapterTitle: chapter.title,
               chapterSummary: chapter.summary,
               chapterContent: getPlainTextFromEditorContent(chapter.content ?? ''),

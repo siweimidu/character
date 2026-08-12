@@ -4,7 +4,7 @@ import { Archive, BookMarked, FileJson, FileStack, FileText, Lightbulb, Moon, Ne
 import { NButton, NCard, NFormItem, NInput, NSelect, NSwitch, useMessage } from 'naive-ui'
 import { getPlainTextFromEditorContent } from '@/features/chapters/editorContent'
 import { autoSaveOptions } from '@/features/settings/autoSave'
-import { buildProjectWritingStyleContext, defaultWritingStylePresetId } from '@/features/writingStyles/presets'
+import { buildProjectWritingStyleContext, defaultWritingStylePresetId, resolveStyleBoundSkillDetail } from '@/features/writingStyles/presets'
 import {
   WRITING_STYLE_LIMIT,
   filterWritingStyles,
@@ -87,11 +87,45 @@ const styleForm = reactive({
   label: '',
   description: '',
   prompt: '',
-  colorIndex: 0
+  colorIndex: 0,
+  skillIds: [] as string[]
 })
-const isImportingStyleSkill = ref(false)
 
-function saveCustomStyle(): void {
+// 当前项目已导入的可用 skill（用于自定义风格卡片绑定选择）
+const availableSkills = ref<Array<{ id: string; name: string; description: string }>>([])
+const isLoadingSkills = ref(false)
+
+/** 供 NSelect 使用的 skill 选项 */
+const availableSkillOptions = computed(() =>
+  availableSkills.value.map((s) => ({ label: s.name, value: s.id }))
+)
+
+async function loadAvailableSkills(): Promise<void> {
+  const projectId = appStore.currentProject?.id ?? ''
+  if (!projectId) return
+  isLoadingSkills.value = true
+  try {
+    const result = await window.characterArc.getProjectSkillsContext(projectId)
+    availableSkills.value = result.success && Array.isArray(result.skills)
+      ? result.skills.map((s) => ({ id: s.id, name: s.name, description: s.description }))
+      : []
+  } catch {
+    availableSkills.value = []
+  } finally {
+    isLoadingSkills.value = false
+  }
+}
+
+/** 展开某个自定义风格的绑定 skill 名称，供卡片展示 */
+function resolveStyleSkillNames(style: WritingStyleEntry): string[] {
+  if (!Array.isArray(style.skillIds) || style.skillIds.length === 0) return []
+  const idSet = new Set(style.skillIds)
+  return availableSkills.value
+    .filter((s) => idSet.has(s.id))
+    .map((s) => s.name)
+}
+
+async function saveCustomStyle(): Promise<void> {
   if (!styleForm.label.trim()) {
     message.warning('请填写风格名称')
     return
@@ -105,6 +139,16 @@ function saveCustomStyle(): void {
     return
   }
   const colors = nextCustomColor(styleForm.colorIndex)
+  const boundSkillIds = [...styleForm.skillIds]
+  // 抓取绑定 skill 的完整方法论内容并缓存，供所有 AI 调用同步注入。
+  let skillContent = ''
+  if (boundSkillIds.length > 0) {
+    const projectId = appStore.currentProject?.id ?? ''
+    const detail = await resolveStyleBoundSkillDetail(projectId, boundSkillIds).catch(() => [])
+    skillContent = detail
+      .map((s) => `### 绑定 Skill · ${s.name}\n${(s.content || s.description || '').trim()}`)
+      .join('\n\n')
+  }
   customWritingStyles.value = [
     {
       id: `custom-${Date.now()}`,
@@ -114,7 +158,9 @@ function saveCustomStyle(): void {
       accent: colors.accent,
       accentDark: colors.accentDark,
       source: 'custom',
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      skillIds: boundSkillIds,
+      skillContent: skillContent || undefined
     },
     ...customWritingStyles.value
   ]
@@ -122,8 +168,13 @@ function saveCustomStyle(): void {
   styleForm.label = ''
   styleForm.description = ''
   styleForm.prompt = ''
+  styleForm.skillIds = []
   styleForm.colorIndex = customWritingStyles.value.length % 8
-  message.success('自定义写作风格已保存')
+  if (boundSkillIds.length > 0) {
+    message.success(`自定义写作风格已保存，已绑定 ${boundSkillIds.length} 个 Skill`)
+  } else {
+    message.success('自定义写作风格已保存')
+  }
 }
 
 function removeCustomStyle(style: WritingStyleEntry): void {
@@ -134,58 +185,6 @@ function removeCustomStyle(style: WritingStyleEntry): void {
     draftWritingStylePresetId.value = defaultWritingStylePresetId
   }
   message.success('已删除该写作风格')
-}
-
-/** 从本地 skill 目录导入写作风格 */
-async function importStyleFromSkill(): Promise<void> {
-  if (isImportingStyleSkill.value) return
-  if (customWritingStyles.value.length >= WRITING_STYLE_LIMIT) {
-    message.warning(`写作风格最多支持 ${WRITING_STYLE_LIMIT} 条，请先删除一些再导入`)
-    return
-  }
-  isImportingStyleSkill.value = true
-  try {
-    const projectId = appStore.currentProject?.id ?? ''
-    const result = await window.characterArc.importProjectSkillsPackage(projectId)
-    if (result.canceled) return
-    if (!result.success) {
-      message.error(result.error ?? 'Skill 导入失败')
-      return
-    }
-    const skills = await window.characterArc.getProjectSkillsContext(projectId)
-    const skillList = skills.success ? skills.skills ?? [] : []
-    let imported = 0
-    const now = new Date().toISOString()
-    const nextStyles = [...customWritingStyles.value]
-    for (const skill of skillList) {
-      if (nextStyles.length >= WRITING_STYLE_LIMIT) break
-      if (!skill.description) continue
-      if (nextStyles.some((s) => s.label === skill.name)) continue
-      const colors = nextCustomColor(nextStyles.length)
-      nextStyles.push({
-        id: `skill-${skill.id}-${Date.now()}`,
-        label: `技能·${skill.name}`,
-        description: skill.description,
-        prompt: skill.content || skill.description,
-        accent: colors.accent,
-        accentDark: colors.accentDark,
-        source: 'skill',
-        updatedAt: now
-      })
-      imported++
-    }
-    if (imported > 0) {
-      customWritingStyles.value = nextStyles
-      persistCustomWritingStyles(customWritingStyles.value)
-      message.success(`已从 Skill 导入 ${imported} 个写作风格`)
-    } else {
-      message.info('未找到可用于写作风格的新 Skill 描述')
-    }
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : 'Skill 导入失败')
-  } finally {
-    isImportingStyleSkill.value = false
-  }
 }
 
 function buildExportStem(suffix: string): string {
@@ -395,6 +394,7 @@ watch(
   (project) => {
     draftWritingStylePresetId.value = project?.writingStylePresetId ?? ''
     draftWritingStylePrompt.value = project?.writingStylePrompt ?? ''
+    void loadAvailableSkills()
   },
   { immediate: true }
 )
@@ -423,48 +423,56 @@ watch(
             {{ appStore.persistenceError || '当前工作区内容已接入本地 SQLite 持久化。' }}
           </span>
         </div>
-        <div class="setting-row">
-          <div>
-            <div class="setting-name">自动保存时间间隔</div>
-            <div class="setting-hint">
-              {{ appStore.isLiveAutoSave ? '正文与工作区修改会尽快落盘。' : `正文修改会按 ${appStore.autoSaveIntervalLabel} 进入自动保存队列。` }}
+        <div class="setting-card-grid">
+          <div class="setting-mini-card">
+            <div class="setting-mini-head">
+              <Save :size="16" class="setting-mini-icon" />
+              <div>
+                <div class="setting-name">自动保存时间间隔</div>
+                <div class="setting-hint">
+                  {{ appStore.isLiveAutoSave ? '正文与工作区修改会尽快落盘。' : `正文修改会按 ${appStore.autoSaveIntervalLabel} 进入自动保存队列。` }}
+                </div>
+              </div>
             </div>
+            <n-select
+              class="compact-select"
+              :options="autoSaveSelectOptions"
+              :value="appStore.appSettings.autoSaveInterval"
+              @update:value="(value) => appStore.updateAppSetting('autoSaveInterval', value ?? '5m')"
+            />
           </div>
-          <n-select
-            class="compact-select"
-            :options="autoSaveSelectOptions"
-            :value="appStore.appSettings.autoSaveInterval"
-            @update:value="(value) => appStore.updateAppSetting('autoSaveInterval', value ?? '5m')"
-          />
-        </div>
-        <div class="setting-row">
-          <div>
-            <div class="setting-name">界面缩放比例</div>
-            <div class="setting-hint">调整整个应用的显示比例，适配高分屏和不同窗口尺寸。</div>
-          </div>
-          <n-select
-            class="compact-select"
-            :options="uiScaleOptions"
-            :value="appStore.appSettings.uiScale"
-            @update:value="(value) => appStore.updateAppSetting('uiScale', value ?? 1)"
-          />
-        </div>
-        <div class="setting-row">
-          <div>
-            <div class="setting-name">
-              <Moon :size="14" style="vertical-align: -2px; margin-right: 5px;" />
-              深色模式
+          <div class="setting-mini-card">
+            <div class="setting-mini-head">
+              <Lightbulb :size="16" class="setting-mini-icon" />
+              <div>
+                <div class="setting-name">界面缩放比例</div>
+                <div class="setting-hint">调整整个应用的显示比例，适配高分屏和不同窗口尺寸。</div>
+              </div>
             </div>
-            <div class="setting-hint">将界面切换为深色背景，适合夜间长时间写作。</div>
+            <n-select
+              class="compact-select"
+              :options="uiScaleOptions"
+              :value="appStore.appSettings.uiScale"
+              @update:value="(value) => appStore.updateAppSetting('uiScale', value ?? 1)"
+            />
+          </div>
+          <div class="setting-mini-card">
+            <div class="setting-mini-head">
+              <Moon :size="16" class="setting-mini-icon" />
+              <div>
+                <div class="setting-name">深色模式</div>
+                <div class="setting-hint">将界面切换为深色背景，适合夜间长时间写作。</div>
+              </div>
+            </div>
             <div class="setting-scope-tag">
               <span class="setting-scope-dot"></span>
               仅对当前项目生效，不影响全局与其它项目
             </div>
+            <n-switch
+              :value="appStore.appSettings.darkMode"
+              @update:value="(value) => appStore.updateAppSetting('darkMode', value)"
+            />
           </div>
-          <n-switch
-            :value="appStore.appSettings.darkMode"
-            @update:value="(value) => appStore.updateAppSetting('darkMode', value)"
-          />
         </div>
         <div class="setting-actions">
           <n-button type="primary" round strong :loading="isExportingArchive" @click="handleExportProjectArchive">
@@ -557,10 +565,6 @@ watch(
               @click="writingStyleSearchMode = mode"
             >{{ mode === 'keyword' ? '关键字' : mode === 'fuzzy' ? '模糊匹配' : '完整匹配' }}</button>
           </div>
-          <n-button size="small" secondary :loading="isImportingStyleSkill" @click="importStyleFromSkill">
-            <template #icon><Upload :size="13" /></template>
-            导入 Skill
-          </n-button>
         </div>
         <div class="style-count-hint">
           共 {{ allWritingStyles.length }} 个风格（内置 + 自定义），自定义与导入上限 {{ WRITING_STYLE_LIMIT }} 条。
@@ -576,6 +580,15 @@ watch(
           >
             <strong>{{ preset.label }}</strong>
             <span>{{ preset.description }}</span>
+            <span
+              v-if="preset.source !== 'builtin' && resolveStyleSkillNames(preset).length"
+              class="style-bound-skills"
+              @click.stop
+            >
+              <template v-for="name in resolveStyleSkillNames(preset)" :key="name">
+                <span class="style-bound-skill-tag">{{ name }}</span>
+              </template>
+            </span>
             <span class="style-source-tag" :class="`source-${preset.source}`">
               {{ preset.source === 'builtin' ? '内置' : preset.source === 'skill' ? 'Skill' : '自定义' }}
             </span>
@@ -620,6 +633,22 @@ watch(
                     @click="styleForm.colorIndex = i"
                   />
                 </div>
+              </label>
+              <label class="custom-field">
+                <span class="custom-field-label">绑定 Skill（可选）</span>
+                <span class="custom-field-tip">选择后，使用该风格时绑定的 Skill 方法论会自动生效。</span>
+                <n-select
+                  v-model:value="styleForm.skillIds"
+                  multiple
+                  filterable
+                  clearable
+                  size="small"
+                  :options="availableSkillOptions"
+                  :loading="isLoadingSkills"
+                  :disabled="availableSkillOptions.length === 0"
+                  placeholder="从已导入的 Skill 中选择绑定"
+                  class="custom-input"
+                />
               </label>
               <n-button type="primary" round strong block @click="saveCustomStyle">
                 <template #icon><Save :size="14" /></template>
@@ -829,6 +858,22 @@ watch(
 .style-preset-card:hover .style-delete-tag {
   opacity: 1;
 }
+.style-bound-skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.style-bound-skill-tag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, #6366f1 10%, var(--arc-bg-surface));
+  color: #6366f1;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
 .style-color-picker {
   display: flex;
   flex-wrap: wrap;
@@ -931,6 +976,11 @@ watch(
   color: var(--arc-text-secondary);
   font-size: 12px;
   font-weight: 600;
+}
+.custom-field-tip {
+  color: var(--arc-text-hint);
+  font-size: 11px;
+  line-height: 1.6;
 }
 .custom-input {
   width: 100%;
@@ -1137,7 +1187,52 @@ watch(
   color: var(--arc-danger);
 }
 
+/* ── 项目设置：独立小卡片（自动保存 / 界面缩放 / 深色模式）── */
+.setting-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.setting-mini-card {
+  display: flex;
+  min-height: 132px;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  background: var(--arc-bg-surface);
+  padding: 14px 16px;
+}
+.setting-mini-card:hover {
+  border-color: color-mix(in srgb, var(--arc-primary) 18%, var(--arc-border));
+}
+.setting-mini-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.setting-mini-icon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--arc-primary);
+}
+.setting-mini-card .setting-name {
+  font-size: 13px;
+  font-weight: 700;
+}
+.setting-mini-card .setting-hint {
+  margin-top: 3px;
+}
+.setting-mini-card .compact-select {
+  width: 100%;
+}
+
 @media (max-width: 1240px) {
+  .setting-card-grid {
+    grid-template-columns: 1fr;
+  }
+
   .setting-actions :deep(.n-button) {
     justify-content: center;
   }
