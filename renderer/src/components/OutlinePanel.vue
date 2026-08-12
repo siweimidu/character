@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, h, nextTick, reactive, ref, watch } from 'vue'
 import { CheckSquare, ChevronDown, Download, FileDown, FileSpreadsheet, FilePlus2, Files, FolderTree, GripVertical, ListChecks, MoreVertical, Plus, Rows3, Sparkles, Trash2, Upload } from 'lucide-vue-next'
-import { NButton, NCheckbox, NDropdown, NForm, NFormItem, NInput, NModal, NSelect, useDialog, useMessage } from 'naive-ui'
+import { NButton, NCheckbox, NDropdown, NForm, NFormItem, NInput, NInputNumber, NModal, NSelect, useDialog, useMessage } from 'naive-ui'
 import { useEventListener } from '@vueuse/core'
 import { getChapterCharacterCount } from '@/features/chapters/editorContent'
 import { useAppStore } from '@/stores/app'
@@ -593,70 +593,95 @@ function handleCreateOutline(volumeId = appStore.outlineVolumes[0]?.id): void {
   editorVisible.value = true
 }
 
-// 调用 AI 接口自动扩展一个新的分卷，作为大纲的上层结构
+// 调用 AI 接口自动扩展新的分卷，作为大纲的上层结构
 async function handleExpandOutline(): Promise<void> {
   if (isExpanding.value) {
     return
   }
+  openQuantityDialog('volume', 10)
+}
 
-  try {
-    const result = await appStore.runTrackedAiTask(
-      {
-        key: AI_TASK_EXPAND_VOLUME,
-        kind: 'outline',
-        label: 'AI 扩写分卷',
-        description: '正在规划新的大纲分卷',
-        panel: 'outline',
-      },
-      () =>
-        window.characterArc.generateAi(toIpcPayload({
-          task: 'outline-enhance',
-          settings: appStore.appSettings,
-          context: {
-            mode: 'volume',
-            currentForm: { title: '', wordTarget: '50000', summary: '' },
-            projectTitle: appStore.currentProject?.title,
-            projectGenre: appStore.currentProject?.genre,
-            writingStyleLabel: writingStyle.value.label,
-            writingStylePrompt: writingStyle.value.prompt,
-            volumeTitles: appStore.outlineVolumes.map((volume) => volume.title),
-            outlineTitles: appStore.outlineItems.map((item) => item.title),
-            volumes: buildAiVolumesContext(),
-            outlineItems: buildAiOutlineContext(),
-            ...buildAiEntityContext(),
-            worldviewTitles: appStore.worldviewEntries.map((entry) => entry.title),
-            characterNames: appStore.characters.map((character) => character.name)
-          }
-        }))
-    )
+async function doExpandOutline(count: number): Promise<void> {
+  let created = 0
+  for (let i = 0; i < count; i++) {
+    try {
+      const result = await appStore.runTrackedAiTask(
+        {
+          key: AI_TASK_EXPAND_VOLUME,
+          kind: 'outline',
+          label: 'AI 扩写分卷',
+          description: `正在规划新的大纲分卷（${i + 1}/${count}）`,
+          panel: 'outline',
+        },
+        () =>
+          window.characterArc.generateAi(toIpcPayload({
+            task: 'outline-enhance',
+            settings: appStore.appSettings,
+            context: {
+              mode: 'volume',
+              currentForm: { title: '', wordTarget: '50000', summary: '' },
+              projectTitle: appStore.currentProject?.title,
+              projectGenre: appStore.currentProject?.genre,
+              writingStyleLabel: writingStyle.value.label,
+              writingStylePrompt: writingStyle.value.prompt,
+              volumeTitles: appStore.outlineVolumes.map((volume) => volume.title),
+              outlineTitles: appStore.outlineItems.map((item) => item.title),
+              volumes: buildAiVolumesContext(),
+              outlineItems: buildAiOutlineContext(),
+              ...buildAiEntityContext(),
+              worldviewTitles: appStore.worldviewEntries.map((entry) => entry.title),
+              characterNames: appStore.characters.map((character) => character.name)
+            }
+          }))
+      )
 
-    if (!result.success || !result.result) {
-      throw new Error(result.error ?? 'AI 扩写分卷失败，请检查模型配置')
+      if (!result.success || !result.result) {
+        throw new Error(result.error ?? 'AI 扩写分卷失败，请检查模型配置')
+      }
+
+      const volume = result.result as {
+        title?: string
+        wordTarget?: string
+        summary?: string
+      }
+
+      const nextVolumeId = appStore.createOutlineVolume({
+        title: volume.title ?? `分卷 ${appStore.outlineVolumes.length + 1}`,
+        wordTarget: normalizeVolumeWordTarget(volume.wordTarget) || '50000',
+        summary: volume.summary ?? 'AI 未返回有效分卷摘要'
+      })
+      volumeCollapsed[nextVolumeId] = false
+      created++
+    } catch (error) {
+      if (created > 0) {
+        message.warning(`已成功扩写 ${created} 个分卷，后续分卷扩写失败：${error instanceof Error ? error.message : '未知错误'}`)
+      } else {
+        message.error(error instanceof Error ? error.message : 'AI 扩写分卷失败，请检查模型配置')
+      }
+      return
     }
-
-    const volume = result.result as {
-      title?: string
-      wordTarget?: string
-      summary?: string
-    }
-
-    const nextVolumeId = appStore.createOutlineVolume({
-      title: volume.title ?? `分卷 ${appStore.outlineVolumes.length + 1}`,
-      wordTarget: normalizeVolumeWordTarget(volume.wordTarget) || '50000',
-      summary: volume.summary ?? 'AI 未返回有效分卷摘要'
-    })
-    volumeCollapsed[nextVolumeId] = false
-    message.success('AI 已扩展新的分卷')
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : 'AI 扩写分卷失败，请检查模型配置')
+  }
+  if (created > 0) {
+    message.success(`AI 已扩展 ${created} 个新的分卷`)
   }
 }
 
-async function handleExpandVolumeOutline(volume: OutlineVolume): Promise<void> {
+async function handleExpandVolumeOutline(volume: OutlineVolume, count = 5): Promise<void> {
   const taskKey = expandVolumeTaskKey(volume.id)
   if (isAnyVolumeExpanding.value) {
     return
   }
+  openQuantityDialog('nodes', 10, { volumeId: volume.id, volumeTitle: volume.title })
+  return
+}
+
+async function doExpandVolumeOutline(volume: OutlineVolume, count = 5): Promise<void> {
+  const taskKey = expandVolumeTaskKey(volume.id)
+  if (isAnyVolumeExpanding.value) {
+    return
+  }
+
+  const targetCount = Math.max(1, Math.min(count, 10))
 
   try {
     const result = await appStore.runTrackedAiTask(
@@ -664,7 +689,7 @@ async function handleExpandVolumeOutline(volume: OutlineVolume): Promise<void> {
         key: taskKey,
         kind: 'outline',
         label: `AI 扩写节点·${volume.title}`,
-        description: `正在为《${volume.title}》扩写 3-5 个子节点`,
+        description: `正在为《${volume.title}》扩写 ${targetCount} 个子节点`,
         panel: 'outline',
       },
       () =>
@@ -679,6 +704,7 @@ async function handleExpandVolumeOutline(volume: OutlineVolume): Promise<void> {
               chapterVolumeTitle: volume.title,
               chapterVolumeSummary: volume.summary,
               chapterVolumeWordTarget: volume.wordTarget,
+              expandCount: targetCount,
               outlineTitles: appStore.outlineItems.map((item) => item.title),
               worldviewTitles: appStore.worldviewEntries.map((entry) => entry.title),
               volumes: buildAiVolumesContext(),
@@ -692,7 +718,7 @@ async function handleExpandVolumeOutline(volume: OutlineVolume): Promise<void> {
                   summary: item.summary,
                   status: item.status
                 })),
-              userPrompt: '请优先扩写当前分卷从现有节点往后最需要的 3 到 5 个剧情子节点。'
+              userPrompt: `请优先扩写当前分卷从现有节点往后最需要的 ${targetCount} 个剧情子节点。`
             }
           }))
     )
@@ -1352,25 +1378,79 @@ async function exportOutlineExcel(): Promise<void> {
   previewOutlineExport()
 }
 
+// ── 数量选择对话框（一键生成章节 / AI 扩写分卷 / AI 扩写节点共用）──
+type QuantityDialogMode = 'chapters' | 'volume' | 'nodes'
+const quantityDialogVisible = ref(false)
+const quantityDialogMode = ref<QuantityDialogMode>('chapters')
+const quantityDialogValue = ref(1)
+const quantityDialogMax = ref(1)
+const quantityDialogTitle = ref('')
+const quantityDialogDesc = ref('')
+const quantityDialogTargetVolumeId = ref('')
+const quantityDialogTargetVolumeTitle = ref('')
+
+function openQuantityDialog(mode: QuantityDialogMode, max: number, opts: { volumeId?: string; volumeTitle?: string } = {}): void {
+  if (max < 1) return
+  quantityDialogMode.value = mode
+  quantityDialogMax.value = max
+  quantityDialogValue.value = 1
+  quantityDialogTargetVolumeId.value = opts.volumeId ?? ''
+  quantityDialogTargetVolumeTitle.value = opts.volumeTitle ?? ''
+  switch (mode) {
+    case 'chapters':
+      quantityDialogTitle.value = '一键生成章节'
+      quantityDialogDesc.value = `当前有 ${max} 个未绑定大纲节点，请输入要生成章节的数量（1 ~ ${max}）。`
+      break
+    case 'volume':
+      quantityDialogTitle.value = 'AI 扩写分卷'
+      quantityDialogDesc.value = '请输入要扩写的新分卷数量（1 ~ 10）。将连续生成指定数量的分卷。'
+      break
+    case 'nodes':
+      quantityDialogTitle.value = `AI 扩写节点·${opts.volumeTitle ?? ''}`
+      quantityDialogDesc.value = `请输入要为当前分卷扩写的节点数量（1 ~ ${max}）。AI 将按指定数量生成新节点。`
+      break
+  }
+  quantityDialogVisible.value = true
+}
+
+function confirmQuantityDialog(): void {
+  const count = Math.max(1, Math.min(quantityDialogMax.value, Math.floor(quantityDialogValue.value)))
+  quantityDialogVisible.value = false
+  switch (quantityDialogMode.value) {
+    case 'chapters':
+      doCreateChapters(count)
+      break
+    case 'volume':
+      doExpandOutline(count)
+      break
+    case 'nodes': {
+      const volume = appStore.outlineVolumes.find((v) => v.id === quantityDialogTargetVolumeId.value)
+      if (volume) doExpandVolumeOutline(volume, count)
+      break
+    }
+  }
+}
+
+function doCreateChapters(count: number): void {
+  const items = [...unboundOutlineItems.value].slice(0, count)
+  if (items.length === 0) {
+    message.info('所有大纲节点都已经绑定章节')
+    return
+  }
+  items.forEach((item) => {
+    appStore.createChapterFromOutlineItem(item)
+    appStore.updateOutlineItem(item.id, { status: item.status === 'done' ? 'done' : 'drafting' })
+  })
+  message.success(`已创建并绑定 ${items.length} 个章节草稿`)
+}
+
 function createAllUnboundChapters(): void {
   const items = [...unboundOutlineItems.value]
   if (items.length === 0) {
     message.info('所有大纲节点都已经绑定章节')
     return
   }
-  dialog.info({
-    title: '一键生成章节',
-    content: `将为 ${items.length} 个未绑定大纲创建章节草稿，已有章节不会修改。`,
-    positiveText: '确认生成',
-    negativeText: '取消',
-    onPositiveClick: () => {
-      items.forEach((item) => {
-        appStore.createChapterFromOutlineItem(item)
-        appStore.updateOutlineItem(item.id, { status: item.status === 'done' ? 'done' : 'drafting' })
-      })
-      message.success(`已创建并绑定 ${items.length} 个章节草稿`)
-    }
-  })
+  openQuantityDialog('chapters', items.length)
 }
 
 function resolveLinkedChapterMeta(item: OutlineItem): { label: string; tone: string } {
@@ -2502,6 +2582,30 @@ watch(
       <p style="margin-top: 12px; font-size: 13px; color: var(--arc-text-hint);">
         将 {{ selectedOutlineIds.size }} 个节点迁移到所选分卷
       </p>
+    </n-modal>
+
+    <!-- 数量选择对话框（一键生成章节 / AI 扩写分卷 / AI 扩写节点共用）-->
+    <n-modal
+      :show="quantityDialogVisible"
+      preset="dialog"
+      :title="quantityDialogTitle"
+      positive-text="确认"
+      negative-text="取消"
+      @positive-click="confirmQuantityDialog"
+      @negative-click="quantityDialogVisible = false"
+    >
+      <div style="padding: 8px 0 4px;">
+        <p style="margin: 0 0 14px; font-size: 13px; color: var(--arc-text-hint); line-height: 1.6;">
+          {{ quantityDialogDesc }}
+        </p>
+        <n-input-number
+          v-model:value="quantityDialogValue"
+          :min="1"
+          :max="quantityDialogMax"
+          :step="1"
+          style="width: 100%;"
+        />
+      </div>
     </n-modal>
   </section>
 </template>
