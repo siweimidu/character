@@ -4261,7 +4261,8 @@ export const useAppStore = defineStore('app', () => {
 
     const finishedAt = Date.now()
     replaceTaskRuns((next) => {
-      next.set(key, { ...existing, stage, finishedAt, error })
+      // 任务结束后自动展开被最小化到后台的任务，让用户能看到成功/失败反馈。
+      next.set(key, { ...existing, stage, finishedAt, error, minimized: false })
     })
 
     window.setTimeout(() => {
@@ -4299,6 +4300,38 @@ export const useAppStore = defineStore('app', () => {
     } catch (error) {
       console.error('[aiTasks] cancel handler failed:', error)
     }
+  }
+
+  /**
+   * 最小化某条正在运行的任务：隐藏任务行但让它在后台继续执行（不取消）。
+   * 用于批量生成等场景，用户想让出窗口继续做别的事。
+   */
+  function minimizeAiTask(key: string): void {
+    const run = aiTaskRuns.value.get(key)
+    if (!run || run.stage !== 'running') return
+    replaceTaskRuns((next) => {
+      next.set(key, { ...run, minimized: true })
+    })
+  }
+
+  /** 展开一条被最小化到后台的任务，让它在进度面板恢复显示。 */
+  function unminimizeAiTask(key: string): void {
+    const run = aiTaskRuns.value.get(key)
+    if (!run || !run.minimized) return
+    replaceTaskRuns((next) => {
+      next.set(key, { ...run, minimized: false })
+    })
+  }
+
+  /** 更新某条正在运行任务的实时进度（0-100），驱动进度面板进度条。 */
+  function updateAiTaskProgress(key: string, progress: number): void {
+    const run = aiTaskRuns.value.get(key)
+    if (!run || run.stage !== 'running') return
+    const clamped = Math.max(0, Math.min(100, Math.round(progress)))
+    if (run.progress === clamped) return
+    replaceTaskRuns((next) => {
+      next.set(key, { ...run, progress: clamped })
+    })
   }
 
   /**
@@ -4551,6 +4584,9 @@ export const useAppStore = defineStore('app', () => {
     getClientTaskId,
     dismissAiTask,
     cancelAiTask,
+    minimizeAiTask,
+    unminimizeAiTask,
+    updateAiTaskProgress,
     registerManualTask,
     finalizeManualTask,
     getChapterStateWarnings,

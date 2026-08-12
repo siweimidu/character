@@ -409,6 +409,7 @@ function handleMenuSelect(action: string | number, entry: InspirationEntry): voi
       :default-types="typeFilter && batchTypeOptions.some((option) => option.value === typeFilter) ? [typeFilter] : ['场景火花', '伏笔']"
       :allow-custom-types="true"
       @close="batchVisible = false"
+      @background="batchVisible = false"
       @submit="handleGeneratePack"
     />
 

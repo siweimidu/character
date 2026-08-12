@@ -528,6 +528,7 @@ watch(
       :default-types="['势力', '地理', '法则', '物种']"
       allow-custom-types
       @close="batchVisible = false"
+      @background="batchVisible = false"
       @submit="handleGenerateEntry"
     />
 

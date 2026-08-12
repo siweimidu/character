@@ -938,6 +938,7 @@ watch(
       :loading="isGenerating"
       :progress="batchProgress"
       @close="batchVisible = false"
+      @background="batchVisible = false"
       @submit="handleGenerateCharacter"
     />
 

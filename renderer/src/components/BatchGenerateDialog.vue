@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Sparkles } from 'lucide-vue-next'
+import { Minus, Sparkles, X } from 'lucide-vue-next'
 import { NButton, NForm, NFormItem, NInput, NInputNumber, NModal, NProgress, NSelect } from 'naive-ui'
 
 const props = withDefaults(defineProps<{
@@ -26,6 +26,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   close: []
+  background: []
   submit: [payload: { count: number; prompt: string; types: string[] }]
 }>()
 
@@ -53,12 +54,35 @@ function submit(): void {
     :show="show"
     preset="card"
     class="batch-generate-modal"
-    :title="title"
     :bordered="false"
     :mask-closable="!loading"
-    :closable="!loading"
+    :closable="false"
     @close="emit('close')"
   >
+    <template #header>
+      <div class="batch-modal-header">
+        <span class="batch-modal-title">{{ title }}</span>
+        <div class="batch-modal-actions">
+          <button
+            v-if="loading"
+            class="batch-header-btn"
+            type="button"
+            title="后台执行（关闭弹窗，任务继续在后台运行）"
+            @click="emit('background')"
+          >
+            <Minus :size="15" />
+          </button>
+          <button
+            class="batch-header-btn"
+            type="button"
+            :title="loading ? '后台执行（任务继续在后台运行）' : '关闭'"
+            @click="loading ? emit('background') : emit('close')"
+          >
+            <X :size="15" />
+          </button>
+        </div>
+      </div>
+    </template>
     <p v-if="description" class="batch-description">{{ description }}</p>
     <n-form label-placement="top">
       <n-form-item v-if="hasTypes" :label="allowCustomTypes ? '生成类型（可自定义）' : '生成类型'">
@@ -100,6 +124,48 @@ function submit(): void {
 </template>
 
 <style scoped>
+.batch-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding-right: 4px;
+}
+
+.batch-modal-title {
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--arc-text-primary);
+  line-height: 1.4;
+}
+
+.batch-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.batch-header-btn {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.batch-header-btn:hover {
+  background: var(--arc-glass-06);
+  color: var(--arc-text-primary);
+}
+
 .batch-description {
   margin: 0 0 18px;
   color: var(--arc-text-muted);

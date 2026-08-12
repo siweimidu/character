@@ -1563,6 +1563,7 @@ function handleEnhanceMemApply(accepted: Record<string, string | string[]>): voi
       :loading="isGeneratingOrg"
       :progress="organizationBatchProgress"
       @close="organizationBatchVisible = false"
+      @background="organizationBatchVisible = false"
       @submit="handleGenerateOrganization"
     />
 

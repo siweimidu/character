@@ -27,7 +27,7 @@ export type DelegateToolFactoryOptions = {
   maxConcurrency?: number
 }
 
-const DEFAULT_MAX_CONCURRENCY = 3
+const DEFAULT_MAX_CONCURRENCY = 4
 const MAX_RESULT_CHARS = 2400
 
 function ok(content: string): ToolHandlerResult {

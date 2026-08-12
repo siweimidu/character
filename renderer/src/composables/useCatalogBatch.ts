@@ -30,14 +30,22 @@ interface CatalogBatchOptions {
   onProgress?: (completed: number, total: number) => void
 }
 
-/** 批量并行度：同时并发不超过 3 个 AI 批次请求，避免打爆单一 provider 的请求配额 */
-const BATCH_CONCURRENCY = 3
-
-/** 灵感模式专用并发度：灵感生成是轻量任务，可安全提高到 5 并发以显著提升速度 */
-const INSPIRATION_CONCURRENCY = 5
+/** 批量并行度下限：同时并发至少多少个 AI 批次请求。 */
+const BATCH_CONCURRENCY_MIN = 3
+/** 批量并行度上限：避免一次性打爆单一 provider 的请求配额。 */
+const BATCH_CONCURRENCY_MAX = 6
 
 /** 单批最大条目数（与后端 catalog-batch 任务单批上限保持一致） */
 const BATCH_SIZE = 10
+
+/**
+ * 按批次数量自适应并发度：任务越多并发越高，显著缩短整体耗时；
+ * 但收敛到上限，避免打爆 provider 请求配额或本地出口带宽。
+ */
+function resolveConcurrency(batchCount: number): number {
+  if (batchCount <= 1) return 1
+  return Math.max(BATCH_CONCURRENCY_MIN, Math.min(BATCH_CONCURRENCY_MAX, Math.ceil(batchCount * 0.6)))
+}
 
 export function useCatalogBatch() {
   const appStore = useAppStore()
@@ -84,12 +92,14 @@ export function useCatalogBatch() {
     }
 
     let finishedBatches = 0
-    const effectiveConcurrency = options.mode === 'inspiration' ? INSPIRATION_CONCURRENCY : BATCH_CONCURRENCY
+    const runKeys = batchCounts.map((_, batchIndex) =>
+      batchIndex === 0 ? taskKey : `${taskKey}#${batchIndex + 1}`
+    )
     const rawResults = await runBoundedConcurrency(
       batchCounts.map((batchCount, batchIndex) => {
         // 各并发批次使用不同的跟踪 key，避免 runTrackedAiTask 同 key 互斥导致并行失败。
         // 首批发改沿用规范 key，保证面板的 isAiTaskRunning(catalog-batch:xxx) 加载态生效。
-        const runKey = batchIndex === 0 ? taskKey : `${taskKey}#${batchIndex + 1}`
+        const runKey = runKeys[batchIndex]
         return async () => {
           const batchContext = allTargets
             ? {
@@ -126,12 +136,20 @@ export function useCatalogBatch() {
           return (response.result as { entries?: CatalogBatchEntry[] }).entries ?? []
         }
       }),
-      effectiveConcurrency,
+      resolveConcurrency(batchCounts.length),
       // 每个批次完成即上报一次进度（按完成批次数估算），保持进度条实时推进。
       () => {
         finishedBatches += 1
         const completed = Math.min(total, finishedBatches * BATCH_SIZE)
         options.onProgress?.(completed, total)
+        // 同步更新任务面板里各运行中的批次的实时进度，驱动右下角进度条。
+        const percent = Math.round((completed / total) * 100)
+        runKeys.forEach((key) => {
+          const run = appStore.getAiTaskRun(key)
+          if (run && run.stage === 'running') {
+            appStore.updateAiTaskProgress(key, percent)
+          }
+        })
       }
     )
 

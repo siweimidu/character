@@ -11,7 +11,7 @@
  *   - 运行中 tick 每秒刷新一次耗时；空闲时 interval 会被清掉，不白跑。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { Bot, BookOpen, Brush, ChevronDown, Feather, FileText, Image as ImageIcon, Library, Sparkles, X } from 'lucide-vue-next'
+import { Bot, BookOpen, Brush, ChevronDown, Feather, FileText, Image as ImageIcon, Library, Minus, Sparkles, X } from 'lucide-vue-next'
 import { NButton, NProgress } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import type { AiTaskKind, AiTaskRun } from '@/features/ai/taskRegistry'
@@ -22,6 +22,12 @@ const appStore = useAppStore()
 const collapsed = ref(false)
 const userCollapsed = ref(false)
 
+/**
+ * 整个面板缩成右下角一个闪烁的小点时的开关。
+ * 点击 dock-header 左边的紫色圆点触发，让出更多写作空间但任务仍继续。
+ */
+const dotMode = ref(false)
+
 /** 每秒 tick 一次，用来驱动耗时文本刷新 */
 const nowTick = ref(Date.now())
 let tickTimer: number | null = null
@@ -30,10 +36,15 @@ let tickTimer: number | null = null
  *  chapter-assistant 类型任务已在 AI 对话面板中有 typing 指示，不重复展示。 */
 const visibleRuns = computed<AiTaskRun[]>(() => {
   return [...appStore.runningAiTasks, ...appStore.recentAiTasks]
-    .filter((run) => run.kind !== 'chapter-assistant' && run.kind !== 'chapter-draft')
+    .filter((run) => run.kind !== 'chapter-assistant' && run.kind !== 'chapter-draft' && !run.minimized)
 })
 
-const hasVisibleRuns = computed(() => visibleRuns.value.length > 0)
+/** 被最小化到后台、仍在运行的任务（不占窗口，可从小点卡片里恢复）。 */
+const minimizedRuns = computed<AiTaskRun[]>(() =>
+  appStore.runningAiTasks.filter((run) => run.kind !== 'chapter-assistant' && run.kind !== 'chapter-draft' && run.minimized)
+)
+
+const hasVisibleRuns = computed(() => visibleRuns.value.length > 0 || minimizedRuns.value.length > 0 || appStore.runningAiTasks.length > 0)
 
 function startTicker(): void {
   if (tickTimer !== null) return
@@ -70,6 +81,24 @@ onBeforeUnmount(stopTicker)
 function toggleCollapsed(): void {
   collapsed.value = !collapsed.value
   userCollapsed.value = collapsed.value
+}
+
+/** 切换整个面板缩成右下角闪烁小点 / 恢复完整面板。 */
+function toggleDotMode(): void {
+  dotMode.value = !dotMode.value
+}
+
+/** 从闪烁小点展开回完整面板（点击小点本身时调用）。 */
+function expandFromDot(): void {
+  dotMode.value = false
+}
+
+function handleMinimize(run: AiTaskRun): void {
+  appStore.minimizeAiTask(run.key)
+}
+
+function handleUnminimize(run: AiTaskRun): void {
+  appStore.unminimizeAiTask(run.key)
 }
 
 function formatElapsed(run: AiTaskRun): string {
@@ -124,22 +153,57 @@ const runningCount = computed(() => appStore.runningAiTasks.length)
 </script>
 
 <template>
+  <!-- 缩成右下角闪烁小点：点击小点展开回完整面板 -->
   <Transition name="dock-fade">
-    <aside v-if="hasVisibleRuns" class="ai-task-dock" :class="{ collapsed }">
-      <header class="dock-header" @click="toggleCollapsed">
-        <div class="dock-title">
-          <span class="dock-pulse" :class="{ active: runningCount > 0 }" aria-hidden="true"></span>
+    <button
+      v-if="hasVisibleRuns && dotMode"
+      class="ai-task-dot"
+      type="button"
+      :title="`${runningCount} 项 AI 任务后台运行中，点击展开`"
+      aria-label="展开 AI 任务面板"
+      @click="expandFromDot"
+    >
+      <span class="dot-core" :class="{ active: runningCount > 0 }" aria-hidden="true"></span>
+    </button>
+  </Transition>
+
+  <Transition name="dock-fade">
+    <aside v-if="hasVisibleRuns && !dotMode" class="ai-task-dock" :class="{ collapsed }">
+      <header class="dock-header">
+        <div class="dock-title" @click="toggleDotMode" title="缩成小点（任务仍后台运行）">
+          <span
+            class="dock-pulse"
+            :class="{ active: runningCount > 0 }"
+            aria-hidden="true"
+          ></span>
           <span class="dock-title-text">
             <template v-if="runningCount > 0">{{ runningCount }} 项 AI 任务进行中</template>
             <template v-else>AI 任务已完成</template>
           </span>
         </div>
-        <button class="dock-toggle" type="button" :aria-expanded="!collapsed" :aria-label="collapsed ? '展开 AI 任务列表' : '折叠 AI 任务列表'">
+        <button class="dock-toggle" type="button" :aria-expanded="!collapsed" :aria-label="collapsed ? '展开 AI 任务列表' : '折叠 AI 任务列表'" @click.stop="toggleCollapsed">
           <ChevronDown :size="14" :class="{ 'rotate-icon': collapsed }" />
         </button>
       </header>
 
       <div v-show="!collapsed" class="dock-body">
+        <div v-if="minimizedRuns.length > 0" class="minimized-bar">
+          <span class="minimized-bar-label">后台运行中</span>
+          <div class="minimized-list">
+            <button
+              v-for="run in minimizedRuns"
+              :key="'min-' + run.key + '-' + run.startedAt"
+              type="button"
+              class="minimized-chip"
+              :title="`展开「${run.label}」`"
+              @click="handleUnminimize(run)"
+            >
+              <span class="minimized-chip-dot" aria-hidden="true"></span>
+              {{ run.label }}
+            </button>
+          </div>
+        </div>
+
         <article
           v-for="run in visibleRuns"
           :key="run.key + '-' + run.startedAt"
@@ -172,24 +236,36 @@ const runningCount = computed(() => appStore.runningAiTasks.length)
               class="task-progress"
               type="line"
               status="info"
-              :processing="true"
-              :percentage="100"
+              :processing="run.progress == null"
+              :percentage="run.progress ?? 100"
               :show-indicator="false"
               :height="3"
             />
           </div>
           <div class="task-actions">
-            <n-button
-              v-if="run.stage === 'running' && run.onCancel"
-              size="tiny"
-              secondary
-              round
-              @click="handleCancel(run)"
-            >
-              停止
-            </n-button>
+            <!-- 运行中：减号（后台执行/收起）+ 停止 -->
+            <template v-if="run.stage === 'running'">
+              <button
+                class="task-icon-btn"
+                type="button"
+                title="收起此任务到后台继续执行"
+                aria-label="收起任务到后台"
+                @click="handleMinimize(run)"
+              >
+                <Minus :size="14" />
+              </button>
+              <n-button
+                v-if="run.onCancel"
+                size="tiny"
+                secondary
+                round
+                @click="handleCancel(run)"
+              >
+                停止
+              </n-button>
+            </template>
             <button
-              v-else-if="run.stage !== 'running'"
+              v-else
               type="button"
               class="task-dismiss"
               aria-label="关闭提示"
@@ -407,6 +483,102 @@ const runningCount = computed(() => appStore.runningAiTasks.length)
 .task-dismiss:hover {
   background: var(--arc-glass-06);
   color: var(--arc-text-secondary);
+}
+
+.task-icon-btn {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--arc-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.task-icon-btn:hover {
+  background: color-mix(in srgb, var(--arc-primary) 12%, transparent);
+  color: var(--arc-primary);
+  border-color: color-mix(in srgb, var(--arc-primary) 30%, transparent);
+}
+
+/* ── 缩成右下角闪烁小点 ── */
+.ai-task-dot {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 2800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.dot-core {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--arc-primary);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--arc-primary) 45%, transparent);
+  animation: pulse-ring 1.6s cubic-bezier(0.66, 0, 0, 1) infinite;
+}
+
+.dot-core.active {
+  background: var(--arc-primary);
+}
+
+/* ── 后台运行中（被最小化的任务）── */
+.minimized-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 16px 4px;
+}
+
+.minimized-bar-label {
+  color: var(--arc-text-hint);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.minimized-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.minimized-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--arc-border);
+  border-radius: 999px;
+  background: var(--arc-bg-surface-hover);
+  color: var(--arc-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+
+.minimized-chip:hover {
+  background: color-mix(in srgb, var(--arc-primary) 10%, transparent);
+  color: var(--arc-primary);
+  border-color: color-mix(in srgb, var(--arc-primary) 30%, transparent);
+}
+
+.minimized-chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--arc-primary);
+  flex-shrink: 0;
 }
 
 .dock-fade-enter-active,
