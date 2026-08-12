@@ -690,10 +690,20 @@ declare global {
         skills?: Array<import('@/types/app').ProjectSkillItem>
         error?: string
       }>
-      importProjectSkillsPackage: (projectId: string) => Promise<{
+      importProjectSkillsPackage: (projectId: string, targetGroup?: string) => Promise<{
         success: boolean
         canceled: boolean
         importedSkillIds?: string[]
+        error?: string
+      }>
+      listProjectSkillGroups: (projectId: string) => Promise<{
+        success: boolean
+        groups?: Array<{ name: string; count: number }>
+        error?: string
+      }>
+      createProjectSkillGroup: (projectId: string, groupName: string) => Promise<{
+        success: boolean
+        name?: string
         error?: string
       }>
       deleteProjectSkills: (projectId: string, paths: string[]) => Promise<{

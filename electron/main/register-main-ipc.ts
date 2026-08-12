@@ -2287,9 +2287,62 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
   })
 
-  ipcMain.handle('characterarc:project-skills-import', async (_event, projectId: unknown) => {
+  // ── 项目级 skills 分组管理 ──
+  // 分组即 project-skills/<group>/ 下的一个子目录，用于对项目导入的 skills 分类归档。
+  // 列出当前已有的分组（含分组内 skill 数量）。
+  ipcMain.handle('characterarc:project-skills-groups', async (_event, projectId: unknown) => {
     try {
       const resolvedProjectId = String(projectId ?? '').trim() || undefined
+      const skillsRoot = getSkillsDirPath(resolvedProjectId || undefined)
+      if (!existsSync(skillsRoot)) {
+        return { success: true, groups: [] }
+      }
+      const entries = await readdir(skillsRoot, { withFileTypes: true })
+      const groups: Array<{ name: string; count: number }> = []
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue
+        const dirPath = join(skillsRoot, entry.name)
+        // 顶层即 skill（根级），跳过；仅收集作为分组容器的子目录
+        if (existsSync(join(dirPath, 'SKILL.md'))) continue
+        const subEntries = await readdir(dirPath, { withFileTypes: true }).catch(() => [] as Array<import('node:fs').Dirent>)
+        const count = subEntries.filter((sub) => sub.isDirectory() && existsSync(join(dirPath, sub.name, 'SKILL.md'))).length
+        groups.push({ name: entry.name, count })
+      }
+      return { success: true, groups: groups.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN')) }
+    } catch {
+      return { success: true, groups: [] }
+    }
+  })
+
+  // 创建新的 skills 分组：在项目 skills 根目录下新建一个分组目录。
+  ipcMain.handle('characterarc:project-skills-create-group', async (_event, projectId: unknown, groupName: unknown) => {
+    try {
+      const resolvedProjectId = String(projectId ?? '').trim() || undefined
+      const name = String(groupName ?? '').trim().replace(/[\\/]/g, '').replace(/[^\w\u4e00-\u9fa5-]/g, '')
+      if (!name || name === '.' || name === '..') {
+        return { success: false, error: '分组名称不能为空或非法' }
+      }
+      const skillsRoot = getSkillsDirPath(resolvedProjectId || undefined)
+      const groupDir = join(skillsRoot, name)
+      await mkdir(groupDir, { recursive: true })
+      return { success: true, name }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : '创建分组失败' }
+    }
+  })
+
+  ipcMain.handle('characterarc:project-skills-import', async (_event, projectId: unknown, targetGroup: unknown) => {
+    try {
+      const resolvedProjectId = String(projectId ?? '').trim() || undefined
+      // 可选的目标分组名（导入到 project-skills/<group>/<skill>）。
+      // 为空表示导入到根目录；仅允许安全的目录名，禁止路径穿越。
+      const safeGroup = String(targetGroup ?? '')
+        .split(/[\\/]+/)
+        .map((seg) => seg.trim())
+        .filter((seg) => seg && seg !== '.' && seg !== '..')
+        .map((seg) => seg.replace(/[^A-Za-z0-9\u4e00-\u9fa5-]/g, ''))
+        .filter(Boolean)
+        .join('/')
 
       // 注意：Windows 下 properties 同时包含 openFile 与 openDirectory 时，文件类型过滤
       // 会导致文件管理器只显示文件夹、隐藏 .zip 压缩包。因此这里去掉 filters，
@@ -2446,7 +2499,9 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
           // 去重：同名 skill 只导入一次，避免重复覆盖
           if (seenSkillIds.has(skillId)) continue
           seenSkillIds.add(skillId)
-          const targetDir = join(skillsRoot, skillId)
+          // 若指定了目标分组，则导入到 project-skills/<group>/<skill>
+          const targetDir = safeGroup ? join(skillsRoot, safeGroup, skillId) : join(skillsRoot, skillId)
+          await mkdir(join(targetDir, '..'), { recursive: true })
           await cp(sourceDir, targetDir, { recursive: true, force: true })
           importedSkillIds.push(skillId)
         }
@@ -2582,7 +2637,10 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
         const files: string[] = []
         await collectFiles(resolved.abs, '', files)
         for (const file of files.sort()) {
-          zip.file(`${resolved.zipDir}/${file}`, await readFile(join(resolved.abs, file)))
+          // 统一转为 Uint8Array 再写入 zip，避免 Electron 主进程里 Node Buffer
+          // 与 JSZip 内部 structured clone 不兼容导致的 “An object could not be cloned”。
+          const raw = await readFile(join(resolved.abs, file))
+          zip.file(`${resolved.zipDir}/${file}`, new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength))
         }
         count++
       }
@@ -2591,7 +2649,7 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
         return { success: false, error: '未找到可导出的 skill 目录' }
       }
 
-      const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
+      const buffer = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' })
       const ownerWindow = deps.windowManager.getMainWindow() ?? BrowserWindow.getFocusedWindow()
       const saveResult = ownerWindow
         ? await dialog.showSaveDialog(ownerWindow, {
@@ -2606,7 +2664,12 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
       await writeFile(saveResult.filePath, buffer)
       return { success: true, exportedCount: count, filePath: saveResult.filePath }
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'skills 导出失败' }
+      const msg = error instanceof Error ? error.message : String(error ?? '')
+      // 过滤掉 Electron 结构化克隆的干扰报错，给出更友好的提示
+      return {
+        success: false,
+        error: msg && /could not be cloned|structured.?clone/i.test(msg) ? 'skills 导出失败：存在无法序列化的文件内容，已转换为安全格式后重试' : (msg || 'skills 导出失败')
+      }
     }
   })
 
@@ -2784,13 +2847,60 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
       configError = `未找到 CC Switch 配置文件：${ccSwitchConfigPath}`
     }
 
+    // 2. 导入 CC Switch / Claude Code 的 skills 到共享 skills 目录（所有项目可见）
+    // CC Switch 及其底层的 Claude Code / Codex 会把 skills 存放到以下常见目录，
+    // 这里递归收集其中包含 SKILL.md 的目录并拷贝到共享项目 skills 目录。
+    const skillsRoot = getSkillsDirPath(undefined)
+    await mkdir(skillsRoot, { recursive: true })
+    const importedSkills: Array<{ id: string; path: string }> = []
+    const skillSourceRoots = [
+      join(home, '.claude', 'skills'),
+      join(home, '.claude', 'custom-skills'),
+      join(home, '.cc-switch', 'skills'),
+      join(home, '.cc-switch', 'claude', 'skills')
+    ]
+    const seenSkillIds = new Set<string>()
+    for (const sourceRoot of skillSourceRoots) {
+      if (!existsSync(sourceRoot)) continue
+      const entries = await readdir(sourceRoot, { withFileTypes: true }).catch(() => [] as Array<import('node:fs').Dirent>)
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue
+        // 兼容一层分组目录（group/skill/）
+        const dirPath = join(sourceRoot, entry.name)
+        let skillDirs: string[] = []
+        if (existsSync(join(dirPath, 'SKILL.md'))) {
+          skillDirs = [dirPath]
+        } else {
+          const subEntries = await readdir(dirPath, { withFileTypes: true }).catch(() => [] as Array<import('node:fs').Dirent>)
+          for (const subEntry of subEntries) {
+            if (subEntry.isDirectory() && existsSync(join(dirPath, subEntry.name, 'SKILL.md'))) {
+              skillDirs.push(join(dirPath, subEntry.name))
+            }
+          }
+        }
+        for (const skillDir of skillDirs) {
+          const skillId = basename(skillDir)
+          if (seenSkillIds.has(skillId)) continue
+          seenSkillIds.add(skillId)
+          const targetDir = join(skillsRoot, skillId)
+          await cp(skillDir, targetDir, { recursive: true, force: true })
+          importedSkills.push({ id: skillId, path: `project-skills/${skillId}` })
+        }
+      }
+    }
+
+    // 3. 刷新技能注册表（共享作用域）
+    if (importedSkills.length) {
+      await refreshSkillRegistry(undefined)
+    }
+
     return {
       success: true,
       aiProfiles: aiProfiles
         .map((profile, index) => ({ ...profile, index }))
         .sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent) || a.index - b.index)
         .map(({ index, ...profile }) => profile),
-      importedSkills: [],
+      importedSkills,
       configPath: ccSwitchConfigPath,
       configError
     }

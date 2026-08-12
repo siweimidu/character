@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { Activity, Copy, Cpu, Download, FileInput, Image, MonitorCog, Moon, Network, Palette, PlugZap, Plus, RefreshCw, Trash2 } from 'lucide-vue-next'
-import { NButton, NFormItem, NInput, NInputNumber, NModal, NSelect, NSwitch, useMessage } from 'naive-ui'
+import { NButton, NFormItem, NInput, NInputNumber, NModal, NSelect, NSwitch, NTag, useMessage } from 'naive-ui'
 import { autoSaveOptions } from '@/features/settings/autoSave'
 import { getProviderPreset, providerOptions, resolveProviderDefaults } from '@/features/settings/providerPresets'
 import { imageProviderOptions, resolveImageProviderDefaults } from '@/features/settings/imageProviderPresets'
@@ -576,10 +576,15 @@ function confirmCcSwitchImport(): void {
     existingKeys.add(key)
   }
   ccSwitchImportOpen.value = false
+  const importedSkillCount = ccSwitchImportedSkills.value.length
   ccSwitchProfiles.value = []
   ccSwitchImportedSkills.value = []
   ccSwitchConfigError.value = ''
-  message.success(`已导入 ${selected.length} 个 AI 接口配置`)
+  message.success(
+    importedSkillCount
+      ? `已导入 ${selected.length} 个 AI 接口配置，并从 CC Switch / Claude Code 导入 ${importedSkillCount} 个 skills`
+      : `已导入 ${selected.length} 个 AI 接口配置`
+  )
 }
 
 async function saveSettings(): Promise<void> {
@@ -1129,6 +1134,13 @@ async function saveSettings(): Promise<void> {
     </div>
     <div v-else class="cc-switch-empty">
       未在配置文件中识别到可导入的 AI 接口配置。
+    </div>
+
+    <div v-if="ccSwitchImportedSkills.length" class="cc-switch-section-title">已从 CC Switch / Claude Code 导入 Skills</div>
+    <div v-if="ccSwitchImportedSkills.length" class="cc-switch-skill-tags">
+      <n-tag v-for="id in ccSwitchImportedSkills" :key="id" size="small" round :bordered="false">
+        {{ id }}
+      </n-tag>
     </div>
 
     <template #footer>
@@ -1975,6 +1987,13 @@ async function saveSettings(): Promise<void> {
   font-size: 12px;
   font-weight: 600;
   padding: 5px 10px;
+}
+
+.cc-switch-skill-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
 .cc-switch-footer {

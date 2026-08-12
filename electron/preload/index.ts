@@ -83,8 +83,12 @@ contextBridge.exposeInMainWorld('characterArc', {
   pickChapterImportFile: () => ipcRenderer.invoke('characterarc:pick-chapter-import-file'),
   /** 加载当前项目可用的 skills（软件内置 + 项目扩展） */
   scanProjectSkills: (projectId: string) => ipcRenderer.invoke('characterarc:project-skills-scan', projectId),
-  /** 从本地目录导入一组项目扩展 skills 到应用数据目录 */
-  importProjectSkillsPackage: (projectId: string) => ipcRenderer.invoke('characterarc:project-skills-import', projectId),
+  /** 从本地目录导入一组项目扩展 skills 到应用数据目录（targetGroup 可选，导入到指定分组） */
+  importProjectSkillsPackage: (projectId: string, targetGroup?: string) => ipcRenderer.invoke('characterarc:project-skills-import', projectId, targetGroup),
+  /** 列出当前项目已创建的 skills 分组（含分组内 skill 数量） */
+  listProjectSkillGroups: (projectId: string) => ipcRenderer.invoke('characterarc:project-skills-groups', projectId),
+  /** 创建新的 skills 分组 */
+  createProjectSkillGroup: (projectId: string, groupName: string) => ipcRenderer.invoke('characterarc:project-skills-create-group', projectId, groupName),
   /** 批量删除项目级 skills（仅项目导入，内置不可删），入参为 skill path 列表 */
   deleteProjectSkills: (projectId: string, paths: string[]) => ipcRenderer.invoke('characterarc:project-skills-delete', projectId, paths),
   /** 批量导出 skills（内置 + 项目导入）为 zip，入参为 skill path 列表 */
