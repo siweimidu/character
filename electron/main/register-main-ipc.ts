@@ -3155,52 +3155,6 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     } else {
       configError = `未找到 CC Switch 配置文件：${ccSwitchConfigPath}`
     }
-    // 2. 导入 CC Switch / Claude Code 的 skills 到共享 skills 目录（所有项目可见）
-    // CC Switch 及其底层的 Claude Code / Codex 会把 skills 存放到以下常见目录，
-    // 这里递归收集其中包含 SKILL.md 的目录并拷贝到共享项目 skills 目录。
-    const skillsRoot = getSkillsDirPath(undefined)
-    await mkdir(skillsRoot, { recursive: true })
-    const importedSkills: Array<{ id: string; path: string }> = []
-    const skillSourceRoots = [
-      join(home, '.claude', 'skills'),
-      join(home, '.claude', 'custom-skills'),
-      join(home, '.cc-switch', 'skills'),
-      join(home, '.cc-switch', 'claude', 'skills')
-    ]
-    const seenSkillIds = new Set<string>()
-    for (const sourceRoot of skillSourceRoots) {
-      if (!existsSync(sourceRoot)) continue
-      const entries = await readdir(sourceRoot, { withFileTypes: true }).catch(() => [] as Array<import('node:fs').Dirent>)
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue
-        // 兼容一层分组目录（group/skill/）
-        const dirPath = join(sourceRoot, entry.name)
-        let skillDirs: string[] = []
-        if (existsSync(join(dirPath, 'SKILL.md'))) {
-          skillDirs = [dirPath]
-        } else {
-          const subEntries = await readdir(dirPath, { withFileTypes: true }).catch(() => [] as Array<import('node:fs').Dirent>)
-          for (const subEntry of subEntries) {
-            if (subEntry.isDirectory() && existsSync(join(dirPath, subEntry.name, 'SKILL.md'))) {
-              skillDirs.push(join(dirPath, subEntry.name))
-            }
-          }
-        }
-        for (const skillDir of skillDirs) {
-          const skillId = basename(skillDir)
-          if (seenSkillIds.has(skillId)) continue
-          seenSkillIds.add(skillId)
-          const targetDir = join(skillsRoot, skillId)
-          await cp(skillDir, targetDir, { recursive: true, force: true })
-          importedSkills.push({ id: skillId, path: `project-skills/${skillId}` })
-        }
-      }
-    }
-
-    // 3. 刷新技能注册表（共享作用域）
-    if (importedSkills.length) {
-      await refreshSkillRegistry(undefined)
-    }
 
     return {
       success: true,
@@ -3208,9 +3162,76 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
         .map((profile, index) => ({ ...profile, index }))
         .sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent) || a.index - b.index)
         .map(({ index, ...profile }) => profile),
-      importedSkills,
       configPath: ccSwitchConfigPath,
       configError
+    }
+  })
+
+  // ── 从 CC Switch 导入 Skills（内置 Skills 与项目扩展页面） ──
+  // CC Switch 及其底层的 Claude Code / Codex 会把 skills 存放到以下常见目录，
+  // 这里递归收集其中包含 SKILL.md 的目录并拷贝到当前项目的 skills 目录（可选归入指定分组）。
+  ipcMain.handle('characterarc:cc-switch-import-skills', async (_event, projectId: unknown, targetGroup: unknown) => {
+    try {
+      const resolvedProjectId = String(projectId ?? '').trim() || undefined
+      const safeGroup = String(targetGroup ?? '')
+        .split(/[\\/]+/)
+        .map((seg) => seg.trim())
+        .filter((seg) => seg && seg !== '.' && seg !== '..')
+        .map((seg) => seg.replace(/[^A-Za-z0-9\u4e00-\u9fa5-]/g, ''))
+        .filter(Boolean)
+        .join('/')
+
+      const home = homedir()
+      const skillSourceRoots = [
+        join(home, '.claude', 'skills'),
+        join(home, '.claude', 'custom-skills'),
+        join(home, '.cc-switch', 'skills'),
+        join(home, '.cc-switch', 'claude', 'skills')
+      ]
+
+      const skillsRoot = getSkillsDirPath(resolvedProjectId || undefined)
+      await mkdir(skillsRoot, { recursive: true })
+
+      const importedSkillIds: string[] = []
+      const seenSkillIds = new Set<string>()
+      for (const sourceRoot of skillSourceRoots) {
+        if (!existsSync(sourceRoot)) continue
+        const entries = await readdir(sourceRoot, { withFileTypes: true }).catch(() => [] as Array<import('node:fs').Dirent>)
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue
+          const dirPath = join(sourceRoot, entry.name)
+          // 兼容一层分组目录（group/skill/）
+          let skillDirs: string[] = []
+          if (existsSync(join(dirPath, 'SKILL.md'))) {
+            skillDirs = [dirPath]
+          } else {
+            const subEntries = await readdir(dirPath, { withFileTypes: true }).catch(() => [] as Array<import('node:fs').Dirent>)
+            for (const subEntry of subEntries) {
+              if (subEntry.isDirectory() && existsSync(join(dirPath, subEntry.name, 'SKILL.md'))) {
+                skillDirs.push(join(dirPath, subEntry.name))
+              }
+            }
+          }
+          for (const skillDir of skillDirs) {
+            const skillId = basename(skillDir)
+            if (seenSkillIds.has(skillId)) continue
+            seenSkillIds.add(skillId)
+            const targetDir = safeGroup
+              ? join(skillsRoot, safeGroup, skillId)
+              : join(skillsRoot, skillId)
+            await mkdir(join(targetDir, '..'), { recursive: true })
+            await cp(skillDir, targetDir, { recursive: true, force: true })
+            importedSkillIds.push(skillId)
+          }
+        }
+      }
+
+      // 刷新技能注册表
+      await refreshSkillRegistry(resolvedProjectId)
+
+      return { success: true, importedSkillIds }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : '从 CC Switch 导入 skills 失败' }
     }
   })
 

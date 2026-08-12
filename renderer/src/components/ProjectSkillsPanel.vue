@@ -12,6 +12,7 @@ const dialog = useDialog()
 
 const isScanningProjectSkills = ref(false)
 const isImportingProjectSkills = ref(false)
+const isImportingCcSwitchSkills = ref(false)
 const projectSkillItems = ref<ProjectSkillItem[]>([])
 
 const currentProject = computed(() => appStore.currentProject)
@@ -175,6 +176,8 @@ const importTargetGroup = ref('')
 // 导入来源模式：'dir' 只选目录、'zip' 只选 .zip 压缩包
 const importMode = ref<'dir' | 'zip'>('dir')
 const isImportGroupDialogOpen = ref(false)
+// 分组选择弹窗是否处于“从 CC Switch 导入”模式（true 时底部按钮改为从 CC Switch 导入）
+const ccSwitchImportMode = ref(false)
 
 async function refreshSkillGroups(): Promise<void> {
   try {
@@ -220,7 +223,46 @@ async function importProjectSkillsPackage(): Promise<void> {
   // 导入前先让用户选择目标分组（可选，未选则导入到根目录）
   await refreshSkillGroups()
   importTargetGroup.value = ''
+  ccSwitchImportMode.value = false
   isImportGroupDialogOpen.value = true
+}
+
+// 从 CC Switch 导入 skills：先让用户选择目标分组（可选），再执行导入
+async function importCcSwitchSkillsPackage(): Promise<void> {
+  if (isImportingCcSwitchSkills.value) {
+    return
+  }
+
+  await refreshSkillGroups()
+  importTargetGroup.value = ''
+  ccSwitchImportMode.value = true
+  isImportGroupDialogOpen.value = true
+}
+
+async function runCcSwitchImport(): Promise<void> {
+  if (isImportingCcSwitchSkills.value) {
+    return
+  }
+
+  isImportingCcSwitchSkills.value = true
+  try {
+    const result = await window.characterArc.importCcSwitchSkills(
+      currentProject.value?.id ?? '',
+      importTargetGroup.value || undefined
+    )
+    if (!result.success) {
+      throw new Error(result.error ?? '从 CC Switch 导入 skills 失败')
+    }
+
+    await scanProjectSkills()
+    await refreshSkillGroups()
+    const count = result.importedSkillIds?.length ?? 0
+    message.success(count > 0 ? `已从 CC Switch 导入 ${count} 个 skills` : '未在 CC Switch 目录中找到可导入的 skills')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '从 CC Switch 导入 skills 失败')
+  } finally {
+    isImportingCcSwitchSkills.value = false
+  }
 }
 
 async function runImportPackage(mode: 'dir' | 'zip' = importMode.value): Promise<void> {
@@ -439,6 +481,9 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
           <n-button round strong secondary @click="openCreateGroupDialog">
             ＋ 创建分组
           </n-button>
+          <n-button round strong secondary :disabled="isImportingCcSwitchSkills" @click="importCcSwitchSkillsPackage">
+            {{ isImportingCcSwitchSkills ? '导入中...' : '从 CC Switch 导入 Skill' }}
+          </n-button>
           <n-button round strong :disabled="isImportingProjectSkills" @click="importProjectSkillsPackage">
             {{ isImportingProjectSkills ? '批量导入中...' : '批量导入 Skill（目录 / .zip）' }}
           </n-button>
@@ -614,12 +659,13 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
       <n-modal
         v-model:show="isImportGroupDialogOpen"
         preset="card"
-        title="选择导入目标分组"
+        :title="ccSwitchImportMode ? '从 CC Switch 导入 Skills' : '选择导入目标分组'"
         :bordered="false"
         style="max-width: 480px"
       >
         <div class="skill-group-dialog-body">
-          <p class="skill-group-dialog-tip">选择本次批量导入的 skills 要归入哪个分组（可选）。未选择则导入到根目录（未分组）。选择来源后请在系统对话框中多选 Skill 目录或 .zip 压缩包。</p>
+          <p v-if="ccSwitchImportMode" class="skill-group-dialog-tip">选择本次从 CC Switch 导入的 skills 要归入哪个分组（可选）。未选择则导入到根目录（未分组）。将自动从 ~/.claude/skills、~/.cc-switch/skills 等目录导入 skills。</p>
+          <p v-else class="skill-group-dialog-tip">选择本次批量导入的 skills 要归入哪个分组（可选）。未选择则导入到根目录（未分组）。选择来源后请在系统对话框中多选 Skill 目录或 .zip 压缩包。</p>
           <div class="skill-import-group-options">
             <label class="skill-import-group-option" :class="{ active: importTargetGroup === '' }">
               <input type="radio" v-model="importTargetGroup" value="" />
@@ -645,8 +691,13 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
         <template #footer>
           <div class="skill-group-dialog-actions">
             <n-button round secondary @click="isImportGroupDialogOpen = false">取消</n-button>
-            <n-button round strong secondary @click="isImportGroupDialogOpen = false; runImportPackage('dir')">导入 Skill 目录</n-button>
-            <n-button round strong type="primary" @click="isImportGroupDialogOpen = false; runImportPackage('zip')">导入 .zip 压缩包</n-button>
+            <template v-if="ccSwitchImportMode">
+              <n-button round strong type="primary" :loading="isImportingCcSwitchSkills" @click="isImportGroupDialogOpen = false; runCcSwitchImport()">从 CC Switch 导入</n-button>
+            </template>
+            <template v-else>
+              <n-button round strong secondary @click="isImportGroupDialogOpen = false; runImportPackage('dir')">导入 Skill 目录</n-button>
+              <n-button round strong type="primary" @click="isImportGroupDialogOpen = false; runImportPackage('zip')">导入 .zip 压缩包</n-button>
+            </template>
           </div>
         </template>
       </n-modal>

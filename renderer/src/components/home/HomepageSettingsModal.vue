@@ -100,7 +100,6 @@ interface CcSwitchAiProfile {
 const isCcSwitchImporting = ref(false)
 const ccSwitchImportOpen = ref(false)
 const ccSwitchProfiles = ref<Array<CcSwitchAiProfile & { selected: boolean }>>([])
-const ccSwitchImportedSkills = ref<string[]>([])
 const ccSwitchConfigError = ref('')
 const ccSwitchConfigPath = ref('')
 const isTestingProxyConnection = ref(false)
@@ -715,7 +714,6 @@ async function handleCcSwitchImport(): Promise<void> {
     }
     ccSwitchConfigPath.value = result.configPath ?? ''
     ccSwitchConfigError.value = result.configError ?? ''
-    ccSwitchImportedSkills.value = (result.importedSkills ?? []).map((s) => s.id)
     ccSwitchProfiles.value = (result.aiProfiles ?? []).map((profile) => ({
       ...profile,
       selected: true
@@ -757,15 +755,9 @@ function confirmCcSwitchImport(): void {
     existingKeys.add(key)
   }
   ccSwitchImportOpen.value = false
-  const importedSkillCount = ccSwitchImportedSkills.value.length
   ccSwitchProfiles.value = []
-  ccSwitchImportedSkills.value = []
   ccSwitchConfigError.value = ''
-  message.success(
-    importedSkillCount
-      ? `已导入 ${selected.length} 个 AI 接口配置，并从 CC Switch / Claude Code 导入 ${importedSkillCount} 个 skills`
-      : `已导入 ${selected.length} 个 AI 接口配置`
-  )
+  message.success(`已导入 ${selected.length} 个 AI 接口配置`)
 }
 
 async function saveSettings(): Promise<void> {
@@ -1526,13 +1518,6 @@ async function saveSettings(): Promise<void> {
     </div>
     <div v-else class="cc-switch-empty">
       未在配置文件中识别到可导入的 AI 接口配置。
-    </div>
-
-    <div v-if="ccSwitchImportedSkills.length" class="cc-switch-section-title">已从 CC Switch / Claude Code 导入 Skills</div>
-    <div v-if="ccSwitchImportedSkills.length" class="cc-switch-skill-tags">
-      <n-tag v-for="id in ccSwitchImportedSkills" :key="id" size="small" round :bordered="false">
-        {{ id }}
-      </n-tag>
     </div>
 
     <template #footer>
@@ -2500,13 +2485,6 @@ async function saveSettings(): Promise<void> {
   font-size: 12px;
   font-weight: 600;
   padding: 5px 10px;
-}
-
-.cc-switch-skill-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
 }
 
 .cc-switch-footer {

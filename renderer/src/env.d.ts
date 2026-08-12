@@ -813,10 +813,11 @@ declare global {
           model: string
           isCurrent: boolean
         }>
-        importedSkills?: Array<{
-          id: string
-          path: string
-        }>
+        error?: string
+      }>
+      importCcSwitchSkills: (projectId: string, targetGroup?: string) => Promise<{
+        success: boolean
+        importedSkillIds?: string[]
         error?: string
       }>
       publishWorkspaceSync: (payload: unknown) => Promise<{
