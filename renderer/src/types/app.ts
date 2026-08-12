@@ -11,7 +11,7 @@ export type ThemeName =
   | 'doubao'
   | 'traework'
   | 'traecode'
-  | 'volcengine'
+  | 'paper'
 
 /** 深色模式风格预设 */
 export type DarkModeStyle = 'nord'
@@ -1064,6 +1064,8 @@ export interface AppSettings {
   backgroundImage: string
   /** 全局自定义背景透明度 0-1 */
   backgroundOpacity: number
+  /** 纸质主题纸纤维纹理强度 0-1 */
+  paperTextureStrength: number
   /** 旧数据兼容字段；AI 请求不再按时长自动取消。 */
   aiTimeoutSeconds: number
   /** 回收站全局配置：内容保留天数 */

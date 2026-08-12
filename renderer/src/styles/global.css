@@ -109,6 +109,83 @@ input {
   transition: opacity 0.25s ease;
 }
 
+/* 纸质主题纸纤维纹理层：左侧细腻宣纸，向右过渡为粗糙素描画纸 */
+.app-paper-texture {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    /* 暖棕色微光，柔和漫射光线 */
+    radial-gradient(ellipse at 18% 12%, rgba(184, 134, 11, 0.05), transparent 55%),
+    radial-gradient(ellipse at 85% 88%, rgba(160, 120, 60, 0.045), transparent 50%);
+  opacity: calc(0.5 + var(--arc-paper-strength, 0.5) * 0.5);
+  mix-blend-mode: multiply;
+}
+
+/* 从左（细腻宣纸）向右（粗糙素描纸）的纤维纹理密度渐变 */
+.app-paper-texture::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    /* 左侧细腻纤维：细密而浅 */
+    repeating-linear-gradient(
+      90deg,
+      rgba(130, 100, 55, calc(0.035 * var(--arc-paper-strength, 0.5))) 0 1px,
+      transparent 1px 3px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      rgba(130, 100, 55, calc(0.03 * var(--arc-paper-strength, 0.5))) 0 1px,
+      transparent 1px 4px
+    ),
+    /* 右侧粗糙纤维：交错的絮状短线 */
+    repeating-linear-gradient(
+      90deg,
+      rgba(120, 90, 50, calc(0.06 * var(--arc-paper-strength, 0.5))) 0 2px,
+      transparent 2px 9px
+    ),
+    repeating-linear-gradient(
+      12deg,
+      rgba(110, 82, 48, calc(0.05 * var(--arc-paper-strength, 0.5))) 0 1px,
+      transparent 1px 7px
+    ),
+    repeating-linear-gradient(
+      -12deg,
+      rgba(110, 82, 48, calc(0.05 * var(--arc-paper-strength, 0.5))) 0 1px,
+      transparent 1px 8px
+    );
+  /* 左侧覆盖细腻层（密度低、浅），右侧覆盖粗糙层（密度高、深），中间柔和过渡 */
+  mask-image: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0.9) 0%,
+    rgba(0, 0, 0, 0.5) 40%,
+    rgba(0, 0, 0, 0.95) 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0.9) 0%,
+    rgba(0, 0, 0, 0.5) 40%,
+    rgba(0, 0, 0, 0.95) 100%
+  );
+}
+
+/* 右侧粗糙层的絮状颗粒，进一步强化右侧画纸质感 */
+.app-paper-texture::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(120, 92, 55, calc(0.02 * var(--arc-paper-strength, 0.5))) 0 0.5px, transparent 1px),
+    radial-gradient(circle at 85% 25%, rgba(115, 86, 50, calc(0.05 * var(--arc-paper-strength, 0.5))) 0 0.6px, transparent 1.3px),
+    radial-gradient(circle at 70% 80%, rgba(115, 86, 50, calc(0.05 * var(--arc-paper-strength, 0.5))) 0 0.6px, transparent 1.3px),
+    radial-gradient(circle at 90% 60%, rgba(115, 86, 50, calc(0.055 * var(--arc-paper-strength, 0.5))) 0 0.8px, transparent 1.6px);
+  background-size: 120px 120px, 90px 90px, 110px 110px, 80px 80px;
+  mask-image: linear-gradient(to right, transparent 30%, rgba(0, 0, 0, 0.9) 75%, #000 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 30%, rgba(0, 0, 0, 0.9) 75%, #000 100%);
+}
+
 .app-titlebar {
   position: relative;
   z-index: 1;

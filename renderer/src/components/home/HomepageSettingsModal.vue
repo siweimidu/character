@@ -62,6 +62,12 @@ function setGlobalBackgroundOpacity(value: number): void {
   draftSettings.backgroundOpacity = safe
 }
 
+/** 调节纸质主题纹理强度（即时生效） */
+function setPaperTextureStrength(value: number): void {
+  const safe = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0.5
+  appStore.updateAppSetting('paperTextureStrength', safe, { flushWorkspace: false })
+}
+
 function themeTextColor(color: string): string {
   const match = color.match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/)
   if (!match) return '#ffffff'
@@ -173,7 +179,8 @@ const draftSettings = reactive<AppSettings>({
   darkModeStyle: 'nord',
   aiTimeoutSeconds: 180,
   backgroundImage: '',
-  backgroundOpacity: 0
+  backgroundOpacity: 0,
+  paperTextureStrength: 0.5
 })
 const draftTheme = ref<ThemeName>('ocean')
 const editingProfileId = ref<string>('')
@@ -1407,6 +1414,30 @@ async function saveSettings(): Promise<void> {
             </button>
           </div>
 
+          <div v-if="draftTheme === 'paper'" class="paper-texture-card">
+            <div class="paper-texture-card__head">
+              <div>
+                <strong>纸质纹理强度</strong>
+                <p>调节纸张纤维的细腻与粗糙程度，配合暖黄色护眼纸张背景，即刻生效。</p>
+              </div>
+            </div>
+            <div class="paper-texture-card__control">
+              <span class="paper-texture-card__label">纹理强度</span>
+              <div class="paper-texture-card__slider">
+                <n-slider
+                  :value="appStore.appSettings.paperTextureStrength ?? 0.5"
+                  :min="0"
+                  :max="1"
+                  :step="0.05"
+                  @update:value="setPaperTextureStrength"
+                />
+                <span class="paper-texture-card__value">
+                  {{ Math.round((appStore.appSettings.paperTextureStrength ?? 0.5) * 100) }}%
+                </span>
+              </div>
+            </div>
+          </div>
+
           <div class="custom-background-block">
             <div class="custom-background-head">
               <div>
@@ -2258,6 +2289,61 @@ async function saveSettings(): Promise<void> {
 
 .custom-background-opacity {
   margin-top: 14px;
+}
+
+/* 纸质主题纹理强度卡片（选中纸质主题后显示） */
+.paper-texture-card {
+  margin-top: 18px;
+  border: 1px solid color-mix(in srgb, var(--arc-primary) 28%, var(--arc-border));
+  border-radius: 10px;
+  padding: 14px 16px;
+  background:
+    radial-gradient(ellipse at 90% 0%, rgba(184, 134, 11, 0.06), transparent 60%),
+    var(--arc-bg-surface);
+  box-shadow: 0 2px 10px rgba(92, 74, 40, 0.05);
+}
+
+.paper-texture-card__head strong {
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--arc-text-primary);
+}
+
+.paper-texture-card__head p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--arc-text-hint);
+}
+
+.paper-texture-card__control {
+  margin-top: 12px;
+}
+
+.paper-texture-card__label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 620;
+  color: var(--arc-text-secondary);
+  margin-bottom: 6px;
+}
+
+.paper-texture-card__slider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.paper-texture-card__slider :deep(.n-slider) {
+  flex: 1;
+}
+
+.paper-texture-card__value {
+  width: 40px;
+  text-align: right;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--arc-text-primary);
 }
 
 .opacity-label {

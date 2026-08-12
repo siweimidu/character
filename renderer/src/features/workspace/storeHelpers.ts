@@ -265,7 +265,8 @@ export const defaultAppSettings: AppSettings = {
   darkModeStyle: 'nord',
   aiTimeoutSeconds: 180,
   backgroundImage: '',
-  backgroundOpacity: 0
+  backgroundOpacity: 0,
+  paperTextureStrength: 0.5
 }
 
 // 合并用户设置与默认设置，uiScale 限制在 0.75-1.75 的合理范围内
@@ -468,7 +469,11 @@ export function normalizeAppSettings(settings?: Partial<AppSettings> | null): Ap
     backgroundOpacity:
       typeof source.backgroundOpacity === 'number' && Number.isFinite(source.backgroundOpacity)
         ? Math.min(1, Math.max(0, source.backgroundOpacity))
-        : 0
+        : 0,
+    paperTextureStrength:
+      typeof source.paperTextureStrength === 'number' && Number.isFinite(source.paperTextureStrength)
+        ? Math.min(1, Math.max(0, source.paperTextureStrength))
+        : defaultAppSettings.paperTextureStrength
   }
 }
 

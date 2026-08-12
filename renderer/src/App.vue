@@ -96,6 +96,17 @@ const activeBackground = computed(() => {
   return null
 })
 
+// 是否启用纸质主题（用于叠加纸纤维纹理层）
+const isPaperTheme = computed(() => appStore.theme === 'paper')
+// 纸质主题纹理强度（0-1，决定纤维密度）
+const paperTextureStyle = computed(() => {
+  const strength = appStore.appSettings.paperTextureStrength ?? 0.5
+  const safe = Number.isFinite(strength) ? Math.min(1, Math.max(0, strength)) : 0.5
+  return {
+    '--arc-paper-strength': safe
+  }
+})
+
 // 监听 UI 缩放比例变化，限制在 0.75~1.75 倍之间并同步给 Electron 窗口
 watch(
   () => appStore.appSettings.uiScale,
@@ -191,7 +202,7 @@ onBeforeUnmount(() => {
     <n-message-provider>
       <n-dialog-provider>
         <n-global-style />
-        <div class="app-shell" :class="{ 'platform-darwin': platform === 'darwin' }">
+        <div class="app-shell" :class="{ 'platform-darwin': platform === 'darwin' }" :style="paperTextureStyle">
           <div
             v-if="activeBackground"
             class="app-background"
@@ -200,6 +211,7 @@ onBeforeUnmount(() => {
               opacity: activeBackground.opacity
             }"
           ></div>
+          <div v-if="isPaperTheme" class="app-paper-texture"></div>
           <div class="app-titlebar">
             <div class="app-titlebar__nav">
               <button
