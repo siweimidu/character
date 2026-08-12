@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h, nextTick, reactive, ref, watch } from 'vue'
-import { CheckSquare, ChevronDown, Download, FileDown, FileSpreadsheet, FilePlus2, Files, FolderTree, GripVertical, ListChecks, MoreVertical, Plus, Rows3, Sparkles, Trash2, Upload } from 'lucide-vue-next'
+import { CheckSquare, ChevronDown, CircleHelp, Download, FileDown, FileSpreadsheet, FilePlus2, Files, FolderTree, GripVertical, ListChecks, MoreVertical, Plus, Rows3, Sparkles, Trash2, Upload } from 'lucide-vue-next'
 import { NButton, NCheckbox, NDropdown, NForm, NFormItem, NInput, NInputNumber, NModal, NSelect, useDialog, useMessage } from 'naive-ui'
 import { useEventListener } from '@vueuse/core'
 import { getChapterCharacterCount } from '@/features/chapters/editorContent'
@@ -1381,6 +1381,8 @@ async function exportOutlineExcel(): Promise<void> {
 // ── 数量选择对话框（一键生成章节 / AI 扩写分卷 / AI 扩写节点共用）──
 type QuantityDialogMode = 'chapters' | 'volume' | 'nodes'
 const quantityDialogVisible = ref(false)
+// AI 扩写分卷教程弹窗
+const volumeTutorialVisible = ref(false)
 const quantityDialogMode = ref<QuantityDialogMode>('chapters')
 const quantityDialogValue = ref(1)
 const quantityDialogMax = ref(1)
@@ -1969,6 +1971,9 @@ watch(
         <button class="soft-button primary" :disabled="isExpanding" @click="handleExpandOutline">
           <Sparkles :size="16" />
           <span>{{ isExpanding ? '扩写中...' : 'AI 扩写分卷' }}</span>
+        </button>
+        <button class="soft-button soft-icon-btn" type="button" title="AI 扩写分卷教程" @click="volumeTutorialVisible = true">
+          <CircleHelp :size="16" />
         </button>
       </div>
     </div>
@@ -2591,6 +2596,8 @@ watch(
       :title="quantityDialogTitle"
       positive-text="确认"
       negative-text="取消"
+      :closable="true"
+      @update:show="(v) => { if (!v) quantityDialogVisible = false }"
       @positive-click="confirmQuantityDialog"
       @negative-click="quantityDialogVisible = false"
     >
@@ -2606,6 +2613,32 @@ watch(
           style="width: 100%;"
         />
       </div>
+    </n-modal>
+
+    <!-- AI 扩写分卷教程 -->
+    <n-modal
+      :show="volumeTutorialVisible"
+      preset="card"
+      title="AI 扩写分卷教程"
+      :style="{ width: 'min(520px, 92vw)' }"
+      :bordered="false"
+      @update:show="(v) => { if (!v) volumeTutorialVisible = false }"
+    >
+      <div class="tutorial-body">
+        <p><strong>AI 扩写分卷</strong>会基于当前大纲自动续写新的分卷，帮你快速铺开后续剧情。</p>
+        <ol style="margin: 10px 0 0; padding-left: 20px; line-height: 1.9; color: var(--arc-text-secondary);">
+          <li>点击「AI 扩写分卷」按钮，输入要扩写的分卷数量（1 ~ 10）。</li>
+          <li>AI 会根据项目题材、写作风格与现有大纲，为每个分卷生成标题和剧情方向。</li>
+          <li>生成结果会以新分卷的形式追加到时间线末尾，可继续手动调整。</li>
+          <li>生成期间可点击弹窗右上角「−」让任务在后台继续，或点击「×」中断本次生成。</li>
+        </ol>
+        <p style="margin: 12px 0 0; color: var(--arc-text-hint);">分卷扩写完成后，还可对单个分卷执行「AI 扩写节点」继续细化具体剧情节点。</p>
+      </div>
+      <template #footer>
+        <div style="display: flex; justify-content: flex-end;">
+          <n-button type="primary" round strong @click="volumeTutorialVisible = false">我知道了</n-button>
+        </div>
+      </template>
     </n-modal>
   </section>
 </template>
@@ -3158,6 +3191,24 @@ watch(
 .soft-button.primary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.soft-button.soft-icon-btn {
+  padding: 9px 11px;
+  background: var(--arc-bg-surface);
+  border: 1px solid var(--arc-border);
+  color: var(--arc-text-secondary);
+}
+
+.soft-button.soft-icon-btn:hover {
+  color: var(--arc-primary);
+  border-color: color-mix(in srgb, var(--arc-primary) 50%, var(--arc-border));
+}
+
+.tutorial-body {
+  font-size: 13px;
+  color: var(--arc-text-secondary);
+  line-height: 1.8;
 }
 
 .import-view-toolbar {

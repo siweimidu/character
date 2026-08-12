@@ -533,15 +533,28 @@ async function handleAiBatchGenerate(): Promise<void> {
       return
     }
 
-    generatedThreads.value = entries.map((e) => ({
-      title: String(e.title ?? '未命名伏笔'),
-      description: String(e.description ?? '暂无描述'),
-      tags: normalizeCatalogTags(e.tags),
-      selected: true
-    }))
-    batchModalVisible.value = true
+    // 直接写入伏笔线索，避免"已完成但没有添加"的困惑。
+    // 与世界观/人物/组织等面板的批量生成行为保持一致：生成即入库。
+    const openedInChapterId = appStore.selectedChapterId ?? ''
+    let addedCount = 0
+    entries.forEach((e) => {
+      const title = String(e.title ?? '').trim()
+      if (!title) return
+      appStore.createPlotThread({
+        title,
+        description: String(e.description ?? '暂无描述'),
+        openedInChapterId,
+        status: 'pending',
+        tags: normalizeCatalogTags(e.tags)
+      })
+      addedCount += 1
+    })
+    message.success(`已生成并添加 ${addedCount} 条伏笔线索`)
+    batchModalVisible.value = false
   } catch (error) {
-    message.error(error instanceof Error ? error.message : 'AI 批量生成伏笔失败，请检查模型配置')
+    if (!(error instanceof Error) || (!error.message.includes('任务已中断') && !error.message.includes('任务已被取消'))) {
+      message.error(error instanceof Error ? error.message : 'AI 批量生成伏笔失败，请检查模型配置')
+    }
   }
 }
 

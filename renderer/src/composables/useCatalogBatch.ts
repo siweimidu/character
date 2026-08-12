@@ -48,6 +48,27 @@ function resolveConcurrency(batchCount: number): number {
   return Math.max(BATCH_CONCURRENCY_MIN, Math.min(BATCH_CONCURRENCY_MAX, Math.ceil(batchCount * 0.8)))
 }
 
+/**
+ * 批量生成的取消控制器表（按 mode 索引）。
+ * 用户点击"叉号"中断时，会 abort 对应控制器的信号并主动向主进程取消运行中的请求。
+ */
+const batchAbortControllers = new Map<string, AbortController>()
+/** 各模式已启动批次的主进程 clientTaskId 集合，用于中断时主动取消底层请求。 */
+const batchClientIds = new Map<string, Set<string>>()
+
+/** 取消某个模式的批量生成任务（用于对话框"叉号=中断"）。 */
+export function cancelCatalogBatch(mode: CatalogBatchMode): void {
+  const controller = batchAbortControllers.get(mode)
+  if (controller) controller.abort()
+  // 主动向主进程取消所有已启动批次的底层请求，让 AI 生成立刻停止。
+  const clientIds = batchClientIds.get(mode)
+  if (clientIds) {
+    clientIds.forEach((id) => {
+      if (id) void window.characterArc.cancelAiTask(id).catch(() => {})
+    })
+  }
+}
+
 export function useCatalogBatch() {
   const appStore = useAppStore()
 
@@ -84,93 +105,154 @@ export function useCatalogBatch() {
     const taskKey = `catalog-batch:${options.mode}`
     const allTargets = Array.isArray(options.context.targets) ? options.context.targets : null
 
-    // 预先规划各批次：每个批次拿到固定的条目数与目标切片，互不依赖，可安全并行。
-    const batchCounts: number[] = []
-    let remaining = total
-    while (remaining > 0) {
-      const count = Math.min(BATCH_SIZE, remaining)
-      batchCounts.push(count)
-      remaining -= count
+    // 注册本模式的取消控制器，供对话框"叉号=中断"时 abort。
+    const controller = new AbortController()
+    batchAbortControllers.set(options.mode, controller)
+    const signal = controller.signal
+    // 记录已启动批次的主进程 clientTaskId，用于中断时主动取消底层请求。
+    const runningClientIds = new Set<string>()
+    batchClientIds.set(options.mode, runningClientIds)
+
+    // 每次启动一个批次并返回该批新增的、去重后仍未被占用的条目。
+    // 使用递增的跟踪 key，避免 runTrackedAiTask 同 key 互斥导致并行失败；
+    // 首批发沿用规范 key，保证面板的 isAiTaskRunning(catalog-batch:xxx) 加载态生效。
+    let runSeq = 0
+    const nextRunKey = (): string => {
+      runSeq += 1
+      return runSeq === 1 ? taskKey : `${taskKey}#${runSeq}`
     }
 
-    let finishedBatches = 0
-    const runKeys = batchCounts.map((_, batchIndex) =>
-      batchIndex === 0 ? taskKey : `${taskKey}#${batchIndex + 1}`
-    )
-    const rawResults = await runBoundedConcurrency(
-      batchCounts.map((batchCount, batchIndex) => {
-        // 各并发批次使用不同的跟踪 key，避免 runTrackedAiTask 同 key 互斥导致并行失败。
-        // 首批发改沿用规范 key，保证面板的 isAiTaskRunning(catalog-batch:xxx) 加载态生效。
-        const runKey = runKeys[batchIndex]
-        return async () => {
-          const batchContext = allTargets
-            ? {
-                ...options.context,
-                targets: allTargets.slice(batchIndex * BATCH_SIZE, batchIndex * BATCH_SIZE + batchCount)
-              }
-            : options.context
-          const description = `正在生成 ${batchIndex * BATCH_SIZE + 1}-${batchIndex * BATCH_SIZE + batchCount} / ${total}`
-          const response = await appStore.runTrackedAiTask(
-            {
-              key: runKey,
-              kind: options.kind,
-              label: options.label,
-              description,
-              panel: options.panel,
-            },
-            () => window.characterArc.generateAi(toIpcPayload({
-              task: 'catalog-batch',
-              clientKey: runKey,
-              settings: appStore.appSettings,
-              context: {
-                ...batchContext,
-                projectId: appStore.currentProject?.id,
-                mode: options.mode,
-                count: batchCount,
-                existingNames: [...knownKeys]
-              }
-            }))
-          )
+    // 全局已确认占用的唯一 key（既有 + 本次已产出），用于跨批次避重。
+    const usedKeys = new Set(knownKeys)
 
-          if (!response.success || !response.result) {
-            throw new Error(response.error ?? `${options.label}失败`)
+    async function runOneBatch(batchCount: number, runKey: string, description: string): Promise<CatalogBatchEntry[]> {
+      if (signal.aborted) throw new Error('任务已中断。')
+      const batchContext = allTargets
+        ? {
+            ...options.context,
+            targets: allTargets.slice(0, batchCount)
           }
-          return (response.result as { entries?: CatalogBatchEntry[] }).entries ?? []
+        : options.context
+      const response = await appStore.runTrackedAiTask(
+        {
+          key: runKey,
+          kind: options.kind,
+          label: options.label,
+          description,
+          panel: options.panel,
+        },
+        () => {
+          const clientTaskId = appStore.getClientTaskId()
+          if (clientTaskId) runningClientIds.add(clientTaskId)
+          return window.characterArc.generateAi(toIpcPayload({
+            task: 'catalog-batch',
+            clientTaskId: appStore.getClientTaskId(),
+            clientKey: runKey,
+            settings: appStore.appSettings,
+            context: {
+              ...batchContext,
+              projectId: appStore.currentProject?.id,
+              mode: options.mode,
+              count: batchCount,
+              existingNames: [...usedKeys]
+            }
+          }))
         }
-      }),
-      resolveConcurrency(batchCounts.length),
-      // 每个批次完成即上报一次进度（按完成批次数估算），保持进度条实时推进。
-      () => {
-        finishedBatches += 1
-        const completed = Math.min(total, finishedBatches * BATCH_SIZE)
-        options.onProgress?.(completed, total)
-        // 同步更新任务面板里各运行中的批次的实时进度，驱动右下角进度条。
-        const percent = Math.round((completed / total) * 100)
-        runKeys.forEach((key) => {
-          const run = appStore.getAiTaskRun(key)
-          if (run && run.stage === 'running') {
-            appStore.updateAiTaskProgress(key, percent)
-          }
-        })
-      }
-    )
+      )
 
-    // 全部批次完成后统一去重，保持最终结果顺序稳定。
+      if (!response.success || !response.result) {
+        throw new Error(response.error ?? `${options.label}失败`)
+      }
+      return (response.result as { entries?: CatalogBatchEntry[] }).entries ?? []
+    }
+
+    // 收集所有已确认生成的条目（跨批次去重后按顺序追加）。
     const entries: CatalogBatchEntry[] = []
-    for (const resultEntries of rawResults) {
+
+    // 消化一批返回的原始条目：按唯一 key 去重后追加到结果，直到达到总量。
+    function absorb(resultEntries: CatalogBatchEntry[]): void {
       for (const entry of resultEntries) {
         if (entries.length >= total) break
         if (keyField) {
           const key = String(entry[keyField] ?? '').trim().toLowerCase()
-          if (!key || knownKeys.has(key)) continue
-          knownKeys.add(key)
+          if (!key || usedKeys.has(key)) continue
+          usedKeys.add(key)
         }
         entries.push(entry)
       }
     }
-    options.onProgress?.(entries.length, total)
 
-    return entries
+    async function runBatches(): Promise<CatalogBatchEntry[]> {
+      // 预先规划各批次：每个批次拿到固定的条目数，互不依赖，可安全并行。
+      const initialBatchCounts: number[] = []
+      let remaining = total
+      while (remaining > 0) {
+        const count = Math.min(BATCH_SIZE, remaining)
+        initialBatchCounts.push(count)
+        remaining -= count
+      }
+
+      // 记录已启动过的批次 key，用于统一刷新进度。
+      const launchedRunKeys: string[] = []
+
+      // 并行执行第一批规划的所有批次。
+      await runBoundedConcurrency(
+        initialBatchCounts.map((batchCount, batchIndex) => {
+          const runKey = nextRunKey()
+          launchedRunKeys.push(runKey)
+          const description = `正在生成 ${batchIndex * BATCH_SIZE + 1}-${batchIndex * BATCH_SIZE + batchCount} / ${total}`
+          return async () => {
+            const batchEntries = await runOneBatch(batchCount, runKey, description)
+            absorb(batchEntries)
+            // 每个批次完成即上报一次进度，保持进度条实时推进。
+            const percent = Math.round((Math.min(entries.length, total) / total) * 100)
+            options.onProgress?.(Math.min(entries.length, total), total)
+            launchedRunKeys.forEach((key) => {
+              const run = appStore.getAiTaskRun(key)
+              if (run && run.stage === 'running') {
+                appStore.updateAiTaskProgress(key, percent)
+              }
+            })
+          }
+        }),
+        resolveConcurrency(initialBatchCounts.length)
+      )
+
+      // 若首批产出（去重后）仍不足总量，则自动补充生成直到凑齐精确数量。
+      // 限制最大补充轮次，避免 AI 持续产出重复/空条时无限循环。
+      const MAX_BACKFILL_ROUNDS = 6
+      let backfillRound = 0
+      while (entries.length < total && backfillRound < MAX_BACKFILL_ROUNDS) {
+        backfillRound += 1
+        const shortfall = total - entries.length
+        const batchCount = Math.min(BATCH_SIZE, shortfall)
+        const runKey = nextRunKey()
+        launchedRunKeys.push(runKey)
+        const description = `正在补齐生成 ${entries.length + 1}-${total} / ${total}`
+        const batchEntries = await runOneBatch(batchCount, runKey, description)
+        absorb(batchEntries)
+        options.onProgress?.(Math.min(entries.length, total), total)
+        // 让进度面板里的已运行批次统一收敛到当前进度
+        launchedRunKeys.forEach((key) => {
+          const run = appStore.getAiTaskRun(key)
+          if (run && run.stage === 'running') {
+            appStore.updateAiTaskProgress(key, Math.round((Math.min(entries.length, total) / total) * 100))
+          }
+        })
+      }
+
+      options.onProgress?.(entries.length, total)
+
+      return entries
+    }
+
+    try {
+      return await runBatches()
+    } finally {
+      // 任务结束（无论成功、失败或被中断）都要清理控制器，避免影响下一次生成。
+      batchAbortControllers.delete(options.mode)
+      batchClientIds.delete(options.mode)
+    }
   }
 
   return { generateCatalogBatch }

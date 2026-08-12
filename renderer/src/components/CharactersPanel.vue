@@ -41,7 +41,7 @@ import AiEnhancePreview from './AiEnhancePreview.vue'
 import BatchDeleteBar from './BatchDeleteBar.vue'
 import BatchGenerateDialog from './BatchGenerateDialog.vue'
 import type { EnhanceFieldDiff } from './AiEnhancePreview.vue'
-import { normalizeCatalogTags, useCatalogBatch } from '@/composables/useCatalogBatch'
+import { cancelCatalogBatch, normalizeCatalogTags, useCatalogBatch } from '@/composables/useCatalogBatch'
 import { useIncrementalList } from '@/composables/useIncrementalList'
 
 const appStore = useAppStore()
@@ -190,6 +190,12 @@ function handleCreateCharacter(): void {
   editorVisible.value = true
 }
 
+// 中断批量生成：关闭弹窗并停止本次生成任务（叉号=中断，减号=后台执行）
+function handleInterruptBatch(): void {
+  batchVisible.value = false
+  cancelCatalogBatch('character')
+}
+
 async function handleGenerateCharacter(payload: { count: number; prompt: string; types: string[] }): Promise<void> {
   if (isGenerating.value) return
   try {
@@ -235,7 +241,9 @@ async function handleGenerateCharacter(payload: { count: number; prompt: string;
     batchVisible.value = false
     message.success(`已生成 ${entries.length} 个角色`)
   } catch (error) {
-    message.error(error instanceof Error ? error.message : 'AI 生成角色失败，请检查模型配置')
+    if (!(error instanceof Error) || (!error.message.includes('任务已中断') && !error.message.includes('任务已被取消'))) {
+      message.error(error instanceof Error ? error.message : 'AI 生成角色失败，请检查模型配置')
+    }
   }
 }
 
@@ -939,6 +947,7 @@ watch(
       :progress="batchProgress"
       @close="batchVisible = false"
       @background="batchVisible = false"
+      @interrupt="handleInterruptBatch"
       @submit="handleGenerateCharacter"
     />
 

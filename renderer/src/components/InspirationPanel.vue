@@ -9,7 +9,7 @@ import type { DropdownOption } from 'naive-ui'
 import type { InspirationEntry } from '@/types/app'
 import BatchDeleteBar from './BatchDeleteBar.vue'
 import BatchGenerateDialog from './BatchGenerateDialog.vue'
-import { normalizeCatalogTags, useCatalogBatch } from '@/composables/useCatalogBatch'
+import { cancelCatalogBatch, normalizeCatalogTags, useCatalogBatch } from '@/composables/useCatalogBatch'
 import { useIncrementalList } from '@/composables/useIncrementalList'
 
 const props = defineProps<{
@@ -83,7 +83,11 @@ function handleDeleteType(type: string): void {
   })
 }
 const typeOptions = computed(() =>
-  [...new Set([...focusTypes, ...appStore.inspirationEntries.map((entry) => entry.type.trim()).filter(Boolean)])]
+  [...new Set([
+    ...focusTypes,
+    ...appStore.inspirationTypes,
+    ...appStore.inspirationEntries.map((entry) => entry.type.trim()).filter(Boolean)
+  ])]
     .map((type) => ({ label: type, value: type }))
 )
 const menuOptions: DropdownOption[] = [ // 灵感卡片的下拉菜单选项
@@ -194,6 +198,12 @@ function jumpToPlotThread(threadId: string, event: MouseEvent): void {
   appStore.setThreadFocus(threadId)
 }
 
+// 中断批量生成：关闭弹窗并停止本次生成任务（叉号=中断，减号=后台执行）
+function handleInterruptBatch(): void {
+  batchVisible.value = false
+  cancelCatalogBatch('inspiration')
+}
+
 // 调用 AI 接口批量生成灵感卡片（根据选中的焦点类型和当前章节上下文）
 async function handleGeneratePack(payload: { count: number; prompt: string; types: string[] }): Promise<void> {
   if (isGenerating.value) {
@@ -259,7 +269,9 @@ async function handleGeneratePack(payload: { count: number; prompt: string; type
     const syncSuffix = syncedThreadCount > 0 ? `，并同步 ${syncedThreadCount} 条到伏笔线索` : ''
     message.success(`已生成 ${entries.length} 张灵感卡片${syncSuffix}`)
   } catch (error) {
-    message.error(error instanceof Error ? error.message : 'AI 生成灵感失败，请稍后重试')
+    if (!(error instanceof Error) || (!error.message.includes('任务已中断') && !error.message.includes('任务已被取消'))) {
+      message.error(error instanceof Error ? error.message : 'AI 生成灵感失败，请稍后重试')
+    }
   }
 }
 
@@ -410,6 +422,7 @@ function handleMenuSelect(action: string | number, entry: InspirationEntry): voi
       :allow-custom-types="true"
       @close="batchVisible = false"
       @background="batchVisible = false"
+      @interrupt="handleInterruptBatch"
       @submit="handleGeneratePack"
     />
 

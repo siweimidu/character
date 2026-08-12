@@ -3,22 +3,18 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import {
-  Bookmark,
   BookMarked,
   Brain,
   FileCheck2,
   Globe2,
   Network,
   PanelLeftOpen,
-  Plus,
   ShieldCheck,
-  Trash2,
   Users
 } from 'lucide-vue-next'
 import type { SurfaceDefinition, TurnTruncateResult } from '@shared/assistant-runtime'
 import { useAppStore } from '@/stores/app'
 import { useAssistant } from '@/composables/useAssistant'
-import { usePromptStore } from '@/composables/usePromptStore'
 import AssistantSessionList from './AssistantSessionList.vue'
 import AssistantMessages from './AssistantMessages.vue'
 import AssistantComposer from './AssistantComposer.vue'
@@ -26,6 +22,7 @@ import StagedChangesView from './StagedChangesView.vue'
 import AgentSelector from './AgentSelector.vue'
 import AgentMemoryDialog from './AgentMemoryDialog.vue'
 import ReferencePickerDialog from './ReferencePickerDialog.vue'
+import PromptLibrary from './PromptLibrary.vue'
 
 const appStore = useAppStore()
 const { selectedProjectId } = storeToRefs(appStore)
@@ -47,11 +44,6 @@ const composerValue = computed({
   get: () => assistant.composerValue.value,
   set: (v) => { assistant.composerValue.value = v }
 })
-
-// ── 提示词库（存储/新建/删除常用提示词，与章节创作智能体共用同一套）──
-const newPromptLabel = ref('')
-const newPromptText = ref('')
-const promptStore = usePromptStore(selectedProjectId)
 
 // 当前选中的智能体
 const selectedAgentId = ref<string>('')
@@ -133,28 +125,6 @@ const assetLinks = computed(() => [
 
 function fillQuickAction(prompt: string): void {
   composerValue.value = prompt
-}
-
-// ── 提示词库操作 ──
-function handleSavePrompt(): void {
-  if (!newPromptText.value.trim()) {
-    message.warning('请输入提示词内容')
-    return
-  }
-  promptStore.savePrompt(newPromptLabel.value, newPromptText.value)
-  newPromptLabel.value = ''
-  newPromptText.value = ''
-  message.success('提示词已保存')
-}
-
-function handleUsePrompt(promptText: string): void {
-  composerValue.value = promptText
-}
-
-function handleDeletePrompt(id: string, label: string): void {
-  if (!confirm(`确定删除提示词「${label}」吗？`)) return
-  promptStore.deletePrompt(id)
-  message.success('提示词已删除')
 }
 
 function sendWithMode(intentHint?: string): void {
@@ -535,51 +505,10 @@ async function handleCommit(ids?: string[]): Promise<void> {
             </button>
           </div>
 
-          <div class="prompt-section">
-            <div class="prompt-section-title">
-              <Bookmark :size="13" />
-              提示词库
-            </div>
-            <div class="prompt-form">
-              <input
-                v-model="newPromptLabel"
-                class="prompt-name-input"
-                placeholder="提示词名称（可选）"
-                maxlength="30"
-              />
-              <textarea
-                v-model="newPromptText"
-                class="prompt-text-input"
-                placeholder="输入要保存的常用提示词…"
-                rows="2"
-              ></textarea>
-              <button type="button" class="prompt-save-btn" @click="handleSavePrompt">
-                <Plus :size="13" />
-                保存提示词
-              </button>
-            </div>
-            <div v-if="promptStore.prompts.value.length === 0" class="prompt-empty">
-              <Bookmark :size="14" />
-              还没有保存的提示词，填入并保存一条吧。
-            </div>
-            <div v-else class="prompt-list">
-              <div v-for="p in promptStore.prompts.value" :key="p.id" class="prompt-item">
-                <button type="button" class="prompt-item-main" @click="handleUsePrompt(p.prompt)">
-                  <span class="prompt-item-label">{{ p.label }}</span>
-                  <span class="prompt-item-text">{{ p.prompt }}</span>
-                </button>
-                <button
-                  type="button"
-                  class="prompt-del-btn"
-                  title="删除提示词"
-                  aria-label="删除提示词"
-                  @click="handleDeletePrompt(p.id, p.label)"
-                >
-                  <Trash2 :size="13" />
-                </button>
-              </div>
-            </div>
-          </div>
+          <PromptLibrary
+            :project-id="selectedProjectId"
+            :on-use="(p) => { composerValue = p }"
+          />
 
           <div class="asset-strip">
             <button
@@ -901,178 +830,6 @@ async function handleCommit(ids?: string[]): Promise<void> {
   border-color: var(--arc-primary);
   background: var(--arc-primary-soft);
   transform: translateY(-1px);
-}
-
-/* ── 提示词库 ── */
-.prompt-section {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.prompt-section-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--arc-text-hint);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.prompt-form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid var(--arc-border);
-  border-radius: 10px;
-  background: var(--arc-bg-surface);
-}
-
-.prompt-name-input,
-.prompt-text-input {
-  width: 100%;
-  border: 1px solid var(--arc-border-strong);
-  border-radius: 6px;
-  background: var(--arc-bg-body);
-  color: var(--arc-text-primary);
-  font-size: 12.5px;
-  padding: 7px 9px;
-  resize: vertical;
-  outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.prompt-name-input::placeholder,
-.prompt-text-input::placeholder {
-  color: var(--arc-text-hint);
-  opacity: 1;
-}
-
-.prompt-name-input:hover,
-.prompt-text-input:hover {
-  border-color: color-mix(in srgb, var(--arc-primary) 45%, var(--arc-border));
-}
-
-.prompt-name-input:focus,
-.prompt-text-input:focus {
-  outline: none;
-  border-color: var(--arc-primary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--arc-primary) 18%, transparent);
-}
-
-.prompt-name-input:disabled,
-.prompt-text-input:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.prompt-save-btn {
-  align-self: flex-end;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid var(--arc-primary);
-  border-radius: 7px;
-  background: var(--arc-primary-soft);
-  color: var(--arc-primary);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 6px 12px;
-}
-
-.prompt-save-btn:hover {
-  background: color-mix(in srgb, var(--arc-primary) 18%, var(--arc-bg-surface));
-}
-
-.prompt-save-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.prompt-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 16px 10px;
-  border: 1px dashed var(--arc-border);
-  border-radius: 10px;
-  color: var(--arc-text-hint);
-  font-size: 12px;
-  text-align: center;
-}
-
-.prompt-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 220px;
-  overflow-y: auto;
-}
-
-.prompt-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--arc-border);
-  border-radius: 8px;
-  background: var(--arc-bg-surface);
-  padding: 4px 4px 4px 10px;
-}
-
-.prompt-item-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  border: none;
-  background: transparent;
-  color: var(--arc-text-primary);
-  text-align: left;
-  cursor: pointer;
-  padding: 6px 0;
-}
-
-.prompt-item-main:hover .prompt-item-label {
-  color: var(--arc-primary);
-}
-
-.prompt-item-label {
-  font-size: 12.5px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.prompt-item-text {
-  font-size: 11.5px;
-  color: var(--arc-text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.prompt-del-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  flex: 0 0 auto;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--arc-text-hint);
-  cursor: pointer;
-}
-
-.prompt-del-btn:hover {
-  color: var(--arc-danger);
-  background: rgba(185, 28, 28, 0.08);
 }
 
 .stream-strip {

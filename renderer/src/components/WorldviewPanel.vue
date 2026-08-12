@@ -11,7 +11,7 @@ import AiEnhancePreview from './AiEnhancePreview.vue'
 import BatchDeleteBar from './BatchDeleteBar.vue'
 import BatchGenerateDialog from './BatchGenerateDialog.vue'
 import type { EnhanceFieldDiff } from './AiEnhancePreview.vue'
-import { normalizeCatalogTags, useCatalogBatch } from '@/composables/useCatalogBatch'
+import { cancelCatalogBatch, normalizeCatalogTags, useCatalogBatch } from '@/composables/useCatalogBatch'
 import { useIncrementalList } from '@/composables/useIncrementalList'
 
 const props = defineProps<{
@@ -131,6 +131,12 @@ function handleCreateEntry(): void {
   editorVisible.value = true
 }
 
+// 中断批量生成：关闭弹窗并停止本次生成任务（叉号=中断，减号=后台执行）
+function handleInterruptBatch(): void {
+  batchVisible.value = false
+  cancelCatalogBatch('worldview')
+}
+
 // 调用 AI 接口自动生成一条世界观词条草稿
 async function handleGenerateEntry(payload: { count: number; prompt: string; types: string[] }): Promise<void> {
   if (isGenerating.value) {
@@ -170,7 +176,9 @@ async function handleGenerateEntry(payload: { count: number; prompt: string; typ
     batchVisible.value = false
     message.success(`已生成 ${entries.length} 条世界观设定`)
   } catch (error) {
-    message.error(error instanceof Error ? error.message : 'AI 扩写失败，请检查模型配置')
+    if (!(error instanceof Error) || (!error.message.includes('任务已中断') && !error.message.includes('任务已被取消'))) {
+      message.error(error instanceof Error ? error.message : 'AI 扩写失败，请检查模型配置')
+    }
   }
 }
 
@@ -529,6 +537,7 @@ watch(
       allow-custom-types
       @close="batchVisible = false"
       @background="batchVisible = false"
+      @interrupt="handleInterruptBatch"
       @submit="handleGenerateEntry"
     />
 

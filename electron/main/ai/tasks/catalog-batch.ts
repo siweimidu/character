@@ -6,7 +6,7 @@ import { normalizeWorldviewType } from './worldview-type'
 type CatalogMode = 'character' | 'organization' | 'relationship' | 'membership' | 'worldview' | 'inspiration' | 'plot-thread'
 
 const modeRules: Record<CatalogMode, string> = {
-  character: '每项字段：name、role、description（80-160字）、tags（2-4项）。角色不能与已有角色重名，并应能嵌入现有关系网。',
+  character: '每项字段：name、role、description（80-160字）、tags（2-4项）。角色不能与已有角色重名，并应能嵌入现有关系网。\n\n【必须只生成"人物"】你只能生成具体的人/类人角色（例如侠客、剑客、医师、商人、皇族、门派弟子、妖修、神祇等有独立人格与行动力的角色个体），绝不允许生成以下内容：物品、武器、招式、功法、棋局、秘语、场景、概念、因果体、剑气、法宝、组织、地点等。每一条都必须是"可以站出来的角色"。若某个想法无法作为一个人物来塑造，就不要输出它。角色之间彼此要有区分度，避免同质化。',
   organization: '每项字段：name、type、description（80-160字）、motto。组织不能与已有组织重名。',
   relationship: 'targets 中每个对象生成且仅生成一项。字段：targetIndex（原样返回）、type、description（80-160字）、intensity（0-100）。',
   membership: 'targets 中每个角色生成且仅生成一项。字段：targetIndex（原样返回）、organizationName（必须从已有组织中选择）、role、notes（80-160字）。',

@@ -8,7 +8,7 @@
  * 本模块运行在主进程（Node 环境），负责文件级别的解析与写入。
  */
 
-import { inflateSync } from 'node:zlib'
+import { deflateSync, inflateSync } from 'node:zlib'
 
 /** 角色卡数据字段（与 renderer 端 CharacterCard 核心字段一一对应） */
 export interface StCharacterCardData {
@@ -301,4 +301,141 @@ export function embedCharaJsonIntoPng(pngBuffer: Buffer, cardJson: string): Buff
   const header = chunks[0] ?? Buffer.alloc(0)
   const rest = chunks.slice(1)
   return Buffer.concat([signature, header, newChunk, ...rest])
+}
+
+/**
+ * 根据 RGBA 像素数据生成一张 PNG Buffer。
+ * 不依赖任何外部图像库，使用 Node 内置 zlib 完成压缩。
+ */
+function encodePng(width: number, height: number, rgba: Buffer): Buffer {
+  // 每行前加 1 字节滤波类型（0 = None）
+  const stride = width * 4
+  const raw = Buffer.alloc((stride + 1) * height)
+  for (let y = 0; y < height; y += 1) {
+    raw[y * (stride + 1)] = 0
+    rgba.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride)
+  }
+  const idatData = deflateSync(raw)
+
+  function chunk(type: string, data: Buffer): Buffer {
+    const typeBuf = Buffer.from(type, 'ascii')
+    const out = Buffer.alloc(12 + data.length)
+    out.writeUInt32BE(data.length, 0)
+    typeBuf.copy(out, 4)
+    data.copy(out, 8)
+    out.writeUInt32BE(crc32(Buffer.concat([typeBuf, data])), 8 + data.length)
+    return out
+  }
+
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(width, 0)
+  ihdr.writeUInt32BE(height, 4)
+  ihdr[8] = 8 // bit depth
+  ihdr[9] = 6 // color type RGBA
+  ihdr[10] = 0
+  ihdr[11] = 0
+  ihdr[12] = 0
+
+  return Buffer.concat([
+    PNG_SIGNATURE,
+    chunk('IHDR', ihdr),
+    chunk('IDAT', idatData),
+    chunk('IEND', Buffer.alloc(0))
+  ])
+}
+
+/** 生成一张角色名占位卡片 PNG：带渐变底与角色名文本，替代原先的 1x1 纯色像素。 */
+export function createCharacterCardPng(card: { name?: string; description?: string }): Buffer {
+  const width = 400
+  const height = 560
+  const rgba = Buffer.alloc(width * height * 4)
+  const name = String(card?.name ?? '角色卡').trim() || '角色卡'
+  // 深色蓝紫渐变背景
+  for (let y = 0; y < height; y += 1) {
+    const t = y / (height - 1)
+    const r = Math.round(36 + t * 24)
+    const g = Math.round(34 + t * 22)
+    const b = Math.round(84 + t * 66)
+    for (let x = 0; x < width; x += 1) {
+      const idx = (y * width + x) * 4
+      rgba[idx] = r
+      rgba[idx + 1] = g
+      rgba[idx + 2] = b
+      rgba[idx + 3] = 255
+    }
+  }
+
+  // 用 5x7 点阵字型渲染 ASCII 角色名（中文名不占用字形时仅显示渐变底，仍为有效 PNG）
+  const dotFont: Record<string, string[]> = {
+    A: ['01110', '10001', '11111', '10001', '10001'],
+    B: ['11110', '10001', '11110', '10001', '11110'],
+    C: ['01111', '10000', '10000', '10000', '01111'],
+    D: ['11110', '10001', '10001', '10001', '11110'],
+    E: ['11111', '10000', '11110', '10000', '11111'],
+    F: ['11111', '10000', '11110', '10000', '10000'],
+    G: ['01111', '10000', '10111', '10001', '01111'],
+    H: ['10001', '10001', '11111', '10001', '10001'],
+    I: ['11111', '00100', '00100', '00100', '11111'],
+    J: ['00001', '00001', '00001', '10001', '01110'],
+    K: ['10001', '10010', '11100', '10010', '10001'],
+    L: ['10000', '10000', '10000', '10000', '11111'],
+    M: ['10001', '11011', '10101', '10001', '10001'],
+    N: ['10001', '11001', '10101', '10011', '10001'],
+    O: ['01110', '10001', '10001', '10001', '01110'],
+    P: ['11110', '10001', '11110', '10000', '10000'],
+    Q: ['01110', '10001', '10001', '10010', '01101'],
+    R: ['11110', '10001', '11110', '10010', '10001'],
+    S: ['01111', '10000', '01110', '00001', '11110'],
+    T: ['11111', '00100', '00100', '00100', '00100'],
+    U: ['10001', '10001', '10001', '10001', '01110'],
+    V: ['10001', '10001', '10001', '01010', '00100'],
+    W: ['10001', '10001', '10101', '11011', '10001'],
+    X: ['10001', '01010', '00100', '01010', '10001'],
+    Y: ['10001', '01010', '00100', '00100', '00100'],
+    Z: ['11111', '00010', '00100', '01000', '11111'],
+    '0': ['01110', '10001', '10101', '10001', '01110'],
+    '1': ['00100', '01100', '00100', '00100', '01110'],
+    '2': ['01110', '00001', '01110', '10000', '11111'],
+    '3': ['11110', '00001', '01110', '00001', '11110'],
+    '4': ['10001', '10001', '11111', '00001', '00001'],
+    '5': ['11111', '10000', '11110', '00001', '11110'],
+    '6': ['01110', '10000', '11110', '10001', '01110'],
+    '7': ['11111', '00001', '00110', '00100', '00100'],
+    '8': ['01110', '10001', '01110', '10001', '01110'],
+    '9': ['01110', '10001', '01111', '00001', '01110'],
+    ' ': ['00000', '00000', '00000', '00000', '00000']
+  }
+
+  // 居中绘制角色名（仅支持 ASCII；中文名跳过字形渲染，保持渐变底）
+  const scale = 3
+  const charW = 6 * scale
+  const visibleChars = [...name].slice(0, 12)
+  const totalW = visibleChars.length * charW
+  const startX = Math.max(0, Math.floor((width - totalW) / 2))
+  const startY = Math.floor(height / 2) - 15
+  visibleChars.forEach((ch, i) => {
+    const glyph = dotFont[ch.toUpperCase()]
+    if (!glyph) return
+    const ox = startX + i * charW + Math.floor((charW - 6 * scale) / 2)
+    for (let row = 0; row < 5; row += 1) {
+      for (let col = 0; col < 5; col += 1) {
+        if (glyph[row]?.[col] !== '1') continue
+        for (let dy = 0; dy < scale; dy += 1) {
+          for (let dx = 0; dx < scale; dx += 1) {
+            const x = ox + col * scale + dx
+            const y = startY + row * scale + dy
+            if (x >= 0 && x < width && y >= 0 && y < height) {
+              const idx = (y * width + x) * 4
+              rgba[idx] = 240
+              rgba[idx + 1] = 238
+              rgba[idx + 2] = 255
+              rgba[idx + 3] = 255
+            }
+          }
+        }
+      }
+    }
+  })
+
+  return encodePng(width, height, rgba)
 }

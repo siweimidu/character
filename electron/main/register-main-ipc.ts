@@ -22,6 +22,7 @@ import {
   parsePngCharacterCard,
   parseCardJson,
   buildV2CardJson,
+  createCharacterCardPng,
   resolveAvatarBuffer
 } from '@shared/character-card'
 import {
@@ -165,13 +166,6 @@ type ProjectArchiveImportRequest = {
   targetProjectId?: string
   modules?: ProjectArchiveModule[]
   filePaths?: string[]
-}
-
-/** 生成一张最小的 1x1 PNG，用于无头像时导出 PNG 角色卡 */
-function createFallbackPng(): Buffer {
-  // 1x1 红色像素 PNG
-  const base64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
-  return Buffer.from(base64, 'base64')
 }
 
 async function cleanupOrphanReferenceNovelFiles(payload: unknown): Promise<void> {
@@ -1100,7 +1094,7 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
         const avatarBuf = resolveAvatarBuffer(avatarBase)
         let pngBuffer = avatarBuf
         if (!pngBuffer || !isPngBuffer(pngBuffer)) {
-          pngBuffer = createFallbackPng()
+          pngBuffer = createCharacterCardPng(card)
         }
         await writeFile(result.filePath, embedCharaJsonIntoPng(pngBuffer, cardJson))
       }
@@ -1166,7 +1160,7 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
             const avatarBase = typeof raw?.avatar === 'string' ? raw.avatar : ''
             const avatarBuf = resolveAvatarBuffer(avatarBase)
             let pngBuffer = avatarBuf
-            if (!pngBuffer || !isPngBuffer(pngBuffer)) pngBuffer = createFallbackPng()
+            if (!pngBuffer || !isPngBuffer(pngBuffer)) pngBuffer = createCharacterCardPng(card)
             const filePath = join(targetDir, `${safeName}.png`)
             await writeFile(filePath, embedCharaJsonIntoPng(pngBuffer, cardJson))
           }

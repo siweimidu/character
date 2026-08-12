@@ -28,6 +28,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   close: []
   background: []
+  interrupt: []
   submit: [payload: { count: number; prompt: string; types: string[] }]
 }>()
 
@@ -36,9 +37,11 @@ const prompt = ref('')
 const types = ref<string[]>([])
 const hasTypes = computed(() => props.typeOptions.length > 0)
 
+// 打开弹窗时保留用户上一次设置的数量，避免每次都被重置回默认值，
+// 便于连续批量生成时沿用同样的规模；仅重置补充要求与类型。
 watch(() => props.show, (show) => {
   if (!show || props.loading) return
-  count.value = Math.min(10, props.maxCount)
+  if (count.value < 1) count.value = 10
   prompt.value = ''
   types.value = [...props.defaultTypes]
 })
@@ -76,8 +79,8 @@ function submit(): void {
           <button
             class="batch-header-btn"
             type="button"
-            :title="loading ? '后台执行（任务继续在后台运行）' : '关闭'"
-            @click="loading ? emit('background') : emit('close')"
+            :title="loading ? '中断本次任务（关闭并停止生成）' : '关闭'"
+            @click="loading ? emit('interrupt') : emit('close')"
           >
             <X :size="15" />
           </button>

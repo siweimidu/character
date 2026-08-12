@@ -28,7 +28,7 @@ import AiEnhancePreview from './AiEnhancePreview.vue'
 import BatchDeleteBar from './BatchDeleteBar.vue'
 import BatchGenerateDialog from './BatchGenerateDialog.vue'
 import type { EnhanceFieldDiff } from './AiEnhancePreview.vue'
-import { useCatalogBatch } from '@/composables/useCatalogBatch'
+import { cancelCatalogBatch, useCatalogBatch } from '@/composables/useCatalogBatch'
 import { useIncrementalList } from '@/composables/useIncrementalList'
 
 const props = defineProps<{
@@ -916,6 +916,12 @@ function handleAiAction(key: string | number): void {
   if (key === 'membership') handleGenerateMembership()
 }
 
+// 中断批量生成组织：关闭弹窗并停止本次生成任务（叉号=中断，减号=后台执行）
+function handleInterruptOrgBatch(): void {
+  organizationBatchVisible.value = false
+  cancelCatalogBatch('organization')
+}
+
 async function handleGenerateOrganization(payload: { count: number; prompt: string; types: string[] }): Promise<void> {
   if (isGeneratingOrg.value) return
 
@@ -953,7 +959,9 @@ async function handleGenerateOrganization(payload: { count: number; prompt: stri
     organizationBatchVisible.value = false
     message.success(`已生成 ${entries.length} 个组织`)
   } catch (error) {
-    message.error(error instanceof Error ? error.message : 'AI 生成组织失败，请检查模型配置')
+    if (!(error instanceof Error) || (!error.message.includes('任务已中断') && !error.message.includes('任务已被取消'))) {
+      message.error(error instanceof Error ? error.message : 'AI 生成组织失败，请检查模型配置')
+    }
   }
 }
 
@@ -1564,6 +1572,7 @@ function handleEnhanceMemApply(accepted: Record<string, string | string[]>): voi
       :progress="organizationBatchProgress"
       @close="organizationBatchVisible = false"
       @background="organizationBatchVisible = false"
+      @interrupt="handleInterruptOrgBatch"
       @submit="handleGenerateOrganization"
     />
 

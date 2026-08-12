@@ -432,7 +432,7 @@ function renderGraph(): void {
     layout: resolveLayout(),
     minZoom: 0.45,
     maxZoom: 2.4,
-    wheelSensitivity: 0.18,
+    wheelSensitivity: 0.5,
     boxSelectionEnabled: false,
     autoungrabify: false,
     style: buildStylesheet()
