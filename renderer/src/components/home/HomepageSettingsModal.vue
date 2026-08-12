@@ -25,6 +25,12 @@ function applyThemeImmediately(themeName: ThemeName): void {
   appStore.setTheme(themeName)
 }
 
+/** 深色模式开关即时生效并持久化，无需再点保存设置 */
+function applyDarkModeImmediately(value: boolean): void {
+  draftSettings.darkMode = value
+  appStore.updateAppSetting('darkMode', value, { flushWorkspace: false })
+}
+
 function themeTextColor(color: string): string {
   const match = color.match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/)
   if (!match) return '#ffffff'
@@ -631,7 +637,7 @@ async function saveSettings(): Promise<void> {
             <Cpu :size="18" />
             <div class="section-title-copy">
               <strong>AI 接口配置</strong>
-              <p>管理多个接口配置，可在标题栏快速切换。</p>
+              <p>管理多个接口配置，可在标题栏快速切换。修改后需点击右下角「保存设置」按钮才生效。</p>
             </div>
             <div class="profile-tab-actions">
               <button
@@ -986,7 +992,7 @@ async function saveSettings(): Promise<void> {
             <Palette :size="18" />
             <div>
               <strong>界面主题</strong>
-              <p>多套完整风格主题，覆盖主色、背景与文字配色。</p>
+              <p>多套完整风格主题，覆盖主色、背景与文字配色。点击色卡即刻生效，无需保存。</p>
             </div>
           </div>
           <div class="theme-swatches">
@@ -1032,12 +1038,12 @@ async function saveSettings(): Promise<void> {
               <Moon :size="15" />
               <div>
                 <span class="dark-mode-text">深色模式</span>
-                <span class="dark-mode-hint">适合夜间长时间写作</span>
+                <span class="dark-mode-hint">适合夜间长时间写作，开关即刻生效，无需保存</span>
               </div>
             </div>
             <n-switch
               :value="draftSettings.darkMode"
-              @update:value="(value) => { draftSettings.darkMode = value }"
+              @update:value="(value) => applyDarkModeImmediately(value)"
             />
           </div>
           <div v-if="draftSettings.darkMode" class="dark-style-grid">
