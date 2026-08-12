@@ -141,3 +141,29 @@ export function resolveImageProviderDefaults(value: string): { model: string; ba
     baseUrl: preset.baseUrl
   }
 }
+
+/** 图片生成厂商的官网地址，用于「打开模型厂商官网」按钮 */
+const IMAGE_PROVIDER_WEBSITES: Record<string, string> = {
+  'gpt-image-openai': 'https://platform.openai.com/docs/guides/images',
+  'gpt-image-yunwu': 'https://yunwu.ai',
+  'flux-siliconflow': 'https://cloud.siliconflow.cn',
+  'doubao-seedream': 'https://www.volcengine.com/product/ark',
+  'kolors-siliconflow': 'https://cloud.siliconflow.cn',
+  'sd-openai-compatible': 'https://stability.ai',
+  'dall-e-3-openai': 'https://platform.openai.com/docs/guides/images',
+  'gemini-imagen-google': 'https://ai.google.dev/gemini-api/docs/image-generation',
+  'tongyi-wanx-alibaba': 'https://bailian.console.aliyun.com',
+  'wenxin-yige-baidu': 'https://cloud.baidu.com/product/wenxinworkshop',
+  'stable-image-core': 'https://stability.ai',
+  'midjourney-proxy': 'https://www.midjourney.com',
+  'ideogram-2': 'https://ideogram.ai',
+  'comfyui-api': 'https://www.comfy.org',
+  'sd-webui-api': 'https://github.com/AUTOMATIC1111/stable-diffusion-webui',
+  'flux-openai-compatible': 'https://docs.bfl.ai',
+  'custom-openai-compatible': 'https://platform.openai.com/docs/api-reference'
+}
+
+/** 根据图片生成服务预设返回对应的厂商官网地址 */
+export function resolveImageProviderWebsite(value: string): string {
+  return IMAGE_PROVIDER_WEBSITES[value] ?? 'https://platform.openai.com/docs/api-reference'
+}

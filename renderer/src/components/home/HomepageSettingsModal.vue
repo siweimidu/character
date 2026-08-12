@@ -5,8 +5,8 @@ import { NButton, NFormItem, NInput, NInputNumber, NModal, NSelect, NSlider, NSw
 import { autoSaveOptions } from '@/features/settings/autoSave'
 import { getProviderPreset, providerOptions, resolveProviderDefaults } from '@/features/settings/providerPresets'
 import { AI_PROVIDER_CATALOG } from '@shared/ai-provider-catalog'
-import { imageProviderOptions, resolveImageProviderDefaults } from '@/features/settings/imageProviderPresets'
-import { visionProviderOptions, resolveVisionProviderDefaults, resolveImageProviderWebsite, resolveVisionProviderWebsite } from '@/features/settings/visionProviderPresets'
+import { imageProviderOptions, resolveImageProviderDefaults, resolveImageProviderWebsite } from '@/features/settings/imageProviderPresets'
+import { visionProviderOptions, resolveVisionProviderDefaults, resolveVisionProviderWebsite } from '@/features/settings/visionProviderPresets'
 import { useAppStore } from '@/stores/app'
 import { darkModePresets, themePresets } from '@/theme/presets'
 import { toIpcPayload } from '@/utils/ipcPayload'
@@ -270,30 +270,6 @@ const imageModelSelectOptions = computed(() =>
 const visionModelSelectOptions = computed(() =>
   fetchedVisionModels.value.map((m) => ({ label: m.id, value: m.id }))
 )
-const hasPendingChanges = computed(() =>
-  draftTheme.value !== appStore.theme
-  || JSON.stringify(draftSettings.aiProfiles) !== JSON.stringify(appStore.appSettings.aiProfiles)
-  || draftSettings.imageProvider !== appStore.appSettings.imageProvider
-  || draftSettings.imageModel !== appStore.appSettings.imageModel
-  || draftSettings.imageApiKey !== appStore.appSettings.imageApiKey
-  || draftSettings.imageBaseUrl !== appStore.appSettings.imageBaseUrl
-  || draftSettings.visionProfileName !== appStore.appSettings.visionProfileName
-  || draftSettings.visionProvider !== appStore.appSettings.visionProvider
-  || draftSettings.visionModel !== appStore.appSettings.visionModel
-  || draftSettings.visionApiKey !== appStore.appSettings.visionApiKey
-  || draftSettings.visionBaseUrl !== appStore.appSettings.visionBaseUrl
-  || JSON.stringify(draftSettings.visionSavedModels ?? []) !== JSON.stringify(appStore.appSettings.visionSavedModels ?? [])
-  || draftSettings.proxyUrl !== appStore.appSettings.proxyUrl
-  || draftSettings.autoSaveInterval !== appStore.appSettings.autoSaveInterval
-  || draftSettings.editorFont !== appStore.appSettings.editorFont
-  || draftSettings.uiScale !== appStore.appSettings.uiScale
-  || draftSettings.darkMode !== appStore.appSettings.darkMode
-  || draftSettings.darkModeStyle !== appStore.appSettings.darkModeStyle
-  || draftSettings.aiTimeoutSeconds !== appStore.appSettings.aiTimeoutSeconds
-  || (draftSettings.backgroundImage ?? '') !== (appStore.appSettings.backgroundImage ?? '')
-  || (draftSettings.backgroundOpacity ?? 0) !== (appStore.appSettings.backgroundOpacity ?? 0)
-)
-
 function syncDraftFromStore(): void {
   draftSettings.provider = appStore.appSettings.provider
   draftSettings.model = appStore.appSettings.model
@@ -1572,7 +1548,7 @@ async function saveSettings(): Promise<void> {
     <template #footer>
       <div class="settings-footer-actions">
         <n-button round strong @click="closeModal">取消</n-button>
-        <n-button type="primary" round strong :disabled="!hasPendingChanges" @click="saveSettings">保存设置</n-button>
+        <n-button type="primary" round strong @click="saveSettings">保存设置</n-button>
       </div>
     </template>
   </n-modal>
