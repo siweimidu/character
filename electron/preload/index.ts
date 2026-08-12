@@ -173,6 +173,10 @@ contextBridge.exposeInMainWorld('characterArc', {
   generateImage: (payload: unknown) => ipcRenderer.invoke('characterarc:ai-generate-image', toIpcPayload(payload)),
   /** 读取当前项目的结构化世界状态（角色状态、伏笔、关系、时间线、世界规则、倒计时） */
   readStoryState: (projectId: string) => ipcRenderer.invoke('characterarc:ai-read-story-state', projectId),
+  /** 删除世界状态库中的某个区块，返回被删快照供回收站恢复 */
+  deleteStoryState: (payload: { projectId: string; block: string }) => ipcRenderer.invoke('characterarc:ai-delete-story-state', toIpcPayload(payload)),
+  /** 从回收站快照恢复世界状态库中的某个区块 */
+  restoreStoryState: (payload: { projectId: string; block: string; rows: Array<Record<string, unknown>> }) => ipcRenderer.invoke('characterarc:ai-restore-story-state', toIpcPayload(payload)),
   /** 螺旋式深度生成（3圈：骨架→展开→校验） */
   spiralBootstrap: (payload: unknown) => ipcRenderer.invoke('characterarc:ai-spiral-bootstrap', toIpcPayload(payload)),
   /** 取消正在进行的螺旋生成 */

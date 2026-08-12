@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { marked } from 'marked'
-import { Boxes, Clock, FileCheck2, GitBranch, History, MapPin, Pause, Play, RefreshCw, ScrollText, Sparkles, Users } from 'lucide-vue-next'
+import { Boxes, Clock, FileCheck2, GitBranch, History, MapPin, Pause, Play, RefreshCw, ScrollText, Sparkles, Trash2, Users } from 'lucide-vue-next'
 import {
   NAlert,
   NButton,
@@ -133,6 +133,68 @@ async function loadStoryState(): Promise<void> {
       isLoadingStoryState.value = false
     }
   }
+}
+
+/** 世界状态库各区块的中文标签与图标 */
+const STORY_STATE_BLOCK_LABEL: Record<string, string> = {
+  characterStates: '角色状态',
+  foreshadowing: '伏笔',
+  relationships: '角色关系',
+  timeline: '时间线',
+  worldRules: '世界规则',
+  clocks: '倒计时'
+}
+
+/** 删除世界状态库中的某个区块，删除后进入回收站 */
+function deleteStoryStateBlock(block: string): void {
+  const project = appStore.currentProject
+  if (!project) return
+  const label = STORY_STATE_BLOCK_LABEL[block] ?? block
+  dialog.warning({
+    title: `删除${label}`,
+    content: `确认删除世界状态库中的「${label}」吗？删除后可在回收站中恢复。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    async onPositiveClick() {
+      const result = await appStore.deleteStoryStateBlock(block)
+      if (!result.success) {
+        message.error(result.error ?? `删除${label}失败`)
+        return
+      }
+      if ((result.count ?? 0) > 0) {
+        message.success(`已删除 ${result.count} 条${label}，可到回收站恢复`)
+      } else {
+        message.info(`世界状态库中没有${label}数据`)
+      }
+      await loadStoryState()
+    }
+  })
+}
+
+/** 清空整个世界状态库 */
+function clearStoryState(): void {
+  const project = appStore.currentProject
+  if (!project) return
+  const blocks = Object.keys(STORY_STATE_BLOCK_LABEL)
+  dialog.warning({
+    title: '清空世界状态库',
+    content: '确认清空世界状态库中的所有数据（角色状态、伏笔、角色关系、时间线、世界规则、倒计时）吗？删除后可在回收站中恢复。',
+    positiveText: '清空',
+    negativeText: '取消',
+    async onPositiveClick() {
+      let deleted = 0
+      for (const block of blocks) {
+        const result = await appStore.deleteStoryStateBlock(block)
+        if (result.success) deleted += result.count ?? 0
+      }
+      if (deleted > 0) {
+        message.success(`已清空世界状态库（${deleted} 条），可到回收站恢复`)
+      } else {
+        message.info('世界状态库已是空的')
+      }
+      await loadStoryState()
+    }
+  })
 }
 
 async function loadBackfillStatuses(): Promise<void> {
@@ -835,16 +897,28 @@ watch(
             角色 {{ storyStateSummary.characters }} · 伏笔 {{ storyStateSummary.foreshadowing }} · 关系 {{ storyStateSummary.relationships }}
           </n-tag>
         </div>
-        <n-button
-          size="small"
-          quaternary
-          :loading="isLoadingStoryState"
-          :disabled="!appStore.currentProject || isLoadingStoryState"
-          @click="loadStoryState"
-        >
-          <template #icon><RefreshCw :size="14" /></template>
-          刷新
-        </n-button>
+        <n-space size="small">
+          <n-button
+            size="small"
+            quaternary
+            type="error"
+            :disabled="!appStore.currentProject || !hasStoryState || isLoadingStoryState"
+            @click="clearStoryState"
+          >
+            <template #icon><Trash2 :size="14" /></template>
+            清空
+          </n-button>
+          <n-button
+            size="small"
+            quaternary
+            :loading="isLoadingStoryState"
+            :disabled="!appStore.currentProject || isLoadingStoryState"
+            @click="loadStoryState"
+          >
+            <template #icon><RefreshCw :size="14" /></template>
+            刷新
+          </n-button>
+        </n-space>
       </div>
 
       <p class="pk-card-desc">
@@ -859,7 +933,7 @@ watch(
         <n-collapse v-else :default-expanded-names="['characters', 'foreshadowing', 'relationships']" arrow-placement="right">
           <n-collapse-item v-if="storyState?.characterStates.length" name="characters">
             <template #header>
-              <div class="pk-state-head"><Users :size="14" /><span>角色状态</span><n-tag size="tiny" :bordered="false">{{ storyState.characterStates.length }}</n-tag></div>
+              <div class="pk-state-head"><Users :size="14" /><span>角色状态</span><n-tag size="tiny" :bordered="false">{{ storyState.characterStates.length }}</n-tag><n-button size="tiny" quaternary type="error" class="pk-state-delete" title="删除角色状态" @click.stop="deleteStoryStateBlock('characterStates')"><template #icon><Trash2 :size="13" /></template></n-button></div>
             </template>
             <div class="pk-state-list">
               <div v-for="cs in visibleStoryCharacterStates" :key="cs.characterId" class="pk-state-item pk-state-item--clickable" @click="selectedCharacterState = cs">
@@ -885,7 +959,7 @@ watch(
 
           <n-collapse-item v-if="storyState?.activeForeshadowing.length" name="foreshadowing">
             <template #header>
-              <div class="pk-state-head"><ScrollText :size="14" /><span>伏笔</span><n-tag size="tiny" :bordered="false">{{ storyState.activeForeshadowing.length }}</n-tag></div>
+              <div class="pk-state-head"><ScrollText :size="14" /><span>伏笔</span><n-tag size="tiny" :bordered="false">{{ storyState.activeForeshadowing.length }}</n-tag><n-button size="tiny" quaternary type="error" class="pk-state-delete" title="删除伏笔" @click.stop="deleteStoryStateBlock('foreshadowing')"><template #icon><Trash2 :size="13" /></template></n-button></div>
             </template>
             <div class="pk-state-list">
               <div v-for="fs in visibleStoryForeshadowing" :key="fs.foreshadowingId" class="pk-state-item pk-state-item--clickable" @click="selectedForeshadowing = fs">
@@ -913,7 +987,7 @@ watch(
 
           <n-collapse-item v-if="storyState?.relationships.length" name="relationships">
             <template #header>
-              <div class="pk-state-head"><GitBranch :size="14" /><span>角色关系</span><n-tag size="tiny" :bordered="false">{{ storyState.relationships.length }}</n-tag></div>
+              <div class="pk-state-head"><GitBranch :size="14" /><span>角色关系</span><n-tag size="tiny" :bordered="false">{{ storyState.relationships.length }}</n-tag><n-button size="tiny" quaternary type="error" class="pk-state-delete" title="删除角色关系" @click.stop="deleteStoryStateBlock('relationships')"><template #icon><Trash2 :size="13" /></template></n-button></div>
             </template>
             <div class="pk-state-list">
               <div v-for="rel in visibleStoryRelationships" :key="rel.relationshipId" class="pk-state-item pk-state-item--clickable" @click="selectedRelationship = rel">
@@ -934,7 +1008,7 @@ watch(
 
           <n-collapse-item v-if="storyState?.recentTimeline.length" name="timeline">
             <template #header>
-              <div class="pk-state-head"><Clock :size="14" /><span>时间线</span><n-tag size="tiny" :bordered="false">{{ storyState.recentTimeline.length }}</n-tag></div>
+              <div class="pk-state-head"><Clock :size="14" /><span>时间线</span><n-tag size="tiny" :bordered="false">{{ storyState.recentTimeline.length }}</n-tag><n-button size="tiny" quaternary type="error" class="pk-state-delete" title="删除时间线" @click.stop="deleteStoryStateBlock('timeline')"><template #icon><Trash2 :size="13" /></template></n-button></div>
             </template>
             <div class="pk-state-list">
               <div v-for="(tl, idx) in visibleStoryTimeline" :key="`tl-${idx}`" class="pk-state-item pk-state-item--clickable" @click="selectedTimelineEntry = tl">
@@ -954,7 +1028,7 @@ watch(
 
           <n-collapse-item v-if="storyState?.worldRules.length" name="worldRules">
             <template #header>
-              <div class="pk-state-head"><ScrollText :size="14" /><span>世界规则</span><n-tag size="tiny" :bordered="false">{{ storyState.worldRules.length }}</n-tag></div>
+              <div class="pk-state-head"><ScrollText :size="14" /><span>世界规则</span><n-tag size="tiny" :bordered="false">{{ storyState.worldRules.length }}</n-tag><n-button size="tiny" quaternary type="error" class="pk-state-delete" title="删除世界规则" @click.stop="deleteStoryStateBlock('worldRules')"><template #icon><Trash2 :size="13" /></template></n-button></div>
             </template>
             <div class="pk-state-list">
               <div v-for="wr in visibleStoryWorldRules" :key="wr.ruleId" class="pk-state-item pk-state-item--clickable" @click="selectedWorldRule = wr">
@@ -974,7 +1048,7 @@ watch(
 
           <n-collapse-item v-if="storyState?.activeClocks.length" name="clocks">
             <template #header>
-              <div class="pk-state-head"><Clock :size="14" /><span>倒计时</span><n-tag size="tiny" :bordered="false">{{ storyState.activeClocks.length }}</n-tag></div>
+              <div class="pk-state-head"><Clock :size="14" /><span>倒计时</span><n-tag size="tiny" :bordered="false">{{ storyState.activeClocks.length }}</n-tag><n-button size="tiny" quaternary type="error" class="pk-state-delete" title="删除倒计时" @click.stop="deleteStoryStateBlock('clocks')"><template #icon><Trash2 :size="13" /></template></n-button></div>
             </template>
             <div class="pk-state-list">
               <div v-for="ck in visibleStoryClocks" :key="ck.clockId" class="pk-state-item pk-state-item--clickable" @click="selectedClock = ck">
@@ -1610,6 +1684,11 @@ watch(
   align-items: center;
   gap: 8px;
   font-weight: 600;
+}
+
+.pk-state-delete {
+  margin-left: auto;
+  padding: 0 4px;
 }
 
 .pk-state-list {

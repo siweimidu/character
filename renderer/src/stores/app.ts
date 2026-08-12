@@ -1423,6 +1423,20 @@ export const useAppStore = defineStore('app', () => {
         allKnowledgeDocuments.value = [...allKnowledgeDocuments.value, doc]
         break
       }
+      case 'story-state': {
+        // 世界状态库恢复需写回 SQLite（异步），失败则中断并保留回收站记录
+        const projectId = String(data.projectId ?? selectedProjectId.value ?? '').trim()
+        const block = String(data.block ?? '').trim()
+        const rows = Array.isArray(data.rows) ? data.rows : []
+        if (!projectId || !block || !rows.length) {
+          return false
+        }
+        const res = await window.characterArc.restoreStoryState({ projectId, block, rows })
+        if (!res.success) {
+          return false
+        }
+        break
+      }
       case 'assistant-session': {
         if (data.runtimeV2) {
           // Runtime v2 会话：调用后端恢复完整会话（含 turns / events）
@@ -1615,6 +1629,25 @@ export const useAppStore = defineStore('app', () => {
     removed.forEach((document) => pushRecycleEntry('knowledge-document', document.title, { ...document }))
     allKnowledgeDocuments.value = allKnowledgeDocuments.value.filter((document) => !idSet.has(document.id))
     schedulePersist('fast')
+  }
+
+  /** 删除世界状态库中的某个区块（角色状态/伏笔/关系/时间线/世界规则/倒计时），删除后进入回收站 */
+  async function deleteStoryStateBlock(block: string): Promise<{ success: boolean; count?: number; error?: string }> {
+    const project = currentProject.value
+    if (!project) return { success: false, error: '请先选择一个项目。' }
+    const response = await window.characterArc.deleteStoryState({ projectId: project.id, block })
+    if (!response.success || !response.result) {
+      return { success: false, error: response.error ?? '删除世界状态失败。' }
+    }
+    const { count, snapshot } = response.result
+    if (count > 0) {
+      pushRecycleEntry('story-state', `世界状态库·${block}`, {
+        block,
+        rows: snapshot,
+        projectId: project.id
+      })
+    }
+    return { success: true, count }
   }
 
   function upsertProjectConstraint(payload: {
@@ -4343,6 +4376,7 @@ export const useAppStore = defineStore('app', () => {
     setActiveWorkflowVolumeId,
     mergeKnowledgeDocuments,
     removeKnowledgeDocuments,
+    deleteStoryStateBlock,
     projectConstraints,
     upsertProjectConstraint,
     removeProjectConstraint,

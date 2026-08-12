@@ -420,6 +420,23 @@ declare global {
         }
         error?: string
       }>
+      deleteStoryState: (payload: { projectId: string; block: string }) => Promise<{
+        success: boolean
+        result?: {
+          block: string
+          count: number
+          snapshot: Array<Record<string, unknown>>
+        }
+        error?: string
+      }>
+      restoreStoryState: (payload: { projectId: string; block: string; rows: Array<Record<string, unknown>> }) => Promise<{
+        success: boolean
+        result?: {
+          block: string
+          count: number
+        }
+        error?: string
+      }>
       testAiConnection: (settings: unknown) => Promise<{
         success: boolean
         result?: unknown

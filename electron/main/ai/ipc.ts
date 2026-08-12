@@ -11,7 +11,7 @@ import { backfillProjectStateFromChapters, getProjectBackfillChapterStatuses } f
 import type { BackfillTaskSnapshot } from './state-backfill'
 import type { BackfillSelection } from './state-backfill'
 import { BackfillTaskPauseController } from './state-backfill-task-controller'
-import { buildStoryStateContext } from '../story-state-store'
+import { buildStoryStateContext, deleteStoryStateBlock, restoreStoryStateBlock, STORY_STATE_BLOCK_LABEL, type StoryStateBlockType } from '../story-state-store'
 import { ensureWorkspaceDb } from '../workspace-store'
 import { runSpiralBootstrap } from './spiral'
 import type { SpiralBootstrapInput } from './spiral'
@@ -483,6 +483,44 @@ export function registerAiIpcHandlers(injectedDeps: AiIpcDeps): void {
       return { success: true, result: context }
     } catch (error) {
       return { success: false, error: formatAiErrorMessage(error, '读取世界状态失败') }
+    }
+  })
+
+  // ── 删除世界状态库中的某个区块（角色状态/伏笔/关系/时间线/世界规则/倒计时），返回被删快照供回收站恢复 ──
+  ipcMain.handle('characterarc:ai-delete-story-state', async (_event, payload: unknown) => {
+    try {
+      const req = payload as { projectId?: string; block?: string }
+      const projectId = String(req?.projectId ?? '').trim()
+      const block = String(req?.block ?? '').trim() as StoryStateBlockType
+      if (!projectId) throw new Error('缺少 projectId。')
+      if (!STORY_STATE_BLOCK_LABEL[block]) {
+        throw new Error(`无效的世界状态区块：${block}`)
+      }
+      const db = await ensureWorkspaceDb()
+      const snapshot = deleteStoryStateBlock(db, projectId, block)
+      return { success: true, result: { block, count: snapshot.length, snapshot } }
+    } catch (error) {
+      return { success: false, error: formatAiErrorMessage(error, '删除世界状态失败') }
+    }
+  })
+
+  // ── 从回收站快照恢复世界状态库中的某个区块 ──
+  ipcMain.handle('characterarc:ai-restore-story-state', async (_event, payload: unknown) => {
+    try {
+      const req = payload as { projectId?: string; block?: string; rows?: Array<Record<string, unknown>> }
+      const projectId = String(req?.projectId ?? '').trim()
+      const block = String(req?.block ?? '').trim() as StoryStateBlockType
+      const rows = Array.isArray(req?.rows) ? req.rows : []
+      if (!projectId) throw new Error('缺少 projectId。')
+      if (!STORY_STATE_BLOCK_LABEL[block]) {
+        throw new Error(`无效的世界状态区块：${block}`)
+      }
+      if (!rows.length) throw new Error('缺少恢复快照数据。')
+      const db = await ensureWorkspaceDb()
+      restoreStoryStateBlock(db, projectId, block, rows)
+      return { success: true, result: { block, count: rows.length } }
+    } catch (error) {
+      return { success: false, error: formatAiErrorMessage(error, '恢复世界状态失败') }
     }
   })
 

@@ -914,6 +914,7 @@ export type RecycleBinCategory =
   | 'inspiration-type'
   | 'chapter'
   | 'knowledge-document'
+  | 'story-state'
   | 'assistant-session'
   | 'ai-profile'
   | 'reference-work'

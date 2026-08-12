@@ -35,6 +35,7 @@ const CATEGORY_META: Record<RecycleBinCategory, { label: string; color: string }
   'inspiration-type': { label: '灵感生成类型', color: '#f97316' },
   chapter: { label: '章节', color: '#3b82f6' },
   'knowledge-document': { label: '项目知识库', color: '#14b8a6' },
+  'story-state': { label: '世界状态库', color: '#0ea5e9' },
   'assistant-session': { label: '智能体对话', color: '#0d7d5a' },
   'ai-profile': { label: 'AI 接口配置', color: '#8b5cf6' },
   'reference-work': { label: '参考作品', color: '#06b6d4' }
@@ -53,6 +54,7 @@ const CATEGORY_ICON: Record<RecycleBinCategory, unknown> = {
   'inspiration-type': Lightbulb,
   chapter: FileText,
   'knowledge-document': FileCheck2,
+  'story-state': FileCheck2,
   'assistant-session': FileText,
   'ai-profile': Settings2,
   'reference-work': FileCheck2
