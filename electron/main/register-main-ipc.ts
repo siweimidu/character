@@ -2496,7 +2496,7 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
   })
 
-  ipcMain.handle('characterarc:project-skills-import', async (_event, projectId: unknown, targetGroup: unknown) => {
+  ipcMain.handle('characterarc:project-skills-import', async (_event, projectId: unknown, targetGroup: unknown, mode: unknown) => {
     try {
       const resolvedProjectId = String(projectId ?? '').trim() || undefined
       // 可选的目标分组名（导入到 project-skills/<group>/<skill>）。
@@ -2509,13 +2509,30 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
         .filter(Boolean)
         .join('/')
 
-      // 注意：Windows 下 properties 同时包含 openFile 与 openDirectory 时，文件类型过滤
-      // 会导致文件管理器只显示文件夹、隐藏 .zip 压缩包。因此这里去掉 filters，
-      // 让目录和 .zip 包都可见，选择后代码再按扩展名分别处理。
-      // 开启 multiSelections 以支持一次批量导入多个目录 / .zip 压缩包。
-      const dialogOptions: Electron.OpenDialogOptions = {
-        title: '批量导入 Skill 包（可选择多个目录或 .zip 压缩包）',
-        properties: ['openFile', 'openDirectory', 'multiSelections']
+      // 导入来源模式：'dir' 只选目录、'zip' 只选 .zip、'both' 兼容旧调用（目录与 .zip 都可选）。
+      // 原因：Windows 上同时设置 openFile + openDirectory 时，原生文件管理器会退化为
+      // “只显示文件夹”，导致用户选不到 .zip 压缩包。因此把目录导入与 .zip 导入拆成两个
+      // 独立入口，各自只带对应的 property，从根上保证 .zip 压缩包一定能被选中。
+      const importMode = String(mode ?? '').trim().toLowerCase()
+      let dialogOptions: Electron.OpenDialogOptions
+      if (importMode === 'zip') {
+        dialogOptions = {
+          title: '导入 Skill 压缩包（.zip，可多选）',
+          properties: ['openFile', 'multiSelections'],
+          filters: [{ name: 'Skill 压缩包', extensions: ['zip'] }]
+        }
+      } else if (importMode === 'dir') {
+        dialogOptions = {
+          title: '导入 Skill 目录（可多选）',
+          properties: ['openDirectory', 'multiSelections']
+        }
+      } else {
+        // 旧入口（'both' / 缺省）：目录与 .zip 都可选。为避免 Windows 只显示文件夹，
+        // 使用 openFile 与 openDirectory 组合，不设 filters 让两类条目都可见。
+        dialogOptions = {
+          title: '批量导入 Skill 包（可选择多个目录或 .zip 压缩包）',
+          properties: ['openFile', 'openDirectory', 'multiSelections']
+        }
       }
       const ownerWindow = deps.windowManager.getMainWindow() ?? BrowserWindow.getFocusedWindow()
       const result = ownerWindow
@@ -2802,10 +2819,13 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
         const files: string[] = []
         await collectFiles(resolved.abs, '', files)
         for (const file of files.sort()) {
-          // 统一转为 Uint8Array 再写入 zip，避免 Electron 主进程里 Node Buffer
-          // 与 JSZip 内部 structured clone 不兼容导致的 “An object could not be cloned”。
+          // 统一复制为独立的 Uint8Array 再写入 zip。
+          // 注意：不能用 new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength) 做视图引用，
+          // 因为小文件 Buffer 底层可能来自 Node 内部共享内存池，JSZip 对其做 structured clone
+          // 时仍会报 “An object could not be cloned”。这里用 new Uint8Array(raw) 拷贝成全新
+          // ArrayBuffer，彻底避免跨进程序列化不兼容。
           const raw = await readFile(join(resolved.abs, file))
-          zip.file(`${resolved.zipDir}/${file}`, new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength))
+          zip.file(`${resolved.zipDir}/${file}`, new Uint8Array(raw))
         }
         count++
       }

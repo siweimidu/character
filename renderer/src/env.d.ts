@@ -756,7 +756,7 @@ declare global {
         skills?: Array<import('@/types/app').ProjectSkillItem>
         error?: string
       }>
-      importProjectSkillsPackage: (projectId: string, targetGroup?: string) => Promise<{
+      importProjectSkillsPackage: (projectId: string, targetGroup?: string, mode?: 'dir' | 'zip' | 'both') => Promise<{
         success: boolean
         canceled: boolean
         importedSkillIds?: string[]

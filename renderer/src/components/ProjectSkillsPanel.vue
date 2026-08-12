@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { BookOpenText, ChevronDown } from 'lucide-vue-next'
+import { BookOpenText, ChevronDown, Trash2 } from 'lucide-vue-next'
 import { NButton, NInput, NModal, NTag, useDialog, useMessage } from 'naive-ui'
 import { novelWorkflowStageDefinitions } from '@/features/novelWorkflow/stages'
 import { useAppStore } from '@/stores/app'
@@ -172,6 +172,8 @@ const newGroupName = ref('')
 const isCreatingGroup = ref(false)
 // 导入时选中的目标分组（空 = 未分组根目录）
 const importTargetGroup = ref('')
+// 导入来源模式：'dir' 只选目录、'zip' 只选 .zip 压缩包
+const importMode = ref<'dir' | 'zip'>('dir')
 const isImportGroupDialogOpen = ref(false)
 
 async function refreshSkillGroups(): Promise<void> {
@@ -221,16 +223,18 @@ async function importProjectSkillsPackage(): Promise<void> {
   isImportGroupDialogOpen.value = true
 }
 
-async function runImportPackage(): Promise<void> {
+async function runImportPackage(mode: 'dir' | 'zip' = importMode.value): Promise<void> {
   if (isImportingProjectSkills.value) {
     return
   }
 
+  importMode.value = mode
   isImportingProjectSkills.value = true
   try {
     const result = await window.characterArc.importProjectSkillsPackage(
       currentProject.value?.id ?? '',
-      importTargetGroup.value || undefined
+      importTargetGroup.value || undefined,
+      mode
     )
     if (result.canceled) {
       return
@@ -325,6 +329,36 @@ async function deleteSelectedSkills(): Promise<void> {
   })
 }
 
+// 单个删除某个项目级 skill（内置 skills 不可删除，不显示删除按钮）
+function deleteSingleSkill(skill: ProjectSkillItem): void {
+  if (!currentProject.value?.id || skill.scope === 'builtin') return
+
+  dialog.warning({
+    title: '删除 Skill',
+    content: `确定要删除 skill「${skill.name}」吗？该操作不可恢复。`,
+    positiveText: '确认删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      isDeletingSkills.value = true
+      try {
+        const result = await window.characterArc.deleteProjectSkills(currentProject.value.id, [skill.path])
+        if (!result.success) {
+          throw new Error(result.error ?? 'skill 删除失败')
+        }
+        selectedSkillPaths.value = selectedSkillPaths.value.filter((p) => p !== skill.path)
+        await scanProjectSkills()
+        // 删除后同步刷新分组列表及计数，避免导入分组弹窗展示过时的分组/数量
+        await refreshSkillGroups()
+        message.success('已删除 skill')
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : 'skill 删除失败')
+      } finally {
+        isDeletingSkills.value = false
+      }
+    }
+  })
+}
+
 async function exportSelectedSkills(): Promise<void> {
   if (selectedSkillPaths.value.length === 0) return
   isExportingSkills.value = true
@@ -406,7 +440,7 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
             ＋ 创建分组
           </n-button>
           <n-button round strong :disabled="isImportingProjectSkills" @click="importProjectSkillsPackage">
-            {{ isImportingProjectSkills ? '批量导入中...' : '批量导入 Skill 包（目录 / .zip，可多选）' }}
+            {{ isImportingProjectSkills ? '批量导入中...' : '批量导入 Skill（目录 / .zip）' }}
           </n-button>
           <n-button round strong secondary :disabled="isScanningProjectSkills" @click="scanProjectSkills">
             {{ isScanningProjectSkills ? '扫描中...' : '重新扫描' }}
@@ -500,13 +534,26 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
                   </div>
                   <p class="project-skill-description">{{ skill.description || '当前 skill 未提供描述。' }}</p>
                 </div>
-                <n-button
-                  size="small"
-                  :type="skill.enabled ? 'primary' : 'default'"
-                  :secondary="!skill.enabled"
-                  :disabled="skill.compatibility === 'external-only'"
-                  @click="toggleProjectSkill(skill.id)"
-                >{{ skill.compatibility === 'external-only' ? '暂不接入' : (skill.enabled ? '已启用' : '已停用') }}</n-button>
+                <div class="project-skill-head-actions">
+                  <n-button
+                    size="small"
+                    :type="skill.enabled ? 'primary' : 'default'"
+                    :secondary="!skill.enabled"
+                    :disabled="skill.compatibility === 'external-only'"
+                    @click="toggleProjectSkill(skill.id)"
+                  >{{ skill.compatibility === 'external-only' ? '暂不接入' : (skill.enabled ? '已启用' : '已停用') }}</n-button>
+                  <!-- 单个删除：仅项目导入的 skills 显示垃圾桶按钮；内置 skills 不可删除 -->
+                  <button
+                    v-if="skill.scope !== 'builtin'"
+                    class="project-skill-delete-btn"
+                    type="button"
+                    title="删除该 Skill"
+                    :disabled="isDeletingSkills"
+                    @click="deleteSingleSkill(skill)"
+                  >
+                    <Trash2 :size="14" />
+                  </button>
+                </div>
               </div>
               <div class="project-skill-meta-row">
                 <span v-if="skill.source">来源：{{ skill.source }}</span>
@@ -572,7 +619,7 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
         style="max-width: 480px"
       >
         <div class="skill-group-dialog-body">
-          <p class="skill-group-dialog-tip">选择本次批量导入的 skills 要归入哪个分组（可选）。未选择则导入到根目录（未分组）。</p>
+          <p class="skill-group-dialog-tip">选择本次批量导入的 skills 要归入哪个分组（可选）。未选择则导入到根目录（未分组）。选择来源后请在系统对话框中多选 Skill 目录或 .zip 压缩包。</p>
           <div class="skill-import-group-options">
             <label class="skill-import-group-option" :class="{ active: importTargetGroup === '' }">
               <input type="radio" v-model="importTargetGroup" value="" />
@@ -598,7 +645,8 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
         <template #footer>
           <div class="skill-group-dialog-actions">
             <n-button round secondary @click="isImportGroupDialogOpen = false">取消</n-button>
-            <n-button round strong type="primary" @click="isImportGroupDialogOpen = false; runImportPackage()">开始导入</n-button>
+            <n-button round strong secondary @click="isImportGroupDialogOpen = false; runImportPackage('dir')">导入 Skill 目录</n-button>
+            <n-button round strong type="primary" @click="isImportGroupDialogOpen = false; runImportPackage('zip')">导入 .zip 压缩包</n-button>
           </div>
         </template>
       </n-modal>
@@ -831,6 +879,40 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
   font-size: 12px;
   line-height: 1.6;
   word-break: break-all;
+}
+
+/* 右侧动作区：启用开关与单个删除按钮纵向排列 */
+.project-skill-head-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.project-skill-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 3px 0;
+  border: 1px solid var(--arc-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--arc-text-hint);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.project-skill-delete-btn:hover {
+  color: var(--arc-error, #d03050);
+  border-color: var(--arc-error, #d03050);
+  background: color-mix(in srgb, var(--arc-error, #d03050) 8%, transparent);
+}
+
+.project-skill-delete-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .project-skill-description {
