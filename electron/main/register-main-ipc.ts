@@ -2318,7 +2318,7 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
   ipcMain.handle('characterarc:project-skills-create-group', async (_event, projectId: unknown, groupName: unknown) => {
     try {
       const resolvedProjectId = String(projectId ?? '').trim() || undefined
-      const name = String(groupName ?? '').trim().replace(/[\\/]/g, '').replace(/[^\w\u4e00-\u9fa5-]/g, '')
+      const name = String(groupName ?? '').trim().replace(/[\\/]/g, '').replace(/[^A-Za-z0-9\u4e00-\u9fa5-]/g, '')
       if (!name || name === '.' || name === '..') {
         return { success: false, error: '分组名称不能为空或非法' }
       }

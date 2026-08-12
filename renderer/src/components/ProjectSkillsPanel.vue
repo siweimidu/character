@@ -51,7 +51,13 @@ const groupedSkills = computed(() => {
     // 内置 skill 路径形如 skills/<group>/<skill>，按来源子目录分组；
     // 项目 skill 路径形如 project-skills/<skill>（未分组）或 project-skills/<group>/<skill>（已分组）。
     const isBuiltin = skill.scope === 'builtin'
-    const groupName = segments.length > 2 ? segments[1] : (isBuiltin ? '_builtin_root' : '_ungrouped')
+    let groupName: string
+    if (segments.length > 2) {
+      // 带分组的 skill；内置与项目同名分组用作用域前缀区分，避免混合展示
+      groupName = isBuiltin ? `__builtin__${segments[1]}` : segments[1]
+    } else {
+      groupName = isBuiltin ? '_builtin_root' : '_ungrouped'
+    }
     if (!groupMap.has(groupName)) groupMap.set(groupName, [])
     groupMap.get(groupName)!.push(skill)
   }
@@ -62,10 +68,12 @@ const groupedSkills = computed(() => {
   }
 
   for (const [name, skills] of groupMap) {
-    const isBuiltinGroup = name === '_builtin_root' || skills[0]?.scope === 'builtin'
+    const isBuiltinGroup = name === '_builtin_root' || name.startsWith('__builtin__')
+    // 去掉作用域前缀，还原真实分组名用于展示
+    const displayName = name.startsWith('__builtin__') ? name.slice('__builtin__'.length) : name
     groups.push({
       name,
-      label: groupLabels[name] ?? (isBuiltinGroup ? `内置·${name}` : name),
+      label: groupLabels[name] ?? (isBuiltinGroup ? `内置·${displayName}` : displayName),
       // 内置分组、未分组（根级项目）或已创建的分组
       scope: isBuiltinGroup ? 'builtin' : 'project',
       skills
@@ -305,6 +313,8 @@ async function deleteSelectedSkills(): Promise<void> {
         }
         selectedSkillPaths.value = selectedSkillPaths.value.filter((p) => !deletableSkillIds.value.has(p))
         await scanProjectSkills()
+        // 删除后同步刷新分组列表及计数，避免导入分组弹窗展示过时的分组/数量
+        await refreshSkillGroups()
         message.success(`已删除 ${result.deleted?.length ?? 0} 个 skills`)
       } catch (error) {
         message.error(error instanceof Error ? error.message : 'skills 删除失败')
