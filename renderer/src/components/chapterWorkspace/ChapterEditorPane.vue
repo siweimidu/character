@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { Check, ChevronDown, ChevronRight, Folder, FocusIcon, History, Maximize2, Menu, MessageSquareQuote, Minus, Minimize2, Plus, RefreshCw, Save, Search, ShieldAlert, Sparkles, Type, Wand2 } from 'lucide-vue-next'
 import EditorCommandPalette from './EditorCommandPalette.vue'
 import type { CommandPaletteAction } from './editorCommandPalette'
@@ -33,11 +33,15 @@ const emit = defineEmits<{
 const appStore = useAppStore()
 const message = useMessage()
 
-// 正文字号：默认 17px，范围 14~35px，支持 +- 按钮与 Ctrl+滚轮 调节
-const MIN_FONT = 14
-const MAX_FONT = 35
+// 正文字号：默认 17px，范围 10~50px，支持 +- 按钮、手动输入与 Ctrl+滚轮 调节
+const MIN_FONT = 10
+const MAX_FONT = 50
 const DEFAULT_FONT = 17
 const fontSize = ref(DEFAULT_FONT)
+// 字号输入框编辑状态与草稿
+const editingFont = ref(false)
+const fontSizeDraft = ref(String(DEFAULT_FONT))
+const fontSizeInputEl = ref<HTMLInputElement | null>(null)
 const versionDialogVisible = ref(false)
 // ── 章节内快速新建伏笔 ──
 const quickCreateThreadVisible = ref(false)
@@ -121,6 +125,31 @@ function selectEditorFont(key: string | number): void {
 
 function stepFont(delta: number): void {
   fontSize.value = Math.max(MIN_FONT, Math.min(MAX_FONT, fontSize.value + delta))
+  fontSizeDraft.value = String(fontSize.value)
+}
+
+// 手动输入字号：失去焦点 / 回车 / 上一步按钮时应用，并夹在 10~50 范围内
+async function startEditingFont(): Promise<void> {
+  fontSizeDraft.value = String(fontSize.value)
+  editingFont.value = true
+  await nextTick()
+  fontSizeInputEl.value?.focus()
+  fontSizeInputEl.value?.select()
+}
+
+function applyFontSize(): void {
+  editingFont.value = false
+  const parsed = Number.parseInt(fontSizeDraft.value, 10)
+  const next = Number.isNaN(parsed)
+    ? fontSize.value
+    : Math.max(MIN_FONT, Math.min(MAX_FONT, parsed))
+  fontSize.value = next
+  fontSizeDraft.value = String(next)
+}
+
+function cancelEditingFont(): void {
+  editingFont.value = false
+  fontSizeDraft.value = String(fontSize.value)
 }
 
 function handleEditorWheel(e: WheelEvent): void {
@@ -493,11 +522,28 @@ onBeforeUnmount(() => {
           </button>
         </n-dropdown>
 
-        <div class="font-stepper">
-          <button @click="stepFont(-1)"><Minus :size="11" /></button>
-          <span class="level">{{ fontSize }}px</span>
-          <button @click="stepFont(1)"><Plus :size="11" /></button>
-        </div>
+        <n-tooltip placement="bottom">
+          <template #trigger>
+            <div class="font-stepper">
+              <button :title="'减小正文字号 (最小 ' + MIN_FONT + 'px)'" @click="stepFont(-1)"><Minus :size="11" /></button>
+              <input
+                v-if="editingFont"
+                ref="fontSizeInputEl"
+                v-model="fontSizeDraft"
+                class="level-input"
+                type="number"
+                :min="MIN_FONT"
+                :max="MAX_FONT"
+                @blur="applyFontSize"
+                @keydown.enter="applyFontSize"
+                @keydown.esc="cancelEditingFont"
+              />
+              <span v-else class="level" @dblclick="startEditingFont">{{ fontSize }}px</span>
+              <button :title="'增大正文字号 (最大 ' + MAX_FONT + 'px)'" @click="stepFont(1)"><Plus :size="11" /></button>
+            </div>
+          </template>
+          正文字号：可点击数字直接输入（{{ MIN_FONT }}~{{ MAX_FONT }}px），或按 Ctrl + 鼠标滚轮 放大/缩小
+        </n-tooltip>
 
         <n-tooltip placement="bottom">
           <template #trigger>
@@ -911,6 +957,26 @@ onBeforeUnmount(() => {
   padding: 0 4px;
   min-width: 30px;
   text-align: center;
+  cursor: text;
+}
+
+.font-stepper .level-input {
+  width: 42px;
+  font-size: 11px;
+  color: var(--arc-text-primary);
+  text-align: center;
+  background: var(--arc-bg-surface);
+  border: 1px solid var(--arc-primary);
+  border-radius: 4px;
+  padding: 1px 2px;
+  outline: none;
+  -moz-appearance: textfield;
+}
+
+.font-stepper .level-input::-webkit-outer-spin-button,
+.font-stepper .level-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .toolbtn {
