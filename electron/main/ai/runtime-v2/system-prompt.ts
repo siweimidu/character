@@ -58,7 +58,7 @@ function buildSurfaceHint(surface: SurfaceDefinition): string {
       ].join('\n')
     case 'chapter-panel':
       return [
-        '【当前场景】章节创作助手。用户正在编辑某个章节。你的动手范围主要是当前章节的正文修改（stage_chapter_edit）；其他项目资料只读不改。',
+        '【当前场景】章节创作助手。用户正在编辑某个章节。除正文修改外，用户要求新增/删除章节、调整章节标题等元数据时，也可用对应工具：正文用 stage_chapter_edit；新建章节用 stage_chapter_create；删除章节用 stage_chapter_delete（破坏性操作，仅在用户明确要求时调用，项目至少保留一个章节）；改标题/摘要/状态/分卷等用 stage_chapter_update。',
         '',
         '【技能使用】上下文中提供了可用技能列表（skill-index）。有适用技能时，优先用 skill_load 加载技能，按技能指导操作，效果通常优于直接凭经验改写。常用技能示例：润色类、节奏类、风格迁移类、降低AI感等。',
         '',

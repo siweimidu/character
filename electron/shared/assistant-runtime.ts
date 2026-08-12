@@ -329,7 +329,7 @@ export type PermissionMatrix = Readonly<Record<SurfaceId, readonly ToolMatcher[]
 export const DEFAULT_PERMISSION_MATRIX: PermissionMatrix = {
   'global-page': ['read_*', 'search_*', 'list_*', 'stage_*', 'skill_*', 'knowledge_*', 'memory_*', 'delegate_*', 'file_*'],
   'global-panel': ['read_*', 'search_*', 'list_*', 'stage_*', 'skill_*', 'knowledge_*', 'memory_*', 'delegate_*', 'file_*'],
-  'chapter-panel': ['read_*', 'search_*', 'list_*', 'stage_chapter_edit', 'skill_*', 'knowledge_*', 'memory_*', 'delegate_*', 'file_*'],
+  'chapter-panel': ['read_*', 'search_*', 'list_*', 'stage_chapter_edit', 'stage_chapter_delete', 'stage_chapter_create', 'stage_chapter_update', 'stage_chapter_restore', 'skill_*', 'knowledge_*', 'memory_*', 'delegate_*', 'file_*'],
   'inline-selection': ['read_chapter', 'stage_chapter_edit']
 } as const
 
