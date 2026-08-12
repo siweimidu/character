@@ -542,6 +542,23 @@ export function useAssistant(options: UseAssistantOptions) {
       lastError.value = '请先停止当前生成，再删除会话。'
       return
     }
+
+    // 删除前先将会话快照写入回收站（Runtime v2 会话保存在后端 SQLite，需在此处记录）
+    const target = sessions.value.find((s) => s.id === sessionId)
+    if (target) {
+      try {
+        const loaded = await A.sessionLoad({ sessionId, withReplay: true })
+        appStore.recordDeletedAssistantSessionV2({
+          ...target,
+          turns: loaded?.turns ?? [],
+          events: loaded?.events ?? []
+        })
+      } catch (e) {
+        // 快照失败不阻断删除，仅记录日志
+        console.error('[useAssistant] 记录删除会话到回收站失败:', e)
+      }
+    }
+
     await A.sessionDelete({ sessionId })
     sessions.value = sessions.value.filter((s) => s.id !== sessionId)
     if (activeSessionId.value === sessionId) {

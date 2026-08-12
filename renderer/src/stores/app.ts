@@ -1201,6 +1201,15 @@ export const useAppStore = defineStore('app', () => {
     schedulePersist('fast')
   }
 
+  /** 记录一个被删除的 Runtime v2 智能体会话到回收站 */
+  function recordDeletedAssistantSessionV2(session: Record<string, unknown>): void {
+    const title = String((session as { title?: unknown })?.title ?? '').trim() || '智能体对话'
+    pushRecycleEntry('assistant-session', title, {
+      ...(session as object),
+      runtimeV2: true
+    } as Record<string, unknown>)
+  }
+
   /** 移除过期回收站条目（到期自动删除），并返回移除数量 */
   function purgeExpiredRecycleBin(): number {
     const now = Date.now()
@@ -1269,8 +1278,53 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
+  /** 从回收站恢复一个 Runtime v2 智能体会话（调用后端重建完整会话） */
+  async function restoreRuntimeV2Session(
+    v2Data: Record<string, unknown> & {
+      id?: string
+      projectId?: string
+      surfaceId?: string
+      scopeRef?: string
+      title?: string
+      createdAt?: string
+      updatedAt?: string
+      turns?: unknown[]
+      events?: unknown[]
+    }
+  ): Promise<boolean> {
+    try {
+      const A = window.characterArc?.assistant
+      if (!A) return false
+
+      const projectId = String(v2Data.projectId ?? '').trim()
+      const surfaceId = String(v2Data.surfaceId ?? 'global-page').trim()
+      const title = String(v2Data.title ?? '').trim() || '智能体对话'
+
+      const result = await A.sessionRestore({
+        id: v2Data.id,
+        projectId: projectId || selectedProjectId.value,
+        surfaceId,
+        scopeRef: v2Data.scopeRef,
+        title,
+        createdAt: v2Data.createdAt,
+        updatedAt: v2Data.updatedAt,
+        turns: v2Data.turns,
+        events: v2Data.events
+      })
+
+      if (!result.ok) {
+        console.error('[recycle] 恢复 Runtime v2 会话失败:', result.error)
+        return false
+      }
+      return true
+    } catch (e) {
+      console.error('[recycle] 恢复 Runtime v2 会话异常:', e)
+      return false
+    }
+  }
+
   /** 从回收站恢复一条记录：根据类别将快照写回对应集合 */
-  function restoreRecycleEntry(entryId: string): boolean {
+  async function restoreRecycleEntry(entryId: string): Promise<boolean> {
     // 查找条目（全局或当前项目）
     let entry = globalRecycleBin.value.find((item) => item.id === entryId)
     let isGlobal = Boolean(entry)
@@ -1367,11 +1421,29 @@ export const useAppStore = defineStore('app', () => {
         break
       }
       case 'assistant-session': {
-        const session = data as unknown as import('@/types/app').GlobalAssistantSession
-        updateCurrentWorkspace((workspace) => ({
-          ...workspace,
-          globalAssistantSessions: [...workspace.globalAssistantSessions, session]
-        }))
+        if (data.runtimeV2) {
+          // Runtime v2 会话：调用后端恢复完整会话（含 turns / events）
+          const v2Data = data as Record<string, unknown> & {
+            id?: string
+            projectId?: string
+            surfaceId?: string
+            scopeRef?: string
+            title?: string
+            turns?: unknown[]
+            events?: unknown[]
+          }
+          const restored = await restoreRuntimeV2Session(v2Data)
+          if (!restored) {
+            return false
+          }
+        } else {
+          // 旧版会话：写入 appStore.globalAssistantSessions
+          const session = data as unknown as import('@/types/app').GlobalAssistantSession
+          updateCurrentWorkspace((workspace) => ({
+            ...workspace,
+            globalAssistantSessions: [...workspace.globalAssistantSessions, session]
+          }))
+        }
         break
       }
       case 'ai-profile': {
@@ -4124,6 +4196,7 @@ export const useAppStore = defineStore('app', () => {
     purgeExpiredRecycleBin,
     recycleBinRetentionDays,
     restoreRecycleEntry,
+    recordDeletedAssistantSessionV2,
     setRecycleBinRetentionDays,
     projectRecycleBin,
     appSettings,

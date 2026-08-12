@@ -250,6 +250,17 @@ interface SessionCreateRequest {
 interface SessionDeleteRequest { sessionId: string }
 interface SessionLoadRequest { sessionId: string; withReplay?: boolean }
 interface SessionRenameRequest { sessionId: string; title: string }
+interface SessionRestoreRequest {
+  id?: string
+  projectId: string
+  surfaceId: string
+  scopeRef?: string
+  title: string
+  createdAt?: string
+  updatedAt?: string
+  turns?: unknown[]
+  events?: unknown[]
+}
 
 function registerSessionHandlers(): void {
   ipcMain.handle(
@@ -309,6 +320,24 @@ function registerSessionHandlers(): void {
       const cm = await getConversation()
       cm.renameSession(payload.sessionId, payload.title)
       return { ok: true }
+    }
+  )
+
+  ipcMain.handle(
+    ASSISTANT_IPC_CHANNELS.SESSION_RESTORE,
+    async (_event, payload: SessionRestoreRequest) => {
+      const cm = await getConversation()
+      return cm.restoreSession({
+        id: payload.id,
+        projectId: payload.projectId,
+        surfaceId: payload.surfaceId as never,
+        scopeRef: payload.scopeRef,
+        title: payload.title,
+        createdAt: payload.createdAt,
+        updatedAt: payload.updatedAt,
+        turns: payload.turns as never,
+        events: payload.events as never
+      })
     }
   )
 }

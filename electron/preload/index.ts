@@ -285,6 +285,8 @@ contextBridge.exposeInMainWorld('characterArc', {
       ipcRenderer.invoke('characterarc:assistant:session:load', toIpcPayload(payload)),
     sessionRename: (payload: unknown) =>
       ipcRenderer.invoke('characterarc:assistant:session:rename', toIpcPayload(payload)),
+    sessionRestore: (payload: unknown) =>
+      ipcRenderer.invoke('characterarc:assistant:session:restore', toIpcPayload(payload)),
     // Turn
     turnSend: (payload: unknown) =>
       ipcRenderer.invoke('characterarc:assistant:turn:send', toIpcPayload(payload)),

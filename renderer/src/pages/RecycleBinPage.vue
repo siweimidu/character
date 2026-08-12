@@ -113,8 +113,8 @@ function formatDateTime(iso: string): string {
 }
 
 /** 恢复某条记录 */
-function restoreEntry(entryId: string): void {
-  const ok = appStore.restoreRecycleEntry(entryId)
+async function restoreEntry(entryId: string): Promise<void> {
+  const ok = await appStore.restoreRecycleEntry(entryId)
   if (ok) {
     message.success('已恢复到原模块')
   } else {
@@ -147,7 +147,7 @@ function saveRetention(): void {
 }
 
 function backToProjectCenter(): void {
-  appStore.backToProjects()
+  appStore.backToWorkbench()
 }
 </script>
 

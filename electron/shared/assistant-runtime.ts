@@ -348,6 +348,7 @@ export const ASSISTANT_IPC_CHANNELS = {
   SESSION_DELETE: 'characterarc:assistant:session:delete',
   SESSION_LOAD: 'characterarc:assistant:session:load',
   SESSION_RENAME: 'characterarc:assistant:session:rename',
+  SESSION_RESTORE: 'characterarc:assistant:session:restore',
   // Turn（用户发起一次输入）
   TURN_SEND: 'characterarc:assistant:turn:send',
   TURN_CANCEL: 'characterarc:assistant:turn:cancel',

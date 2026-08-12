@@ -411,6 +411,81 @@ export class ConversationManager {
     }
   }
 
+  /**
+   * 从回收站恢复完整会话（含 turns / events）。
+   * input 应来自 recycle bin 的 snapshot。若 sessionId 已存在则跳过。
+   */
+  restoreSession(input: {
+    id?: string
+    projectId: string
+    surfaceId: SurfaceId
+    scopeRef?: string
+    title: string
+    createdAt?: string
+    updatedAt?: string
+    turns?: Array<{
+      id: string
+      userMessage: string
+      assistantMessage?: string
+      status?: TurnStatus
+      createdAt?: string
+    }>
+    events?: Array<{
+      turnId: string
+      seq: number
+      kind: TurnEvent['kind']
+      payloadJson: string
+      createdAt?: string
+    }>
+  }): { ok: boolean; sessionId?: string; error?: string } {
+    // 若传入 id 且该会话已存在，直接返回成功（幂等恢复）
+    if (input.id && this.getSession(input.id)) {
+      return { ok: true, sessionId: input.id }
+    }
+    // 否则使用传入 id 或生成新 id
+    const sessionId = input.id || randomUUID()
+    const now = new Date().toISOString()
+
+    this.stmts.insertSession.run(
+      sessionId,
+      input.projectId,
+      input.surfaceId,
+      input.scopeRef ?? '',
+      input.title,
+      input.createdAt ?? now,
+      input.updatedAt ?? now
+    )
+
+    for (const turn of input.turns ?? []) {
+      const turnId = turn.id
+      const status = turn.status ?? 'done'
+      this.stmts.insertTurn.run(
+        turnId,
+        sessionId,
+        turn.userMessage,
+        turn.assistantMessage ?? '',
+        status,
+        turn.createdAt ?? now
+      )
+      // 恢复该 turn 的 events
+      for (const ev of input.events?.filter((e) => e.turnId === turn.id) ?? []) {
+        this.stmts.insertEvent.run(
+          randomUUID(),
+          turnId,
+          ev.seq,
+          ev.kind,
+          ev.payloadJson,
+          ev.createdAt ?? now
+        )
+      }
+      // 更新 seq 缓存
+      const maxSeq = input.events?.filter((e) => e.turnId === turn.id).reduce((max, e) => Math.max(max, e.seq), -1) ?? -1
+      this.nextSeqByTurn.set(turnId, maxSeq + 1)
+    }
+
+    return { ok: true, sessionId }
+  }
+
   // -------- Turn --------
 
   createTurn(input: CreateTurnInput): AssistantTurn {

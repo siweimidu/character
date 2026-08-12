@@ -852,6 +852,17 @@ declare global {
           events: import('@shared/assistant-runtime').PersistedTurnEvent[]
         }>
         sessionRename: (payload: { sessionId: string; title: string }) => Promise<{ ok: boolean }>
+        sessionRestore: (payload: {
+          id?: string
+          projectId: string
+          surfaceId: string
+          scopeRef?: string
+          title: string
+          createdAt?: string
+          updatedAt?: string
+          turns?: unknown[]
+          events?: unknown[]
+        }) => Promise<{ ok: boolean; sessionId?: string; error?: string }>
         turnSend: (payload: import('@shared/assistant-runtime').TurnSendRequest) =>
           Promise<{ turnId: string; finalText: string; status: string; error?: string }>
         turnCancel: (payload: import('@shared/assistant-runtime').TurnCancelRequest) =>
