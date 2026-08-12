@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import {
-  AlertTriangle, Archive, BookMarked, CheckCircle2, Circle,
-  Download, FileUp, Flag, MoreVertical, Plus, Search, Sparkles, XCircle
+  Archive, BookMarked, CheckCircle2, Circle, Clock,
+  FileUp, Flag, MoreVertical, Plus, Sparkles, XCircle
 } from 'lucide-vue-next'
 import {
-  NButton, NDivider, NDropdown, NDynamicTags, NEmpty, NForm, NFormItem,
-  NInput, NInputNumber, NModal, NSelect, NTag, NPopover, useDialog, useMessage
+  NButton, NDropdown, NDynamicTags, NEmpty, NForm, NFormItem,
+  NInput, NInputNumber, NModal, NSelect, useDialog, useMessage
 } from 'naive-ui'
 import type { DropdownOption } from 'naive-ui'
 import BatchDeleteBar from './BatchDeleteBar.vue'
@@ -599,130 +599,168 @@ function confirmAddGeneratedThreads(): void {
 
     <!-- 待回收伏笔 -->
     <div v-if="pendingThreads.length > 0" class="thread-group">
-      <div class="group-label"><Circle :size="13" class="group-icon pending-icon" /> 待回收（{{ pendingThreads.length }}）</div>
+      <div class="group-label">
+        <span class="group-label-dot pending-dot" />
+        待回收
+        <span class="group-label-count">{{ pendingThreads.length }}</span>
+      </div>
       <div
         v-for="thread in visiblePendingThreads"
         :key="thread.id"
         class="thread-card"
-        :class="`priority-${thread.priority}`"
+        :class="[`priority-${thread.priority}`, 'status-pending']"
       >
-        <div class="thread-header">
-          <label class="row-check" title="勾选以便批量操作" @click.stop>
-            <input
-              type="checkbox"
-              :checked="selectedThreadIdSet.has(thread.id)"
-              @change="toggleSelectThread(thread.id)"
-            />
-          </label>
-          <div class="thread-title">{{ thread.title }}</div>
-          <span class="priority-badge" :style="{ color: PRIORITY_MAP[thread.priority].color }">
-            <Flag :size="12" /> {{ PRIORITY_MAP[thread.priority].label }}
-          </span>
-          <n-dropdown :options="menuOptions" @select="(key: string) => handleMenuSelect(key, thread)">
-            <n-button text size="tiny" class="more-btn">
-              <MoreVertical :size="14" />
-            </n-button>
-          </n-dropdown>
-        </div>
-        <div v-if="thread.description" class="thread-desc">{{ thread.description }}</div>
-        <div class="thread-meta">
-          <span v-if="thread.openedInChapterId" class="meta-item chapter-link" @click="jumpToChapter(thread.openedInChapterId)">
-            埋设：{{ chapterTitleById(thread.openedInChapterId) }} →
-          </span>
-          <span v-if="thread.plannedCloseChapterId" class="meta-item chapter-link" @click="jumpToChapter(thread.plannedCloseChapterId)">
-            计划回收：{{ chapterTitleById(thread.plannedCloseChapterId) }}
-          </span>
-          <span v-if="thread.tags.length" class="thread-tags">
-            <n-tag
-              v-for="tag in thread.tags"
-              :key="tag"
-              size="tiny"
-              :bordered="false"
-              class="tag-chip"
-            >{{ tag }}</n-tag>
-          </span>
-          <span class="meta-time">{{ formatTime(thread.updatedAt) }}</span>
-        </div>
-        <div v-if="thread.remark" class="thread-remark">
-          <Archive :size="12" /> {{ thread.remark }}
+        <div class="card-accent" />
+        <div class="card-body">
+          <div class="thread-header">
+            <label class="row-check" title="勾选以便批量操作" @click.stop>
+              <input
+                type="checkbox"
+                :checked="selectedThreadIdSet.has(thread.id)"
+                @change="toggleSelectThread(thread.id)"
+              />
+            </label>
+            <div class="thread-title-wrap">
+              <span class="thread-status-chip pending-chip">
+                <Circle :size="9" fill="currentColor" />
+                待回收
+              </span>
+              <div class="thread-title">{{ thread.title }}</div>
+            </div>
+            <span class="priority-badge" :class="`pr-${thread.priority}`">
+              <Flag :size="11" fill="currentColor" /> {{ PRIORITY_MAP[thread.priority].label }}
+            </span>
+            <n-dropdown :options="menuOptions" @select="(key: string) => handleMenuSelect(key, thread)">
+              <button class="more-btn" type="button" title="更多操作" aria-label="更多操作">
+                <MoreVertical :size="15" />
+              </button>
+            </n-dropdown>
+          </div>
+          <div v-if="thread.description" class="thread-desc">{{ thread.description }}</div>
+          <div class="thread-meta">
+            <span v-if="thread.openedInChapterId" class="meta-chip chapter-link" @click="jumpToChapter(thread.openedInChapterId)">
+              <BookMarked :size="11" /> 埋设于「{{ chapterTitleById(thread.openedInChapterId) }}」
+            </span>
+            <span v-if="thread.plannedCloseChapterId" class="meta-chip chapter-link" @click="jumpToChapter(thread.plannedCloseChapterId)">
+              <Flag :size="11" /> 计划回收「{{ chapterTitleById(thread.plannedCloseChapterId) }}」
+            </span>
+            <span class="meta-time">
+              <Clock :size="11" /> {{ formatTime(thread.updatedAt) }}
+            </span>
+          </div>
+          <div v-if="thread.tags.length" class="thread-tags">
+            <span v-for="tag in thread.tags" :key="tag" class="tag-chip"># {{ tag }}</span>
+          </div>
+          <div v-if="thread.remark" class="thread-remark">
+            <Archive :size="11" /> <span>{{ thread.remark }}</span>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- 已回收伏笔 -->
     <div v-if="resolvedThreads.length > 0" class="thread-group resolved-group">
-      <n-divider class="group-divider" />
-      <div class="group-label"><CheckCircle2 :size="13" class="group-icon resolved-icon" /> 已回收（{{ resolvedThreads.length }}）</div>
+      <div class="group-label">
+        <span class="group-label-dot resolved-dot" />
+        已回收
+        <span class="group-label-count">{{ resolvedThreads.length }}</span>
+      </div>
       <div
         v-for="thread in visibleResolvedThreads"
         :key="thread.id"
         class="thread-card resolved-card"
-        :class="`priority-${thread.priority}`"
+        :class="[`priority-${thread.priority}`, 'status-resolved']"
       >
-        <div class="thread-header">
-          <label class="row-check" title="勾选以便批量操作" @click.stop>
-            <input
-              type="checkbox"
-              :checked="selectedThreadIdSet.has(thread.id)"
-              @change="toggleSelectThread(thread.id)"
-            />
-          </label>
-          <div class="thread-title resolved-title">{{ thread.title }}</div>
-          <n-dropdown :options="menuOptions" @select="(key: string) => handleMenuSelect(key, thread)">
-            <n-button text size="tiny" class="more-btn">
-              <MoreVertical :size="14" />
-            </n-button>
-          </n-dropdown>
-        </div>
-        <div v-if="thread.description" class="thread-desc resolved-desc">{{ thread.description }}</div>
-        <div class="thread-meta">
-          <span v-if="thread.openedInChapterId" class="meta-item chapter-link" @click="jumpToChapter(thread.openedInChapterId)">
-            埋设：{{ chapterTitleById(thread.openedInChapterId) }}
-          </span>
-          <span v-if="thread.closedInChapterId" class="meta-item chapter-link" @click="jumpToChapter(thread.closedInChapterId)">
-            回收：{{ chapterTitleById(thread.closedInChapterId) }}
-          </span>
-          <span v-if="thread.tags.length" class="thread-tags">
-            <n-tag v-for="tag in thread.tags" :key="tag" size="tiny" :bordered="false" class="tag-chip">{{ tag }}</n-tag>
-          </span>
-          <span class="meta-time">{{ formatTime(thread.updatedAt) }}</span>
+        <div class="card-accent" />
+        <div class="card-body">
+          <div class="thread-header">
+            <label class="row-check" title="勾选以便批量操作" @click.stop>
+              <input
+                type="checkbox"
+                :checked="selectedThreadIdSet.has(thread.id)"
+                @change="toggleSelectThread(thread.id)"
+              />
+            </label>
+            <div class="thread-title-wrap">
+              <span class="thread-status-chip resolved-chip">
+                <CheckCircle2 :size="9" fill="currentColor" />
+                已回收
+              </span>
+              <div class="thread-title resolved-title">{{ thread.title }}</div>
+            </div>
+            <n-dropdown :options="menuOptions" @select="(key: string) => handleMenuSelect(key, thread)">
+              <button class="more-btn" type="button" title="更多操作" aria-label="更多操作">
+                <MoreVertical :size="15" />
+              </button>
+            </n-dropdown>
+          </div>
+          <div v-if="thread.description" class="thread-desc resolved-desc">{{ thread.description }}</div>
+          <div class="thread-meta">
+            <span v-if="thread.openedInChapterId" class="meta-chip chapter-link" @click="jumpToChapter(thread.openedInChapterId)">
+              <BookMarked :size="11" /> 埋设于「{{ chapterTitleById(thread.openedInChapterId) }}」
+            </span>
+            <span v-if="thread.closedInChapterId" class="meta-chip chapter-link" @click="jumpToChapter(thread.closedInChapterId)">
+              <CheckCircle2 :size="11" /> 回收于「{{ chapterTitleById(thread.closedInChapterId) }}」
+            </span>
+            <span class="meta-time">
+              <Clock :size="11" /> {{ formatTime(thread.updatedAt) }}
+            </span>
+          </div>
+          <div v-if="thread.tags.length" class="thread-tags">
+            <span v-for="tag in thread.tags" :key="tag" class="tag-chip"># {{ tag }}</span>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- 已废弃伏笔 -->
     <div v-if="abandonedThreads.length > 0" class="thread-group abandoned-group">
-      <n-divider class="group-divider" />
-      <div class="group-label"><XCircle :size="13" class="group-icon abandoned-icon" /> 已废弃（{{ abandonedThreads.length }}）</div>
+      <div class="group-label">
+        <span class="group-label-dot abandoned-dot" />
+        已废弃
+        <span class="group-label-count">{{ abandonedThreads.length }}</span>
+      </div>
       <div
         v-for="thread in visibleAbandonedThreads"
         :key="thread.id"
         class="thread-card abandoned-card"
+        :class="'status-abandoned'"
       >
-        <div class="thread-header">
-          <label class="row-check" title="勾选以便批量操作" @click.stop>
-            <input
-              type="checkbox"
-              :checked="selectedThreadIdSet.has(thread.id)"
-              @change="toggleSelectThread(thread.id)"
-            />
-          </label>
-          <div class="thread-title abandoned-title">{{ thread.title }}</div>
-          <n-dropdown :options="menuOptions" @select="(key: string) => handleMenuSelect(key, thread)">
-            <n-button text size="tiny" class="more-btn">
-              <MoreVertical :size="14" />
-            </n-button>
-          </n-dropdown>
-        </div>
-        <div v-if="thread.description" class="thread-desc abandoned-desc">{{ thread.description }}</div>
-        <div class="thread-meta">
-          <span v-if="thread.openedInChapterId" class="meta-item chapter-link" @click="jumpToChapter(thread.openedInChapterId)">
-            埋设：{{ chapterTitleById(thread.openedInChapterId) }}
-          </span>
-          <span v-if="thread.remark" class="meta-item">
-            <Archive :size="12" /> {{ thread.remark }}
-          </span>
-          <span class="meta-time">{{ formatTime(thread.updatedAt) }}</span>
+        <div class="card-accent" />
+        <div class="card-body">
+          <div class="thread-header">
+            <label class="row-check" title="勾选以便批量操作" @click.stop>
+              <input
+                type="checkbox"
+                :checked="selectedThreadIdSet.has(thread.id)"
+                @change="toggleSelectThread(thread.id)"
+              />
+            </label>
+            <div class="thread-title-wrap">
+              <span class="thread-status-chip abandoned-chip">
+                <XCircle :size="9" fill="currentColor" />
+                已废弃
+              </span>
+              <div class="thread-title abandoned-title">{{ thread.title }}</div>
+            </div>
+            <n-dropdown :options="menuOptions" @select="(key: string) => handleMenuSelect(key, thread)">
+              <button class="more-btn" type="button" title="更多操作" aria-label="更多操作">
+                <MoreVertical :size="15" />
+              </button>
+            </n-dropdown>
+          </div>
+          <div v-if="thread.description" class="thread-desc abandoned-desc">{{ thread.description }}</div>
+          <div class="thread-meta">
+            <span v-if="thread.openedInChapterId" class="meta-chip chapter-link" @click="jumpToChapter(thread.openedInChapterId)">
+              <BookMarked :size="11" /> 埋设于「{{ chapterTitleById(thread.openedInChapterId) }}」
+            </span>
+            <span class="meta-time">
+              <Clock :size="11" /> {{ formatTime(thread.updatedAt) }}
+            </span>
+          </div>
+          <div v-if="thread.remark" class="thread-remark">
+            <Archive :size="11" /> <span>{{ thread.remark }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -929,7 +967,7 @@ function confirmAddGeneratedThreads(): void {
             <div class="ai-result-title">{{ thread.title }}</div>
             <div class="ai-result-desc">{{ thread.description }}</div>
             <div v-if="thread.tags.length" class="thread-tags">
-              <n-tag v-for="tag in thread.tags" :key="tag" size="tiny" :bordered="false" class="tag-chip">{{ tag }}</n-tag>
+              <span v-for="tag in thread.tags" :key="tag" class="tag-chip"># {{ tag }}</span>
             </div>
           </div>
         </div>
@@ -974,35 +1012,66 @@ function confirmAddGeneratedThreads(): void {
 }
 
 .stat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 12px;
   font-weight: 600;
-  padding: 2px 8px;
-  border-radius: var(--arc-radius-sm);
+  padding: 3px 10px;
+  border-radius: 20px;
   border: 1px solid var(--arc-border);
   color: var(--arc-text-secondary);
   background: var(--arc-bg-body);
 }
 
+.stat-badge::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.6;
+}
+
 .stat-badge.total {
   color: var(--arc-text-primary);
+  border-color: color-mix(in srgb, var(--arc-primary) 24%, var(--arc-border));
+  background: color-mix(in srgb, var(--arc-primary) 5%, var(--arc-bg-body));
+}
+
+.stat-badge.total::before {
+  background: var(--arc-primary);
 }
 
 .stat-badge.pending {
-  color: #eab308;
+  color: #ca8a04;
   background: color-mix(in srgb, #eab308 10%, var(--arc-bg-body));
   border-color: color-mix(in srgb, #eab308 30%, var(--arc-border));
 }
 
+.stat-badge.pending::before {
+  background: #eab308;
+}
+
 .stat-badge.resolved {
-  color: #22c55e;
+  color: #16a34a;
   background: color-mix(in srgb, #22c55e 10%, var(--arc-bg-body));
   border-color: color-mix(in srgb, #22c55e 30%, var(--arc-border));
+}
+
+.stat-badge.resolved::before {
+  background: #22c55e;
 }
 
 .stat-badge.abandoned {
   color: #6b7280;
   background: color-mix(in srgb, #6b7280 10%, var(--arc-bg-body));
   border-color: color-mix(in srgb, #6b7280 30%, var(--arc-border));
+}
+
+.stat-badge.abandoned::before {
+  background: #9ca3af;
 }
 
 .filter-bar {
@@ -1042,95 +1111,157 @@ function confirmAddGeneratedThreads(): void {
 .thread-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
 }
 
 .resolved-group,
 .abandoned-group {
-  margin-top: 4px;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--arc-border);
 }
 
 .group-label {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--arc-text-hint);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  padding: 4px 0 2px;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--arc-text-secondary);
+  letter-spacing: 0.04em;
+  padding: 2px 0 0;
 }
 
-.group-icon {
+.group-label-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
   flex-shrink: 0;
 }
 
-.pending-icon {
-  color: #eab308;
+.pending-dot {
+  background: #eab308;
+  box-shadow: 0 0 6px color-mix(in srgb, #eab308 50%, transparent);
 }
 
-.resolved-icon {
-  color: #22c55e;
+.resolved-dot {
+  background: #22c55e;
+  box-shadow: 0 0 6px color-mix(in srgb, #22c55e 50%, transparent);
 }
 
-.abandoned-icon {
-  color: #6b7280;
+.abandoned-dot {
+  background: #9ca3af;
+  box-shadow: 0 0 6px color-mix(in srgb, #9ca3af 50%, transparent);
 }
 
-.group-divider {
-  margin: 4px 0 8px;
-}
-
-.thread-card {
+.group-label-count {
+  display: inline-flex;
+  min-width: 20px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: var(--arc-bg-body);
   border: 1px solid var(--arc-border);
-  border-radius: var(--arc-radius-md);
-  background: var(--arc-bg-surface);
-  padding: 10px 12px;
+  color: var(--arc-text-hint);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 6px;
+}
+
+/* ── 卡片主体 ── */
+.thread-card {
+  position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 5px;
-  transition: border-color 0.15s;
-  border-left: 3px solid transparent;
+  border: 1px solid var(--arc-border);
+  border-radius: 12px;
+  background: var(--arc-bg-surface);
+  overflow: hidden;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease,
+    background 0.18s ease;
 }
 
 .thread-card:hover {
-  border-color: var(--arc-border-strong);
+  border-color: color-mix(in srgb, var(--arc-primary) 24%, var(--arc-border));
+  box-shadow: var(--arc-shadow-sm), 0 4px 16px rgba(15, 23, 42, 0.06);
+  transform: translateY(-1px);
 }
 
-.thread-card.priority-high {
-  border-left-color: #ef4444;
+.card-accent {
+  width: 3px;
+  flex-shrink: 0;
+  align-self: stretch;
+  background: var(--arc-border);
 }
 
-.thread-card.priority-medium {
-  border-left-color: #eab308;
+.thread-card.priority-high .card-accent {
+  background: linear-gradient(180deg, #ef4444, #f97316);
 }
 
-.thread-card.priority-low {
-  border-left-color: #94a3b8;
+.thread-card.priority-medium .card-accent {
+  background: linear-gradient(180deg, #eab308, #f59e0b);
 }
 
-.resolved-card {
-  opacity: 0.7;
-  background: var(--arc-bg-body);
+.thread-card.priority-low .card-accent {
+  background: linear-gradient(180deg, #94a3b8, #cbd5e1);
 }
 
-.abandoned-card {
-  opacity: 0.45;
-  background: var(--arc-bg-body);
+.thread-card.status-pending .card-accent {
+  background: linear-gradient(180deg, #eab308, #f59e0b);
+}
+
+.thread-card.status-resolved .card-accent {
+  background: linear-gradient(180deg, #22c55e, #10b981);
+}
+
+.thread-card.status-abandoned .card-accent {
+  background: linear-gradient(180deg, #9ca3af, #d1d5db);
+}
+
+.thread-card.resolved-card {
+  background: color-mix(in srgb, #22c55e 2%, var(--arc-bg-surface));
+}
+
+.thread-card.abandoned-card {
+  background: color-mix(in srgb, #9ca3af 2%, var(--arc-bg-surface));
+}
+
+.thread-card.status-pending.priority-high .card-accent {
+  background: linear-gradient(180deg, #ef4444, #f97316);
+}
+
+.thread-card.status-pending.priority-medium .card-accent {
+  background: linear-gradient(180deg, #eab308, #f59e0b);
+}
+
+.thread-card.status-pending.priority-low .card-accent {
+  background: linear-gradient(180deg, #94a3b8, #cbd5e1);
+}
+
+.card-body {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 7px;
+  padding: 12px 14px 10px;
 }
 
 .thread-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
 }
 
 .row-check {
   display: inline-flex;
   align-items: center;
-  padding-top: 1px;
+  padding-top: 3px;
   flex-shrink: 0;
 }
 .row-check input[type='checkbox'] {
@@ -1138,45 +1269,126 @@ function confirmAddGeneratedThreads(): void {
   height: 15px;
   accent-color: var(--arc-primary);
   cursor: pointer;
+  border-radius: 4px;
+}
+
+.thread-title-wrap {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.thread-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 6px;
+  padding: 2px 7px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.pending-chip {
+  background: color-mix(in srgb, #eab308 12%, var(--arc-bg-surface));
+  color: #ca8a04;
+  border: 1px solid color-mix(in srgb, #eab308 26%, transparent);
+}
+
+.resolved-chip {
+  background: color-mix(in srgb, #22c55e 12%, var(--arc-bg-surface));
+  color: #16a34a;
+  border: 1px solid color-mix(in srgb, #22c55e 26%, transparent);
+}
+
+.abandoned-chip {
+  background: color-mix(in srgb, #9ca3af 12%, var(--arc-bg-surface));
+  color: #6b7280;
+  border: 1px solid color-mix(in srgb, #9ca3af 26%, transparent);
 }
 
 .thread-title {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 650;
   color: var(--arc-text-primary);
-  line-height: 1.4;
+  line-height: 1.45;
   flex: 1;
+  min-width: 0;
+  word-break: break-word;
 }
 
 .resolved-title {
   text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, #16a34a 55%, transparent);
   color: var(--arc-text-hint);
 }
 
 .abandoned-title {
   text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, #9ca3af 60%, transparent);
   color: var(--arc-text-hint);
 }
 
 .priority-badge {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  font-size: 11px;
-  font-weight: 600;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 6px;
+  padding: 2px 7px;
   flex-shrink: 0;
-  padding-top: 2px;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
+.pr-high {
+  background: color-mix(in srgb, #ef4444 10%, var(--arc-bg-surface));
+  color: #ef4444;
+  border: 1px solid color-mix(in srgb, #ef4444 22%, transparent);
+}
+
+.pr-medium {
+  background: color-mix(in srgb, #eab308 10%, var(--arc-bg-surface));
+  color: #ca8a04;
+  border: 1px solid color-mix(in srgb, #eab308 22%, transparent);
+}
+
+.pr-low {
+  background: color-mix(in srgb, #94a3b8 10%, var(--arc-bg-surface));
+  color: #64748b;
+  border: 1px solid color-mix(in srgb, #94a3b8 22%, transparent);
 }
 
 .more-btn {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
   color: var(--arc-text-hint);
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.more-btn:hover {
+  background: var(--arc-bg-body);
+  color: var(--arc-text-secondary);
 }
 
 .thread-desc {
   font-size: 12px;
   color: var(--arc-text-secondary);
-  line-height: 1.55;
+  line-height: 1.6;
+  word-break: break-word;
 }
 
 .resolved-desc,
@@ -1192,52 +1404,73 @@ function confirmAddGeneratedThreads(): void {
   margin-top: 2px;
 }
 
-.meta-item {
-  font-size: 11px;
-  color: var(--arc-text-hint);
+.meta-chip {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--arc-text-hint);
+  background: var(--arc-bg-body);
+  border: 1px solid var(--arc-border);
+  border-radius: 6px;
+  padding: 2px 8px;
+  white-space: nowrap;
 }
 
 .chapter-link {
   cursor: pointer;
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-underline-offset: 3px;
-  color: var(--arc-primary);
+  color: color-mix(in srgb, var(--arc-primary) 80%, var(--arc-text-secondary));
+  transition: color 0.14s ease, background 0.14s ease, border-color 0.14s ease;
 }
 
 .chapter-link:hover {
-  opacity: 0.8;
+  background: color-mix(in srgb, var(--arc-primary) 6%, var(--arc-bg-surface));
+  border-color: color-mix(in srgb, var(--arc-primary) 30%, var(--arc-border));
+  color: var(--arc-primary);
 }
 
 .thread-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 5px;
 }
 
 .tag-chip {
-  background: var(--arc-bg-body) !important;
-  color: var(--arc-text-secondary);
+  display: inline-flex;
+  align-items: center;
   font-size: 10px;
+  font-weight: 600;
+  color: var(--arc-text-secondary);
+  background: color-mix(in srgb, var(--arc-primary) 6%, var(--arc-bg-body));
+  border-radius: 4px;
+  padding: 1px 7px;
+  letter-spacing: 0.02em;
 }
 
 .meta-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 11px;
   color: var(--arc-text-hint);
   margin-left: auto;
+  white-space: nowrap;
 }
 
 .thread-remark {
   display: flex;
   align-items: flex-start;
-  gap: 4px;
+  gap: 5px;
   font-size: 11px;
   color: var(--arc-text-hint);
-  padding-top: 2px;
+  padding-top: 6px;
   border-top: 1px dashed var(--arc-border);
+  line-height: 1.5;
+}
+
+.thread-remark svg {
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .empty-state {
