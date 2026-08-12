@@ -459,6 +459,34 @@ declare global {
         }
         error?: string
       }>
+      recognizeImage: (payload: { settings: import('@/types/app').AppSettings; imageDataUrl: string }) => Promise<{
+        success: boolean
+        result?: {
+          name: string
+          role: string
+          appearance: string
+          personality: string
+          background: string
+          tags: string[]
+          description: string
+        }
+        error?: string
+      }>
+      fetchVisionModels: (settings: unknown) => Promise<{
+        success: boolean
+        result?: Array<{ id: string; ownedBy: string | null }>
+        error?: string
+      }>
+      testVisionConnection: (settings: unknown) => Promise<{
+        success: boolean
+        result?: { provider?: string; model?: string; protocol?: string }
+        error?: string
+      }>
+      benchmarkVisionModel: (settings: unknown) => Promise<{
+        success: boolean
+        result?: unknown
+        error?: string
+      }>
       saveCoverImage: (payload: { dataUrl: string; defaultFileName?: string }) => Promise<{
         success: boolean
         canceled?: boolean
@@ -675,6 +703,17 @@ declare global {
       }) => Promise<{
         success: boolean
         canceled: boolean
+        filePath?: string
+        error?: string
+      }>
+      batchExportCharacterCards: (payload: {
+        cards: Array<Record<string, unknown>>
+        format?: 'png' | 'json'
+      }) => Promise<{
+        success: boolean
+        canceled: boolean
+        exportedCount?: number
+        failed?: string[]
         filePath?: string
         error?: string
       }>

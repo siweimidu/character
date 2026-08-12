@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { Activity, Copy, Cpu, Download, FileInput, Image, MonitorCog, Moon, Network, Palette, PlugZap, Plus, RefreshCw, Trash2 } from 'lucide-vue-next'
+import { Activity, Copy, Cpu, Download, ExternalLink, FileInput, Image, MonitorCog, Moon, Network, Palette, PlugZap, Plus, RefreshCw, ScanEye, Trash2 } from 'lucide-vue-next'
 import { NButton, NFormItem, NInput, NInputNumber, NModal, NSelect, NSwitch, NTag, useMessage } from 'naive-ui'
 import { autoSaveOptions } from '@/features/settings/autoSave'
 import { getProviderPreset, providerOptions, resolveProviderDefaults } from '@/features/settings/providerPresets'
 import { imageProviderOptions, resolveImageProviderDefaults } from '@/features/settings/imageProviderPresets'
+import { visionProviderOptions, resolveImageProviderWebsite, resolveVisionProviderWebsite } from '@/features/settings/visionProviderPresets'
 import { useAppStore } from '@/stores/app'
 import { darkModePresets, themePresets } from '@/theme/presets'
 import { toIpcPayload } from '@/utils/ipcPayload'
@@ -85,6 +86,11 @@ const isFetchingModels = ref(false)
 const fetchedModels = ref<Array<{ id: string; ownedBy: string | null }>>([])
 const isFetchingImageModels = ref(false)
 const fetchedImageModels = ref<Array<{ id: string; ownedBy: string | null }>>([])
+const isTestingImageConnection = ref(false)
+const isFetchingVisionModels = ref(false)
+const fetchedVisionModels = ref<Array<{ id: string; ownedBy: string | null }>>([])
+const isTestingVisionConnection = ref(false)
+const isBenchmarkingVisionModel = ref(false)
 
 const autoSaveSelectOptions = [...autoSaveOptions]
 const uiScaleOptions = [
@@ -124,6 +130,12 @@ const draftSettings = reactive<AppSettings>({
   imageModel: '',
   imageApiKey: '',
   imageBaseUrl: '',
+  visionProfileName: '',
+  visionProvider: '',
+  visionModel: '',
+  visionApiKey: '',
+  visionBaseUrl: '',
+  visionSavedModels: [],
   autoSaveInterval: '5m',
   editorFont: 'clear-mono',
   editorMinimap: false,
@@ -148,6 +160,7 @@ const navItems = [
   { id: 'sec-ai', label: 'AI 接口配置', icon: Cpu },
   { id: 'sec-network', label: '网络代理', icon: Network },
   { id: 'sec-image', label: '图片生成配置', icon: Image },
+  { id: 'sec-vision', label: '图片识别配置', icon: ScanEye },
   { id: 'sec-theme', label: '界面主题', icon: Palette },
   { id: 'sec-prefs', label: '应用偏好', icon: MonitorCog }
 ]
@@ -179,6 +192,9 @@ const modelSelectOptions = computed(() =>
 const imageModelSelectOptions = computed(() =>
   fetchedImageModels.value.map((m) => ({ label: m.id, value: m.id }))
 )
+const visionModelSelectOptions = computed(() =>
+  fetchedVisionModels.value.map((m) => ({ label: m.id, value: m.id }))
+)
 const hasPendingChanges = computed(() =>
   draftTheme.value !== appStore.theme
   || JSON.stringify(draftSettings.aiProfiles) !== JSON.stringify(appStore.appSettings.aiProfiles)
@@ -186,6 +202,12 @@ const hasPendingChanges = computed(() =>
   || draftSettings.imageModel !== appStore.appSettings.imageModel
   || draftSettings.imageApiKey !== appStore.appSettings.imageApiKey
   || draftSettings.imageBaseUrl !== appStore.appSettings.imageBaseUrl
+  || draftSettings.visionProfileName !== appStore.appSettings.visionProfileName
+  || draftSettings.visionProvider !== appStore.appSettings.visionProvider
+  || draftSettings.visionModel !== appStore.appSettings.visionModel
+  || draftSettings.visionApiKey !== appStore.appSettings.visionApiKey
+  || draftSettings.visionBaseUrl !== appStore.appSettings.visionBaseUrl
+  || JSON.stringify(draftSettings.visionSavedModels ?? []) !== JSON.stringify(appStore.appSettings.visionSavedModels ?? [])
   || draftSettings.proxyUrl !== appStore.appSettings.proxyUrl
   || draftSettings.autoSaveInterval !== appStore.appSettings.autoSaveInterval
   || draftSettings.editorFont !== appStore.appSettings.editorFont
@@ -211,6 +233,12 @@ function syncDraftFromStore(): void {
   draftSettings.imageModel = appStore.appSettings.imageModel
   draftSettings.imageApiKey = appStore.appSettings.imageApiKey
   draftSettings.imageBaseUrl = appStore.appSettings.imageBaseUrl
+  draftSettings.visionProfileName = appStore.appSettings.visionProfileName
+  draftSettings.visionProvider = appStore.appSettings.visionProvider
+  draftSettings.visionModel = appStore.appSettings.visionModel
+  draftSettings.visionApiKey = appStore.appSettings.visionApiKey
+  draftSettings.visionBaseUrl = appStore.appSettings.visionBaseUrl
+  draftSettings.visionSavedModels = [...(appStore.appSettings.visionSavedModels ?? [])]
   draftSettings.autoSaveInterval = appStore.appSettings.autoSaveInterval
   draftSettings.editorFont = appStore.appSettings.editorFont
   draftSettings.uiScale = appStore.appSettings.uiScale
@@ -391,6 +419,128 @@ async function handleFetchImageModels(): Promise<void> {
     isFetchingImageModels.value = false
   }
 }
+
+function handleVisionProviderChange(value: string): void {
+  draftSettings.visionProvider = value
+  const defaults = resolveImageProviderDefaults(value)
+  draftSettings.visionModel = defaults.model
+  draftSettings.visionBaseUrl = defaults.baseUrl
+  fetchedVisionModels.value = []
+}
+
+async function handleFetchVisionModels(): Promise<void> {
+  if (isFetchingVisionModels.value) return
+  isFetchingVisionModels.value = true
+  try {
+    const result = await window.characterArc.fetchVisionModels(toIpcPayload({ ...draftSettings }))
+    if (!result.success) throw new Error(result.error ?? '获取图片识别模型列表失败')
+    fetchedVisionModels.value = result.result ?? []
+    if (fetchedVisionModels.value.length === 0) {
+      message.warning('该接口未返回任何可用图片识别模型，请手动输入模型名称。')
+    } else {
+      message.success(`获取到 ${fetchedVisionModels.value.length} 个可用模型`)
+    }
+  } catch (error) {
+    fetchedVisionModels.value = []
+    message.error(error instanceof Error ? error.message : '获取图片识别模型列表失败')
+  } finally {
+    isFetchingVisionModels.value = false
+  }
+}
+
+async function handleTestImageConnection(): Promise<void> {
+  if (isTestingImageConnection.value) return
+  isTestingImageConnection.value = true
+  try {
+    const payload: AppSettings = {
+      ...draftSettings,
+      provider: 'openai',
+      model: draftSettings.imageModel.trim() || draftSettings.model,
+      apiKey: draftSettings.imageApiKey.trim(),
+      baseUrl: draftSettings.imageBaseUrl.trim(),
+      apiProtocol: 'auto'
+    }
+    const result = await window.characterArc.testAiConnection(toIpcPayload(payload))
+    if (!result.success) throw new Error(result.error ?? '图片生成连接测试失败')
+    const res = result.result as { provider?: string; model?: string; protocol?: string } | undefined
+    message.success(`图片生成连接测试成功：${res?.model ?? payload.model} / ${res?.protocol ?? 'auto'}`)
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '图片生成连接测试失败')
+  } finally {
+    isTestingImageConnection.value = false
+  }
+}
+
+async function handleTestVisionConnection(): Promise<void> {
+  if (isTestingVisionConnection.value) return
+  isTestingVisionConnection.value = true
+  try {
+    const result = await window.characterArc.testVisionConnection(toIpcPayload({ ...draftSettings }))
+    if (!result.success) throw new Error(result.error ?? '图片识别连接测试失败')
+    const res = result.result as { provider?: string; model?: string; protocol?: string } | undefined
+    message.success(`图片识别连接测试成功：${res?.model ?? draftSettings.visionModel} / ${res?.protocol ?? 'auto'}`)
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '图片识别连接测试失败')
+  } finally {
+    isTestingVisionConnection.value = false
+  }
+}
+
+async function handleBenchmarkVisionModel(): Promise<void> {
+  if (isBenchmarkingVisionModel.value) return
+  isBenchmarkingVisionModel.value = true
+  try {
+    const result = await window.characterArc.benchmarkVisionModel(toIpcPayload({ ...draftSettings }))
+    if (!result.success) throw new Error(result.error ?? '图片识别模型性能测试失败')
+    const res = result.result as { latencyMs?: number; tokensPerSecond?: number; totalMs?: number; outputTokens?: number } | undefined
+    const latency = res?.latencyMs ?? res?.totalMs
+    message.success(`图片识别模型性能测试完成${latency != null ? `，耗时 ${Math.round(latency)}ms` : ''}${res?.tokensPerSecond != null ? `，${res.tokensPerSecond.toFixed(1)} tok/s` : ''}`)
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '图片识别模型性能测试失败')
+  } finally {
+    isBenchmarkingVisionModel.value = false
+  }
+}
+
+function handleSaveVisionModel(): void {
+  const model = draftSettings.visionModel?.trim()
+  if (!model) {
+    message.warning('请先填写图片识别模型名称后再保存。')
+    return
+  }
+  const models = Array.isArray(draftSettings.visionSavedModels) ? [...draftSettings.visionSavedModels] : []
+  if (!models.includes(model)) {
+    models.push(model)
+    draftSettings.visionSavedModels = models.slice(0, 50)
+    message.success(`已保存模型：${model}`)
+  } else {
+    message.info(`模型 ${model} 已在列表中。`)
+  }
+}
+
+function handleApplyVisionModel(model: string): void {
+  draftSettings.visionModel = model
+  message.success(`已切换模型：${model}`)
+}
+
+function handleRemoveVisionModel(model: string): void {
+  draftSettings.visionSavedModels = (draftSettings.visionSavedModels ?? []).filter((m) => m !== model)
+  if (draftSettings.visionModel === model) {
+    draftSettings.visionModel = ''
+  }
+}
+
+
+function openVisionProviderWebsite(): void {
+  const url = resolveVisionProviderWebsite(draftSettings.visionProvider)
+  window.open(url, '_blank')
+}
+
+function openImageProviderWebsite(): void {
+  const url = resolveImageProviderWebsite(draftSettings.imageProvider)
+  window.open(url, '_blank')
+}
+
 
 function buildProfilePayload(): AppSettings {
   const profile = editingProfile.value
@@ -991,6 +1141,155 @@ async function saveSettings(): Promise<void> {
               />
             </n-form-item>
           </div>
+          <div class="model-test-row">
+            <n-button
+              strong
+              secondary
+              :disabled="!draftSettings.imageModel.trim() || !draftSettings.imageBaseUrl.trim() || isTestingImageConnection"
+              @click="handleTestImageConnection"
+            >
+              <template #icon><PlugZap :size="16" /></template>
+              {{ isTestingImageConnection ? '测试中...' : '测试模型连接' }}
+            </n-button>
+            <n-button strong secondary @click="openImageProviderWebsite">
+              <template #icon><ExternalLink :size="16" /></template>
+              打开模型厂商官网
+            </n-button>
+          </div>
+        </section>
+
+        <section id="sec-vision" class="settings-section">
+          <div class="section-title">
+            <ScanEye :size="18" />
+            <div>
+              <strong>图片识别配置</strong>
+              <p>识别人物图片并反推为人物卡片（名称、定位、外貌、性格、标签等），使用独立的视觉模型接口。</p>
+            </div>
+          </div>
+          <div class="settings-grid">
+            <n-form-item label="配置名称">
+              <n-input
+                :value="draftSettings.visionProfileName"
+                placeholder="例如：我的视觉识别接口"
+                @update:value="(value) => { draftSettings.visionProfileName = value }"
+              />
+            </n-form-item>
+            <n-form-item label="模型厂商">
+              <div class="preset-field">
+                <n-select
+                  :options="visionProviderOptions"
+                  :value="draftSettings.visionProvider"
+                  placeholder="选择预设快速填充模型和地址"
+                  clearable
+                  @update:value="(value) => handleVisionProviderChange(value ?? '')"
+                />
+                <span class="preset-hint">切换预设仅更新模型名和 Base URL，API Key 不会被覆盖。</span>
+              </div>
+            </n-form-item>
+          </div>
+          <div class="settings-grid">
+            <n-form-item label="模型名称">
+              <div class="model-input-row">
+                <n-select
+                  v-if="fetchedVisionModels.length > 0"
+                  :options="visionModelSelectOptions"
+                  :value="draftSettings.visionModel"
+                  filterable
+                  tag
+                  placeholder="选择或输入图片识别模型名称"
+                  @update:value="(value: string) => { draftSettings.visionModel = value }"
+                />
+                <n-input
+                  v-else
+                  :value="draftSettings.visionModel"
+                  placeholder="例如：gpt-4o / glm-4v / qwen-vl-plus"
+                  @update:value="(value) => { draftSettings.visionModel = value }"
+                />
+                <n-button
+                  quaternary
+                  class="model-fetch-btn"
+                  :disabled="isFetchingVisionModels || !draftSettings.visionBaseUrl.trim()"
+                  @click="handleFetchVisionModels"
+                >
+                  <template #icon>
+                    <RefreshCw v-if="fetchedVisionModels.length > 0" :size="16" :class="{ 'spin-icon': isFetchingVisionModels }" />
+                    <Download v-else :size="16" :class="{ 'spin-icon': isFetchingVisionModels }" />
+                  </template>
+                </n-button>
+              </div>
+            </n-form-item>
+            <n-form-item label="API Key">
+              <n-input
+                type="password"
+                show-password-on="click"
+                :value="draftSettings.visionApiKey"
+                placeholder="图片识别接口专用 API Key"
+                @update:value="(value) => { draftSettings.visionApiKey = value }"
+              />
+            </n-form-item>
+          </div>
+          <div class="settings-grid">
+            <n-form-item label="Base URL">
+              <n-input
+                :value="draftSettings.visionBaseUrl"
+                placeholder="例如：https://api.openai.com/v1"
+                @update:value="(value) => { draftSettings.visionBaseUrl = value }"
+              />
+            </n-form-item>
+            <n-form-item label=" " label-style="display:none">
+              <div class="preset-hint">识别接口使用 OpenAI 兼容的 /chat/completions 图片输入格式。</div>
+            </n-form-item>
+          </div>
+          <div class="model-test-row">
+            <n-button
+              strong
+              secondary
+              :disabled="!draftSettings.visionModel.trim() || !draftSettings.visionBaseUrl.trim() || isTestingVisionConnection"
+              @click="handleTestVisionConnection"
+            >
+              <template #icon><PlugZap :size="16" /></template>
+              {{ isTestingVisionConnection ? '测试中...' : '测试模型连接' }}
+            </n-button>
+            <n-button
+              strong
+              secondary
+              :disabled="!draftSettings.visionModel.trim() || isBenchmarkingVisionModel"
+              @click="handleBenchmarkVisionModel"
+            >
+              <template #icon><Activity :size="16" /></template>
+              {{ isBenchmarkingVisionModel ? '测试中...' : '测试模型性能' }}
+            </n-button>
+            <n-button
+              strong
+              secondary
+              :disabled="!draftSettings.visionModel.trim()"
+              @click="handleSaveVisionModel"
+            >
+              <template #icon><Plus :size="16" /></template>
+              保存当前模型
+            </n-button>
+            <n-button strong secondary @click="openVisionProviderWebsite">
+              <template #icon><ExternalLink :size="16" /></template>
+              打开模型厂商官网
+            </n-button>
+          </div>
+          <div v-if="(draftSettings.visionSavedModels ?? []).length" class="saved-models-block">
+            <div class="saved-models-head">已保存模型</div>
+            <div class="saved-models-list">
+              <n-tag
+                v-for="model in draftSettings.visionSavedModels"
+                :key="model"
+                size="small"
+                :type="model === draftSettings.visionModel ? 'primary' : 'default'"
+                closable
+                class="saved-model-tag"
+                @click="handleApplyVisionModel(model)"
+                @close="handleRemoveVisionModel(model)"
+              >
+                {{ model }}
+              </n-tag>
+            </div>
+          </div>
         </section>
 
         <section id="sec-theme" class="settings-section">
@@ -1362,6 +1661,10 @@ async function saveSettings(): Promise<void> {
   gap: 8px;
 }
 
+.saved-model-tag {
+  cursor: pointer;
+}
+
 .saved-model-chip {
   display: inline-flex;
   align-items: center;
@@ -1648,6 +1951,15 @@ async function saveSettings(): Promise<void> {
   align-items: center;
   gap: 12px;
   min-height: 34px;
+}
+
+.model-test-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 34px;
+  margin-top: 8px;
+  flex-wrap: wrap;
 }
 
 .proxy-ip-result {

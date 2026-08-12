@@ -1941,7 +1941,7 @@ export const useAppStore = defineStore('app', () => {
           ? {
               ...character,
               versions: [
-                ...character.versions,
+                ...(Array.isArray(character.versions) ? character.versions : []),
                 {
                   id: uniqueId('ver'),
                   note,
@@ -1979,7 +1979,7 @@ export const useAppStore = defineStore('app', () => {
       ...workspace,
       characters: workspace.characters.map((character) => {
         if (character.id !== characterId) return character
-        const version = character.versions.find((v) => v.id === versionId)
+        const version = (character.versions ?? []).find((v) => v.id === versionId)
         if (!version) return character
         restored = true
         const data = version.data as Partial<CharacterCard>
@@ -2001,7 +2001,7 @@ export const useAppStore = defineStore('app', () => {
       ...workspace,
       characters: workspace.characters.map((character) =>
         character.id === characterId
-          ? { ...character, versions: character.versions.filter((v) => v.id !== versionId) }
+          ? { ...character, versions: (character.versions ?? []).filter((v) => v.id !== versionId) }
           : character
       )
     }))

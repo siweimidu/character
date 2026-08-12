@@ -10,6 +10,7 @@ import {
   Network,
   Plus,
   Search,
+  ScanEye,
   Sparkles,
   Upload,
   History
@@ -34,7 +35,7 @@ import { buildProjectWritingStyleContext } from '@/features/writingStyles/preset
 import { resolveAccentColor, resolveReadableTextColor } from '@/features/relations/graph'
 import { toIpcPayload } from '@/utils/ipcPayload'
 import { buildCharacterPrompt } from '@/utils/characterPrompt'
-import type { CharacterCard } from '@/types/app'
+import type { AppSettings, CharacterCard } from '@/types/app'
 import type { DropdownOption } from 'naive-ui'
 import AiEnhancePreview from './AiEnhancePreview.vue'
 import BatchDeleteBar from './BatchDeleteBar.vue'
@@ -103,6 +104,8 @@ const batchProgress = ref(0)
 const { generateCatalogBatch } = useCatalogBatch()
 const editorVisible = ref(false) // 控制角色编辑弹窗的显示
 const editingCharacterId = ref<string | null>(null) // 当前正在编辑的角色 ID，null 表示新建模式
+const isGeneratingAvatar = ref(false) // AI 生成人物头像
+const isRecognizingImage = ref(false) // AI 识别人物图片反推人设
 // 批量删除：勾选模式下的已选角色 ID 集合
 const selectedCharacterIds = ref<string[]>([])
 const focusedCharacterId = ref<string>('')
@@ -347,6 +350,84 @@ function handleAvatarFile(event: Event): void {
   input.value = ''
 }
 
+// ── AI 一键生成人物头像 ──
+function buildAvatarPrompt(): string {
+  const parts = [
+    '人物卡片头像插画，半身像，面部清晰',
+    form.name ? `角色：${form.name}` : '',
+    form.role ? `定位：${form.role}` : '',
+    form.appearance ? `外貌：${form.appearance}` : '',
+    form.personality ? `性格：${form.personality}` : '',
+    form.background ? `背景：${form.background}` : '',
+    (form.tags?.length ? form.tags : []).length ? `标签：${form.tags.join('、')}` : ''
+  ]
+  return parts.filter(Boolean).join('\n')
+}
+
+async function handleGenerateAvatar(): Promise<void> {
+  if (isGeneratingAvatar.value) return
+  const cfg = appStore.appSettings
+  if (!cfg.imageModel?.trim() || !cfg.imageBaseUrl?.trim() || !cfg.imageApiKey?.trim()) {
+    message.warning('请先在设置 → 图片生成配置 中填写图片模型、Base URL 和 API Key。')
+    return
+  }
+  if (!form.name.trim() && !form.appearance.trim() && !form.personality.trim()) {
+    message.warning('请至少填写角色名称、外貌或性格中的一项，便于 AI 生成形象。')
+    return
+  }
+  isGeneratingAvatar.value = true
+  try {
+    const result = await window.characterArc.generateImage({
+      settings: { ...cfg } as AppSettings,
+      prompt: buildAvatarPrompt()
+    })
+    if (!result.success) throw new Error(result.error ?? '图片生成失败')
+    form.avatar = result.result?.dataUrl ?? ''
+    message.success('人物头像已生成')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '图片生成失败')
+  } finally {
+    isGeneratingAvatar.value = false
+  }
+}
+
+// ── AI 识别人物图片反推人设 ──
+async function handleRecognizeImage(): Promise<void> {
+  if (isRecognizingImage.value) return
+  if (!isDataUrl(form.avatar)) {
+    message.warning('请先上传一张人物图片（本地上传或选择图片），再进行 AI 识别人设。')
+    return
+  }
+  const cfg = appStore.appSettings
+  if (!cfg.visionModel?.trim() || !cfg.visionBaseUrl?.trim() || !cfg.visionApiKey?.trim()) {
+    message.warning('请先在设置 → 图片识别配置 中填写图片识别模型、Base URL 和 API Key。')
+    return
+  }
+  isRecognizingImage.value = true
+  try {
+    const result = await window.characterArc.recognizeImage({
+      settings: { ...cfg } as AppSettings,
+      imageDataUrl: form.avatar
+    })
+    if (!result.success || !result.result) throw new Error(result.error ?? '图片识别失败')
+    const profile = result.result
+    form.name = profile.name || form.name
+    form.role = profile.role || form.role
+    form.appearance = profile.appearance || form.appearance
+    form.personality = profile.personality || form.personality
+    form.background = profile.background || form.background
+    form.description = profile.description || form.description
+    if (profile.tags?.length) {
+      form.tags = [...new Set([...form.tags, ...profile.tags])].slice(0, 10)
+    }
+    message.success('已根据图片识别人设并填充角色信息')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '图片识别失败')
+  } finally {
+    isRecognizingImage.value = false
+  }
+}
+
 // ── 导入 / 导出 ──
 async function handleImportCards(): Promise<void> {
   const result = await window.characterArc.pickCharacterCards()
@@ -413,7 +494,7 @@ async function handleBatchExportCards(): Promise<void> {
   const ids = selectedCharacterIds.value
   if (!ids.length) return
   const targets = appStore.characters.filter((c) => ids.includes(c.id))
-  const result = await window.characterArc.exportCharacterCards({
+  const result = await window.characterArc.batchExportCharacterCards({
     cards: targets.map((c) => ({
       name: c.name,
       description: c.description,
@@ -429,7 +510,8 @@ async function handleBatchExportCards(): Promise<void> {
   })
   if (result.canceled) return
   if (result.success) {
-    message.success(`已批量导出 ${targets.length} 张卡片`)
+    const exported = result.exportedCount ?? targets.length
+    message.success(`已批量导出 ${exported} 张卡片到：${result.filePath ?? ''}`)
   } else {
     message.error(result.error || '批量导出失败')
   }
@@ -876,6 +958,14 @@ watch(
                 <input type="file" accept="image/*" class="avatar-file-input" @change="handleAvatarFile" />
                 本地上传
               </label>
+              <n-button size="small" secondary strong :loading="isGeneratingAvatar" @click="handleGenerateAvatar">
+                <template #icon><Sparkles :size="14" /></template>
+                AI 生成图片
+              </n-button>
+              <n-button v-if="isDataUrl(form.avatar)" size="small" secondary strong :loading="isRecognizingImage" @click="handleRecognizeImage">
+                <template #icon><ScanEye :size="14" /></template>
+                AI 识别人设
+              </n-button>
               <n-button v-if="form.avatar" size="small" quaternary @click="form.avatar = ''">移除</n-button>
             </div>
           </div>

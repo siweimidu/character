@@ -1000,6 +1000,67 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
   })
 
+  ipcMain.handle('characterarc:character-card-batch-export', async (_event, payload: unknown) => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) return { success: false, canceled: true, exportedCount: 0 }
+    const req = payload as { cards?: Array<Record<string, unknown>>; format?: 'png' | 'json' }
+    const cards = Array.isArray(req.cards) ? req.cards : []
+    const format = req.format === 'png' ? 'png' : 'json'
+    if (!cards.length) return { success: false, canceled: true, exportedCount: 0 }
+
+    const result = await dialog.showOpenDialog(window, {
+      title: '选择批量导出保存目录',
+      properties: ['openDirectory', 'createDirectory']
+    })
+    if (result.canceled || result.filePaths.length === 0) return { success: false, canceled: true, exportedCount: 0 }
+    const targetDir = result.filePaths[0]
+
+    try {
+      await mkdir(targetDir, { recursive: true })
+      let exported = 0
+      const failed: string[] = []
+      for (const raw of cards) {
+        const name = String(raw?.name ?? '角色卡').trim() || '角色卡'
+        const safeName = name.replace(/[\\\\/:*?"<>|]/g, '_')
+        const card = {
+          name,
+          description: String(raw?.description ?? ''),
+          appearance: String(raw?.appearance ?? ''),
+          personality: String(raw?.personality ?? ''),
+          scenario: String(raw?.scenario ?? ''),
+          greeting: String(raw?.greeting ?? ''),
+          dialogueExamples: String(raw?.dialogueExamples ?? ''),
+          tags: Array.isArray(raw?.tags) ? raw.tags.map((t) => String(t)) : []
+        }
+        const cardJson = buildV2CardJson(card)
+        try {
+          if (format === 'json') {
+            const filePath = join(targetDir, `${safeName}.json`)
+            await writeFile(filePath, cardJson, 'utf-8')
+          } else {
+            const avatarBase = typeof raw?.avatar === 'string' ? raw.avatar : ''
+            const avatarBuf = resolveAvatarBuffer(avatarBase)
+            let pngBuffer = avatarBuf
+            if (!pngBuffer || !isPngBuffer(pngBuffer)) pngBuffer = createFallbackPng()
+            const filePath = join(targetDir, `${safeName}.png`)
+            await writeFile(filePath, embedCharaJsonIntoPng(pngBuffer, cardJson))
+          }
+          exported += 1
+        } catch {
+          failed.push(name)
+        }
+      }
+      return { success: true, canceled: false, exportedCount: exported, failed, filePath: targetDir }
+    } catch (error) {
+      return {
+        success: false,
+        canceled: false,
+        exportedCount: 0,
+        error: error instanceof Error ? error.message : '批量导出失败'
+      }
+    }
+  })
+
   ipcMain.handle('characterarc:pick-character-avatar', async () => {
     const window = deps.windowManager.getActiveWindow()
     if (!window) return { success: false, canceled: true, dataUrl: '' }

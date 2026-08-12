@@ -67,6 +67,8 @@ contextBridge.exposeInMainWorld('characterArc', {
   pickCharacterCards: () => ipcRenderer.invoke('characterarc:character-card-pick'),
   /** 导出人物卡片（PNG / JSON 酒馆角色卡 V2） */
   exportCharacterCards: (payload: unknown) => ipcRenderer.invoke('characterarc:character-card-export', toIpcPayload(payload)),
+  /** 批量导出人物卡片到指定目录（每张卡片一个文件） */
+  batchExportCharacterCards: (payload: unknown) => ipcRenderer.invoke('characterarc:character-card-batch-export', toIpcPayload(payload)),
   /** 选择人物头像图片并返回 dataUrl */
   pickCharacterAvatar: () => ipcRenderer.invoke('characterarc:pick-character-avatar'),
   /** 导入参考小说并执行拆书分析 */
@@ -167,6 +169,14 @@ contextBridge.exposeInMainWorld('characterArc', {
   benchmarkModel: (settings: unknown) => ipcRenderer.invoke('characterarc:ai-benchmark-model', toIpcPayload(settings)),
   /** 生成封面图片 */
   generateImage: (payload: unknown) => ipcRenderer.invoke('characterarc:ai-generate-image', toIpcPayload(payload)),
+  /** 图片识别（人物图片 → 人物卡片） */
+  recognizeImage: (payload: unknown) => ipcRenderer.invoke('characterarc:ai-recognize-image', toIpcPayload(payload)),
+  /** 获取图片识别接口的可用模型列表 */
+  fetchVisionModels: (settings: unknown) => ipcRenderer.invoke('characterarc:ai-fetch-vision-models', toIpcPayload(settings)),
+  /** 测试图片识别模型连接 */
+  testVisionConnection: (settings: unknown) => ipcRenderer.invoke('characterarc:ai-test-vision-connection', toIpcPayload(settings)),
+  /** 测试图片识别模型性能 */
+  benchmarkVisionModel: (settings: unknown) => ipcRenderer.invoke('characterarc:ai-benchmark-vision-model', toIpcPayload(settings)),
   /** 读取当前项目的结构化世界状态（角色状态、伏笔、关系、时间线、世界规则、倒计时） */
   readStoryState: (projectId: string) => ipcRenderer.invoke('characterarc:ai-read-story-state', projectId),
   /** 螺旋式深度生成（3圈：骨架→展开→校验） */

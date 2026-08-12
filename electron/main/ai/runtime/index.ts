@@ -1,5 +1,6 @@
 export { runAiTask, streamAiTask, testAiConnection } from './orchestrator'
 export { fetchModels, fetchImageModels } from '../transport'
 export { generateImage } from '../transport'
+export { recognizeCharacterImage, type VisionProfileResult } from '../transport'
 export { benchmarkModel } from '../transport'
 export type { FetchedModel, ModelBenchmarkResult } from '../transport'

@@ -335,6 +335,12 @@ export async function ensureWorkspaceDb(): Promise<DatabaseSync> {
       image_model TEXT NOT NULL DEFAULT '',
       image_api_key TEXT NOT NULL DEFAULT '',
       image_base_url TEXT NOT NULL DEFAULT '',
+      vision_profile_name TEXT NOT NULL DEFAULT '',
+      vision_provider TEXT NOT NULL DEFAULT '',
+      vision_model TEXT NOT NULL DEFAULT '',
+      vision_api_key TEXT NOT NULL DEFAULT '',
+      vision_base_url TEXT NOT NULL DEFAULT '',
+      vision_saved_models_json TEXT NOT NULL DEFAULT '[]',
       auto_save_interval TEXT NOT NULL,
       editor_font TEXT NOT NULL DEFAULT 'clear-mono',
       ui_scale REAL NOT NULL DEFAULT 1,
@@ -486,6 +492,30 @@ function ensureAppSettingsColumns(db: DatabaseSync): void {
 
   if (!columnNames.has('image_base_url')) {
     db.exec(`ALTER TABLE app_settings ADD COLUMN image_base_url TEXT NOT NULL DEFAULT '';`)
+  }
+
+  if (!columnNames.has('vision_profile_name')) {
+    db.exec(`ALTER TABLE app_settings ADD COLUMN vision_profile_name TEXT NOT NULL DEFAULT '';`)
+  }
+
+  if (!columnNames.has('vision_provider')) {
+    db.exec(`ALTER TABLE app_settings ADD COLUMN vision_provider TEXT NOT NULL DEFAULT '';`)
+  }
+
+  if (!columnNames.has('vision_model')) {
+    db.exec(`ALTER TABLE app_settings ADD COLUMN vision_model TEXT NOT NULL DEFAULT '';`)
+  }
+
+  if (!columnNames.has('vision_api_key')) {
+    db.exec(`ALTER TABLE app_settings ADD COLUMN vision_api_key TEXT NOT NULL DEFAULT '';`)
+  }
+
+  if (!columnNames.has('vision_base_url')) {
+    db.exec(`ALTER TABLE app_settings ADD COLUMN vision_base_url TEXT NOT NULL DEFAULT '';`)
+  }
+
+  if (!columnNames.has('vision_saved_models_json')) {
+    db.exec(`ALTER TABLE app_settings ADD COLUMN vision_saved_models_json TEXT NOT NULL DEFAULT '[]';`)
   }
 
   if (!columnNames.has('editor_font')) {
@@ -798,7 +828,7 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
   if (projects.length === 0) {
     const settings = db.prepare(`
       SELECT theme, selected_project_id AS selectedProjectId, provider, api_key AS apiKey, base_url AS baseUrl, proxy_url AS proxyUrl, temperature, top_p AS topP, auto_save_interval AS autoSaveInterval, editor_font AS editorFont
-      , model, ai_profiles_json AS aiProfilesJson, active_ai_profile_id AS activeAiProfileId, image_provider AS imageProvider, image_model AS imageModel, image_api_key AS imageApiKey, image_base_url AS imageBaseUrl, ui_scale AS uiScale, dark_mode AS darkMode, dark_mode_style AS darkModeStyle
+      , model, ai_profiles_json AS aiProfilesJson, active_ai_profile_id AS activeAiProfileId, image_provider AS imageProvider, image_model AS imageModel, image_api_key AS imageApiKey, image_base_url AS imageBaseUrl, vision_profile_name AS visionProfileName, vision_provider AS visionProvider, vision_model AS visionModel, vision_api_key AS visionApiKey, vision_base_url AS visionBaseUrl, vision_saved_models_json AS visionSavedModelsJson, ui_scale AS uiScale, dark_mode AS darkMode, dark_mode_style AS darkModeStyle
       FROM app_settings
       WHERE id = 1
     `).get() as
@@ -818,6 +848,12 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
           imageModel: string
           imageApiKey: string
           imageBaseUrl: string
+          visionProfileName: string
+          visionProvider: string
+          visionModel: string
+          visionApiKey: string
+          visionBaseUrl: string
+          visionSavedModelsJson: string
           autoSaveInterval: string
           editorFont: string
           uiScale: number
@@ -932,6 +968,12 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
               imageModel: settings.imageModel,
               imageApiKey: settings.imageApiKey,
               imageBaseUrl: settings.imageBaseUrl,
+              visionProfileName: settings.visionProfileName,
+              visionProvider: settings.visionProvider,
+              visionModel: settings.visionModel,
+              visionApiKey: settings.visionApiKey,
+              visionBaseUrl: settings.visionBaseUrl,
+              visionSavedModels: parseJson(settings.visionSavedModelsJson, [] as string[]),
               autoSaveInterval: settings.autoSaveInterval,
               editorFont: settings.editorFont,
               uiScale: settings.uiScale,
@@ -1260,7 +1302,7 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
 
   const settings = db.prepare(`
     SELECT theme, selected_project_id AS selectedProjectId, provider, api_key AS apiKey, base_url AS baseUrl, proxy_url AS proxyUrl, temperature, top_p AS topP, auto_save_interval AS autoSaveInterval, editor_font AS editorFont
-    , model, ai_profiles_json AS aiProfilesJson, active_ai_profile_id AS activeAiProfileId, image_provider AS imageProvider, image_model AS imageModel, image_api_key AS imageApiKey, image_base_url AS imageBaseUrl, ui_scale AS uiScale, dark_mode AS darkMode, dark_mode_style AS darkModeStyle
+    , model, ai_profiles_json AS aiProfilesJson, active_ai_profile_id AS activeAiProfileId, image_provider AS imageProvider, image_model AS imageModel, image_api_key AS imageApiKey, image_base_url AS imageBaseUrl, vision_profile_name AS visionProfileName, vision_provider AS visionProvider, vision_model AS visionModel, vision_api_key AS visionApiKey, vision_base_url AS visionBaseUrl, vision_saved_models_json AS visionSavedModelsJson, ui_scale AS uiScale, dark_mode AS darkMode, dark_mode_style AS darkModeStyle
     FROM app_settings
     WHERE id = 1
   `).get() as
@@ -1280,6 +1322,12 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
         imageModel: string
         imageApiKey: string
         imageBaseUrl: string
+        visionProfileName: string
+        visionProvider: string
+        visionModel: string
+        visionApiKey: string
+        visionBaseUrl: string
+        visionSavedModelsJson: string
         autoSaveInterval: string
         editorFont: string
         uiScale: number
@@ -1417,6 +1465,12 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
         imageModel: settings.imageModel,
         imageApiKey: settings.imageApiKey,
         imageBaseUrl: settings.imageBaseUrl,
+        visionProfileName: settings.visionProfileName,
+        visionProvider: settings.visionProvider,
+        visionModel: settings.visionModel,
+        visionApiKey: settings.visionApiKey,
+        visionBaseUrl: settings.visionBaseUrl,
+        visionSavedModels: parseJson(settings.visionSavedModelsJson, [] as string[]),
         autoSaveInterval: settings.autoSaveInterval,
         editorFont: settings.editorFont,
         uiScale: settings.uiScale,
@@ -1972,8 +2026,8 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
     }
 
     db.prepare(`
-    INSERT INTO app_settings (id, theme, selected_project_id, provider, model, api_key, base_url, proxy_url, temperature, top_p, ai_profiles_json, active_ai_profile_id, image_provider, image_model, image_api_key, image_base_url, auto_save_interval, editor_font, ui_scale, dark_mode, dark_mode_style, deleted_builtin_agent_ids_json)
-    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT deleted_builtin_agent_ids_json FROM app_settings WHERE id = 1), '[]'))
+    INSERT INTO app_settings (id, theme, selected_project_id, provider, model, api_key, base_url, proxy_url, temperature, top_p, ai_profiles_json, active_ai_profile_id, image_provider, image_model, image_api_key, image_base_url, vision_profile_name, vision_provider, vision_model, vision_api_key, vision_base_url, vision_saved_models_json, auto_save_interval, editor_font, ui_scale, dark_mode, dark_mode_style, deleted_builtin_agent_ids_json)
+    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT deleted_builtin_agent_ids_json FROM app_settings WHERE id = 1), '[]'))
     ON CONFLICT(id) DO UPDATE SET
       theme = excluded.theme,
       selected_project_id = excluded.selected_project_id,
@@ -1990,6 +2044,12 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
       image_model = excluded.image_model,
       image_api_key = excluded.image_api_key,
       image_base_url = excluded.image_base_url,
+      vision_profile_name = excluded.vision_profile_name,
+      vision_provider = excluded.vision_provider,
+      vision_model = excluded.vision_model,
+      vision_api_key = excluded.vision_api_key,
+      vision_base_url = excluded.vision_base_url,
+      vision_saved_models_json = excluded.vision_saved_models_json,
       auto_save_interval = excluded.auto_save_interval,
       editor_font = excluded.editor_font,
       ui_scale = excluded.ui_scale,
@@ -2011,6 +2071,12 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
       normalizedAppSettings.imageModel,
       normalizedAppSettings.imageApiKey,
       normalizedAppSettings.imageBaseUrl,
+      normalizedAppSettings.visionProfileName,
+      normalizedAppSettings.visionProvider,
+      normalizedAppSettings.visionModel,
+      normalizedAppSettings.visionApiKey,
+      normalizedAppSettings.visionBaseUrl,
+      JSON.stringify(normalizedAppSettings.visionSavedModels ?? []),
       normalizedAppSettings.autoSaveInterval,
       normalizedAppSettings.editorFont,
       normalizedAppSettings.uiScale,
@@ -2071,8 +2137,8 @@ export function writeAppSettingsRow(
 ): void {
   const normalized = normalizeAppSettings(settings)
   db.prepare(`
-    INSERT INTO app_settings (id, theme, selected_project_id, provider, model, api_key, base_url, proxy_url, temperature, top_p, ai_profiles_json, active_ai_profile_id, image_provider, image_model, image_api_key, image_base_url, auto_save_interval, editor_font, ui_scale, dark_mode, dark_mode_style)
-    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO app_settings (id, theme, selected_project_id, provider, model, api_key, base_url, proxy_url, temperature, top_p, ai_profiles_json, active_ai_profile_id, image_provider, image_model, image_api_key, image_base_url, vision_profile_name, vision_provider, vision_model, vision_api_key, vision_base_url, vision_saved_models_json, auto_save_interval, editor_font, ui_scale, dark_mode, dark_mode_style)
+    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       theme = excluded.theme,
       selected_project_id = excluded.selected_project_id,
@@ -2089,6 +2155,12 @@ export function writeAppSettingsRow(
       image_model = excluded.image_model,
       image_api_key = excluded.image_api_key,
       image_base_url = excluded.image_base_url,
+      vision_profile_name = excluded.vision_profile_name,
+      vision_provider = excluded.vision_provider,
+      vision_model = excluded.vision_model,
+      vision_api_key = excluded.vision_api_key,
+      vision_base_url = excluded.vision_base_url,
+      vision_saved_models_json = excluded.vision_saved_models_json,
       auto_save_interval = excluded.auto_save_interval,
       editor_font = excluded.editor_font,
       ui_scale = excluded.ui_scale,
@@ -2110,6 +2182,12 @@ export function writeAppSettingsRow(
     normalized.imageModel,
     normalized.imageApiKey,
     normalized.imageBaseUrl,
+    normalized.visionProfileName,
+    normalized.visionProvider,
+    normalized.visionModel,
+    normalized.visionApiKey,
+    normalized.visionBaseUrl,
+    JSON.stringify(normalized.visionSavedModels ?? []),
     normalized.autoSaveInterval,
     normalized.editorFont,
     normalized.uiScale,

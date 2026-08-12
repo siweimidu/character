@@ -380,6 +380,12 @@ export type WorkspacePayload = {
     imageModel: string
     imageApiKey: string
     imageBaseUrl: string
+    visionProfileName: string
+    visionProvider: string
+    visionModel: string
+    visionApiKey: string
+    visionBaseUrl: string
+    visionSavedModels: string[]
     autoSaveInterval: string
     editorFont: string
     uiScale: number
@@ -571,6 +577,14 @@ export function normalizeAppSettings(
     imageModel: settings?.imageModel || '',
     imageApiKey: settings?.imageApiKey || '',
     imageBaseUrl: settings?.imageBaseUrl || '',
+    visionProfileName: settings?.visionProfileName || '',
+    visionProvider: settings?.visionProvider || '',
+    visionModel: settings?.visionModel || '',
+    visionApiKey: settings?.visionApiKey || '',
+    visionBaseUrl: settings?.visionBaseUrl || '',
+    visionSavedModels: Array.isArray(settings?.visionSavedModels)
+      ? settings.visionSavedModels.map((m) => String(m).trim()).filter(Boolean).slice(0, 50)
+      : [],
     autoSaveInterval: settings?.autoSaveInterval || '5m',
     editorFont:
       typeof settings?.editorFont === 'string'

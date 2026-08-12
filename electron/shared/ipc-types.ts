@@ -25,6 +25,11 @@ export interface AppSettingsPayload {
   imageModel: string
   imageApiKey: string
   imageBaseUrl: string
+  visionProfileName?: string
+  visionProvider?: string
+  visionModel?: string
+  visionApiKey?: string
+  visionBaseUrl?: string
   autoSaveInterval: string
   uiScale: number
   darkMode: boolean

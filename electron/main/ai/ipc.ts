@@ -1,7 +1,8 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import { randomUUID } from 'node:crypto'
 import type { AiTaskPayload, AppSettings, ChapterPostGenerationIssuesPayload, ChapterPostGenerationTaskPayload, ChapterStateWarningsPayload } from './shared-types'
-import { runAiTask, streamAiTask, testAiConnection, fetchModels, fetchImageModels, generateImage, benchmarkModel } from './runtime'
+import { runAiTask, streamAiTask, testAiConnection, fetchModels, fetchImageModels, generateImage, benchmarkModel, recognizeCharacterImage } from './runtime'
+import { normalizeVisionSettings } from './transport/vision'
 import { runStreamingAgentTask } from './agent/streaming-orchestrator'
 import { isToolUseNotSupportedError } from './provider'
 import { setChapterPostGenerationIssuesEmitter, setChapterPostGenerationTaskEmitter, setChapterWarningsEmitter } from './runtime/orchestrator'
@@ -470,6 +471,61 @@ export function registerAiIpcHandlers(injectedDeps: AiIpcDeps): void {
       )
       deps!.emitAiRunEvent({ projectId: projectId ?? '', meta: { id: randomUUID(), ...meta } })
       return { success: false, error: message }
+    }
+  })
+
+  // ── 图片识别（人物图片 → 人物卡片） ──
+  ipcMain.handle('characterarc:ai-recognize-image', async (_event, payload: unknown) => {
+    try {
+      const request = payload as { settings?: AppSettings; imageDataUrl?: string }
+      const settings = request?.settings as AppSettings
+      const imageDataUrl = String(request?.imageDataUrl ?? '').trim()
+      if (!imageDataUrl) throw new Error('缺少待识别的人物图片。')
+      const result = await recognizeCharacterImage(settings, imageDataUrl)
+      return { success: true, result }
+    } catch (error) {
+      return { success: false, error: formatAiErrorMessage(error, '图片识别失败') }
+    }
+  })
+
+  // ── 获取图片识别模型列表（复用 OpenAI 兼容模型列表接口） ──
+  ipcMain.handle('characterarc:ai-fetch-vision-models', async (_event, settings: unknown) => {
+    try {
+      const normalized = normalizeVisionSettings(settings as AppSettings)
+      if (!normalized.baseUrl.trim()) throw new Error('请先填写图片识别 Base URL。')
+      if (!normalized.apiKey.trim()) throw new Error('请先填写图片识别 API Key。')
+      // fetchImageModels 读取 imageBaseUrl / imageApiKey 字段，这里将视觉配置映射过去
+      const result = await fetchImageModels({
+        ...normalized,
+        imageBaseUrl: normalized.baseUrl,
+        imageApiKey: normalized.apiKey
+      })
+      return { success: true, result }
+    } catch (error) {
+      return { success: false, error: formatAiErrorMessage(error, '获取图片识别模型列表失败') }
+    }
+  })
+
+  // ── 测试图片识别模型连接 ──
+  ipcMain.handle('characterarc:ai-test-vision-connection', async (_event, settings: unknown) => {
+    try {
+      const normalized = normalizeVisionSettings(settings as AppSettings)
+      if (!normalized.model.trim()) throw new Error('请先填写图片识别模型名称。')
+      const result = await testAiConnection({ ...normalized, provider: 'openai', model: normalized.model, baseUrl: normalized.baseUrl, apiKey: normalized.apiKey })
+      return { success: true, result }
+    } catch (error) {
+      return { success: false, error: formatAiErrorMessage(error, '图片识别连接测试失败') }
+    }
+  })
+
+  // ── 测试图片识别模型性能 ──
+  ipcMain.handle('characterarc:ai-benchmark-vision-model', async (_event, settings: unknown) => {
+    try {
+      const normalized = normalizeVisionSettings(settings as AppSettings)
+      const result = await benchmarkModel({ ...normalized, provider: 'openai', model: normalized.model, baseUrl: normalized.baseUrl, apiKey: normalized.apiKey })
+      return { success: true, result }
+    } catch (error) {
+      return { success: false, error: formatAiErrorMessage(error, '图片识别模型性能测试失败') }
     }
   })
 

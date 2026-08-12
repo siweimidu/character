@@ -1024,6 +1024,18 @@ export interface AppSettings {
   imageApiKey: string
   /** 图片生成接口基础地址 */
   imageBaseUrl: string
+  /** 图片识别配置名称（用于识别模型转人物提示词的接口配置） */
+  visionProfileName: string
+  /** 图片识别服务预设标识 */
+  visionProvider: string
+  /** 图片识别模型名称 */
+  visionModel: string
+  /** 图片识别接口鉴权密钥 */
+  visionApiKey: string
+  /** 图片识别接口基础地址 */
+  visionBaseUrl: string
+  /** 已保存的图片识别模型列表 */
+  visionSavedModels: string[]
   /** 自动保存间隔选项值，如 '5m'、'live' */
   autoSaveInterval: string
   /** 写作区正文字体 */
