@@ -456,6 +456,10 @@ watch(
               深色模式
             </div>
             <div class="setting-hint">将界面切换为深色背景，适合夜间长时间写作。</div>
+            <div class="setting-scope-tag">
+              <span class="setting-scope-dot"></span>
+              仅对当前项目生效，不影响全局与其它项目
+            </div>
           </div>
           <n-switch
             :value="appStore.appSettings.darkMode"
@@ -1012,6 +1016,28 @@ watch(
   margin-top: 4px;
   color: var(--arc-text-secondary);
   font-size: 12px;
+}
+
+.setting-scope-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 7px;
+  padding: 3px 9px;
+  border: 1px solid var(--arc-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--arc-primary) 7%, transparent);
+  color: var(--arc-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.setting-scope-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--arc-primary);
+  flex-shrink: 0;
 }
 
 .compact-select {
