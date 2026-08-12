@@ -224,41 +224,44 @@ function openEntry(type: string, title: string): void {
           </span>
         </div>
 
-        <div v-if="!isEditingPremise" class="project-premise">
-          <p v-if="projectPremise" class="premise-text">{{ projectPremise }}</p>
-          <p v-else class="premise-text premise-placeholder">还没有填写作品简介，点击右侧按钮补充一下故事梗概吧。</p>
-          <button type="button" class="premise-edit-btn" title="编辑作品简介" @click="startEditPremise">
-            <Pencil :size="14" />
-            <span>{{ projectPremise ? '编辑简介' : '填写简介' }}</span>
+        <div class="premise-row">
+          <div v-if="!isEditingPremise" class="project-premise">
+            <p v-if="projectPremise" class="premise-text">{{ projectPremise }}</p>
+            <p v-else class="premise-text premise-placeholder">还没有填写作品简介，点击右侧按钮补充一下故事梗概吧。</p>
+            <button type="button" class="premise-edit-btn" title="编辑作品简介" @click="startEditPremise">
+              <Pencil :size="14" />
+              <span>{{ projectPremise ? '编辑简介' : '填写简介' }}</span>
+            </button>
+          </div>
+
+          <div v-else class="project-premise premise-editing">
+            <n-input
+              v-model:value="premiseDraft"
+              type="textarea"
+              :autosize="{ minRows: 5, maxRows: 10 }"
+              placeholder="用一段话介绍你的作品：主角、冲突与目标……"
+              maxlength="2000"
+              show-count
+              class="premise-input"
+            />
+            <div class="premise-actions">
+              <n-button size="small" secondary @click="cancelEditPremise">
+                <template #icon><X :size="14" /></template>
+                取消
+              </n-button>
+              <n-button size="small" type="primary" @click="savePremise">
+                <template #icon><Check :size="14" /></template>
+                保存
+              </n-button>
+            </div>
+          </div>
+
+          <button type="button" class="continue-action" @click="appStore.setPanel('chapters')">
+            <PenLine :size="16" />
+            <span>继续创作</span>
           </button>
         </div>
-
-        <div v-else class="project-premise premise-editing">
-          <n-input
-            v-model:value="premiseDraft"
-            type="textarea"
-            :autosize="{ minRows: 2, maxRows: 5 }"
-            placeholder="用一段话介绍你的作品：主角、冲突与目标……"
-            maxlength="2000"
-            show-count
-            class="premise-input"
-          />
-          <div class="premise-actions">
-            <n-button size="small" secondary @click="cancelEditPremise">
-              <template #icon><X :size="14" /></template>
-              取消
-            </n-button>
-            <n-button size="small" type="primary" @click="savePremise">
-              <template #icon><Check :size="14" /></template>
-              保存
-            </n-button>
-          </div>
-        </div>
       </div>
-      <button type="button" class="continue-action" @click="appStore.setPanel('chapters')">
-        <PenLine :size="16" />
-        <span>继续创作</span>
-      </button>
     </header>
 
     <div class="current-focus">
@@ -383,12 +386,23 @@ function openEntry(type: string, title: string): void {
   gap: 5px;
 }
 
+.premise-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.premise-row .project-premise {
+  flex: 1;
+  min-width: 0;
+}
+
 .project-premise {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-top: 12px;
   padding: 12px 14px;
   border: 1px solid var(--arc-border);
   border-radius: var(--arc-radius-md);
@@ -448,12 +462,13 @@ function openEntry(type: string, title: string): void {
 }
 
 .continue-action {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
   min-height: 34px;
   flex-shrink: 0;
+  margin-top: 2px;
   border: 1px solid transparent;
   border-radius: var(--arc-radius-md);
   background: var(--arc-primary);
@@ -719,6 +734,11 @@ function openEntry(type: string, title: string): void {
 
   .overview-heading h2 {
     font-size: 22px;
+  }
+
+  .premise-row {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .continue-action {
