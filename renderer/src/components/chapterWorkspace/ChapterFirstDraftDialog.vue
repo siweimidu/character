@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Minus, X } from 'lucide-vue-next'
 import { NButton, NModal, NTag } from 'naive-ui'
 import type { ChapterAuditPayload } from './useChapterFirstDraft'
 
@@ -26,6 +27,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   stop: []
   close: []
+  /** 点击减号：将生成任务收起到后台继续执行 */
+  minimize: []
   /** 点击"达到设定目标字数"按钮，围绕已有初稿扩充续写 */
   expand: [targetWordCount: number]
   /** 点击"超出目标字数"按钮，将初稿精简压缩到目标字数 */
@@ -83,13 +86,40 @@ const auditSummary = computed(() => {
   <n-modal
     :show="show"
     preset="card"
-    title="AI 初稿执行中"
     :style="{ width: 'min(720px, 92vw)' }"
     :mask-closable="false"
-    :closable="!isGenerating"
+    :closable="false"
     :bordered="false"
-    @close="$emit('close')"
   >
+    <template #header>
+      <div class="draft-modal-header">
+        <span class="draft-modal-title">AI 初稿执行中</span>
+        <span v-if="isGenerating" class="draft-modal-minimize-hint">减号收起后任务仍在后台运行</span>
+        <div class="draft-modal-controls">
+          <!-- 减号：收起弹窗到后台继续执行 -->
+          <button
+            type="button"
+            class="draft-modal-minimize"
+            title="收起弹窗到后台继续执行"
+            aria-label="收起弹窗到后台继续执行"
+            @click="$emit('minimize')"
+          >
+            <Minus :size="14" />
+          </button>
+          <!-- 关闭：仅在生成结束后可用 -->
+          <button
+            type="button"
+            class="draft-modal-close"
+            :disabled="isGenerating"
+            :title="isGenerating ? '生成中不可关闭，可点击减号后台运行' : '关闭'"
+            aria-label="关闭"
+            @click="$emit('close')"
+          >
+            <X :size="14" />
+          </button>
+        </div>
+      </div>
+    </template>
     <div class="card">
       <div class="head">
         <div class="copy-block">
@@ -207,6 +237,71 @@ const auditSummary = computed(() => {
 </template>
 
 <style scoped>
+.draft-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding-right: 8px;
+}
+
+.draft-modal-title {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--arc-text-primary);
+  letter-spacing: -0.01em;
+}
+
+.draft-modal-minimize-hint {
+  flex: 1;
+  text-align: right;
+  font-size: 11px;
+  color: var(--arc-text-hint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.draft-modal-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.draft-modal-minimize,
+.draft-modal-close {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--arc-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+
+.draft-modal-minimize:hover {
+  background: color-mix(in srgb, var(--arc-primary) 12%, transparent);
+  color: var(--arc-primary);
+  border-color: color-mix(in srgb, var(--arc-primary) 30%, transparent);
+}
+
+.draft-modal-close:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 0.12);
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.3);
+}
+
+.draft-modal-close:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .card {
   display: flex;
   flex-direction: column;

@@ -765,7 +765,7 @@ function handleMenuSelect(key: string | number, chapter: ChapterDraft): void {
   if (key === 'delete') {
     dialog.warning({
       title: '确认删除章节',
-      content: `确定要删除"${chapter.title}"吗？删除后当前章节草稿将无法恢复。`,
+      content: `确定要删除"${chapter.title}"吗？删除后可在回收站中找回，回收站默认保留 ${appStore.recycleBinRetentionDays} 天。`,
       positiveText: '确认删除',
       negativeText: '取消',
       autoFocus: false,

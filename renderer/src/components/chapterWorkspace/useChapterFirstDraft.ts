@@ -230,6 +230,10 @@ export function useChapterFirstDraft(): {
   reduceDraftToTarget: (existingDraft: string, targetWordCount: number) => Promise<void>
   stop: () => Promise<void>
   closeModal: () => void
+  /** 收起弹窗到后台：隐藏弹窗但任务继续执行 */
+  minimizeToBackground: () => void
+  /** 从后台恢复初稿弹窗 */
+  restoreFromBackground: () => void
   registerStreamListener: () => void
   unregisterStreamListener: () => void
 } {
@@ -345,6 +349,11 @@ export function useChapterFirstDraft(): {
     isAuditing.value = false
     isStreaming.value = false
     stopElapsedTimer()
+    // 若任务是被后台化（最小化）时完成的，自动重新弹出弹窗展示最终结果
+    if (appStore.getAiTaskRun?.(TASK_KEY)?.minimized) {
+      appStore.unminimizeAiTask(TASK_KEY)
+      modalVisible.value = true
+    }
   }
 
   function releaseCurrentStreamState(): void {
@@ -1211,6 +1220,20 @@ export function useChapterFirstDraft(): {
     previewContent.value = ''
   }
 
+  /** 收起弹窗到后台：隐藏弹窗但任务继续执行，并在右下角任务面板中显示进度 */
+  function minimizeToBackground(): void {
+    if (!isGenerating.value) return
+    modalVisible.value = false
+    // 标记任务为最小化，使右下角任务面板展示它并允许恢复
+    appStore.minimizeAiTask(TASK_KEY)
+  }
+
+  /** 从后台恢复初稿弹窗 */
+  function restoreFromBackground(): void {
+    appStore.unminimizeAiTask(TASK_KEY)
+    modalVisible.value = true
+  }
+
   return {
     isGenerating,
     isStopping,
@@ -1232,6 +1255,8 @@ export function useChapterFirstDraft(): {
     reduceDraftToTarget,
     stop,
     closeModal,
+    minimizeToBackground,
+    restoreFromBackground,
     registerStreamListener,
     unregisterStreamListener
   }

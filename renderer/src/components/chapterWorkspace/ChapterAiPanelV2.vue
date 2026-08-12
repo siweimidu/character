@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { NModal, NInput, NButton, NInputGroup, useMessage } from 'naive-ui'
 import {
@@ -79,6 +79,16 @@ const availableSkills = computed(() =>
 )
 
 const draft = useChapterFirstDraft()
+
+// 从右下角任务面板恢复被后台化的初稿任务时，重新弹出初稿弹窗
+watch(
+  () => appStore.getAiTaskRun('chapter-first-draft')?.minimized ?? false,
+  (minimized, wasMinimized) => {
+    if (wasMinimized === true && minimized === false) {
+      draft.restoreFromBackground()
+    }
+  }
+)
 
 const modeOptions: Array<{ id: ChapterMode; label: string; description: string }> = [
   { id: 'chat', label: '对话', description: '问答、分析、建议' },
@@ -654,6 +664,7 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
       :target-word-count="draftTargetWordCount"
       :current-draft="draft.previewContent.value"
       @stop="async () => { try { await draft.stop() } catch (e) { message.error(e instanceof Error ? e.message : '停止失败') } }"
+      @minimize="draft.minimizeToBackground()"
       @close="draft.closeModal()"
       @expand="(target) => handleExpandDraft(target)"
       @reduce="(target) => handleReduceDraft(target)"

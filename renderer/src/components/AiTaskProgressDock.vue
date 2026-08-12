@@ -39,9 +39,10 @@ const visibleRuns = computed<AiTaskRun[]>(() => {
     .filter((run) => run.kind !== 'chapter-assistant' && run.kind !== 'chapter-draft' && !run.minimized)
 })
 
-/** 被最小化到后台、仍在运行的任务（不占窗口，可从小点卡片里恢复）。 */
+/** 被最小化到后台、仍在运行的任务（不占窗口，可从小点卡片里恢复）。
+ *  包含被后台化的章节初稿任务（chapter-draft），让用户能从小面板里恢复弹窗。 */
 const minimizedRuns = computed<AiTaskRun[]>(() =>
-  appStore.runningAiTasks.filter((run) => run.kind !== 'chapter-assistant' && run.kind !== 'chapter-draft' && run.minimized)
+  appStore.runningAiTasks.filter((run) => run.kind !== 'chapter-assistant' && run.minimized)
 )
 
 const hasVisibleRuns = computed(() => visibleRuns.value.length > 0 || minimizedRuns.value.length > 0 || appStore.runningAiTasks.length > 0)

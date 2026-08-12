@@ -139,6 +139,43 @@ const chapterOptions = computed(() =>
   appStore.chapters.map((c) => ({ label: c.title || '未命名章节', value: c.id }))
 )
 
+// 「计划回收章节」只允许选择埋设章节之后的分卷/章节（伏笔应在后面回收）。
+const closeChapterOptions = computed(() => {
+  const openedId = form.openedInChapterId
+  const opened = appStore.chapters.find((c) => c.id === openedId)
+  if (!opened) return chapterOptions.value
+  const volumes = appStore.outlineVolumes
+  const chapters = appStore.chapters
+  const openedVolumeIndex = volumes.findIndex((v) => v.id === opened.volumeId)
+  const openedIdxInVolume = chapters
+    .filter((c) => c.volumeId === opened.volumeId)
+    .findIndex((c) => c.id === opened.id)
+  return chapters
+    .filter((c) => {
+      const volIndex = volumes.findIndex((v) => v.id === c.volumeId)
+      if (volIndex > openedVolumeIndex) return true
+      if (volIndex === openedVolumeIndex && volIndex !== -1) {
+        const idxInVolume = chapters
+          .filter((x) => x.volumeId === c.volumeId)
+          .findIndex((x) => x.id === c.id)
+        return idxInVolume > openedIdxInVolume
+      }
+      return false
+    })
+    .map((c) => ({ label: c.title || '未命名章节', value: c.id }))
+})
+
+// 埋设章节变化后，若当前选中的计划回收章节已不在“之后章节”范围内，则自动清空
+watch(
+  () => form.openedInChapterId,
+  () => {
+    const validIds = new Set(closeChapterOptions.value.map((o) => o.value))
+    if (form.plannedCloseChapterId && !validIds.has(form.plannedCloseChapterId)) {
+      form.plannedCloseChapterId = ''
+    }
+  }
+)
+
 const statusOptions = computed(() => [
   { label: '全部状态', value: 'all' },
   { label: '待回收', value: 'pending' },
@@ -796,7 +833,7 @@ function confirmAddGeneratedThreads(): void {
             <n-form-item label="计划回收章节">
               <n-select
                 v-model:value="form.plannedCloseChapterId"
-                :options="chapterOptions"
+                :options="closeChapterOptions"
                 placeholder="选择计划回收的章节"
                 clearable
                 filterable

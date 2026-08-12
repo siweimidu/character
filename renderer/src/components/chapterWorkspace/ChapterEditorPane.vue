@@ -54,9 +54,33 @@ const quickThreadForm = reactive({
   tags: [] as string[],
   remark: ''
 })
-const quickChapterOptions = computed(() =>
-  appStore.chapters.map((c) => ({ label: c.title || '未命名章节', value: c.id }))
-)
+// 「计划回收章节」只允许选择当前章节之后的分卷/章节（伏笔应在后面回收）。
+// 按分卷顺序 + 分卷内章节顺序过滤：同分卷里排在当前章节之后、以及所有后续分卷中的章节。
+const quickChapterOptions = computed(() => {
+  const current = currentChapter.value
+  if (!current) return []
+  const volumes = appStore.outlineVolumes
+  const chapters = appStore.chapters
+  const currentVolumeIndex = volumes.findIndex((v) => v.id === current.volumeId)
+  const currentChapterIndexInVolume = chapters
+    .filter((c) => c.volumeId === current.volumeId)
+    .findIndex((c) => c.id === current.id)
+  return chapters
+    .filter((c) => {
+      const volIndex = volumes.findIndex((v) => v.id === c.volumeId)
+      // 后续分卷中的章节均可回收
+      if (volIndex > currentVolumeIndex) return true
+      // 同分卷内，必须是当前章节之后的章节
+      if (volIndex === currentVolumeIndex && volIndex !== -1) {
+        const idxInVolume = chapters
+          .filter((x) => x.volumeId === c.volumeId)
+          .findIndex((x) => x.id === c.id)
+        return idxInVolume > currentChapterIndexInVolume
+      }
+      return false
+    })
+    .map((c) => ({ label: c.title || '未命名章节', value: c.id }))
+})
 
 function openQuickCreateThread(): void {
   // 无分卷或无章节时不允许新建伏笔
@@ -347,6 +371,20 @@ function getEditorText(): string {
     : ''
 }
 
+// 获取当前编辑器选区在纯文本中的字符区间，供预览缩略图同步高亮
+function getEditorSelection(): { from: number; to: number } | null {
+  const editor = tiptapEditor.value
+  if (!editor) return null
+  const { from, to } = editor.state.selection
+  if (from === to) return null
+  const doc = editor.state.doc
+  // textBetween 使用 \n 作为块级分隔符，与 textContent 的换行规则一致，可对齐坐标
+  return {
+    from: doc.textBetween(0, from, '\n').length,
+    to: doc.textBetween(0, to, '\n').length
+  }
+}
+
 // 章节正文更新后触发预览缩略图重绘
 function onChapterContentUpdate(value: string, chapterId: string): void {
   appStore.updateChapterContent(value, chapterId)
@@ -354,6 +392,10 @@ function onChapterContentUpdate(value: string, chapterId: string): void {
 }
 
 function handleSelectionChange(): void {
+  // 选区变化时同步刷新预览缩略图高亮
+  if (appStore.appSettings.editorMinimap) {
+    minimapRef.value?.redraw()
+  }
   const sel = window.getSelection()
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
     selToolbarVisible.value = false
@@ -722,6 +764,7 @@ onBeforeUnmount(() => {
         ref="minimapRef"
         :visible="appStore.appSettings.editorMinimap"
         :get-text="getEditorText"
+        :get-selection="getEditorSelection"
         :scroll-container="scrollRef"
         @close="appStore.updateAppSetting('editorMinimap', false)"
       />
@@ -803,7 +846,7 @@ onBeforeUnmount(() => {
     <n-modal
       v-model:show="quickCreateThreadVisible"
       preset="card"
-      title="在「{{ currentChapter?.title || '本章' }}」中新建伏笔"
+      :title="`在「${currentChapter?.title || '本章'}」中新建伏笔`"
       style="width: 520px"
       :mask-closable="false"
     >
