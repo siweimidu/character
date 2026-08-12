@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { BookCopy, ChevronRight, Clock3, FileText, GitMerge, Lightbulb, Network, PenLine, Users } from 'lucide-vue-next'
+import { computed, ref } from 'vue'
+import { BookCopy, Check, ChevronRight, Clock3, FileText, GitMerge, Lightbulb, Network, PenLine, Pencil, Users, X } from 'lucide-vue-next'
+import { NButton, NInput, useMessage } from 'naive-ui'
 import { getChapterPreviewText } from '@/features/chapters/editorContent'
 import { formatProjectEditedAt } from '@/features/projects/lastEdited'
 import { resolveNovelLengthLabel } from '@/features/wizard/projectGenres'
@@ -133,6 +134,42 @@ const quickEntries = computed(() => {
 // 当前聚焦的章节，优先使用已选章节，否则取第一章
 const recentChapter = computed(() => appStore.selectedChapter ?? appStore.chapters[0])
 
+// ── 作品简介展示与编辑 ──
+const message = useMessage()
+const isEditingPremise = ref(false)
+const premiseDraft = ref('')
+
+const projectPremise = computed(() => currentProject.value?.premise?.trim() || '')
+
+// 进入简介编辑模式，回填当前值
+function startEditPremise(): void {
+  premiseDraft.value = currentProject.value?.premise ?? ''
+  isEditingPremise.value = true
+}
+
+// 取消编辑，不保存
+function cancelEditPremise(): void {
+  isEditingPremise.value = false
+  premiseDraft.value = ''
+}
+
+// 保存简介
+function savePremise(): void {
+  const projectId = currentProject.value?.id
+  if (!projectId) {
+    return
+  }
+  const nextPremise = premiseDraft.value.trim()
+  appStore.updateProject(projectId, { premise: nextPremise })
+  isEditingPremise.value = false
+  premiseDraft.value = ''
+  if (nextPremise) {
+    message.success('作品简介已更新')
+  } else {
+    message.success('作品简介已清空')
+  }
+}
+
 // 导航到指定面板
 function goToPanel(panel: PanelName): void {
   appStore.setPanel(panel)
@@ -185,6 +222,37 @@ function openEntry(type: string, title: string): void {
             <Clock3 :size="13" />
             {{ formatProjectEditedAt(currentProject?.lastEdited) }}
           </span>
+        </div>
+
+        <div v-if="!isEditingPremise" class="project-premise">
+          <p v-if="projectPremise" class="premise-text">{{ projectPremise }}</p>
+          <p v-else class="premise-text premise-placeholder">还没有填写作品简介，点击右侧按钮补充一下故事梗概吧。</p>
+          <button type="button" class="premise-edit-btn" title="编辑作品简介" @click="startEditPremise">
+            <Pencil :size="14" />
+            <span>{{ projectPremise ? '编辑简介' : '填写简介' }}</span>
+          </button>
+        </div>
+
+        <div v-else class="project-premise premise-editing">
+          <n-input
+            v-model:value="premiseDraft"
+            type="textarea"
+            :autosize="{ minRows: 2, maxRows: 5 }"
+            placeholder="用一段话介绍你的作品：主角、冲突与目标……"
+            maxlength="2000"
+            show-count
+            class="premise-input"
+          />
+          <div class="premise-actions">
+            <n-button size="small" secondary @click="cancelEditPremise">
+              <template #icon><X :size="14" /></template>
+              取消
+            </n-button>
+            <n-button size="small" type="primary" @click="savePremise">
+              <template #icon><Check :size="14" /></template>
+              保存
+            </n-button>
+          </div>
         </div>
       </div>
       <button type="button" class="continue-action" @click="appStore.setPanel('chapters')">
@@ -313,6 +381,70 @@ function openEntry(type: string, title: string): void {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+}
+
+.project-premise {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--arc-border);
+  border-radius: var(--arc-radius-md);
+  background: var(--arc-bg-surface-hover);
+}
+
+.premise-text {
+  margin: 0;
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+  color: var(--arc-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.premise-placeholder {
+  color: var(--arc-text-hint);
+  font-style: italic;
+}
+
+.premise-edit-btn {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  color: var(--arc-primary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 4px;
+  border-radius: var(--arc-radius-sm);
+  transition: background 0.16s ease;
+}
+
+.premise-edit-btn:hover {
+  background: var(--arc-bg-surface-hover);
+}
+
+.premise-editing {
+  display: block;
+  border-color: var(--arc-primary);
+}
+
+.premise-input {
+  width: 100%;
+}
+
+.premise-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .continue-action {

@@ -84,6 +84,7 @@ function createWorkbenchInput(): CoverPromptWorkbenchInput | null {
     project: {
       id: '',
       title: workbench.bookTitle.trim(),
+      premise: '',
       genre: workbench.genre.trim(),
       targetPlatform: workbench.targetPlatform.trim(),
       novelLength: 'long',

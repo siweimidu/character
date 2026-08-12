@@ -443,6 +443,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
         @switch="(id) => assistant.switchSession(id)"
         @create="assistant.createSession()"
         @delete="(id) => assistant.deleteSession(id)"
+        @rename="(id, title) => assistant.renameSession(id, title)"
         @collapse="sessionCollapsed = true"
       />
       <div

@@ -96,6 +96,7 @@ export function normalizeChapterAssistantTemplates(
 export function normalizeProjectSummary(project: ProjectSummary): ProjectSummary {
   return {
     ...project,
+    premise: project.premise?.trim() || '',
     novelLength: normalizeNovelLength(project.novelLength),
     wordCount: project.wordCount?.trim() || '待统计',
     createdAt: project.createdAt || '',
@@ -507,6 +508,7 @@ export function normalizeProjectWorkspaceData(
     aiRuns: normalizeAiRuns(normalized.aiRuns),
     workflowDocuments: normalizeWorkflowDocuments(normalized.workflowDocuments),
     plotThreads: normalized.plotThreads,
+    inspirationTypes: normalized.inspirationTypes,
     recycleBin: normalized.recycleBin
   }
 }

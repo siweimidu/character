@@ -32,8 +32,10 @@ const CATEGORY_META: Record<RecycleBinCategory, { label: string; color: string }
   outline: { label: '剧情大纲节点', color: '#10b981' },
   'outline-volume': { label: '大纲分卷', color: '#10b981' },
   'plot-thread': { label: '伏笔', color: '#6366f1' },
+  'inspiration-type': { label: '灵感生成类型', color: '#f97316' },
   chapter: { label: '章节', color: '#3b82f6' },
   'knowledge-document': { label: '项目知识库', color: '#14b8a6' },
+  'story-state': { label: '世界状态库', color: '#0ea5e9' },
   'assistant-session': { label: '智能体对话', color: '#0d7d5a' },
   'ai-profile': { label: 'AI 接口配置', color: '#8b5cf6' },
   'reference-work': { label: '参考作品', color: '#06b6d4' }
@@ -49,8 +51,10 @@ const CATEGORY_ICON: Record<RecycleBinCategory, unknown> = {
   outline: FileText,
   'outline-volume': FileText,
   'plot-thread': BookMarked,
+  'inspiration-type': Lightbulb,
   chapter: FileText,
   'knowledge-document': FileCheck2,
+  'story-state': FileCheck2,
   'assistant-session': FileText,
   'ai-profile': Settings2,
   'reference-work': FileCheck2
@@ -111,8 +115,8 @@ function formatDateTime(iso: string): string {
 }
 
 /** 恢复某条记录 */
-function restoreEntry(entryId: string): void {
-  const ok = appStore.restoreRecycleEntry(entryId)
+async function restoreEntry(entryId: string): Promise<void> {
+  const ok = await appStore.restoreRecycleEntry(entryId)
   if (ok) {
     message.success('已恢复到原模块')
   } else {
@@ -145,7 +149,7 @@ function saveRetention(): void {
 }
 
 function backToProjectCenter(): void {
-  appStore.backToProjects()
+  appStore.backToWorkbench()
 }
 </script>
 

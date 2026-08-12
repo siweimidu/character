@@ -826,3 +826,103 @@ export function formatStoryStateForPrompt(ctx: StoryStateContext): string {
 
   return sections.join('\n\n')
 }
+
+// ==================== Delete / Restore Operations ====================
+
+/** 世界状态库中可独立删除的区块类型 */
+export type StoryStateBlockType =
+  | 'characterStates'
+  | 'foreshadowing'
+  | 'relationships'
+  | 'timeline'
+  | 'worldRules'
+  | 'clocks'
+
+/** 各区块类型对应的数据表名 */
+const STORY_STATE_BLOCK_TABLE: Record<StoryStateBlockType, string> = {
+  characterStates: 'story_character_state',
+  foreshadowing: 'story_foreshadowing',
+  relationships: 'story_relationships',
+  timeline: 'story_timeline',
+  worldRules: 'story_world_rules',
+  clocks: 'story_countdown_clocks'
+}
+
+/** 世界状态库中各区块的中文标签 */
+export const STORY_STATE_BLOCK_LABEL: Record<StoryStateBlockType, string> = {
+  characterStates: '角色状态',
+  foreshadowing: '伏笔',
+  relationships: '角色关系',
+  timeline: '时间线',
+  worldRules: '世界规则',
+  clocks: '倒计时'
+}
+
+/**
+ * 删除某个项目下指定区块的世界状态数据。
+ * 删除前先把该区块的全部数据行返回作为快照（供回收站恢复）。
+ */
+export function deleteStoryStateBlock(
+  db: DatabaseSync,
+  projectId: string,
+  block: StoryStateBlockType
+): Record<string, unknown>[] {
+  const table = STORY_STATE_BLOCK_TABLE[block]
+  if (!table) return []
+  const rows = db.prepare(`SELECT * FROM ${table} WHERE project_id = ?`).all(projectId) as Array<Record<string, unknown>>
+  db.exec('BEGIN')
+  try {
+    db.prepare(`DELETE FROM ${table} WHERE project_id = ?`).run(projectId)
+    // 同步清理关联的 embedding 向量（避免残留脏索引）
+    if (block === 'characterStates') {
+      db.prepare(`DELETE FROM story_embeddings WHERE project_id = ? AND source_type = ?`).run(projectId, 'character_state')
+    } else if (block === 'foreshadowing') {
+      db.prepare(`DELETE FROM story_embeddings WHERE project_id = ? AND source_type = ?`).run(projectId, 'foreshadowing')
+    } else if (block === 'timeline') {
+      db.prepare(`DELETE FROM story_embeddings WHERE project_id = ? AND source_type = ?`).run(projectId, 'timeline')
+    }
+    db.exec('COMMIT')
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
+  return rows
+}
+
+/**
+ * 从回收站快照恢复某个区块的世界状态数据。
+ * rows 为删除时返回的完整数据行（含所有字段）。
+ */
+export function restoreStoryStateBlock(
+  db: DatabaseSync,
+  projectId: string,
+  block: StoryStateBlockType,
+  rows: Record<string, unknown>[]
+): void {
+  const table = STORY_STATE_BLOCK_TABLE[block]
+  if (!table || !rows.length) return
+  db.exec('BEGIN')
+  try {
+    const columns = Object.keys(rows[0])
+    const placeholders = columns.map(() => '?').join(', ')
+    const insert = db.prepare(`INSERT OR REPLACE INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`)
+    for (const row of rows) {
+      const params = columns.map((col) => {
+        const value = row[col]
+        // 收敛为 SQLite 支持的参数类型
+        if (value === null || value === undefined) return null
+        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+          return typeof value === 'boolean' ? (value ? 1 : 0) : value
+        }
+        if (typeof value === 'bigint') return value
+        if (value instanceof Uint8Array) return value
+        return String(value)
+      })
+      insert.run(...params)
+    }
+    db.exec('COMMIT')
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
+}

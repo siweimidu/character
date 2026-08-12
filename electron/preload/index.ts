@@ -43,6 +43,10 @@ contextBridge.exposeInMainWorld('characterArc', {
   importProjectArchive: (payload: unknown) => ipcRenderer.invoke('characterarc:import-project-archive', toIpcPayload(payload)),
   /** 将当前项目导出为纯文本文件 */
   exportText: (payload: unknown) => ipcRenderer.invoke('characterarc:export-text', toIpcPayload(payload)),
+  /** 将当前项目导出为 Markdown 文档 */
+  exportMarkdown: (payload: unknown) => ipcRenderer.invoke('characterarc:export-markdown', toIpcPayload(payload)),
+  /** 将当前项目导出为 Excel 表格 */
+  exportExcel: (payload: unknown) => ipcRenderer.invoke('characterarc:export-excel', toIpcPayload(payload)),
   /** 将单个章节导出为 TXT */
   exportChapterTxt: (payload: unknown) => ipcRenderer.invoke('characterarc:export-chapter-txt', toIpcPayload(payload)),
   /** 将单个章节导出为 DOCX */
@@ -51,7 +55,7 @@ contextBridge.exposeInMainWorld('characterArc', {
   importJson: () => ipcRenderer.invoke('characterarc:import-json'),
   /** 批量导入世界观设定（txt/md/json） */
   worldviewImport: () => ipcRenderer.invoke('characterarc:worldview-import'),
-  /** 批量导出世界观设定（txt/md/json） */
+  /** 批量导出世界观设定（txt/md/json/excel） */
   worldviewExport: (payload: unknown) => ipcRenderer.invoke('characterarc:worldview-export', toIpcPayload(payload)),
   /** 导出关系组织数据（组织势力/成员归属/人物关系）为指定格式 */
   exportRelationsData: (payload: unknown) => ipcRenderer.invoke('characterarc:export-relations-data', toIpcPayload(payload)),
@@ -179,6 +183,10 @@ contextBridge.exposeInMainWorld('characterArc', {
   benchmarkVisionModel: (settings: unknown) => ipcRenderer.invoke('characterarc:ai-benchmark-vision-model', toIpcPayload(settings)),
   /** 读取当前项目的结构化世界状态（角色状态、伏笔、关系、时间线、世界规则、倒计时） */
   readStoryState: (projectId: string) => ipcRenderer.invoke('characterarc:ai-read-story-state', projectId),
+  /** 删除世界状态库中的某个区块，返回被删快照供回收站恢复 */
+  deleteStoryState: (payload: { projectId: string; block: string }) => ipcRenderer.invoke('characterarc:ai-delete-story-state', toIpcPayload(payload)),
+  /** 从回收站快照恢复世界状态库中的某个区块 */
+  restoreStoryState: (payload: { projectId: string; block: string; rows: Array<Record<string, unknown>> }) => ipcRenderer.invoke('characterarc:ai-restore-story-state', toIpcPayload(payload)),
   /** 螺旋式深度生成（3圈：骨架→展开→校验） */
   spiralBootstrap: (payload: unknown) => ipcRenderer.invoke('characterarc:ai-spiral-bootstrap', toIpcPayload(payload)),
   /** 取消正在进行的螺旋生成 */
@@ -291,6 +299,8 @@ contextBridge.exposeInMainWorld('characterArc', {
       ipcRenderer.invoke('characterarc:assistant:session:load', toIpcPayload(payload)),
     sessionRename: (payload: unknown) =>
       ipcRenderer.invoke('characterarc:assistant:session:rename', toIpcPayload(payload)),
+    sessionRestore: (payload: unknown) =>
+      ipcRenderer.invoke('characterarc:assistant:session:restore', toIpcPayload(payload)),
     // Turn
     turnSend: (payload: unknown) =>
       ipcRenderer.invoke('characterarc:assistant:turn:send', toIpcPayload(payload)),

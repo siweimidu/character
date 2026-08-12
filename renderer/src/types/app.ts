@@ -321,6 +321,8 @@ export interface ProjectSummary {
   id: string
   /** 作品标题 */
   title: string
+  /** 作品简介（创建时填写的小说简介，可在概览中编辑） */
+  premise: string
   /** 题材分类，如"科幻"、"仙侠" */
   genre: string
   /** 小说长度分类：长篇 / 短篇 */
@@ -892,6 +894,8 @@ export interface ProjectWorkspaceData {
   workflowDocuments: WorkflowDocument[]
   /** 伏笔线索列表 */
   plotThreads: PlotThread[]
+  /** 灵感模块自定义生成类型列表 */
+  inspirationTypes: string[]
   /** 本项目回收站中的删除记录 */
   recycleBin: RecycleBinEntry[]
 }
@@ -907,8 +911,10 @@ export type RecycleBinCategory =
   | 'outline'
   | 'outline-volume'
   | 'plot-thread'
+  | 'inspiration-type'
   | 'chapter'
   | 'knowledge-document'
+  | 'story-state'
   | 'assistant-session'
   | 'ai-profile'
   | 'reference-work'

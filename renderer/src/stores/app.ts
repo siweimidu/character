@@ -103,6 +103,7 @@ interface AssistantFocusTarget {
 interface ProjectWorkspacePayload {
   project: {
     title: string
+    premise?: string
     genre: string
     novelLength: NovelLength
     wordCount?: string
@@ -290,6 +291,8 @@ export const useAppStore = defineStore('app', () => {
   const organizationMemberships = computed(() => currentWorkspace.value.organizationMemberships)
   /** 当前项目的灵感卡片列表 */
   const inspirationEntries = computed(() => currentWorkspace.value.inspirationEntries)
+  /** 当前项目的灵感自定义生成类型列表 */
+  const inspirationTypes = computed(() => currentWorkspace.value.inspirationTypes ?? [])
   /** 当前项目的大纲节点列表 */
   const outlineItems = computed(() => currentWorkspace.value.outlineItems)
   /** 当前项目的章节列表 */
@@ -719,6 +722,7 @@ export const useAppStore = defineStore('app', () => {
     const project: ProjectSummary = {
       id: projectId,
       title: payload.project?.title?.trim() || '导入项目',
+      premise: payload.project?.premise?.trim() || '',
       genre: payload.project?.genre?.trim() || '未分类',
       novelLength: payload.project?.novelLength === 'short' ? 'short' : 'long',
       wordCount: formatProjectWordCount(importedWorkspace.chapters),
@@ -1103,6 +1107,7 @@ export const useAppStore = defineStore('app', () => {
     projects.value.unshift(normalizeProjectSummary({
       id: projectId,
       title: payload.project.title,
+      premise: payload.project.premise ?? '',
       genre: payload.project.genre,
       novelLength: payload.project.novelLength,
       wordCount: computedWordCount,
@@ -1199,6 +1204,15 @@ export const useAppStore = defineStore('app', () => {
     schedulePersist('fast')
   }
 
+  /** 记录一个被删除的 Runtime v2 智能体会话到回收站 */
+  function recordDeletedAssistantSessionV2(session: Record<string, unknown>): void {
+    const title = String((session as { title?: unknown })?.title ?? '').trim() || '智能体对话'
+    pushRecycleEntry('assistant-session', title, {
+      ...(session as object),
+      runtimeV2: true
+    } as Record<string, unknown>)
+  }
+
   /** 移除过期回收站条目（到期自动删除），并返回移除数量 */
   function purgeExpiredRecycleBin(): number {
     const now = Date.now()
@@ -1267,8 +1281,53 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
+  /** 从回收站恢复一个 Runtime v2 智能体会话（调用后端重建完整会话） */
+  async function restoreRuntimeV2Session(
+    v2Data: Record<string, unknown> & {
+      id?: string
+      projectId?: string
+      surfaceId?: string
+      scopeRef?: string
+      title?: string
+      createdAt?: string
+      updatedAt?: string
+      turns?: unknown[]
+      events?: unknown[]
+    }
+  ): Promise<boolean> {
+    try {
+      const A = window.characterArc?.assistant
+      if (!A) return false
+
+      const projectId = String(v2Data.projectId ?? '').trim()
+      const surfaceId = String(v2Data.surfaceId ?? 'global-page').trim()
+      const title = String(v2Data.title ?? '').trim() || '智能体对话'
+
+      const result = await A.sessionRestore({
+        id: v2Data.id,
+        projectId: projectId || selectedProjectId.value,
+        surfaceId,
+        scopeRef: v2Data.scopeRef,
+        title,
+        createdAt: v2Data.createdAt,
+        updatedAt: v2Data.updatedAt,
+        turns: v2Data.turns,
+        events: v2Data.events
+      })
+
+      if (!result.ok) {
+        console.error('[recycle] 恢复 Runtime v2 会话失败:', result.error)
+        return false
+      }
+      return true
+    } catch (e) {
+      console.error('[recycle] 恢复 Runtime v2 会话异常:', e)
+      return false
+    }
+  }
+
   /** 从回收站恢复一条记录：根据类别将快照写回对应集合 */
-  function restoreRecycleEntry(entryId: string): boolean {
+  async function restoreRecycleEntry(entryId: string): Promise<boolean> {
     // 查找条目（全局或当前项目）
     let entry = globalRecycleBin.value.find((item) => item.id === entryId)
     let isGlobal = Boolean(entry)
@@ -1342,6 +1401,16 @@ export const useAppStore = defineStore('app', () => {
         }))
         break
       }
+      case 'inspiration-type': {
+        const restoredType = String((data as Record<string, unknown>)?.type ?? '').trim()
+        if (restoredType && !(currentWorkspace.value.inspirationTypes ?? []).includes(restoredType)) {
+          updateCurrentWorkspace((workspace) => ({
+            ...workspace,
+            inspirationTypes: [...(workspace.inspirationTypes ?? []), restoredType]
+          }))
+        }
+        break
+      }
       case 'chapter': {
         updateCurrentWorkspace((workspace) => ({
           ...workspace,
@@ -1354,12 +1423,44 @@ export const useAppStore = defineStore('app', () => {
         allKnowledgeDocuments.value = [...allKnowledgeDocuments.value, doc]
         break
       }
+      case 'story-state': {
+        // 世界状态库恢复需写回 SQLite（异步），失败则中断并保留回收站记录
+        const projectId = String(data.projectId ?? selectedProjectId.value ?? '').trim()
+        const block = String(data.block ?? '').trim()
+        const rows = Array.isArray(data.rows) ? data.rows : []
+        if (!projectId || !block || !rows.length) {
+          return false
+        }
+        const res = await window.characterArc.restoreStoryState({ projectId, block, rows })
+        if (!res.success) {
+          return false
+        }
+        break
+      }
       case 'assistant-session': {
-        const session = data as unknown as import('@/types/app').GlobalAssistantSession
-        updateCurrentWorkspace((workspace) => ({
-          ...workspace,
-          globalAssistantSessions: [...workspace.globalAssistantSessions, session]
-        }))
+        if (data.runtimeV2) {
+          // Runtime v2 会话：调用后端恢复完整会话（含 turns / events）
+          const v2Data = data as Record<string, unknown> & {
+            id?: string
+            projectId?: string
+            surfaceId?: string
+            scopeRef?: string
+            title?: string
+            turns?: unknown[]
+            events?: unknown[]
+          }
+          const restored = await restoreRuntimeV2Session(v2Data)
+          if (!restored) {
+            return false
+          }
+        } else {
+          // 旧版会话：写入 appStore.globalAssistantSessions
+          const session = data as unknown as import('@/types/app').GlobalAssistantSession
+          updateCurrentWorkspace((workspace) => ({
+            ...workspace,
+            globalAssistantSessions: [...workspace.globalAssistantSessions, session]
+          }))
+        }
         break
       }
       case 'ai-profile': {
@@ -1452,6 +1553,7 @@ export const useAppStore = defineStore('app', () => {
         ? {
             ...project,
             title: payload.title?.trim() || project.title,
+            premise: payload.premise !== undefined ? payload.premise.trim() : project.premise,
             genre: payload.genre?.trim() || project.genre,
             novelLength: payload.novelLength !== undefined ? payload.novelLength : project.novelLength,
             lastEdited: payload.lastEdited?.trim() || createProjectEditedAt(),
@@ -1527,6 +1629,25 @@ export const useAppStore = defineStore('app', () => {
     removed.forEach((document) => pushRecycleEntry('knowledge-document', document.title, { ...document }))
     allKnowledgeDocuments.value = allKnowledgeDocuments.value.filter((document) => !idSet.has(document.id))
     schedulePersist('fast')
+  }
+
+  /** 删除世界状态库中的某个区块（角色状态/伏笔/关系/时间线/世界规则/倒计时），删除后进入回收站 */
+  async function deleteStoryStateBlock(block: string): Promise<{ success: boolean; count?: number; error?: string }> {
+    const project = currentProject.value
+    if (!project) return { success: false, error: '请先选择一个项目。' }
+    const response = await window.characterArc.deleteStoryState({ projectId: project.id, block })
+    if (!response.success || !response.result) {
+      return { success: false, error: response.error ?? '删除世界状态失败。' }
+    }
+    const { count, snapshot } = response.result
+    if (count > 0) {
+      pushRecycleEntry('story-state', `世界状态库·${block}`, {
+        block,
+        rows: snapshot,
+        projectId: project.id
+      })
+    }
+    return { success: true, count }
   }
 
   function upsertProjectConstraint(payload: {
@@ -2554,6 +2675,36 @@ export const useAppStore = defineStore('app', () => {
     schedulePersist('fast')
   }
 
+  // ── 灵感自定义生成类型 CRUD ──
+  /** 新增一条自定义灵感生成类型，去重后保存 */
+  function addInspirationType(type: string): boolean {
+    const clean = String(type ?? '').trim()
+    if (!clean) return false
+    const current = currentWorkspace.value.inspirationTypes ?? []
+    if (current.includes(clean)) return false
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      inspirationTypes: [...(workspace.inspirationTypes ?? []), clean]
+    }))
+    schedulePersist('fast')
+    return true
+  }
+
+  /** 删除一条自定义灵感生成类型，并写入回收站 */
+  function deleteInspirationType(type: string): void {
+    const clean = String(type ?? '').trim()
+    if (!clean) return
+    const target = (currentWorkspace.value.inspirationTypes ?? []).find((item) => item === clean)
+    if (target) {
+      pushRecycleEntry('inspiration-type', target, { type: target })
+    }
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      inspirationTypes: (workspace.inspirationTypes ?? []).filter((item) => item !== clean)
+    }))
+    schedulePersist('fast')
+  }
+
   // ── 大纲分卷 CRUD ──
   /** 创建新的大纲分卷，返回新分卷 ID */
   function createOutlineVolume(payload?: Partial<OutlineVolume>): string {
@@ -2635,44 +2786,35 @@ export const useAppStore = defineStore('app', () => {
       pushRecycleEntry('outline-volume', targetVolume.title, { ...targetVolume })
     }
 
-    let fallbackVolumeId = ''
-    updateCurrentWorkspace((workspace) => {
-      const nextVolumes = workspace.outlineVolumes.filter((volume) => volume.id !== volumeId)
-      const fallbackVolume = nextVolumes[Math.max(0, volumeIndex - 1)] ?? nextVolumes[0]
-      fallbackVolumeId = fallbackVolume?.id ?? ''
+    // 删除分卷时不再迁移其下内容：将该分卷下的大纲节点与章节一并删除，并写入回收站
+    currentWorkspace.value.outlineItems
+      .filter((item) => item.volumeId === volumeId)
+      .forEach((item) => pushRecycleEntry('outline', item.title, { ...item }))
+    currentWorkspace.value.chapters
+      .filter((chapter) => chapter.volumeId === volumeId)
+      .forEach((chapter) => pushRecycleEntry('chapter', chapter.title, { ...chapter }))
 
-      // 删除最后一个分卷时仍允许删除：原分卷下的章节与大纲节点改为“未分卷”状态
-      if (!fallbackVolumeId) {
-        return {
-          ...workspace,
-          outlineVolumes: nextVolumes,
-          outlineItems: reindexOutlineItems(
-            workspace.outlineItems.map((item) =>
-              item.volumeId === volumeId ? { ...item, volumeId: '' } : item
-            )
-          ),
-          chapters: workspace.chapters.map((chapter) =>
-            chapter.volumeId === volumeId ? { ...chapter, volumeId: '' } : chapter
-          )
-        }
-      }
+    updateCurrentWorkspace((workspace) => {
+      const removedChapterIds = new Set(
+        workspace.chapters.filter((chapter) => chapter.volumeId === volumeId).map((chapter) => chapter.id)
+      )
 
       return {
         ...workspace,
-        outlineVolumes: nextVolumes,
+        outlineVolumes: workspace.outlineVolumes.filter((volume) => volume.id !== volumeId),
         outlineItems: reindexOutlineItems(
-          workspace.outlineItems.map((item) =>
-            item.volumeId === volumeId ? { ...item, volumeId: fallbackVolumeId } : item
-          )
+          workspace.outlineItems.filter((item) => item.volumeId !== volumeId)
         ),
-        chapters: workspace.chapters.map((chapter) =>
-          chapter.volumeId === volumeId ? { ...chapter, volumeId: fallbackVolumeId } : chapter
-        )
+        chapters: workspace.chapters.filter((chapter) => chapter.volumeId !== volumeId),
+        chapterVersions: workspace.chapterVersions.filter((version) => !removedChapterIds.has(version.chapterId))
       }
     })
 
     if (activeWorkflowVolumeId.value === volumeId) {
-      activeWorkflowVolumeId.value = fallbackVolumeId
+      activeWorkflowVolumeId.value = outlineVolumes.value[0]?.id ?? ''
+    }
+    if (selectedChapterId.value && !currentWorkspace.value.chapters.some((chapter) => chapter.id === selectedChapterId.value)) {
+      selectedChapterId.value = currentWorkspace.value.chapters[0]?.id ?? ''
     }
     schedulePersist('fast')
   }
@@ -4091,6 +4233,7 @@ export const useAppStore = defineStore('app', () => {
     purgeExpiredRecycleBin,
     recycleBinRetentionDays,
     restoreRecycleEntry,
+    recordDeletedAssistantSessionV2,
     setRecycleBinRetentionDays,
     projectRecycleBin,
     appSettings,
@@ -4105,6 +4248,7 @@ export const useAppStore = defineStore('app', () => {
     characterRelationships,
     characters,
     inspirationEntries,
+    inspirationTypes,
     closeWizard,
     createProject,
     createProjectWorkspace,
@@ -4154,6 +4298,8 @@ export const useAppStore = defineStore('app', () => {
     batchUpdatePlotThreadStatus,
     batchUpdatePlotThreadTags,
     importPlotThreads,
+    addInspirationType,
+    deleteInspirationType,
     deleteProject,
     deleteWorldviewEntry,
     deleteWorldviewEntries,
@@ -4230,6 +4376,7 @@ export const useAppStore = defineStore('app', () => {
     setActiveWorkflowVolumeId,
     mergeKnowledgeDocuments,
     removeKnowledgeDocuments,
+    deleteStoryStateBlock,
     projectConstraints,
     upsertProjectConstraint,
     removeProjectConstraint,

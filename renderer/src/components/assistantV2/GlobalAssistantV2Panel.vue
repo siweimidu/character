@@ -342,6 +342,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
         @switch="switchSession"
         @create="createSession"
         @delete="(id) => assistant.deleteSession(id)"
+        @rename="(id, title) => assistant.renameSession(id, title)"
         @collapse="activeTab = 'chat'"
       />
     </div>

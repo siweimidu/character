@@ -420,6 +420,23 @@ declare global {
         }
         error?: string
       }>
+      deleteStoryState: (payload: { projectId: string; block: string }) => Promise<{
+        success: boolean
+        result?: {
+          block: string
+          count: number
+          snapshot: Array<Record<string, unknown>>
+        }
+        error?: string
+      }>
+      restoreStoryState: (payload: { projectId: string; block: string; rows: Array<Record<string, unknown>> }) => Promise<{
+        success: boolean
+        result?: {
+          block: string
+          count: number
+        }
+        error?: string
+      }>
       testAiConnection: (settings: unknown) => Promise<{
         success: boolean
         result?: unknown
@@ -530,6 +547,16 @@ declare global {
         canceled: boolean
         filePath?: string
       }>
+      exportMarkdown: (payload: CharacterArcExportRequest | unknown) => Promise<{
+        success: boolean
+        canceled: boolean
+        filePath?: string
+      }>
+      exportExcel: (payload: CharacterArcExportRequest | unknown) => Promise<{
+        success: boolean
+        canceled: boolean
+        filePath?: string
+      }>
       exportChapterTxt: (payload: { title?: string; content?: string; defaultFileName?: string }) => Promise<{
         success: boolean
         canceled: boolean
@@ -586,7 +613,7 @@ declare global {
         warning?: string
         error?: string
       }>
-      worldviewExport: (payload: { format: 'txt' | 'md' | 'json'; entries?: Array<{ type: string; title: string; content: string; tags?: string[] }> }) => Promise<{
+      worldviewExport: (payload: { format: 'txt' | 'md' | 'json' | 'excel'; entries?: Array<{ type: string; title: string; content: string; tags?: string[] }> }) => Promise<{
         success: boolean
         canceled: boolean
         filePath?: string
@@ -881,6 +908,17 @@ declare global {
           events: import('@shared/assistant-runtime').PersistedTurnEvent[]
         }>
         sessionRename: (payload: { sessionId: string; title: string }) => Promise<{ ok: boolean }>
+        sessionRestore: (payload: {
+          id?: string
+          projectId: string
+          surfaceId: string
+          scopeRef?: string
+          title: string
+          createdAt?: string
+          updatedAt?: string
+          turns?: unknown[]
+          events?: unknown[]
+        }) => Promise<{ ok: boolean; sessionId?: string; error?: string }>
         turnSend: (payload: import('@shared/assistant-runtime').TurnSendRequest) =>
           Promise<{ turnId: string; finalText: string; status: string; error?: string }>
         turnCancel: (payload: import('@shared/assistant-runtime').TurnCancelRequest) =>

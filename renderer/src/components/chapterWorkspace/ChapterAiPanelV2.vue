@@ -398,6 +398,7 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
         @switch="switchSession"
         @create="createSession"
         @delete="(id) => assistant.deleteSession(id)"
+        @rename="(id, title) => assistant.renameSession(id, title)"
         @collapse="activeTab = 'chat'"
       />
     </div>

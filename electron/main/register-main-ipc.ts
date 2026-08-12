@@ -431,6 +431,76 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
   })
 
+  ipcMain.handle('characterarc:export-markdown', async (_event, payload: unknown) => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) return { success: false, canceled: true }
+    const request = (payload && typeof payload === 'object' && 'data' in (payload as Record<string, unknown>) ? payload : { data: payload }) as ExportRequest
+    const result = await dialog.showSaveDialog(window, {
+      title: request.title ?? '导出章节 Markdown',
+      defaultPath: request.defaultPath ?? 'characterarc-export.md',
+      filters: [{ name: 'Markdown 文档', extensions: ['md'] }]
+    })
+    if (result.canceled || !result.filePath) return { success: false, canceled: true }
+    const data = request.data as {
+      project?: { title?: string } | null
+      outlineVolumes?: Array<{ id?: string; title?: string }>
+      chapters?: Array<{ volumeId?: string; title?: string; content?: string }>
+    }
+    const volumeTitleMap = new Map((data.outlineVolumes ?? []).map((volume) => [volume.id ?? '', volume.title?.trim() || '未命名分卷']))
+    let activeVolumeId = ''
+    const md = [
+      data.project?.title ? `# ${data.project.title}` : '# CharacterArc 导出',
+      '',
+      ...(data.chapters ?? []).flatMap((chapter, index) => {
+        const shouldPrintVolume = chapter.volumeId && chapter.volumeId !== activeVolumeId
+        if (chapter.volumeId) activeVolumeId = chapter.volumeId
+        return [
+          ...(shouldPrintVolume ? [`## ${volumeTitleMap.get(chapter.volumeId ?? '') || '未命名分卷'}`, ''] : []),
+          `### 第${index + 1}章 ${chapter.title ?? '未命名章节'}`,
+          '',
+          chapter.content?.trim() || '（暂无正文内容）',
+          ''
+        ]
+      })
+    ].join('\n')
+    await writeFile(result.filePath, md, 'utf-8')
+    return { success: true, canceled: false, filePath: result.filePath }
+  })
+
+  ipcMain.handle('characterarc:export-excel', async (_event, payload: unknown) => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) return { success: false, canceled: true }
+    const request = (payload && typeof payload === 'object' && 'data' in (payload as Record<string, unknown>) ? payload : { data: payload }) as ExportRequest
+    const result = await dialog.showSaveDialog(window, {
+      title: request.title ?? '导出章节 Excel',
+      defaultPath: request.defaultPath ?? 'characterarc-export.xlsx',
+      filters: [{ name: 'Excel 表格', extensions: ['xlsx'] }]
+    })
+    if (result.canceled || !result.filePath) return { success: false, canceled: true }
+    const data = request.data as {
+      project?: { title?: string } | null
+      outlineVolumes?: Array<{ id?: string; title?: string }>
+      chapters?: Array<{ volumeId?: string; title?: string; content?: string }>
+    }
+    const volumeTitleMap = new Map((data.outlineVolumes ?? []).map((volume) => [volume.id ?? '', volume.title?.trim() || '未命名分卷']))
+    const rows = (data.chapters ?? []).map((chapter, index) => {
+      const volumeTitle = chapter.volumeId ? (volumeTitleMap.get(chapter.volumeId ?? '') || '未命名分卷') : ''
+      return {
+        '序号': index + 1,
+        '分卷': volumeTitle,
+        '章节标题': chapter.title ?? '未命名章节',
+        '正文内容': chapter.content?.trim() || ''
+      }
+    })
+    const { utils, write } = await import('xlsx')
+    const worksheet = utils.json_to_sheet(rows)
+    const workbook = utils.book_new()
+    utils.book_append_sheet(workbook, worksheet, '章节')
+    const buffer = write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer
+    await writeFile(result.filePath, buffer)
+    return { success: true, canceled: false, filePath: result.filePath }
+  })
+
   ipcMain.handle('characterarc:export-chapter-txt', async (_event, payload: unknown) => {
     const window = deps.windowManager.getActiveWindow()
     if (!window) {
@@ -837,17 +907,18 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
 
     const request = (payload && typeof payload === 'object' ? payload : {}) as {
-      format?: 'txt' | 'md' | 'json'
+      format?: 'txt' | 'md' | 'json' | 'excel'
       entries?: Array<{ type: string; title: string; content: string; tags?: string[] }>
     }
     const format = request.format ?? 'json'
     const entries = request.entries ?? []
-    const defaultPath = `世界观设定-${new Date().toISOString().slice(0, 10)}.${format === 'md' ? 'md' : format === 'txt' ? 'txt' : 'json'}`
+    const defaultPath = `世界观设定-${new Date().toISOString().slice(0, 10)}.${format === 'md' ? 'md' : format === 'txt' ? 'txt' : format === 'excel' ? 'xlsx' : 'json'}`
 
     const filterMap = {
       txt: { name: '文本文档', extensions: ['txt'] },
       md: { name: 'Markdown 文档', extensions: ['md'] },
-      json: { name: 'JSON 文件', extensions: ['json'] }
+      json: { name: 'JSON 文件', extensions: ['json'] },
+      excel: { name: 'Excel 工作簿', extensions: ['xlsx'] }
     }
 
     const result = await dialog.showSaveDialog(window, {
@@ -861,6 +932,28 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
 
     let content = ''
+    if (format === 'excel') {
+      const workbook = XLSX.utils.book_new()
+      const headers = ['分类', '标题', '内容', '标签']
+      const rows = entries.map((entry) => [
+        entry.type,
+        entry.title,
+        entry.content,
+        (entry.tags ?? []).join('、')
+      ])
+      const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows])
+      sheet['!cols'] = [
+        { wch: 14 },
+        { wch: 28 },
+        { wch: 60 },
+        { wch: 24 }
+      ]
+      sheet['!autofilter'] = { ref: `A1:D${rows.length + 1}` }
+      XLSX.utils.book_append_sheet(workbook, sheet, '世界观设定')
+      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+      await writeFile(result.filePath, buffer)
+      return { success: true, canceled: false, filePath: result.filePath }
+    }
     if (format === 'json') {
       content = JSON.stringify(
         { entries: entries.map((entry) => ({ type: entry.type, title: entry.title, content: entry.content, tags: entry.tags ?? [] })) },

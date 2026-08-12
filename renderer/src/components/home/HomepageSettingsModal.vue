@@ -185,6 +185,12 @@ function handleScroll(): void {
 }
 
 const activeProviderPreset = computed(() => getProviderPreset(editingProfile.value?.provider ?? draftSettings.provider))
+const activeProviderHomepage = computed(() => activeProviderPreset.value.homepage || '')
+
+function openProviderHomepage(): void {
+  const url = activeProviderHomepage.value
+  if (url) void window.characterArc.openExternalUrl(url)
+}
 const currentVersion = window.characterArc.version
 const modelSelectOptions = computed(() =>
   fetchedModels.value.map((m) => ({ label: m.id, value: m.id }))
@@ -848,6 +854,18 @@ async function saveSettings(): Promise<void> {
                   @update:value="(value) => updateEditingProfile({ name: value })"
                 />
               </n-form-item>
+              <n-button
+                v-if="activeProviderHomepage"
+                quaternary
+                class="provider-home-btn"
+                :title="`打开 ${activeProviderPreset.label} 官网`"
+                @click="openProviderHomepage"
+              >
+                <template #icon>
+                  <ExternalLink :size="16" />
+                </template>
+                {{ activeProviderPreset.label }} 官网
+              </n-button>
             </div>
             <div class="settings-grid">
               <n-form-item label="模型厂商">
@@ -1911,11 +1929,21 @@ async function saveSettings(): Promise<void> {
 }
 
 .profile-name-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 4px;
 }
 
 .profile-name-row .n-form-item {
   max-width: 320px;
+  margin-bottom: 0;
+}
+
+.provider-home-btn {
+  flex-shrink: 0;
+  color: var(--arc-primary, inherit);
 }
 
 .model-input-row {

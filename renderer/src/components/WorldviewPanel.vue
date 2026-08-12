@@ -297,8 +297,8 @@ async function handleBatchImport(): Promise<void> {
     importLoading.value = false
   }
 }
-// 批量导出世界观词条为 txt / md / json
-async function handleBatchExport(format: 'txt' | 'md' | 'json'): Promise<void> {
+// 批量导出世界观词条为 txt / md / json / excel
+async function handleBatchExport(format: 'txt' | 'md' | 'json' | 'excel'): Promise<void> {
   const ids = selectedEntryIds.value
   // 多选时仅导出勾选的内容；未勾选则导出当前全部词条
   const source = ids.length
@@ -334,10 +334,11 @@ async function handleBatchExport(format: 'txt' | 'md' | 'json'): Promise<void> {
 const exportMenuOptions: DropdownOption[] = [
   { key: 'md', label: '导出为 Markdown' },
   { key: 'txt', label: '导出为 TXT' },
-  { key: 'json', label: '导出为 JSON' }
+  { key: 'json', label: '导出为 JSON' },
+  { key: 'excel', label: '导出为 Excel 表格' }
 ]
 function handleExportSelect(key: string | number): void {
-  void handleBatchExport(key as 'txt' | 'md' | 'json')
+  void handleBatchExport(key as 'txt' | 'md' | 'json' | 'excel')
 }
 
 // ── 批量修改分类 / 标签 ──

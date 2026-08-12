@@ -102,6 +102,12 @@ function normalizeInspirationEntries(inspirationEntries?: InspirationEntry[]): I
 }
 
 // 校正回收站条目：确保字段完整、时间戳合法
+// 规范化灵感模块自定义生成类型：去空、去重、去首尾空白
+function normalizeInspirationTypes(types?: string[]): string[] {
+  if (!Array.isArray(types)) return []
+  return [...new Set(types.map((type) => String(type ?? '').trim()).filter(Boolean))]
+}
+
 function normalizeRecycleBin(entries?: RecycleBinEntry[]): RecycleBinEntry[] {
   return (entries ?? []).map((entry) => ({
     ...entry,
@@ -472,6 +478,7 @@ export function createEmptyWorkspace(overrides?: Partial<ProjectWorkspaceData>):
     aiRuns: cloneAiRuns(overrides?.aiRuns),
     workflowDocuments: normalizeWorkflowDocuments(overrides?.workflowDocuments as WorkflowDocument[] | undefined),
     plotThreads: Array.isArray(overrides?.plotThreads) ? (overrides.plotThreads as PlotThread[]) : [],
+    inspirationTypes: normalizeInspirationTypes(overrides?.inspirationTypes),
     recycleBin: normalizeRecycleBin(overrides?.recycleBin)
   }
 }
@@ -531,6 +538,7 @@ export function normalizeWorkspace(
     aiRuns: cloneAiRuns(workspace.aiRuns),
     workflowDocuments: normalizeWorkflowDocuments(projectLevelDocs),
     plotThreads: Array.isArray(workspace.plotThreads) ? (workspace.plotThreads as PlotThread[]) : [],
+    inspirationTypes: normalizeInspirationTypes(workspace.inspirationTypes),
     recycleBin: normalizeRecycleBin(workspace.recycleBin)
   }
 }

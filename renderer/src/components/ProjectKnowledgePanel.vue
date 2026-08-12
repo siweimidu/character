@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { marked } from 'marked'
-import { Boxes, Clock, FileCheck2, GitBranch, History, MapPin, Pause, Play, RefreshCw, ScrollText, Sparkles, Users } from 'lucide-vue-next'
+import { Boxes, Clock, FileCheck2, GitBranch, History, MapPin, Pause, Play, RefreshCw, ScrollText, Sparkles, Trash2, Users } from 'lucide-vue-next'
 import {
   NAlert,
   NButton,
@@ -135,6 +135,68 @@ async function loadStoryState(): Promise<void> {
   }
 }
 
+/** 世界状态库各区块的中文标签与图标 */
+const STORY_STATE_BLOCK_LABEL: Record<string, string> = {
+  characterStates: '角色状态',
+  foreshadowing: '伏笔',
+  relationships: '角色关系',
+  timeline: '时间线',
+  worldRules: '世界规则',
+  clocks: '倒计时'
+}
+
+/** 删除世界状态库中的某个区块，删除后进入回收站 */
+function deleteStoryStateBlock(block: string): void {
+  const project = appStore.currentProject
+  if (!project) return
+  const label = STORY_STATE_BLOCK_LABEL[block] ?? block
+  dialog.warning({
+    title: `删除${label}`,
+    content: `确认删除世界状态库中的「${label}」吗？删除后可在回收站中恢复。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    async onPositiveClick() {
+      const result = await appStore.deleteStoryStateBlock(block)
+      if (!result.success) {
+        message.error(result.error ?? `删除${label}失败`)
+        return
+      }
+      if ((result.count ?? 0) > 0) {
+        message.success(`已删除 ${result.count} 条${label}，可到回收站恢复`)
+      } else {
+        message.info(`世界状态库中没有${label}数据`)
+      }
+      await loadStoryState()
+    }
+  })
+}
+
+/** 清空整个世界状态库 */
+function clearStoryState(): void {
+  const project = appStore.currentProject
+  if (!project) return
+  const blocks = Object.keys(STORY_STATE_BLOCK_LABEL)
+  dialog.warning({
+    title: '清空世界状态库',
+    content: '确认清空世界状态库中的所有数据（角色状态、伏笔、角色关系、时间线、世界规则、倒计时）吗？删除后可在回收站中恢复。',
+    positiveText: '清空',
+    negativeText: '取消',
+    async onPositiveClick() {
+      let deleted = 0
+      for (const block of blocks) {
+        const result = await appStore.deleteStoryStateBlock(block)
+        if (result.success) deleted += result.count ?? 0
+      }
+      if (deleted > 0) {
+        message.success(`已清空世界状态库（${deleted} 条），可到回收站恢复`)
+      } else {
+        message.info('世界状态库已是空的')
+      }
+      await loadStoryState()
+    }
+  })
+}
+
 async function loadBackfillStatuses(): Promise<void> {
   const project = appStore.currentProject
   if (!project) {
@@ -181,6 +243,14 @@ async function loadBackfillTaskStatus(): Promise<void> {
 const selectedAuditReport = ref<KnowledgeDocument | null>(null)
 const selectedKnowledgeDocument = ref<KnowledgeDocument | null>(null)
 const knowledgeHistoryRef = ref<HTMLElement | null>(null)
+
+// 世界状态详情弹窗选中项
+const selectedCharacterState = ref<StoryState['characterStates'][number] | null>(null)
+const selectedForeshadowing = ref<StoryState['activeForeshadowing'][number] | null>(null)
+const selectedRelationship = ref<StoryState['relationships'][number] | null>(null)
+const selectedTimelineEntry = ref<StoryState['recentTimeline'][number] | null>(null)
+const selectedWorldRule = ref<StoryState['worldRules'][number] | null>(null)
+const selectedClock = ref<StoryState['activeClocks'][number] | null>(null)
 
 const notifiedBackfillTaskIds = new Set<string>()
 
@@ -827,16 +897,28 @@ watch(
             角色 {{ storyStateSummary.characters }} · 伏笔 {{ storyStateSummary.foreshadowing }} · 关系 {{ storyStateSummary.relationships }}
           </n-tag>
         </div>
-        <n-button
-          size="small"
-          quaternary
-          :loading="isLoadingStoryState"
-          :disabled="!appStore.currentProject || isLoadingStoryState"
-          @click="loadStoryState"
-        >
-          <template #icon><RefreshCw :size="14" /></template>
-          刷新
-        </n-button>
+        <n-space size="small">
+          <n-button
+            size="small"
+            quaternary
+            type="error"
+            :disabled="!appStore.currentProject || !hasStoryState || isLoadingStoryState"
+            @click="clearStoryState"
+          >
+            <template #icon><Trash2 :size="14" /></template>
+            清空
+          </n-button>
+          <n-button
+            size="small"
+            quaternary
+            :loading="isLoadingStoryState"
+            :disabled="!appStore.currentProject || isLoadingStoryState"
+            @click="loadStoryState"
+          >
+            <template #icon><RefreshCw :size="14" /></template>
+            刷新
+          </n-button>
+        </n-space>
       </div>
 
       <p class="pk-card-desc">
@@ -851,10 +933,10 @@ watch(
         <n-collapse v-else :default-expanded-names="['characters', 'foreshadowing', 'relationships']" arrow-placement="right">
           <n-collapse-item v-if="storyState?.characterStates.length" name="characters">
             <template #header>
-              <div class="pk-state-head"><Users :size="14" /><span>角色状态</span><n-tag size="tiny" :bordered="false">{{ storyState.characterStates.length }}</n-tag></div>
+              <div class="pk-state-head"><Users :size="14" /><span>角色状态</span><n-tag size="tiny" :bordered="false">{{ storyState.characterStates.length }}</n-tag><n-button size="tiny" quaternary type="error" class="pk-state-delete" title="删除角色状态" @click.stop="deleteStoryStateBlock('characterStates')"><template #icon><Trash2 :size="13" /></template></n-button></div>
             </template>
             <div class="pk-state-list">
-              <div v-for="cs in visibleStoryCharacterStates" :key="cs.characterId" class="pk-state-item">
+              <div v-for="cs in visibleStoryCharacterStates" :key="cs.characterId" class="pk-state-item pk-state-item--clickable" @click="selectedCharacterState = cs">
                 <div class="pk-state-item-title">
                   <strong>{{ resolveCharacterName(cs.characterId) }}</strong>
                   <n-tag size="tiny" :bordered="false" type="info">{{ formatChapterRef(cs.chapterIndex) }}</n-tag>
@@ -877,10 +959,10 @@ watch(
 
           <n-collapse-item v-if="storyState?.activeForeshadowing.length" name="foreshadowing">
             <template #header>
-              <div class="pk-state-head"><ScrollText :size="14" /><span>伏笔</span><n-tag size="tiny" :bordered="false">{{ storyState.activeForeshadowing.length }}</n-tag></div>
+              <div class="pk-state-head"><ScrollText :size="14" /><span>伏笔</span><n-tag size="tiny" :bordered="false">{{ storyState.activeForeshadowing.length }}</n-tag><n-button size="tiny" quaternary type="error" class="pk-state-delete" title="删除伏笔" @click.stop="deleteStoryStateBlock('foreshadowing')"><template #icon><Trash2 :size="13" /></template></n-button></div>
             </template>
             <div class="pk-state-list">
-              <div v-for="fs in visibleStoryForeshadowing" :key="fs.foreshadowingId" class="pk-state-item">
+              <div v-for="fs in visibleStoryForeshadowing" :key="fs.foreshadowingId" class="pk-state-item pk-state-item--clickable" @click="selectedForeshadowing = fs">
                 <div class="pk-state-item-title">
                   <strong>{{ fs.description }}</strong>
                   <n-tag size="tiny" :bordered="false" :type="(foreshadowingStatusMeta[fs.status] ?? foreshadowingStatusMeta.active).type">
@@ -905,10 +987,10 @@ watch(
 
           <n-collapse-item v-if="storyState?.relationships.length" name="relationships">
             <template #header>
-              <div class="pk-state-head"><GitBranch :size="14" /><span>角色关系</span><n-tag size="tiny" :bordered="false">{{ storyState.relationships.length }}</n-tag></div>
+              <div class="pk-state-head"><GitBranch :size="14" /><span>角色关系</span><n-tag size="tiny" :bordered="false">{{ storyState.relationships.length }}</n-tag><n-button size="tiny" quaternary type="error" class="pk-state-delete" title="删除角色关系" @click.stop="deleteStoryStateBlock('relationships')"><template #icon><Trash2 :size="13" /></template></n-button></div>
             </template>
             <div class="pk-state-list">
-              <div v-for="rel in visibleStoryRelationships" :key="rel.relationshipId" class="pk-state-item">
+              <div v-for="rel in visibleStoryRelationships" :key="rel.relationshipId" class="pk-state-item pk-state-item--clickable" @click="selectedRelationship = rel">
                 <div class="pk-state-item-title">
                   <strong>{{ resolveCharacterName(rel.participantA) }} ⇄ {{ resolveCharacterName(rel.participantB) }}</strong>
                   <n-tag size="tiny" :bordered="false" type="info">{{ rel.currentStatus }}</n-tag>
@@ -926,10 +1008,10 @@ watch(
 
           <n-collapse-item v-if="storyState?.recentTimeline.length" name="timeline">
             <template #header>
-              <div class="pk-state-head"><Clock :size="14" /><span>时间线</span><n-tag size="tiny" :bordered="false">{{ storyState.recentTimeline.length }}</n-tag></div>
+              <div class="pk-state-head"><Clock :size="14" /><span>时间线</span><n-tag size="tiny" :bordered="false">{{ storyState.recentTimeline.length }}</n-tag><n-button size="tiny" quaternary type="error" class="pk-state-delete" title="删除时间线" @click.stop="deleteStoryStateBlock('timeline')"><template #icon><Trash2 :size="13" /></template></n-button></div>
             </template>
             <div class="pk-state-list">
-              <div v-for="(tl, idx) in visibleStoryTimeline" :key="`tl-${idx}`" class="pk-state-item">
+              <div v-for="(tl, idx) in visibleStoryTimeline" :key="`tl-${idx}`" class="pk-state-item pk-state-item--clickable" @click="selectedTimelineEntry = tl">
                 <div class="pk-state-item-title">
                   <strong>{{ formatChapterRef(tl.chapterIndex) }}</strong>
                   <n-tag v-if="tl.storyDate" size="tiny" :bordered="false" type="info">{{ tl.storyDate }}</n-tag>
@@ -946,10 +1028,10 @@ watch(
 
           <n-collapse-item v-if="storyState?.worldRules.length" name="worldRules">
             <template #header>
-              <div class="pk-state-head"><ScrollText :size="14" /><span>世界规则</span><n-tag size="tiny" :bordered="false">{{ storyState.worldRules.length }}</n-tag></div>
+              <div class="pk-state-head"><ScrollText :size="14" /><span>世界规则</span><n-tag size="tiny" :bordered="false">{{ storyState.worldRules.length }}</n-tag><n-button size="tiny" quaternary type="error" class="pk-state-delete" title="删除世界规则" @click.stop="deleteStoryStateBlock('worldRules')"><template #icon><Trash2 :size="13" /></template></n-button></div>
             </template>
             <div class="pk-state-list">
-              <div v-for="wr in visibleStoryWorldRules" :key="wr.ruleId" class="pk-state-item">
+              <div v-for="wr in visibleStoryWorldRules" :key="wr.ruleId" class="pk-state-item pk-state-item--clickable" @click="selectedWorldRule = wr">
                 <div class="pk-state-item-title">
                   <strong>{{ wr.ruleContent }}</strong>
                   <n-tag v-if="wr.mustComply" size="tiny" :bordered="false" type="error">强约束</n-tag>
@@ -966,10 +1048,10 @@ watch(
 
           <n-collapse-item v-if="storyState?.activeClocks.length" name="clocks">
             <template #header>
-              <div class="pk-state-head"><Clock :size="14" /><span>倒计时</span><n-tag size="tiny" :bordered="false">{{ storyState.activeClocks.length }}</n-tag></div>
+              <div class="pk-state-head"><Clock :size="14" /><span>倒计时</span><n-tag size="tiny" :bordered="false">{{ storyState.activeClocks.length }}</n-tag><n-button size="tiny" quaternary type="error" class="pk-state-delete" title="删除倒计时" @click.stop="deleteStoryStateBlock('clocks')"><template #icon><Trash2 :size="13" /></template></n-button></div>
             </template>
             <div class="pk-state-list">
-              <div v-for="ck in visibleStoryClocks" :key="ck.clockId" class="pk-state-item">
+              <div v-for="ck in visibleStoryClocks" :key="ck.clockId" class="pk-state-item pk-state-item--clickable" @click="selectedClock = ck">
                 <div class="pk-state-item-title">
                   <strong>{{ ck.eventDescription }}</strong>
                   <n-tag size="tiny" :bordered="false" type="warning">{{ ck.urgency || ck.status }}</n-tag>
@@ -1156,6 +1238,293 @@ watch(
         <div class="pk-report-content pk-md" v-html="renderMarkdown(selectedKnowledgeDocument.content)" />
       </n-scrollbar>
     </n-modal>
+
+    <!-- 角色状态详情弹窗 -->
+    <n-modal
+      :show="Boolean(selectedCharacterState)"
+      preset="card"
+      style="width: min(640px, 94vw); max-height: 88vh;"
+      :title="selectedCharacterState ? `角色状态 · ${resolveCharacterName(selectedCharacterState.characterId)}` : '角色状态'"
+      :bordered="false"
+      size="small"
+      closable
+      role="dialog"
+      aria-modal="true"
+      @update:show="(v: boolean) => { if (!v) selectedCharacterState = null }"
+    >
+      <n-scrollbar v-if="selectedCharacterState" style="max-height: 72vh;">
+        <div class="pk-detail">
+          <div class="pk-detail-row">
+            <span class="pk-detail-label">角色</span>
+            <span class="pk-detail-value">{{ resolveCharacterName(selectedCharacterState.characterId) }}</span>
+          </div>
+          <div class="pk-detail-row">
+            <span class="pk-detail-label">最新章节</span>
+            <span class="pk-detail-value">{{ formatChapterRef(selectedCharacterState.chapterIndex) }}</span>
+          </div>
+          <div v-if="selectedCharacterState.location" class="pk-detail-row">
+            <span class="pk-detail-label">当前位置</span>
+            <span class="pk-detail-value"><MapPin :size="13" /> {{ selectedCharacterState.location }}</span>
+          </div>
+          <div v-if="selectedCharacterState.physicalState" class="pk-detail-row">
+            <span class="pk-detail-label">身体状况</span>
+            <span class="pk-detail-value">{{ selectedCharacterState.physicalState }}</span>
+          </div>
+          <div v-if="selectedCharacterState.mentalState" class="pk-detail-row">
+            <span class="pk-detail-label">心理状态</span>
+            <span class="pk-detail-value">{{ selectedCharacterState.mentalState }}</span>
+          </div>
+          <div v-if="selectedCharacterState.arcStage" class="pk-detail-row">
+            <span class="pk-detail-label">弧光阶段</span>
+            <span class="pk-detail-value">{{ selectedCharacterState.arcStage }}</span>
+          </div>
+          <div v-if="selectedCharacterState.powerLevel" class="pk-detail-row">
+            <span class="pk-detail-label">能力等级</span>
+            <span class="pk-detail-value">{{ selectedCharacterState.powerLevel }}</span>
+          </div>
+          <div v-if="selectedCharacterState.goals.length" class="pk-detail-section">
+            <div class="pk-detail-label">当前目标</div>
+            <div class="pk-detail-tags">
+              <n-tag v-for="g in selectedCharacterState.goals" :key="`g-${g}`" size="small" :bordered="false" type="warning">{{ g }}</n-tag>
+            </div>
+          </div>
+          <div v-if="selectedCharacterState.inventory.length" class="pk-detail-section">
+            <div class="pk-detail-label">持有物品</div>
+            <div class="pk-detail-tags">
+              <n-tag v-for="it in selectedCharacterState.inventory" :key="`i-${it}`" size="small" :bordered="false">{{ it }}</n-tag>
+            </div>
+          </div>
+          <div v-if="selectedCharacterState.knowledge.length" class="pk-detail-section">
+            <div class="pk-detail-label">已知信息</div>
+            <div class="pk-detail-tags">
+              <n-tag v-for="k in selectedCharacterState.knowledge" :key="`k-${k}`" size="small" :bordered="false" type="success">{{ k }}</n-tag>
+            </div>
+          </div>
+        </div>
+      </n-scrollbar>
+    </n-modal>
+
+    <!-- 伏笔详情弹窗 -->
+    <n-modal
+      :show="Boolean(selectedForeshadowing)"
+      preset="card"
+      style="width: min(640px, 94vw); max-height: 88vh;"
+      :title="selectedForeshadowing?.description ?? '伏笔详情'"
+      :bordered="false"
+      size="small"
+      closable
+      role="dialog"
+      aria-modal="true"
+      @update:show="(v: boolean) => { if (!v) selectedForeshadowing = null }"
+    >
+      <n-scrollbar v-if="selectedForeshadowing" style="max-height: 72vh;">
+        <div class="pk-detail">
+          <div class="pk-detail-row">
+            <span class="pk-detail-label">描述</span>
+            <span class="pk-detail-value">{{ selectedForeshadowing.description }}</span>
+          </div>
+          <div v-if="selectedForeshadowing.type" class="pk-detail-row">
+            <span class="pk-detail-label">类型</span>
+            <span class="pk-detail-value">{{ selectedForeshadowing.type }}</span>
+          </div>
+          <div class="pk-detail-row">
+            <span class="pk-detail-label">状态</span>
+            <span class="pk-detail-value">
+              <n-tag size="small" :bordered="false" :type="(foreshadowingStatusMeta[selectedForeshadowing.status] ?? foreshadowingStatusMeta.active).type">
+                {{ (foreshadowingStatusMeta[selectedForeshadowing.status] ?? { label: selectedForeshadowing.status }).label }}
+              </n-tag>
+            </span>
+          </div>
+          <div class="pk-detail-row">
+            <span class="pk-detail-label">埋设章节</span>
+            <span class="pk-detail-value">{{ formatChapterRef(selectedForeshadowing.plantedChapter) }}</span>
+          </div>
+          <div v-if="selectedForeshadowing.plantedMethod" class="pk-detail-row">
+            <span class="pk-detail-label">埋设手法</span>
+            <span class="pk-detail-value">{{ selectedForeshadowing.plantedMethod }}</span>
+          </div>
+          <div v-if="selectedForeshadowing.payoffChapter !== null" class="pk-detail-row">
+            <span class="pk-detail-label">预期回收</span>
+            <span class="pk-detail-value">{{ formatChapterRef(selectedForeshadowing.payoffChapter) }}</span>
+          </div>
+          <div v-if="selectedForeshadowing.resolvedChapter !== null" class="pk-detail-row">
+            <span class="pk-detail-label">实际回收</span>
+            <span class="pk-detail-value">{{ formatChapterRef(selectedForeshadowing.resolvedChapter) }}</span>
+          </div>
+          <div v-if="selectedForeshadowing.connections?.length" class="pk-detail-section">
+            <div class="pk-detail-label">关联</div>
+            <div class="pk-detail-tags">
+              <n-tag v-for="conn in selectedForeshadowing.connections" :key="`conn-${conn}`" size="small" :bordered="false" type="info">{{ conn }}</n-tag>
+            </div>
+          </div>
+          <div v-if="selectedForeshadowing.clues.length" class="pk-detail-section">
+            <div class="pk-detail-label">线索</div>
+            <div class="pk-detail-clue-list">
+              <div v-for="(clue, idx) in selectedForeshadowing.clues" :key="`c-${idx}`" class="pk-detail-clue">
+                <n-tag size="tiny" :bordered="false" type="info">{{ formatChapterRef(clue.chapter) }}</n-tag>
+                <span>{{ clue.clue }}</span>
+                <n-tag v-if="clue.method" size="tiny" :bordered="false">手法：{{ clue.method }}</n-tag>
+              </div>
+            </div>
+          </div>
+        </div>
+      </n-scrollbar>
+    </n-modal>
+
+    <!-- 角色关系详情弹窗 -->
+    <n-modal
+      :show="Boolean(selectedRelationship)"
+      preset="card"
+      style="width: min(640px, 94vw); max-height: 88vh;"
+      :title="selectedRelationship ? `角色关系 · ${resolveCharacterName(selectedRelationship.participantA)} ⇄ ${resolveCharacterName(selectedRelationship.participantB)}` : '角色关系'"
+      :bordered="false"
+      size="small"
+      closable
+      role="dialog"
+      aria-modal="true"
+      @update:show="(v: boolean) => { if (!v) selectedRelationship = null }"
+    >
+      <n-scrollbar v-if="selectedRelationship" style="max-height: 72vh;">
+        <div class="pk-detail">
+          <div class="pk-detail-row">
+            <span class="pk-detail-label">关系双方</span>
+            <span class="pk-detail-value">{{ resolveCharacterName(selectedRelationship.participantA) }} ⇄ {{ resolveCharacterName(selectedRelationship.participantB) }}</span>
+          </div>
+          <div class="pk-detail-row">
+            <span class="pk-detail-label">当前状态</span>
+            <span class="pk-detail-value"><n-tag size="small" :bordered="false" type="info">{{ selectedRelationship.currentStatus }}</n-tag></span>
+          </div>
+          <div v-if="selectedRelationship.trajectory" class="pk-detail-row">
+            <span class="pk-detail-label">关系走向</span>
+            <span class="pk-detail-value">{{ selectedRelationship.trajectory }}</span>
+          </div>
+          <div v-if="selectedRelationship.lastInteractionChapter !== null" class="pk-detail-row">
+            <span class="pk-detail-label">最近互动</span>
+            <span class="pk-detail-value">{{ formatChapterRef(selectedRelationship.lastInteractionChapter) }}</span>
+          </div>
+          <div v-if="selectedRelationship.tensionPoints.length" class="pk-detail-section">
+            <div class="pk-detail-label">张力点</div>
+            <div class="pk-detail-tags">
+              <n-tag v-for="tp in selectedRelationship.tensionPoints" :key="`t-${tp}`" size="small" :bordered="false" type="error">{{ tp }}</n-tag>
+            </div>
+          </div>
+        </div>
+      </n-scrollbar>
+    </n-modal>
+
+    <!-- 时间线详情弹窗 -->
+    <n-modal
+      :show="Boolean(selectedTimelineEntry)"
+      preset="card"
+      style="width: min(640px, 94vw); max-height: 88vh;"
+      :title="selectedTimelineEntry ? `时间线 · ${formatChapterRef(selectedTimelineEntry.chapterIndex)}` : '时间线详情'"
+      :bordered="false"
+      size="small"
+      closable
+      role="dialog"
+      aria-modal="true"
+      @update:show="(v: boolean) => { if (!v) selectedTimelineEntry = null }"
+    >
+      <n-scrollbar v-if="selectedTimelineEntry" style="max-height: 72vh;">
+        <div class="pk-detail">
+          <div class="pk-detail-row">
+            <span class="pk-detail-label">章节</span>
+            <span class="pk-detail-value">{{ formatChapterRef(selectedTimelineEntry.chapterIndex) }}</span>
+          </div>
+          <div v-if="selectedTimelineEntry.storyDate" class="pk-detail-row">
+            <span class="pk-detail-label">故事时间</span>
+            <span class="pk-detail-value">{{ selectedTimelineEntry.storyDate }}</span>
+          </div>
+          <div v-if="selectedTimelineEntry.events.length" class="pk-detail-section">
+            <div class="pk-detail-label">事件</div>
+            <ul class="pk-detail-list">
+              <li v-for="(ev, i) in selectedTimelineEntry.events" :key="`ev-${i}`">{{ ev }}</li>
+            </ul>
+          </div>
+          <div v-if="selectedTimelineEntry.worldStateChanges.length" class="pk-detail-section">
+            <div class="pk-detail-label">世界状态变化</div>
+            <ul class="pk-detail-list">
+              <li v-for="(wc, i) in selectedTimelineEntry.worldStateChanges" :key="`wc-${i}`" class="pk-detail-warning">{{ wc }}</li>
+            </ul>
+          </div>
+        </div>
+      </n-scrollbar>
+    </n-modal>
+
+    <!-- 世界规则详情弹窗 -->
+    <n-modal
+      :show="Boolean(selectedWorldRule)"
+      preset="card"
+      style="width: min(640px, 94vw); max-height: 88vh;"
+      title="世界规则详情"
+      :bordered="false"
+      size="small"
+      closable
+      role="dialog"
+      aria-modal="true"
+      @update:show="(v: boolean) => { if (!v) selectedWorldRule = null }"
+    >
+      <n-scrollbar v-if="selectedWorldRule" style="max-height: 72vh;">
+        <div class="pk-detail">
+          <div class="pk-detail-row">
+            <span class="pk-detail-label">规则内容</span>
+            <span class="pk-detail-value">{{ selectedWorldRule.ruleContent }}</span>
+          </div>
+          <div class="pk-detail-row">
+            <span class="pk-detail-label">约束强度</span>
+            <span class="pk-detail-value">
+              <n-tag v-if="selectedWorldRule.mustComply" size="small" :bordered="false" type="error">强约束</n-tag>
+              <n-tag v-else size="small" :bordered="false" type="info">柔性约束</n-tag>
+            </span>
+          </div>
+          <div class="pk-detail-row">
+            <span class="pk-detail-label">确立章节</span>
+            <span class="pk-detail-value">{{ formatChapterRef(selectedWorldRule.establishedChapter) }}</span>
+          </div>
+          <div v-if="selectedWorldRule.exceptions.length" class="pk-detail-section">
+            <div class="pk-detail-label">例外情况</div>
+            <div class="pk-detail-tags">
+              <n-tag v-for="ex in selectedWorldRule.exceptions" :key="`ex-${ex}`" size="small" :bordered="false">{{ ex }}</n-tag>
+            </div>
+          </div>
+        </div>
+      </n-scrollbar>
+    </n-modal>
+
+    <!-- 倒计时详情弹窗 -->
+    <n-modal
+      :show="Boolean(selectedClock)"
+      preset="card"
+      style="width: min(640px, 94vw); max-height: 88vh;"
+      :title="selectedClock?.eventDescription ?? '倒计时详情'"
+      :bordered="false"
+      size="small"
+      closable
+      role="dialog"
+      aria-modal="true"
+      @update:show="(v: boolean) => { if (!v) selectedClock = null }"
+    >
+      <n-scrollbar v-if="selectedClock" style="max-height: 72vh;">
+        <div class="pk-detail">
+          <div class="pk-detail-row">
+            <span class="pk-detail-label">事件</span>
+            <span class="pk-detail-value">{{ selectedClock.eventDescription }}</span>
+          </div>
+          <div v-if="selectedClock.urgency" class="pk-detail-row">
+            <span class="pk-detail-label">紧急程度</span>
+            <span class="pk-detail-value"><n-tag size="small" :bordered="false" type="warning">{{ selectedClock.urgency }}</n-tag></span>
+          </div>
+          <div class="pk-detail-row">
+            <span class="pk-detail-label">状态</span>
+            <span class="pk-detail-value">{{ selectedClock.status }}</span>
+          </div>
+          <div v-if="selectedClock.deadlineChapter !== null" class="pk-detail-row">
+            <span class="pk-detail-label">截止章节</span>
+            <span class="pk-detail-value">{{ formatChapterRef(selectedClock.deadlineChapter) }}</span>
+          </div>
+        </div>
+      </n-scrollbar>
+    </n-modal>
   </section>
 </template>
 
@@ -1317,6 +1686,11 @@ watch(
   font-weight: 600;
 }
 
+.pk-state-delete {
+  margin-left: auto;
+  padding: 0 4px;
+}
+
 .pk-state-list {
   display: flex;
   flex-direction: column;
@@ -1331,6 +1705,16 @@ watch(
   border: 1px solid var(--arc-border);
   border-radius: 8px;
   background: var(--arc-bg-mix);
+}
+
+.pk-state-item--clickable {
+  cursor: pointer;
+  transition: box-shadow 0.15s, border-color 0.15s, transform 0.1s;
+}
+
+.pk-state-item--clickable:hover {
+  border-color: color-mix(in srgb, var(--arc-primary, #18a058) 45%, var(--arc-border));
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
 }
 
 .pk-state-item-title {
@@ -1529,5 +1913,99 @@ watch(
 .pk-md :deep(th) {
   background: var(--arc-bg-mix);
   font-weight: 600;
+}
+
+/* 世界状态详情弹窗样式 */
+.pk-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 2px 4px;
+}
+
+.pk-detail-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--arc-border);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.pk-detail-row:last-child {
+  border-bottom: 0;
+}
+
+.pk-detail-label {
+  flex-shrink: 0;
+  width: 76px;
+  color: var(--arc-text-hint);
+  font-weight: 500;
+}
+
+.pk-detail-value {
+  flex: 1;
+  color: var(--arc-text-primary);
+  word-break: break-word;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.pk-detail-section {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pk-detail-section .pk-detail-label {
+  width: auto;
+  color: var(--arc-text-hint);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pk-detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pk-detail-clue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pk-detail-clue {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--arc-bg-mix);
+  font-size: 13px;
+  color: var(--arc-text-secondary);
+}
+
+.pk-detail-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--arc-text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pk-detail-warning {
+  color: var(--arc-warning, #f0a020);
 }
 </style>

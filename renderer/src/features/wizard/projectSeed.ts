@@ -60,6 +60,7 @@ export interface SpiralBootstrapResult {
 export interface ProjectWorkspaceSeed {
   project: {
     title: string
+    premise: string
     genre: string
     novelLength: NovelLength
     wordCount: string
@@ -350,6 +351,7 @@ export function createProjectWorkspaceSeedFromSpiral(
   return {
     project: {
       title: values.title.trim(),
+      premise: values.premise.trim(),
       genre: values.genre.trim(),
       novelLength,
       wordCount: preset.projectWordCount,
@@ -426,6 +428,7 @@ export function createProjectWorkspaceSeed(
   return {
     project: {
       title: values.title.trim(),
+      premise: values.premise.trim(),
       genre: values.genre.trim(),
       novelLength,
       wordCount: preset.projectWordCount,

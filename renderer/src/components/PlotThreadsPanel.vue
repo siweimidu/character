@@ -600,52 +600,47 @@ function confirmAddGeneratedThreads(): void {
     <!-- 待回收伏笔 -->
     <div v-if="pendingThreads.length > 0" class="thread-group">
       <div class="group-label"><Circle :size="13" class="group-icon pending-icon" /> 待回收（{{ pendingThreads.length }}）</div>
-      <div
-        v-for="thread in visiblePendingThreads"
-        :key="thread.id"
-        class="thread-card"
-        :class="`priority-${thread.priority}`"
-      >
-        <div class="thread-header">
-          <label class="row-check" title="勾选以便批量操作" @click.stop>
-            <input
-              type="checkbox"
-              :checked="selectedThreadIdSet.has(thread.id)"
-              @change="toggleSelectThread(thread.id)"
-            />
-          </label>
-          <div class="thread-title">{{ thread.title }}</div>
-          <span class="priority-badge" :style="{ color: PRIORITY_MAP[thread.priority].color }">
-            <Flag :size="12" /> {{ PRIORITY_MAP[thread.priority].label }}
-          </span>
-          <n-dropdown :options="menuOptions" @select="(key: string) => handleMenuSelect(key, thread)">
-            <n-button text size="tiny" class="more-btn">
-              <MoreVertical :size="14" />
-            </n-button>
-          </n-dropdown>
-        </div>
-        <div v-if="thread.description" class="thread-desc">{{ thread.description }}</div>
-        <div class="thread-meta">
-          <span v-if="thread.openedInChapterId" class="meta-item chapter-link" @click="jumpToChapter(thread.openedInChapterId)">
-            埋设：{{ chapterTitleById(thread.openedInChapterId) }} →
-          </span>
-          <span v-if="thread.plannedCloseChapterId" class="meta-item chapter-link" @click="jumpToChapter(thread.plannedCloseChapterId)">
-            计划回收：{{ chapterTitleById(thread.plannedCloseChapterId) }}
-          </span>
-          <span v-if="thread.tags.length" class="thread-tags">
-            <n-tag
-              v-for="tag in thread.tags"
-              :key="tag"
-              size="tiny"
-              :bordered="false"
-              class="tag-chip"
-            >{{ tag }}</n-tag>
-          </span>
-          <span class="meta-time">{{ formatTime(thread.updatedAt) }}</span>
-        </div>
-        <div v-if="thread.remark" class="thread-remark">
-          <Archive :size="12" /> {{ thread.remark }}
-        </div>
+      <div class="thread-grid">
+        <article
+          v-for="thread in visiblePendingThreads"
+          :key="thread.id"
+          class="thread-card"
+          :class="`priority-${thread.priority}`"
+          @click="openEditEditor(thread)"
+        >
+          <div class="card-top">
+            <label class="card-check" title="勾选以便批量操作" @click.stop>
+              <input
+                type="checkbox"
+                :checked="selectedThreadIdSet.has(thread.id)"
+                @change="toggleSelectThread(thread.id)"
+              />
+            </label>
+            <span class="priority-badge" :style="{ color: PRIORITY_MAP[thread.priority].color }">
+              <Flag :size="12" /> {{ PRIORITY_MAP[thread.priority].label }}
+            </span>
+            <n-dropdown :options="menuOptions" placement="bottom-end" @select="(key: string) => handleMenuSelect(key, thread)">
+              <button class="more-button" type="button" title="更多操作" @click.stop>
+                <MoreVertical :size="16" />
+              </button>
+            </n-dropdown>
+          </div>
+          <h4 class="thread-title">{{ thread.title }}</h4>
+          <p v-if="thread.description" class="thread-desc" :title="thread.description">{{ thread.description }}</p>
+          <div v-if="thread.tags.length" class="tag-row">
+            <n-tag v-for="tag in thread.tags.slice(0, 3)" :key="tag" size="small">{{ tag }}</n-tag>
+            <span v-if="thread.tags.length > 3" class="tag-overflow">+{{ thread.tags.length - 3 }}</span>
+          </div>
+          <div class="card-footer">
+            <span v-if="thread.openedInChapterId" class="chapter-link" @click.stop="jumpToChapter(thread.openedInChapterId)">
+              埋设：{{ chapterTitleById(thread.openedInChapterId) }}
+            </span>
+            <span v-if="thread.plannedCloseChapterId" class="chapter-link" @click.stop="jumpToChapter(thread.plannedCloseChapterId)">
+              计划回收：{{ chapterTitleById(thread.plannedCloseChapterId) }}
+            </span>
+            <span class="meta-time">{{ formatTime(thread.updatedAt) }}</span>
+          </div>
+        </article>
       </div>
     </div>
 
@@ -653,40 +648,44 @@ function confirmAddGeneratedThreads(): void {
     <div v-if="resolvedThreads.length > 0" class="thread-group resolved-group">
       <n-divider class="group-divider" />
       <div class="group-label"><CheckCircle2 :size="13" class="group-icon resolved-icon" /> 已回收（{{ resolvedThreads.length }}）</div>
-      <div
-        v-for="thread in visibleResolvedThreads"
-        :key="thread.id"
-        class="thread-card resolved-card"
-        :class="`priority-${thread.priority}`"
-      >
-        <div class="thread-header">
-          <label class="row-check" title="勾选以便批量操作" @click.stop>
-            <input
-              type="checkbox"
-              :checked="selectedThreadIdSet.has(thread.id)"
-              @change="toggleSelectThread(thread.id)"
-            />
-          </label>
-          <div class="thread-title resolved-title">{{ thread.title }}</div>
-          <n-dropdown :options="menuOptions" @select="(key: string) => handleMenuSelect(key, thread)">
-            <n-button text size="tiny" class="more-btn">
-              <MoreVertical :size="14" />
-            </n-button>
-          </n-dropdown>
-        </div>
-        <div v-if="thread.description" class="thread-desc resolved-desc">{{ thread.description }}</div>
-        <div class="thread-meta">
-          <span v-if="thread.openedInChapterId" class="meta-item chapter-link" @click="jumpToChapter(thread.openedInChapterId)">
-            埋设：{{ chapterTitleById(thread.openedInChapterId) }}
-          </span>
-          <span v-if="thread.closedInChapterId" class="meta-item chapter-link" @click="jumpToChapter(thread.closedInChapterId)">
-            回收：{{ chapterTitleById(thread.closedInChapterId) }}
-          </span>
-          <span v-if="thread.tags.length" class="thread-tags">
-            <n-tag v-for="tag in thread.tags" :key="tag" size="tiny" :bordered="false" class="tag-chip">{{ tag }}</n-tag>
-          </span>
-          <span class="meta-time">{{ formatTime(thread.updatedAt) }}</span>
-        </div>
+      <div class="thread-grid">
+        <article
+          v-for="thread in visibleResolvedThreads"
+          :key="thread.id"
+          class="thread-card resolved-card"
+          :class="`priority-${thread.priority}`"
+          @click="openEditEditor(thread)"
+        >
+          <div class="card-top">
+            <label class="card-check" title="勾选以便批量操作" @click.stop>
+              <input
+                type="checkbox"
+                :checked="selectedThreadIdSet.has(thread.id)"
+                @change="toggleSelectThread(thread.id)"
+              />
+            </label>
+            <n-dropdown :options="menuOptions" placement="bottom-end" @select="(key: string) => handleMenuSelect(key, thread)">
+              <button class="more-button" type="button" title="更多操作" @click.stop>
+                <MoreVertical :size="16" />
+              </button>
+            </n-dropdown>
+          </div>
+          <h4 class="thread-title resolved-title">{{ thread.title }}</h4>
+          <p v-if="thread.description" class="thread-desc resolved-desc" :title="thread.description">{{ thread.description }}</p>
+          <div v-if="thread.tags.length" class="tag-row">
+            <n-tag v-for="tag in thread.tags.slice(0, 3)" :key="tag" size="small">{{ tag }}</n-tag>
+            <span v-if="thread.tags.length > 3" class="tag-overflow">+{{ thread.tags.length - 3 }}</span>
+          </div>
+          <div class="card-footer">
+            <span v-if="thread.openedInChapterId" class="chapter-link" @click.stop="jumpToChapter(thread.openedInChapterId)">
+              埋设：{{ chapterTitleById(thread.openedInChapterId) }}
+            </span>
+            <span v-if="thread.closedInChapterId" class="chapter-link" @click.stop="jumpToChapter(thread.closedInChapterId)">
+              回收：{{ chapterTitleById(thread.closedInChapterId) }}
+            </span>
+            <span class="meta-time">{{ formatTime(thread.updatedAt) }}</span>
+          </div>
+        </article>
       </div>
     </div>
 
@@ -694,36 +693,39 @@ function confirmAddGeneratedThreads(): void {
     <div v-if="abandonedThreads.length > 0" class="thread-group abandoned-group">
       <n-divider class="group-divider" />
       <div class="group-label"><XCircle :size="13" class="group-icon abandoned-icon" /> 已废弃（{{ abandonedThreads.length }}）</div>
-      <div
-        v-for="thread in visibleAbandonedThreads"
-        :key="thread.id"
-        class="thread-card abandoned-card"
-      >
-        <div class="thread-header">
-          <label class="row-check" title="勾选以便批量操作" @click.stop>
-            <input
-              type="checkbox"
-              :checked="selectedThreadIdSet.has(thread.id)"
-              @change="toggleSelectThread(thread.id)"
-            />
-          </label>
-          <div class="thread-title abandoned-title">{{ thread.title }}</div>
-          <n-dropdown :options="menuOptions" @select="(key: string) => handleMenuSelect(key, thread)">
-            <n-button text size="tiny" class="more-btn">
-              <MoreVertical :size="14" />
-            </n-button>
-          </n-dropdown>
-        </div>
-        <div v-if="thread.description" class="thread-desc abandoned-desc">{{ thread.description }}</div>
-        <div class="thread-meta">
-          <span v-if="thread.openedInChapterId" class="meta-item chapter-link" @click="jumpToChapter(thread.openedInChapterId)">
-            埋设：{{ chapterTitleById(thread.openedInChapterId) }}
-          </span>
-          <span v-if="thread.remark" class="meta-item">
+      <div class="thread-grid">
+        <article
+          v-for="thread in visibleAbandonedThreads"
+          :key="thread.id"
+          class="thread-card abandoned-card"
+          @click="openEditEditor(thread)"
+        >
+          <div class="card-top">
+            <label class="card-check" title="勾选以便批量操作" @click.stop>
+              <input
+                type="checkbox"
+                :checked="selectedThreadIdSet.has(thread.id)"
+                @change="toggleSelectThread(thread.id)"
+              />
+            </label>
+            <n-dropdown :options="menuOptions" placement="bottom-end" @select="(key: string) => handleMenuSelect(key, thread)">
+              <button class="more-button" type="button" title="更多操作" @click.stop>
+                <MoreVertical :size="16" />
+              </button>
+            </n-dropdown>
+          </div>
+          <h4 class="thread-title abandoned-title">{{ thread.title }}</h4>
+          <p v-if="thread.description" class="thread-desc abandoned-desc" :title="thread.description">{{ thread.description }}</p>
+          <div v-if="thread.remark" class="thread-remark">
             <Archive :size="12" /> {{ thread.remark }}
-          </span>
-          <span class="meta-time">{{ formatTime(thread.updatedAt) }}</span>
-        </div>
+          </div>
+          <div class="card-footer">
+            <span v-if="thread.openedInChapterId" class="chapter-link" @click.stop="jumpToChapter(thread.openedInChapterId)">
+              埋设：{{ chapterTitleById(thread.openedInChapterId) }}
+            </span>
+            <span class="meta-time">{{ formatTime(thread.updatedAt) }}</span>
+          </div>
+        </article>
       </div>
     </div>
 
@@ -1082,58 +1084,68 @@ function confirmAddGeneratedThreads(): void {
   margin: 4px 0 8px;
 }
 
+.thread-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: 12px;
+}
+
 .thread-card {
-  border: 1px solid var(--arc-border);
-  border-radius: var(--arc-radius-md);
-  background: var(--arc-bg-surface);
-  padding: 10px 12px;
+  position: relative;
   display: flex;
+  min-height: 176px;
   flex-direction: column;
-  gap: 5px;
-  transition: border-color 0.15s;
-  border-left: 3px solid transparent;
+  border: 1px solid var(--arc-border);
+  border-radius: 6px;
+  background: var(--arc-bg-surface);
+  padding: 14px;
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease;
 }
 
 .thread-card:hover {
-  border-color: var(--arc-border-strong);
+  border-color: color-mix(in srgb, var(--arc-primary) 28%, var(--arc-border));
+  background: color-mix(in srgb, var(--arc-primary) 2%, var(--arc-bg-surface));
 }
 
 .thread-card.priority-high {
-  border-left-color: #ef4444;
+  box-shadow: inset 3px 0 0 #ef4444;
 }
 
 .thread-card.priority-medium {
-  border-left-color: #eab308;
+  box-shadow: inset 3px 0 0 #eab308;
 }
 
 .thread-card.priority-low {
-  border-left-color: #94a3b8;
+  box-shadow: inset 3px 0 0 #94a3b8;
 }
 
 .resolved-card {
-  opacity: 0.7;
+  opacity: 0.72;
   background: var(--arc-bg-body);
 }
 
 .abandoned-card {
-  opacity: 0.45;
+  opacity: 0.48;
   background: var(--arc-bg-body);
 }
 
-.thread-header {
+.card-top {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
 }
 
-.row-check {
+.card-check {
   display: inline-flex;
   align-items: center;
-  padding-top: 1px;
+  padding-top: 2px;
   flex-shrink: 0;
 }
-.row-check input[type='checkbox'] {
+.card-check input[type='checkbox'] {
   width: 15px;
   height: 15px;
   accent-color: var(--arc-primary);
@@ -1141,11 +1153,14 @@ function confirmAddGeneratedThreads(): void {
 }
 
 .thread-title {
-  font-size: 13px;
-  font-weight: 600;
+  margin: 12px 0 7px;
+  overflow: hidden;
   color: var(--arc-text-primary);
+  font-size: 16px;
+  font-weight: 700;
   line-height: 1.4;
-  flex: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .resolved-title {
@@ -1168,15 +1183,33 @@ function confirmAddGeneratedThreads(): void {
   padding-top: 2px;
 }
 
-.more-btn {
-  flex-shrink: 0;
+.more-button {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
   color: var(--arc-text-hint);
+  cursor: pointer;
+}
+
+.more-button:hover {
+  background: var(--arc-bg-mix);
+  color: var(--arc-text-secondary);
 }
 
 .thread-desc {
-  font-size: 12px;
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
   color: var(--arc-text-secondary);
+  font-size: 13px;
   line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .resolved-desc,
@@ -1184,20 +1217,41 @@ function confirmAddGeneratedThreads(): void {
   color: var(--arc-text-hint);
 }
 
-.thread-meta {
+.tag-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  margin-top: 10px;
+  overflow: hidden;
+}
+
+.tag-row :deep(.n-tag) {
+  max-width: 88px;
+  flex-shrink: 1;
+}
+
+.tag-row :deep(.n-tag__content) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag-overflow {
+  flex-shrink: 0;
+  color: var(--arc-text-hint);
+  font-size: 12px;
+}
+
+.card-footer {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 2px;
-}
-
-.meta-item {
-  font-size: 11px;
+  margin-top: auto;
+  padding-top: 12px;
   color: var(--arc-text-hint);
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
+  font-size: 12px;
 }
 
 .chapter-link {
@@ -1212,18 +1266,6 @@ function confirmAddGeneratedThreads(): void {
   opacity: 0.8;
 }
 
-.thread-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.tag-chip {
-  background: var(--arc-bg-body) !important;
-  color: var(--arc-text-secondary);
-  font-size: 10px;
-}
-
 .meta-time {
   font-size: 11px;
   color: var(--arc-text-hint);
@@ -1236,8 +1278,35 @@ function confirmAddGeneratedThreads(): void {
   gap: 4px;
   font-size: 11px;
   color: var(--arc-text-hint);
-  padding-top: 2px;
+  padding-top: 6px;
+  margin-top: 8px;
   border-top: 1px dashed var(--arc-border);
+}
+
+/* AI 生成结果列表内的行样式（保留） */
+.row-check {
+  display: inline-flex;
+  align-items: center;
+  padding-top: 2px;
+  flex-shrink: 0;
+}
+.row-check input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--arc-primary);
+  cursor: pointer;
+}
+
+.thread-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tag-chip {
+  background: var(--arc-bg-body) !important;
+  color: var(--arc-text-secondary);
+  font-size: 10px;
 }
 
 .empty-state {
