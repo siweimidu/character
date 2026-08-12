@@ -907,17 +907,18 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
 
     const request = (payload && typeof payload === 'object' ? payload : {}) as {
-      format?: 'txt' | 'md' | 'json'
+      format?: 'txt' | 'md' | 'json' | 'excel'
       entries?: Array<{ type: string; title: string; content: string; tags?: string[] }>
     }
     const format = request.format ?? 'json'
     const entries = request.entries ?? []
-    const defaultPath = `世界观设定-${new Date().toISOString().slice(0, 10)}.${format === 'md' ? 'md' : format === 'txt' ? 'txt' : 'json'}`
+    const defaultPath = `世界观设定-${new Date().toISOString().slice(0, 10)}.${format === 'md' ? 'md' : format === 'txt' ? 'txt' : format === 'excel' ? 'xlsx' : 'json'}`
 
     const filterMap = {
       txt: { name: '文本文档', extensions: ['txt'] },
       md: { name: 'Markdown 文档', extensions: ['md'] },
-      json: { name: 'JSON 文件', extensions: ['json'] }
+      json: { name: 'JSON 文件', extensions: ['json'] },
+      excel: { name: 'Excel 工作簿', extensions: ['xlsx'] }
     }
 
     const result = await dialog.showSaveDialog(window, {
@@ -931,6 +932,28 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
 
     let content = ''
+    if (format === 'excel') {
+      const workbook = XLSX.utils.book_new()
+      const headers = ['分类', '标题', '内容', '标签']
+      const rows = entries.map((entry) => [
+        entry.type,
+        entry.title,
+        entry.content,
+        (entry.tags ?? []).join('、')
+      ])
+      const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows])
+      sheet['!cols'] = [
+        { wch: 14 },
+        { wch: 28 },
+        { wch: 60 },
+        { wch: 24 }
+      ]
+      sheet['!autofilter'] = { ref: `A1:D${rows.length + 1}` }
+      XLSX.utils.book_append_sheet(workbook, sheet, '世界观设定')
+      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+      await writeFile(result.filePath, buffer)
+      return { success: true, canceled: false, filePath: result.filePath }
+    }
     if (format === 'json') {
       content = JSON.stringify(
         { entries: entries.map((entry) => ({ type: entry.type, title: entry.title, content: entry.content, tags: entry.tags ?? [] })) },

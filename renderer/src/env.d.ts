@@ -568,7 +568,7 @@ declare global {
         warning?: string
         error?: string
       }>
-      worldviewExport: (payload: { format: 'txt' | 'md' | 'json'; entries?: Array<{ type: string; title: string; content: string; tags?: string[] }> }) => Promise<{
+      worldviewExport: (payload: { format: 'txt' | 'md' | 'json' | 'excel'; entries?: Array<{ type: string; title: string; content: string; tags?: string[] }> }) => Promise<{
         success: boolean
         canceled: boolean
         filePath?: string
