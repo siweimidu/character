@@ -382,6 +382,11 @@ function handleChapterDragStart(chapterId: string, event: DragEvent): void {
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData('text/plain', chapterId)
+    const chapter = appStore.chapters.find((c) => c.id === chapterId)
+    event.dataTransfer.setData(
+      'application/x-arc-ref',
+      JSON.stringify({ kind: 'chapter', id: chapterId, label: chapter?.title ?? chapterId })
+    )
     const dragImage = (event.currentTarget as HTMLElement).closest('.chapter-row')
     if (dragImage instanceof HTMLElement) {
       event.dataTransfer.setDragImage(dragImage, 24, 18)
@@ -401,6 +406,11 @@ function handleVolumeDragStart(volumeId: string, event: DragEvent): void {
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData('text/plain', volumeId)
+    const volume = appStore.outlineVolumes.find((v) => v.id === volumeId)
+    event.dataTransfer.setData(
+      'application/x-arc-ref',
+      JSON.stringify({ kind: 'volume', id: volumeId, label: volume?.title ?? volumeId })
+    )
     const dragImage = (event.currentTarget as HTMLElement).closest('.volume-head')
     if (dragImage instanceof HTMLElement) {
       event.dataTransfer.setDragImage(dragImage, 24, 14)

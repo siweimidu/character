@@ -317,6 +317,59 @@ function registerSessionHandlers(): void {
 // Turn handlers（含流式事件推送）
 // ============================================================================
 
+/**
+ * 把引用附件（章节/分卷）展开为一段上下文块，追加到用户消息末尾，
+ * 让模型直接拿到被引用章节/分卷的正文，而不用依赖工具按需读取。
+ */
+async function expandAttachmentReferences(
+  payload: TurnSendRequest,
+  userMessage: string
+): Promise<string> {
+  const attachments = payload.attachments
+  if (!attachments || attachments.length === 0) return userMessage
+  const session = (await getConversation()).getSession(payload.sessionId)
+  if (!session) return userMessage
+  const db = await requireDep('ensureDb')()
+
+  const blocks: string[] = []
+  const seen = new Set<string>()
+
+  for (const att of attachments) {
+    const [kind, id] = String(att.ref ?? '').split(':', 2)
+    if (!id || seen.has(`${kind}:${id}`)) continue
+    seen.add(`${kind}:${id}`)
+
+    if (kind === 'chapter') {
+      const row = db
+        .prepare(
+          `SELECT title, content FROM chapters WHERE id = ? AND project_id = ?`
+        )
+        .get(id, session.projectId) as { title: string; content: string } | undefined
+      if (!row) continue
+      const body = String(row.content ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+      if (!body) continue
+      blocks.push(`【引用章节《${row.title}》】\n${body.slice(0, 4000)}`)
+    } else if (kind === 'volume') {
+      // 分卷：把该卷下所有章节正文拼接
+      const rows = db
+        .prepare(
+          `SELECT title, content FROM chapters WHERE volume_id = ? AND project_id = ? ORDER BY sort_order`
+        )
+        .all(id, session.projectId) as Array<{ title: string; content: string }>
+      if (rows.length === 0) continue
+      const parts = rows.map((r) => {
+        const body = String(r.content ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+        return body ? `《${r.title}》：${body.slice(0, 1200)}` : ''
+      }).filter(Boolean)
+      if (parts.length === 0) continue
+      blocks.push(`【引用分卷 ${rows.length} 章】\n${parts.join('\n\n')}`)
+    }
+  }
+
+  if (blocks.length === 0) return userMessage
+  return `${userMessage}\n\n以下是被引用的章节/分卷内容，供你参考（无需重复调用读取工具）：\n\n${blocks.join('\n\n---\n\n')}`
+}
+
 function registerTurnHandlers(): void {
   ipcMain.handle(
     ASSISTANT_IPC_CHANNELS.TURN_SEND,
@@ -344,6 +397,9 @@ function registerTurnHandlers(): void {
           request: payload
         })
 
+        // 展开引用附件（章节/分卷）的正文到用户消息，供模型直接参考
+        const expandedUserMessage = await expandAttachmentReferences(payload, payload.userMessage)
+
         // Emitter：把 TurnEvent 通过 EVENT_STREAM 通道 push 到发起方 window
         const emitter = (evt: AssistantEventPush): void => {
           try {
@@ -358,7 +414,7 @@ function registerTurnHandlers(): void {
           session,
           surface: payload.surface,
           turnInput: {
-            userMessage: payload.userMessage,
+            userMessage: expandedUserMessage,
             intentHint: payload.intentHint,
             attachments: payload.attachments
           },

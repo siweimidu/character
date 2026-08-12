@@ -142,6 +142,23 @@ export function useAssistant(options: UseAssistantOptions) {
   const restoredDraftLabel = ref('')
   const isTruncating = ref(false)
 
+  // === 待发送的引用附件（章节/分卷/Skill），以可叉掉的芯片显示在输入框内 ===
+  const pendingAttachments = ref<TurnAttachment[]>([])
+
+  function addPendingAttachment(att: TurnAttachment): void {
+    // 同一引用不重复添加
+    if (pendingAttachments.value.some((a) => a.kind === att.kind && a.ref === att.ref)) return
+    pendingAttachments.value = [...pendingAttachments.value, att]
+  }
+
+  function removePendingAttachment(refKey: string): void {
+    pendingAttachments.value = pendingAttachments.value.filter((a) => `${a.kind}:${a.ref}` !== refKey)
+  }
+
+  function clearPendingAttachments(): void {
+    pendingAttachments.value = []
+  }
+
   // === 错误 ===
   const lastError = ref<string | null>(null)
 
@@ -586,6 +603,8 @@ export function useAssistant(options: UseAssistantOptions) {
     }
     restoredDraftLabel.value = ''
     lastError.value = null
+    // 已把引用芯片随消息发出，清空待发送附件列表
+    clearPendingAttachments()
 
     // 先乐观塞一个 streaming turn（真实 turnId 由后端事件确认）
     const optimisticTurnId = `optimistic-${Date.now()}`
@@ -634,7 +653,10 @@ export function useAssistant(options: UseAssistantOptions) {
   }
 
   async function send(sendOptions: AssistantSendOptions = {}): Promise<void> {
-    await sendText(composerValue.value, sendOptions)
+    const attachments = pendingAttachments.value.length > 0
+      ? pendingAttachments.value
+      : sendOptions.attachments
+    await sendText(composerValue.value, { ...sendOptions, attachments })
   }
 
   async function continueWithPrompt(prompt: string): Promise<void> {
@@ -878,6 +900,10 @@ export function useAssistant(options: UseAssistantOptions) {
     pendingStaged,
     acceptedStaged,
     composerValue,
+    pendingAttachments,
+    addPendingAttachment,
+    removePendingAttachment,
+    clearPendingAttachments,
     editingTurnId,
     editingDraft,
     restoredDraftLabel,

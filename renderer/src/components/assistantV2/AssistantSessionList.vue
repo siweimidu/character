@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { PanelLeftClose } from 'lucide-vue-next'
+import { computed, ref } from 'vue'
+import { PanelLeftClose, Trash2 } from 'lucide-vue-next'
 import type { AssistantSession } from '@shared/assistant-runtime'
 
 const props = defineProps<{
@@ -14,6 +14,9 @@ const emit = defineEmits<{
   (e: 'delete', sessionId: string): void
   (e: 'collapse'): void
 }>()
+
+/** 待确认删除的会话 id */
+const pendingDeleteId = ref<string | null>(null)
 
 type GroupKey = 'today' | 'yesterday' | 'week' | 'earlier'
 const GROUP_LABEL: Record<GroupKey, string> = {
@@ -94,7 +97,22 @@ const grouped = computed(() => {
           <div class="title">{{ s.title }}</div>
           <div class="meta">
             <span>{{ formatTime(s.updatedAt) }}</span>
-            <button class="del" @click.stop="emit('delete', s.id)" aria-label="删除会话">✕</button>
+            <button
+              class="del"
+              title="删除会话"
+              aria-label="删除会话"
+              @click.stop="pendingDeleteId = s.id"
+            >
+              <Trash2 :size="13" />
+            </button>
+          </div>
+          <!-- 删除确认弹层 -->
+          <div v-if="pendingDeleteId === s.id" class="delete-confirm" @click.stop>
+            <div class="delete-confirm-text">确认删除该对话？</div>
+            <div class="delete-confirm-actions">
+              <button class="dc-cancel" type="button" @click.stop="pendingDeleteId = null">取消</button>
+              <button class="dc-ok" type="button" @click.stop="emit('delete', s.id); pendingDeleteId = null">删除</button>
+            </div>
           </div>
         </div>
       </template>
@@ -210,6 +228,7 @@ const grouped = computed(() => {
   color: var(--arc-text-hint);
 }
 .item {
+  position: relative;
   padding: 9px 10px;
   border-radius: 8px;
   cursor: pointer;
@@ -244,12 +263,61 @@ const grouped = computed(() => {
   color: var(--arc-text-hint);
   cursor: pointer;
   font-size: 11px;
-  padding: 1px 5px;
+  padding: 2px 4px;
   border-radius: 4px;
   opacity: 0;
   transition: all 0.15s ease;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .item:hover .del { opacity: 1; }
 .del:hover { color: var(--v2-danger); background: var(--v2-danger-soft); }
+.delete-confirm {
+  position: absolute;
+  right: 8px;
+  left: 8px;
+  bottom: 8px;
+  z-index: 10;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--arc-bg-surface);
+  border: 1px solid var(--arc-border-strong);
+  box-shadow: var(--arc-shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.delete-confirm-text {
+  font-size: 12px;
+  color: var(--arc-text-primary);
+  font-weight: 500;
+}
+.delete-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.delete-confirm-actions button {
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.dc-cancel {
+  background: var(--arc-bg-weak);
+  color: var(--arc-text-secondary);
+}
+.dc-cancel:hover {
+  background: var(--arc-border);
+}
+.dc-ok {
+  background: var(--v2-danger);
+  color: #fff;
+}
+.dc-ok:hover {
+  opacity: 0.9;
+}
 </style>

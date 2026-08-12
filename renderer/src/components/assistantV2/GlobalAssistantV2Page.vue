@@ -23,6 +23,7 @@ import AssistantComposer from './AssistantComposer.vue'
 import StagedChangesView from './StagedChangesView.vue'
 import AgentSelector from './AgentSelector.vue'
 import AgentMemoryDialog from './AgentMemoryDialog.vue'
+import ReferencePickerDialog from './ReferencePickerDialog.vue'
 
 const appStore = useAppStore()
 const { selectedProjectId } = storeToRefs(appStore)
@@ -50,6 +51,27 @@ const selectedAgentId = ref<string>('')
 
 // 创作记忆对话框
 const memoryDialogVisible = ref(false)
+
+// 引用选择对话框（多选章节/分卷）
+const referencePickerVisible = ref(false)
+type PickedReference = { kind: 'chapter' | 'volume'; id: string; label: string }
+function handleReferenceConfirm(refs: PickedReference[]): void {
+  for (const ref of refs) {
+    if (ref.kind === 'volume') {
+      assistant.addPendingAttachment({
+        kind: 'chapter',
+        ref: `volume:${ref.id}`,
+        label: `分卷《${ref.label}》`
+      })
+    } else {
+      assistant.addPendingAttachment({
+        kind: 'chapter',
+        ref: `chapter:${ref.id}`,
+        label: `章节《${ref.label}》`
+      })
+    }
+  }
+}
 
 // 保存智能体选择到 localStorage，方便下次会话记住
 const AGENT_SELECT_KEY = 'arc-assistant-active-agent'
@@ -112,6 +134,13 @@ const currentMode = computed(() =>
   modeOptions.find((mode) => mode.id === activeMode.value) ?? modeOptions[0]
 )
 
+/** 当前项目已启用的 skills，供输入 / 唤起时快速选择 */
+const availableSkills = computed(() =>
+  (appStore.currentProject?.projectSkills ?? [])
+    .filter((s) => s.enabled)
+    .map((s) => ({ id: s.id, name: s.name, description: s.description }))
+)
+
 const assetLinks = computed(() => [
   { id: 'world', label: '世界观', count: appStore.worldviewEntries.length, icon: Globe2 },
   { id: 'characters', label: '角色', count: appStore.characters.length, icon: Users },
@@ -139,17 +168,8 @@ function sendWithMode(): void {
 }
 
 function handleAttachFile(): void {
-  const chapter = appStore.selectedChapter
-  if (!chapter) {
-    message.warning('请先选择或打开一个章节，再添加文件引用')
-    return
-  }
-  composerValue.value = `【引用文件】章节《${chapter.title}》\n${composerValue.value}`
-  void assistant.send({
-    intentHint: `global-assistant-v2:attach:chapter`,
-    agentId: selectedAgentId.value || undefined,
-    attachments: [{ kind: 'chapter', ref: chapter.id, label: chapter.title }]
-  })
+  // 打开多选引用对话框（章节/分卷），选择后以可叉掉的芯片加入待发送引用
+  referencePickerVisible.value = true
 }
 
 /** 打开文件选择对话框，上传本地 txt/md 文件到对话 */
@@ -471,6 +491,11 @@ async function handleCommit(ids?: string[]): Promise<void> {
         @close="memoryDialogVisible = false"
       />
 
+      <ReferencePickerDialog
+        v-model:visible="referencePickerVisible"
+        @confirm="handleReferenceConfirm"
+      />
+
       <AssistantMessages
         v-if="assistant.messages.value.length > 0 || assistant.isStreaming.value"
         :messages="assistant.messages.value"
@@ -551,8 +576,19 @@ async function handleCommit(ids?: string[]): Promise<void> {
         :is-editing="Boolean(assistant.editingTurnId.value)"
         :restored-label="assistant.restoredDraftLabel.value"
         :mode-label="currentMode.label"
+        :attachments="assistant.pendingAttachments.value"
+        :skills="availableSkills"
         @send="sendWithMode"
         @attach="handleAttachFile"
+        @apply-skill="(skill) => assistant.addPendingAttachment({ kind: 'skill', ref: `skill:${skill.id}`, label: skill.label })"
+        @add-reference="(ref) => {
+          if (ref.kind === 'volume') {
+            assistant.addPendingAttachment({ kind: 'chapter', ref: `volume:${ref.id}`, label: `分卷《${ref.label}》` })
+          } else {
+            assistant.addPendingAttachment({ kind: 'chapter', ref: `chapter:${ref.id}`, label: `章节《${ref.label}》` })
+          }
+        }"
+        @remove-attachment="(key) => assistant.removePendingAttachment(key)"
         @upload-file="handleUploadFile"
         @upload-files="handleUploadFiles"
         @cancel="assistant.cancel()"
@@ -633,6 +669,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
   overflow: hidden;
   background: var(--arc-bg-body);
   color: var(--arc-text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
 }
 .session-col,
 .stage-col {

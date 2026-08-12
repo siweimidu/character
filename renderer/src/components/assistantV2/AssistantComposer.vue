@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { NButton } from 'naive-ui'
 import { Paperclip, Square, Undo2, Upload, X } from 'lucide-vue-next'
+import type { TurnAttachment } from '@shared/assistant-runtime'
 
 const props = defineProps<{
   modelValue: string
@@ -11,12 +12,19 @@ const props = defineProps<{
   streamingCharCount?: number
   isEditing?: boolean
   restoredLabel?: string
+  /** 待发送的引用附件芯片列表 */
+  attachments?: TurnAttachment[]
+  /** 可被 / 快捷指令选择的 skills（命令菜单第二类） */
+  skills?: Array<{ id: string; name: string; description?: string }>
 }>()
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
   (e: 'send', intentHint?: string): void
   (e: 'attach'): void
+  (e: 'apply-skill', skill: { id: string; label: string }): void
+  (e: 'remove-attachment', refKey: string): void
+  (e: 'add-reference', ref: { kind: 'chapter' | 'volume' | 'skill'; id: string; label: string }): void
   (e: 'upload-file'): void
   (e: 'upload-files', files: File[]): void
   (e: 'cancel'): void
@@ -25,6 +33,7 @@ const emit = defineEmits<{
 }>()
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const fileInputRef = ref<HTMLInputElement | null>(null)
 let lastEscapeAt = 0
 
 /** 斜杠命令快捷指令：输入框内以 / 触发，选中后填充模板并附带 intentHint。 */
@@ -48,11 +57,50 @@ const slashOpen = ref(false)
 const slashActiveIdx = ref(0)
 const slashMenuRef = ref<HTMLDivElement | null>(null)
 
-const slashMatches = computed(() => {
+/** 统一把「命令」和「Skills」合并为一个可滑动选择的列表，供键盘/鼠标操作。 */
+type SlashEntry =
+  | { kind: 'command'; key: string; label: string; description: string; template: string; intentHint: string }
+  | { kind: 'skill'; id: string; label: string; name: string; description: string }
+
+const slashCommandEntries: Array<Extract<SlashEntry, { kind: 'command' }>> =
+  SLASH_COMMANDS.map((c) => ({ kind: 'command', ...c }))
+const slashSkillEntries = computed<Array<Extract<SlashEntry, { kind: 'skill' }>>>(() =>
+  (props.skills ?? []).map((s) => ({
+    kind: 'skill',
+    id: s.id,
+    name: s.name,
+    label: `/skill:${s.name}`, 
+    description: s.description || '绑定智能体技能'
+  }))
+)
+
+/** 分组展示：命令 | Skills */
+const slashGroups = computed(() => {
   const q = slashQuery.value.trim().toLowerCase()
-  if (!q) return SLASH_COMMANDS
-  return SLASH_COMMANDS.filter((c) => c.key.includes(q) || c.label.includes(q))
+  const match = (label: string, key: string) => {
+    if (!q) return true
+    return label.toLowerCase().includes(q) || key.toLowerCase().includes(q)
+  }
+  const commands = slashCommandEntries.filter((c) => match(c.label, c.key))
+  const skills = slashSkillEntries.value.filter((s) => match(s.label, s.id))
+  const groups: Array<{ title: string; items: SlashEntry[] }> = []
+  if (commands.length) groups.push({ title: '命令', items: commands })
+  if (skills.length) groups.push({ title: 'Skills', items: skills })
+  return groups
 })
+
+const slashMatches = computed<SlashEntry[]>(() => slashGroups.value.flatMap((g) => g.items))
+
+function slashEntryKey(e: SlashEntry): string {
+  return e.kind === 'command' ? `cmd:${e.key}` : `skill:${e.id}`
+}
+
+/** 把「组内索引」映射为整个列表的平铺索引，用于键盘/鼠标高亮对齐。 */
+function slashFlatIndex(groupIdx: number, itemIdx: number): number {
+  let offset = 0
+  for (let i = 0; i < groupIdx; i++) offset += slashGroups.value[i]?.items.length ?? 0
+  return offset + itemIdx
+}
 
 function handleInput(event: Event) {
   const target = event.target as HTMLTextAreaElement
@@ -72,7 +120,7 @@ function updateSlashMenu(value: string): void {
   const beforeCaret = value.slice(0, caret)
   const lastSlash = beforeCaret.lastIndexOf('/')
   const lineStart = Math.max(beforeCaret.lastIndexOf('\n'), beforeCaret.lastIndexOf('\r'))
-  if (lastSlash > lineStart && beforeCaret.slice(lastSlash).length > 1) {
+  if (lastSlash >= 0 && lastSlash >= lineStart && beforeCaret.slice(lastSlash).length >= 1) {
     const q = beforeCaret.slice(lastSlash + 1)
     if (!/\s/.test(q)) {
       slashQuery.value = q
@@ -85,25 +133,39 @@ function updateSlashMenu(value: string): void {
 }
 
 function applySlashCommand(idx: number): void {
-  const cmd = slashMatches.value[idx]
-  if (!cmd || !textareaRef.value) return
+  const entry = slashMatches.value[idx]
+  if (!entry || !textareaRef.value) return
   const value = props.modelValue
   const caret = textareaRef.value.selectionStart ?? value.length
   const beforeCaret = value.slice(0, caret)
   const lineStart = Math.max(beforeCaret.lastIndexOf('\n'), beforeCaret.lastIndexOf('\r'))
   const lastSlash = beforeCaret.lastIndexOf('/')
-  // 把 /xxx 替换为模板，并附上 intentHint
+  // 把光标处的 /xxx 清掉
   const prefix = beforeCaret.slice(0, lastSlash >= 0 ? lastSlash : caret)
   const afterCaret = value.slice(caret)
-  const newValue = prefix + cmd.template + afterCaret
-  emit('update:modelValue', newValue)
-  slashOpen.value = false
-  slashQuery.value = ''
-  textareaRef.value.focus()
-  const pos = (prefix + cmd.template).length
-  textareaRef.value.setSelectionRange(pos, pos)
-  autosize(textareaRef.value)
-  pendingIntent.value = cmd.intentHint
+
+  if (entry.kind === 'command') {
+    const newValue = prefix + entry.template + afterCaret
+    emit('update:modelValue', newValue)
+    slashOpen.value = false
+    slashQuery.value = ''
+    textareaRef.value.focus()
+    const pos = (prefix + entry.template).length
+    textareaRef.value.setSelectionRange(pos, pos)
+    autosize(textareaRef.value)
+    pendingIntent.value = entry.intentHint
+  } else {
+    // skill：作为引用芯片加入待发送附件，移除 / 输入
+    const newValue = prefix + afterCaret
+    emit('update:modelValue', newValue)
+    slashOpen.value = false
+    slashQuery.value = ''
+    emit('apply-skill', { id: entry.id, label: entry.name })
+    textareaRef.value.focus()
+    const pos = prefix.length
+    textareaRef.value.setSelectionRange(pos, pos)
+    autosize(textareaRef.value)
+  }
 }
 
 function selectSlash(delta: number): void {
@@ -124,9 +186,24 @@ function sendWithIntent(): void {
   emit('send', flushIntent())
 }
 
-// ── 本地文件拖拽上传 ──
+/** 通过原生隐藏 input 选择本地文本文件，作为 IPC 文件对话框的可靠回退 */
+function triggerNativeFilePick(): void {
+  if (props.isStreaming) return
+  fileInputRef.value?.click()
+}
+
+function handleNativeFileChange(event: Event): void {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? []).filter(isTextFile)
+  if (files.length > 0) emit('upload-files', files)
+  input.value = ''
+}
+
+// ── 本地文件拖拽上传 + 章节/分卷引用拖拽 ──
 const isDragOver = ref(false)
 const ACCEPTED_TEXT_EXT = ['txt', 'md', 'markdown', 'mdown', 'mkd']
+
+const ARC_REF_MIME = 'application/x-arc-ref'
 
 function isTextFile(file: File): boolean {
   const name = (file.name || '').toLowerCase()
@@ -135,10 +212,14 @@ function isTextFile(file: File): boolean {
   return ACCEPTED_TEXT_EXT.includes(ext)
 }
 
+function hasArcRef(event: DragEvent): boolean {
+  return !!event.dataTransfer?.types?.includes(ARC_REF_MIME)
+}
+
 function handleDragEnter(event: DragEvent): void {
   event.preventDefault()
   if (props.isStreaming) return
-  if (event.dataTransfer?.types?.includes('Files')) {
+  if (event.dataTransfer?.types?.includes('Files') || hasArcRef(event)) {
     isDragOver.value = true
   }
 }
@@ -146,7 +227,7 @@ function handleDragEnter(event: DragEvent): void {
 function handleDragOver(event: DragEvent): void {
   event.preventDefault()
   if (props.isStreaming) return
-  if (event.dataTransfer?.types?.includes('Files')) {
+  if (event.dataTransfer?.types?.includes('Files') || hasArcRef(event)) {
     isDragOver.value = true
   }
 }
@@ -163,6 +244,21 @@ function handleDrop(event: DragEvent): void {
   event.preventDefault()
   isDragOver.value = false
   if (props.isStreaming) return
+
+  // 章节/分卷引用拖拽：解析自定义 MIME，加入待发送附件芯片
+  if (hasArcRef(event)) {
+    try {
+      const raw = event.dataTransfer?.getData(ARC_REF_MIME) ?? ''
+      const ref = JSON.parse(raw) as { kind: 'chapter' | 'volume' | 'skill'; id: string; label: string }
+      if (ref && ref.id) {
+        emit('add-reference', ref)
+      }
+    } catch {
+      // 忽略无法解析的拖拽数据
+    }
+    return
+  }
+
   const files = Array.from(event.dataTransfer?.files ?? [])
   if (files.length === 0) return
   const textFiles = files.filter(isTextFile)
@@ -243,6 +339,14 @@ watch(
       <Upload :size="18" />
       松开以上传本地文本文件
     </div>
+    <input
+      ref="fileInputRef"
+      type="file"
+      accept=".txt,.md,.markdown,.mdown,.mkd,text/*"
+      multiple
+      class="native-file-input"
+      @change="handleNativeFileChange"
+    />
     <div class="composer" :class="{ streaming: props.isStreaming, editing: props.isEditing }">
       <div v-if="props.restoredLabel" class="restored-draft">
         <Undo2 :size="12" />
@@ -251,20 +355,43 @@ watch(
           <X :size="11" />
         </button>
       </div>
-      <!-- 斜杠命令菜单 -->
-      <div v-if="slashOpen && slashMatches.length > 0" ref="slashMenuRef" class="slash-menu">
-        <button
-          v-for="(cmd, idx) in slashMatches"
-          :key="cmd.key"
-          type="button"
-          class="slash-item"
-          :class="{ active: idx === slashActiveIdx }"
-          @mouseenter="slashActiveIdx = idx"
-          @click="applySlashCommand(idx)"
+      <!-- 待发送的引用附件芯片（章节/分卷/Skill），可单独叉掉 -->
+      <div v-if="props.attachments && props.attachments.length > 0" class="attach-chips">
+        <span
+          v-for="att in props.attachments"
+          :key="`${att.kind}:${att.ref}`"
+          class="attach-chip"
         >
-          <span class="slash-label">{{ cmd.label }}</span>
-          <span class="slash-desc">{{ cmd.description }}</span>
-        </button>
+          <Paperclip :size="11" />
+          <span class="attach-chip-label">{{ att.label }}</span>
+          <button
+            type="button"
+            class="attach-chip-x"
+            title="移除引用"
+            aria-label="移除引用"
+            @click="emit('remove-attachment', `${att.kind}:${att.ref}`)"
+          >
+            <X :size="11" />
+          </button>
+        </span>
+      </div>
+      <!-- 斜杠命令菜单（命令 | Skills 分组） -->
+      <div v-if="slashOpen && slashMatches.length > 0" ref="slashMenuRef" class="slash-menu">
+        <template v-for="(group, gi) in slashGroups" :key="group.title">
+          <div class="slash-group-title">{{ group.title }}</div>
+          <button
+            v-for="(entry, ei) in group.items"
+            :key="slashEntryKey(entry)"
+            type="button"
+            class="slash-item"
+            :class="{ active: slashFlatIndex(gi, ei) === slashActiveIdx }"
+            @mouseenter="slashActiveIdx = slashFlatIndex(gi, ei)"
+            @click="applySlashCommand(slashFlatIndex(gi, ei))"
+          >
+            <span class="slash-label">{{ entry.label }}</span>
+            <span class="slash-desc">{{ entry.description }}</span>
+          </button>
+        </template>
       </div>
       <textarea
         ref="textareaRef"
@@ -298,7 +425,7 @@ watch(
             title="上传本地文件（txt/md）"
             quaternary
             :disabled="props.isStreaming"
-            @click="emit('upload-file')"
+            @click="triggerNativeFilePick"
           >
             <template #icon><Upload :size="13" /></template>
           </NButton>
@@ -332,6 +459,52 @@ watch(
 /* ── 斜杠命令菜单 ── */
 .composer {
   position: relative;
+}
+.attach-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 3px 4px 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--arc-primary) 30%, var(--arc-border));
+  border-radius: 999px;
+  background: var(--arc-primary-soft);
+  color: var(--arc-primary);
+  font-size: 12px;
+}
+.attach-chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attach-chip-x {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.attach-chip-x:hover {
+  background: color-mix(in srgb, var(--arc-primary) 14%, transparent);
+}
+.slash-group-title {
+  padding: 5px 10px 3px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--arc-text-hint);
+  font-family: var(--v2-mono);
 }
 .slash-menu {
   position: absolute;
@@ -385,6 +558,14 @@ watch(
   position: relative;
   padding: 12px 32px 22px;
   background: linear-gradient(180deg, transparent, var(--arc-bg-body) 30%);
+}
+.native-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
 }
 .drag-overlay {
   position: absolute;

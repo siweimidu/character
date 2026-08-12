@@ -18,6 +18,7 @@ import AssistantMessages from './AssistantMessages.vue'
 import AssistantComposer from './AssistantComposer.vue'
 import StagedChangesView from './StagedChangesView.vue'
 import AgentSelector from './AgentSelector.vue'
+import ReferencePickerDialog from './ReferencePickerDialog.vue'
 
 const props = defineProps<{
   activeViewLabel?: string
@@ -54,6 +55,28 @@ type PanelTab = 'chat' | 'staged' | 'sessions'
 const activeTab = ref<PanelTab>('chat')
 const activeMode = ref<AssistantMode>('ingest')
 const isCommitting = ref(false)
+
+// 引用选择对话框（多选章节/分卷）
+const referencePickerVisible = ref(false)
+type PickedReference = { kind: 'chapter' | 'volume'; id: string; label: string }
+function handleReferenceConfirm(refs: PickedReference[]): void {
+  for (const ref of refs) {
+    if (ref.kind === 'volume') {
+      assistant.addPendingAttachment({
+        kind: 'chapter',
+        ref: `volume:${ref.id}`,
+        label: `分卷《${ref.label}》`
+      })
+    } else {
+      assistant.addPendingAttachment({
+        kind: 'chapter',
+        ref: `chapter:${ref.id}`,
+        label: `章节《${ref.label}》`
+      })
+    }
+  }
+  activeTab.value = 'chat'
+}
 
 // 智能体选择
 const selectedAgentId = ref<string>('')
@@ -106,6 +129,13 @@ const currentMode = computed(() =>
   modeOptions.find((mode) => mode.id === activeMode.value) ?? modeOptions[0]
 )
 
+/** 当前项目已启用的 skills，供输入 / 唤起时快速选择 */
+const availableSkills = computed(() =>
+  (appStore.currentProject?.projectSkills ?? [])
+    .filter((s) => s.enabled)
+    .map((s) => ({ id: s.id, name: s.name, description: s.description }))
+)
+
 const stagedBadgeCount = computed(() =>
   assistant.stagedChanges.value.filter((change) =>
     change.status === 'pending' ||
@@ -140,18 +170,9 @@ function sendWithMode(): void {
 }
 
 function handleAttachFile(): void {
-  const chapter = appStore.selectedChapter
+  // 打开多选引用对话框（章节/分卷），选择后以可叉掉的芯片加入待发送引用
   activeTab.value = 'chat'
-  if (!chapter) {
-    message.warning('请先选择或打开一个章节，再添加文件引用')
-    return
-  }
-  composerValue.value = `【引用文件】章节《${chapter.title}》\n${composerValue.value}`
-  void assistant.send({
-    intentHint: `global-assistant-v2:attach:chapter`,
-    agentId: selectedAgentId.value || undefined,
-    attachments: [{ kind: 'chapter', ref: chapter.id, label: chapter.title }]
-  })
+  referencePickerVisible.value = true
 }
 
 /** 打开文件选择对话框，上传本地 txt/md 文件到对话 */
@@ -290,10 +311,10 @@ async function handleCommit(ids?: string[]): Promise<void> {
       <button
         type="button"
         :class="{ active: activeTab === 'chat' }"
+        :title="'对话'"
         @click="activeTab = 'chat'"
       >
         <MessageSquareText :size="14" />
-        对话
       </button>
       <button
         type="button"
@@ -404,8 +425,19 @@ async function handleCommit(ids?: string[]): Promise<void> {
         :is-editing="Boolean(assistant.editingTurnId.value)"
         :restored-label="assistant.restoredDraftLabel.value"
         :mode-label="currentMode.label"
+        :attachments="assistant.pendingAttachments.value"
+        :skills="availableSkills"
         @send="sendWithMode"
         @attach="handleAttachFile"
+        @apply-skill="(skill) => assistant.addPendingAttachment({ kind: 'skill', ref: `skill:${skill.id}`, label: skill.label })"
+        @add-reference="(ref) => {
+          if (ref.kind === 'volume') {
+            assistant.addPendingAttachment({ kind: 'chapter', ref: `volume:${ref.id}`, label: `分卷《${ref.label}》` })
+          } else {
+            assistant.addPendingAttachment({ kind: 'chapter', ref: `chapter:${ref.id}`, label: `章节《${ref.label}》` })
+          }
+        }"
+        @remove-attachment="(key) => assistant.removePendingAttachment(key)"
         @upload-file="handleUploadFile"
         @upload-files="handleUploadFiles"
         @cancel="assistant.cancel()"
@@ -419,6 +451,11 @@ async function handleCommit(ids?: string[]): Promise<void> {
         {{ acceptedCount }} 项已确认，待写回
       </button>
     </footer>
+
+    <ReferencePickerDialog
+      v-model:visible="referencePickerVisible"
+      @confirm="handleReferenceConfirm"
+    />
   </section>
 </template>
 
@@ -446,6 +483,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
   overflow: hidden;
   background: var(--arc-bg-body);
   color: var(--arc-text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
 }
 
 .dock-head {
