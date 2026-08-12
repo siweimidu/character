@@ -557,6 +557,12 @@ declare global {
         canceled: boolean
         filePath?: string
       }>
+      exportProvidersExcel: (payload: { data?: Array<{ provider?: string; homepage?: string }>; title?: string; defaultPath?: string } | unknown) => Promise<{
+        success: boolean
+        canceled: boolean
+        filePath?: string
+        error?: string
+      }>
       exportChapterTxt: (payload: { title?: string; content?: string; defaultFileName?: string }) => Promise<{
         success: boolean
         canceled: boolean

@@ -501,6 +501,27 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     return { success: true, canceled: false, filePath: result.filePath }
   })
 
+  ipcMain.handle('characterarc:export-providers-excel', async (_event, payload: unknown) => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) return { success: false, canceled: true }
+    const request = (payload && typeof payload === 'object' && 'data' in (payload as Record<string, unknown>) ? payload : { data: payload }) as ExportRequest
+    const result = await dialog.showSaveDialog(window, {
+      title: request.title ?? '导出模型厂商官网 Excel',
+      defaultPath: request.defaultPath ?? 'model-providers.xlsx',
+      filters: [{ name: 'Excel 表格', extensions: ['xlsx'] }]
+    })
+    if (result.canceled || !result.filePath) return { success: false, canceled: true }
+    const rows = (request.data as Array<{ provider?: string; homepage?: string }> ?? [])
+      .filter((row) => row && row.provider)
+      .map((row) => ({ '模型厂商': row.provider ?? '', '官网链接': row.homepage ?? '' }))
+    const worksheet = XLSX.utils.json_to_sheet(rows)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, '模型厂商官网')
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer
+    await writeFile(result.filePath, buffer)
+    return { success: true, canceled: false, filePath: result.filePath }
+  })
+
   ipcMain.handle('characterarc:export-chapter-txt', async (_event, payload: unknown) => {
     const window = deps.windowManager.getActiveWindow()
     if (!window) {

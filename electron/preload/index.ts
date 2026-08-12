@@ -47,6 +47,8 @@ contextBridge.exposeInMainWorld('characterArc', {
   exportMarkdown: (payload: unknown) => ipcRenderer.invoke('characterarc:export-markdown', toIpcPayload(payload)),
   /** 将当前项目导出为 Excel 表格 */
   exportExcel: (payload: unknown) => ipcRenderer.invoke('characterarc:export-excel', toIpcPayload(payload)),
+  /** 导出模型厂商官网列表为 Excel 表格 */
+  exportProvidersExcel: (payload: unknown) => ipcRenderer.invoke('characterarc:export-providers-excel', toIpcPayload(payload)),
   /** 将单个章节导出为 TXT */
   exportChapterTxt: (payload: unknown) => ipcRenderer.invoke('characterarc:export-chapter-txt', toIpcPayload(payload)),
   /** 将单个章节导出为 DOCX */

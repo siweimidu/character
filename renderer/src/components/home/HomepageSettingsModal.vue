@@ -4,6 +4,7 @@ import { Activity, Copy, Cpu, Download, ExternalLink, FileInput, Image, MonitorC
 import { NButton, NFormItem, NInput, NInputNumber, NModal, NSelect, NSlider, NSwitch, NTag, useMessage } from 'naive-ui'
 import { autoSaveOptions } from '@/features/settings/autoSave'
 import { getProviderPreset, providerOptions, resolveProviderDefaults } from '@/features/settings/providerPresets'
+import { AI_PROVIDER_CATALOG } from '@shared/ai-provider-catalog'
 import { imageProviderOptions, resolveImageProviderDefaults } from '@/features/settings/imageProviderPresets'
 import { visionProviderOptions, resolveVisionProviderDefaults, resolveImageProviderWebsite, resolveVisionProviderWebsite } from '@/features/settings/visionProviderPresets'
 import { useAppStore } from '@/stores/app'
@@ -220,6 +221,37 @@ const activeProviderHomepage = computed(() => activeProviderPreset.value.homepag
 function openProviderHomepage(): void {
   const url = activeProviderHomepage.value
   if (url) void window.characterArc.openExternalUrl(url)
+}
+
+function handleCopyProviderHomepage(): void {
+  const url = activeProviderHomepage.value
+  if (!url) return
+  void navigator.clipboard.writeText(url).then(() => {
+    message.success(`已复制 ${activeProviderPreset.value.label} 官网链接`)
+  }).catch(() => {
+    message.error('复制失败，请手动复制')
+  })
+}
+
+/** 导出所有模型厂商官网到 Excel：一行一个，格式为「厂商名 + 官网链接」 */
+async function handleExportProvidersExcel(): Promise<void> {
+  const rows = AI_PROVIDER_CATALOG
+    .filter((item) => item.homepage)
+    .map((item) => ({ provider: item.label, homepage: item.homepage }))
+  if (rows.length === 0) {
+    message.warning('暂无可导出的模型厂商官网。')
+    return
+  }
+  try {
+    const result = await window.characterArc.exportProvidersExcel({ data: rows })
+    if (result.success) {
+      message.success(`已导出 ${rows.length} 个模型厂商官网`)
+    } else if (!result.canceled) {
+      message.error(result.error ?? '导出失败')
+    }
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '导出失败')
+  }
 }
 const currentVersion = window.characterArc.version
 const modelSelectOptions = computed(() =>
@@ -878,6 +910,29 @@ async function saveSettings(): Promise<void> {
                 />
               </n-form-item>
               <n-button
+                quaternary
+                class="provider-home-btn"
+                title="导出所有模型厂商官网到 Excel"
+                @click="handleExportProvidersExcel"
+              >
+                <template #icon>
+                  <Download :size="16" />
+                </template>
+                导出官网
+              </n-button>
+              <n-button
+                v-if="activeProviderHomepage"
+                quaternary
+                class="provider-home-btn"
+                title="复制当前模型厂商官网链接"
+                @click="handleCopyProviderHomepage"
+              >
+                <template #icon>
+                  <Copy :size="16" />
+                </template>
+                复制官网
+              </n-button>
+              <n-button
                 v-if="activeProviderHomepage"
                 quaternary
                 class="provider-home-btn"
@@ -1122,16 +1177,13 @@ async function saveSettings(): Promise<void> {
           </div>
           <div class="settings-grid">
             <n-form-item label="图片服务预设">
-              <div class="preset-field">
-                <n-select
-                  :options="imageProviderOptions"
-                  :value="draftSettings.imageProvider"
-                  placeholder="选择预设快速填充模型和地址"
-                  clearable
-                  @update:value="(value) => handleImageProviderChange(value ?? '')"
-                />
-                <span class="preset-hint">切换预设仅更新模型名和 Base URL，API Key 不会被覆盖。</span>
-              </div>
+              <n-select
+                :options="imageProviderOptions"
+                :value="draftSettings.imageProvider"
+                placeholder="选择预设快速填充模型和地址"
+                clearable
+                @update:value="(value) => handleImageProviderChange(value ?? '')"
+              />
             </n-form-item>
             <n-form-item label="图片模型名称">
               <div class="model-input-row">
@@ -1164,6 +1216,7 @@ async function saveSettings(): Promise<void> {
               </div>
             </n-form-item>
           </div>
+          <p class="settings-grid-hint">切换预设仅更新模型名和 Base URL，API Key 不会被覆盖。</p>
           <div class="settings-grid">
             <n-form-item label="图片 Base URL">
               <n-input
@@ -1216,18 +1269,16 @@ async function saveSettings(): Promise<void> {
               />
             </n-form-item>
             <n-form-item label="模型厂商">
-              <div class="preset-field">
-                <n-select
-                  :options="visionProviderOptions"
-                  :value="draftSettings.visionProvider"
-                  placeholder="选择预设快速填充模型和地址"
-                  clearable
-                  @update:value="(value) => handleVisionProviderChange(value ?? '')"
-                />
-                <span class="preset-hint">切换预设仅更新模型名和 Base URL，API Key 不会被覆盖。</span>
-              </div>
+              <n-select
+                :options="visionProviderOptions"
+                :value="draftSettings.visionProvider"
+                placeholder="选择预设快速填充模型和地址"
+                clearable
+                @update:value="(value) => handleVisionProviderChange(value ?? '')"
+              />
             </n-form-item>
           </div>
+          <p class="settings-grid-hint">切换预设仅更新模型名和 Base URL，API Key 不会被覆盖。</p>
           <div class="settings-grid">
             <n-form-item label="模型名称">
               <div class="model-input-row">
@@ -1277,10 +1328,8 @@ async function saveSettings(): Promise<void> {
                 @update:value="(value) => { draftSettings.visionBaseUrl = value }"
               />
             </n-form-item>
-            <n-form-item label=" " label-style="display:none">
-              <div class="preset-hint">识别接口使用 OpenAI 兼容的 /chat/completions 图片输入格式。</div>
-            </n-form-item>
           </div>
+          <p class="settings-grid-hint">识别接口使用 OpenAI 兼容的 /chat/completions 图片输入格式。</p>
           <div class="model-test-row">
             <n-button
               strong
@@ -2035,6 +2084,13 @@ async function saveSettings(): Promise<void> {
 }
 
 .preset-hint {
+  color: var(--arc-text-hint);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.settings-grid-hint {
+  margin: -2px 0 14px;
   color: var(--arc-text-hint);
   font-size: 12px;
   line-height: 1.5;
