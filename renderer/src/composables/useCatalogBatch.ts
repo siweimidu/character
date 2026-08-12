@@ -33,6 +33,9 @@ interface CatalogBatchOptions {
 /** 批量并行度：同时并发不超过 3 个 AI 批次请求，避免打爆单一 provider 的请求配额 */
 const BATCH_CONCURRENCY = 3
 
+/** 灵感模式专用并发度：灵感生成是轻量任务，可安全提高到 5 并发以显著提升速度 */
+const INSPIRATION_CONCURRENCY = 5
+
 /** 单批最大条目数（与后端 catalog-batch 任务单批上限保持一致） */
 const BATCH_SIZE = 10
 
@@ -81,6 +84,7 @@ export function useCatalogBatch() {
     }
 
     let finishedBatches = 0
+    const effectiveConcurrency = options.mode === 'inspiration' ? INSPIRATION_CONCURRENCY : BATCH_CONCURRENCY
     const rawResults = await runBoundedConcurrency(
       batchCounts.map((batchCount, batchIndex) => {
         // 各并发批次使用不同的跟踪 key，避免 runTrackedAiTask 同 key 互斥导致并行失败。
@@ -122,7 +126,7 @@ export function useCatalogBatch() {
           return (response.result as { entries?: CatalogBatchEntry[] }).entries ?? []
         }
       }),
-      BATCH_CONCURRENCY,
+      effectiveConcurrency,
       // 每个批次完成即上报一次进度（按完成批次数估算），保持进度条实时推进。
       () => {
         finishedBatches += 1

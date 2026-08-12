@@ -253,6 +253,8 @@ export const useAppStore = defineStore('app', () => {
   const activeWorkflowVolumeId = ref<string>('')
   /** 全局助手最近一次写回后的聚焦目标，仅用于当前界面反馈 */
   const assistantFocusTarget = ref<AssistantFocusTarget | null>(null)
+  /** 伏笔线索面板聚焦目标：由灵感卡片等触发跳转到指定伏笔 */
+  const threadFocusTarget = ref<{ threadId: string; nonce: number } | null>(null)
 
   const {
     scheduledPersistAt,
@@ -2578,6 +2580,7 @@ export const useAppStore = defineStore('app', () => {
             payload?.content?.trim() ||
             '这里记录一个可以继续扩写的灵感片段，你可以补充场景、冲突、情绪或关键台词。',
           tags: normalizedTags,
+          relatedThreadId: payload?.relatedThreadId || undefined,
           source: payload?.source === 'ai' ? 'ai' : 'manual',
           sortOrder: payload?.sortOrder ?? 0,
           createdAt,
@@ -2605,6 +2608,7 @@ export const useAppStore = defineStore('app', () => {
                     ? normalizeInspirationTags(payload.tags)
                     : entry.tags,
                 source: payload.source ?? entry.source,
+                relatedThreadId: payload.relatedThreadId !== undefined ? payload.relatedThreadId : entry.relatedThreadId,
                 updatedAt: toIsoTimestamp(payload.updatedAt || new Date().toISOString())
               }
             : entry
@@ -2645,7 +2649,7 @@ export const useAppStore = defineStore('app', () => {
   }
 
   // ── 伏笔线索 CRUD ──
-  function createPlotThread(payload?: Partial<PlotThread>): void {
+  function createPlotThread(payload?: Partial<PlotThread>): string {
     const now = new Date().toISOString()
     const nextThread: PlotThread = {
       id: uniqueId('thread'),
@@ -2667,6 +2671,7 @@ export const useAppStore = defineStore('app', () => {
       plotThreads: [...workspace.plotThreads, nextThread]
     }))
     schedulePersist('fast')
+    return nextThread.id
   }
 
   function updatePlotThread(threadId: string, payload: Partial<PlotThread>): void {
@@ -2970,6 +2975,18 @@ export const useAppStore = defineStore('app', () => {
     }
 
     assistantFocusTarget.value = null
+  }
+
+  /** 设置伏笔线索面板的聚焦目标（用于从灵感卡片跳转到指定伏笔） */
+  function setThreadFocus(threadId: string): void {
+    threadFocusTarget.value = {
+      threadId,
+      nonce: Date.now()
+    }
+  }
+
+  function clearThreadFocus(): void {
+    threadFocusTarget.value = null
   }
 
   /** 选中章节并进入章节写作模式 */
@@ -4349,6 +4366,7 @@ export const useAppStore = defineStore('app', () => {
     appSettings,
     activeGlobalAssistantSessionId,
     assistantFocusTarget,
+    threadFocusTarget,
     coverWorkbenchHistory,
     openRecycleBin,
     backToProjects,
@@ -4459,6 +4477,7 @@ export const useAppStore = defineStore('app', () => {
     selectedProjectId,
     setPanel,
     setAssistantFocusTarget,
+    setThreadFocus,
     switchAssistantSession,
     setTheme,
     theme,
@@ -4522,6 +4541,7 @@ export const useAppStore = defineStore('app', () => {
     worldviewEntries,
     persistenceError,
     clearAssistantFocusTarget,
+    clearThreadFocus,
     // ── AI 任务注册表 ──
     runningAiTasks,
     recentAiTasks,

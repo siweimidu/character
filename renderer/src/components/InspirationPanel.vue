@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
-import { MoreVertical, Plus, Search, Settings2, Sparkles } from 'lucide-vue-next'
+import { BookMarked, MoreVertical, Plus, Search, Settings2, Sparkles } from 'lucide-vue-next'
 import { NButton, NDropdown, NDynamicTags, NForm, NFormItem, NInput, NModal, NSelect, NTag, useDialog, useMessage } from 'naive-ui'
 import { getPlainTextFromEditorContent } from '@/features/chapters/editorContent'
 import { buildProjectWritingStyleContext } from '@/features/writingStyles/presets'
@@ -187,6 +187,13 @@ function openEditor(entry?: InspirationEntry): void {
   editorVisible.value = true
 }
 
+// 从灵感卡片跳转到伏笔线索面板中的指定伏笔
+function jumpToPlotThread(threadId: string, event: MouseEvent): void {
+  event.stopPropagation()
+  appStore.setPanel('threads')
+  appStore.setThreadFocus(threadId)
+}
+
 // 调用 AI 接口批量生成灵感卡片（根据选中的焦点类型和当前章节上下文）
 async function handleGeneratePack(payload: { count: number; prompt: string; types: string[] }): Promise<void> {
   if (isGenerating.value) {
@@ -219,22 +226,17 @@ async function handleGeneratePack(payload: { count: number; prompt: string; type
         organizations: appStore.organizations,
         characterRelationships: appStore.characterRelationships,
         organizationMemberships: appStore.organizationMemberships,
-        outlineItems: appStore.outlineItems
+        outlineItems: appStore.outlineItems,
+        plotThreads: appStore.plotThreads.map((t) => ({ title: t.title, description: t.description?.slice(0, 120) }))
       }
     })
     let syncedThreadCount = 0
     entries.forEach((entry, index) => {
       const type = String(entry.type ?? payload.types[0] ?? typeFilter.value ?? '场景火花')
-      appStore.createInspirationEntry({
-        type,
-        title: String(entry.title ?? `${payload.types[0] ?? typeFilter.value ?? '场景火花'} ${index + 1}`),
-        content: String(entry.content ?? 'AI 未返回有效灵感内容'),
-        tags: normalizeCatalogTags(entry.tags),
-        source: 'ai'
-      })
-      // 生成类型为「伏笔」的灵感同步创建到伏笔线索模块
+      let relatedThreadId: string | undefined
+      // 生成类型为「伏笔」的灵感同步创建到伏笔线索模块，并记录关联线索 ID
       if (type === '伏笔') {
-        appStore.createPlotThread({
+        relatedThreadId = appStore.createPlotThread({
           title: String(entry.title ?? `伏笔 ${index + 1}`),
           description: String(entry.content ?? ''),
           openedInChapterId: appStore.selectedChapterId ?? '',
@@ -244,6 +246,14 @@ async function handleGeneratePack(payload: { count: number; prompt: string; type
         })
         syncedThreadCount += 1
       }
+      appStore.createInspirationEntry({
+        type,
+        title: String(entry.title ?? `${payload.types[0] ?? typeFilter.value ?? '场景火花'} ${index + 1}`),
+        content: String(entry.content ?? 'AI 未返回有效灵感内容'),
+        tags: normalizeCatalogTags(entry.tags),
+        source: 'ai',
+        relatedThreadId
+      })
     })
     batchVisible.value = false
     const syncSuffix = syncedThreadCount > 0 ? `，并同步 ${syncedThreadCount} 条到伏笔线索` : ''
@@ -261,14 +271,53 @@ function submitEntry(): void {
   }
 
   if (editingEntryId.value) {
-    appStore.updateInspirationEntry(editingEntryId.value, form)
+    const target = appStore.inspirationEntries.find((e) => e.id === editingEntryId.value)
+    const targetWasForeshadow = target?.type === '伏笔'
+    const targetIsForeshadow = form.type === '伏笔'
+    // 当编辑导致类型变化时，清理或建立伏笔关联
+    const payload: Partial<InspirationEntry> = {
+      type: form.type,
+      title: form.title,
+      content: form.content,
+      tags: [...form.tags]
+    }
+    if (!targetIsForeshadow && targetWasForeshadow) {
+      // 不再是伏笔类型，清理关联
+      payload.relatedThreadId = undefined
+    } else if (targetIsForeshadow && !targetWasForeshadow) {
+      // 新变为伏笔类型，创建关联线索
+      payload.relatedThreadId = appStore.createPlotThread({
+        title: form.title.trim(),
+        description: form.content.trim(),
+        openedInChapterId: appStore.selectedChapterId ?? '',
+        status: 'pending',
+        tags: form.tags,
+        remark: '来自灵感模块手动记录的伏笔'
+      })
+    }
+    appStore.updateInspirationEntry(editingEntryId.value, payload)
     message.success('灵感卡片已更新')
   } else {
+    let relatedThreadId: string | undefined
+    // 手动创建「伏笔」类型灵感时同步创建伏笔线索并关联
+    if (form.type === '伏笔') {
+      relatedThreadId = appStore.createPlotThread({
+        title: form.title.trim(),
+        description: form.content.trim(),
+        openedInChapterId: appStore.selectedChapterId ?? '',
+        status: 'pending',
+        tags: form.tags,
+        remark: '来自灵感模块手动记录的伏笔'
+      })
+      message.success('已新增灵感卡片并同步到伏笔线索')
+    } else {
+      message.success('已新增灵感卡片')
+    }
     appStore.createInspirationEntry({
       ...form,
-      source: 'manual'
+      source: 'manual',
+      relatedThreadId
     })
-    message.success('已新增灵感卡片')
   }
 
   editorVisible.value = false
@@ -411,6 +460,16 @@ function handleMenuSelect(action: string | number, entry: InspirationEntry): voi
         </div>
 
         <div class="card-footer">
+          <button
+            v-if="entry.relatedThreadId"
+            type="button"
+            class="thread-link"
+            title="查看对应伏笔线索"
+            @click="jumpToPlotThread(entry.relatedThreadId, $event)"
+          >
+            <BookMarked :size="13" />
+            查看伏笔
+          </button>
           <span>更新于 {{ formatEntryMetaTime(entry.updatedAt) }}</span>
         </div>
       </article>
@@ -804,6 +863,25 @@ function handleMenuSelect(action: string | number, entry: InspirationEntry): voi
   gap: 12px;
   color: var(--arc-text-hint);
   font-size: 12px;
+}
+
+.thread-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  border-radius: 4px;
+  background: color-mix(in srgb, #6366f1 10%, var(--arc-bg-mix));
+  color: #6366f1;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.16s ease;
+}
+
+.thread-link:hover {
+  background: color-mix(in srgb, #6366f1 18%, var(--arc-bg-mix));
 }
 
 .modal-chip-row {

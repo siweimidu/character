@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch, nextTick } from 'vue'
 import {
   AlertTriangle, Archive, BookMarked, CheckCircle2, Circle,
   Download, FileUp, Flag, MoreVertical, Plus, Search, Sparkles, XCircle
@@ -102,6 +102,36 @@ const visiblePendingThreads = useIncrementalList(pendingThreads, threadResetKey,
 const visibleResolvedThreads = useIncrementalList(resolvedThreads, threadResetKey, { initialSize: 30, batchSize: 30 })
 const visibleAbandonedThreads = useIncrementalList(abandonedThreads, threadResetKey, { initialSize: 30, batchSize: 30 })
 const isEditing = computed(() => Boolean(editingThreadId.value))
+
+// ── 从灵感卡片跳转聚焦的伏笔 ──
+const focusedThreadId = ref<string | null>(null)
+
+// 监听 store 中的 threadFocusTarget，切换面板后自动定位到指定伏笔
+watch(
+  () => appStore.threadFocusTarget,
+  async (target) => {
+    if (target?.threadId) {
+      // 重置筛选以确保目标伏笔在列表中可见
+      statusFilter.value = 'all'
+      chapterFilter.value = ''
+      focusedThreadId.value = target.threadId
+      // 等待 DOM 渲染完成后再滚动到目标卡片
+      await nextTick()
+      await nextTick()
+      const el = document.querySelector(`[data-thread-id="${target.threadId}"]`)
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      // 高亮保持一段时间后自动清除
+      setTimeout(() => {
+        if (focusedThreadId.value === target.threadId) {
+          focusedThreadId.value = null
+        }
+      }, 3000)
+      // 清除 store 中的聚焦目标，避免重复触发
+      appStore.clearThreadFocus()
+    }
+  },
+  { immediate: true }
+)
 
 // 章节选项
 const chapterOptions = computed(() =>
@@ -605,7 +635,8 @@ function confirmAddGeneratedThreads(): void {
           v-for="thread in visiblePendingThreads"
           :key="thread.id"
           class="thread-card"
-          :class="`priority-${thread.priority}`"
+          :class="[`priority-${thread.priority}`, { focused: focusedThreadId === thread.id }]"
+          :data-thread-id="thread.id"
           @click="openEditEditor(thread)"
         >
           <div class="card-top">
@@ -653,7 +684,8 @@ function confirmAddGeneratedThreads(): void {
           v-for="thread in visibleResolvedThreads"
           :key="thread.id"
           class="thread-card resolved-card"
-          :class="`priority-${thread.priority}`"
+          :class="[`priority-${thread.priority}`, { focused: focusedThreadId === thread.id }]"
+          :data-thread-id="thread.id"
           @click="openEditEditor(thread)"
         >
           <div class="card-top">
@@ -698,6 +730,8 @@ function confirmAddGeneratedThreads(): void {
           v-for="thread in visibleAbandonedThreads"
           :key="thread.id"
           class="thread-card abandoned-card"
+          :class="{ focused: focusedThreadId === thread.id }"
+          :data-thread-id="thread.id"
           @click="openEditEditor(thread)"
         >
           <div class="card-top">
@@ -1108,6 +1142,14 @@ function confirmAddGeneratedThreads(): void {
 .thread-card:hover {
   border-color: color-mix(in srgb, var(--arc-primary) 28%, var(--arc-border));
   background: color-mix(in srgb, var(--arc-primary) 2%, var(--arc-bg-surface));
+}
+
+.thread-card.focused {
+  border-color: #6366f1;
+  box-shadow:
+    inset 3px 0 0 #6366f1,
+    0 0 0 2px color-mix(in srgb, #6366f1 30%, transparent);
+  background: color-mix(in srgb, #6366f1 5%, var(--arc-bg-surface));
 }
 
 .thread-card.priority-high {

@@ -511,6 +511,8 @@ export interface InspirationEntry {
   tags: string[]
   /** 来源：ai=AI 生成，manual=用户手动创建 */
   source: 'ai' | 'manual'
+  /** 关联伏笔线索 ID（当灵感类型为「伏笔」且已同步到伏笔线索时记录） */
+  relatedThreadId?: string
   /** 排序权重 */
   sortOrder: number
   /** 创建时间 */
