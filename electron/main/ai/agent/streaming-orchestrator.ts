@@ -8,6 +8,7 @@ import { enrichTaskContextForGeneration } from '../runtime/task-context'
 import { buildRunMeta, buildResponsePreview } from '../runtime/run-meta'
 import { logPrompt, logResponse, logError, logSelection } from '../runtime/logging'
 import { runAgent } from './run-agent'
+import { createFileTools } from './tools/file-tools'
 import { createSkillTools } from './tools/skill-tools'
 import { createKnowledgeTools } from './tools/knowledge-tools'
 import { createChapterTools } from './tools/chapter-tools'
@@ -18,6 +19,7 @@ import { getRecentSkillUsage, formatSkillUsageHint, recordSkillUsage } from './s
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { formatAiErrorMessage } from '../error-message'
+import { getWorkspaceDirPath } from '../../workspace-store'
 
 /** 去掉 SKILL.md 开头的 YAML frontmatter 块（--- ... ---）。 */
 function stripSkillFrontmatter(content: string): string {
@@ -280,13 +282,18 @@ export async function runStreamingAgentTask(
 
   const projectDataTools = createProjectDataTools()
 
+  // 通用文件系统工具：让 agent 能真正执行文件操作（列目录/读/写/删/移动/搜索），
+  // 例如“删除第一张封面图”这类请求可直接落地。仅在 global-assistant 时注入，避免干扰创作初稿流程。
+  const workspaceDir = getWorkspaceDirPath()
+  const fileTools = task.task === 'global-assistant' ? createFileTools() : []
+
   // 仅全局助手注册结构化写回提案工具（global-assistant-proposal 走非 agent 的单次 JSON 任务，不经此路径）。
   const settingProposalDraft = createEmptySettingProposalDraft()
   const settingProposalTools = task.task === 'global-assistant'
     ? createSettingProposalTools({ draft: settingProposalDraft })
     : []
 
-  const registry = [...skillTools, ...knowledgeTools, ...chapterTools, ...projectDataTools, ...settingProposalTools]
+  const registry = [...skillTools, ...knowledgeTools, ...chapterTools, ...projectDataTools, ...fileTools, ...settingProposalTools]
 
   logPrompt('AGENT_STREAM', settings, { system: systemPrompt, user: prompt.user }, task.task, usedSkillIds)
   const requestStartedAt = Date.now()
@@ -297,7 +304,7 @@ export async function runStreamingAgentTask(
       systemPrompt,
       userPrompt: prompt.user,
       tools: registry,
-      ctx: { signal, projectId },
+      ctx: { signal, projectId, workspaceDir },
       handlers,
       maxTokens,
       maxSteps,

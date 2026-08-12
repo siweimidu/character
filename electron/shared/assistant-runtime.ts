@@ -327,9 +327,9 @@ export type PermissionMatrix = Readonly<Record<SurfaceId, readonly ToolMatcher[]
  * 用 `*` 通配简化维护；后续新增工具时按前缀自动生效。
  */
 export const DEFAULT_PERMISSION_MATRIX: PermissionMatrix = {
-  'global-page': ['read_*', 'search_*', 'list_*', 'stage_*', 'skill_*', 'knowledge_*', 'memory_*', 'delegate_*'],
-  'global-panel': ['read_*', 'search_*', 'list_*', 'stage_*', 'skill_*', 'knowledge_*', 'memory_*', 'delegate_*'],
-  'chapter-panel': ['read_*', 'search_*', 'list_*', 'stage_chapter_edit', 'skill_*', 'knowledge_*', 'memory_*', 'delegate_*'],
+  'global-page': ['read_*', 'search_*', 'list_*', 'stage_*', 'skill_*', 'knowledge_*', 'memory_*', 'delegate_*', 'file_*'],
+  'global-panel': ['read_*', 'search_*', 'list_*', 'stage_*', 'skill_*', 'knowledge_*', 'memory_*', 'delegate_*', 'file_*'],
+  'chapter-panel': ['read_*', 'search_*', 'list_*', 'stage_chapter_edit', 'skill_*', 'knowledge_*', 'memory_*', 'delegate_*', 'file_*'],
   'inline-selection': ['read_chapter', 'stage_chapter_edit']
 } as const
 

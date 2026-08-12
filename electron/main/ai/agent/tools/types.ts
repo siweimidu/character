@@ -13,6 +13,8 @@ export type ToolDefinition = {
 export type ToolContext = {
   signal: AbortSignal
   projectId: string
+  /** 用户数据/工作区根目录（getWorkspaceDirPath()）。文件系统工具的可写根，防止越权。 */
+  workspaceDir?: string
 }
 
 export type ToolHandlerResult = {

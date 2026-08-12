@@ -17,12 +17,14 @@ import { buildRunMeta, buildResponsePreview } from '../runtime/run-meta'
 import { logPrompt, logResponse, logSelection, logError } from '../runtime/logging'
 import { buildRepairPrompt } from '../prompts/repair'
 import { runAgent } from './run-agent'
+import { createFileTools } from './tools/file-tools'
 import { createSkillTools } from './tools/skill-tools'
 import { createKnowledgeTools } from './tools/knowledge-tools'
 import { createChapterTools } from './tools/chapter-tools'
 import { createProjectDataTools } from './tools/project-data-tools'
 import { buildAgentBehaviorRules, buildSkillIndex } from './system-prompt'
 import { formatAiErrorMessage } from '../error-message'
+import { getWorkspaceDirPath } from '../../workspace-store'
 
 function stripSkillFrontmatter(content: string): string {
   const match = content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/)
@@ -136,7 +138,11 @@ export async function runAgentTask(
 
   const projectDataTools = createProjectDataTools()
 
-  const tools = [...skillTools, ...knowledgeTools, ...chapterTools, ...projectDataTools]
+  // 通用文件系统工具：让 agent 能真正执行文件操作。仅 global-assistant 注入。
+  const workspaceDir = getWorkspaceDirPath()
+  const fileTools = task.task === 'global-assistant' ? createFileTools() : []
+
+  const tools = [...skillTools, ...knowledgeTools, ...chapterTools, ...projectDataTools, ...fileTools]
   const controller = new AbortController()
 
   logPrompt('AGENT_REQUEST', settings, { system: systemPrompt, user: prompt.user }, task.task, usedSkillIds)
@@ -149,7 +155,7 @@ export async function runAgentTask(
       systemPrompt,
       userPrompt: prompt.user,
       tools,
-      ctx: { signal: controller.signal, projectId },
+      ctx: { signal: controller.signal, projectId, workspaceDir },
       handlers: NOOP_AGENT_HANDLERS,
       maxTokens,
       maxSteps: resolveAgentMaxSteps(task.task)

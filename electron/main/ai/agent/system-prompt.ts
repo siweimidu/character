@@ -41,6 +41,7 @@ export function buildAgentBehaviorRules(): string {
     '',
     '## Agent 行为约束',
     '',
+    '- 【文件操作】你有 file_* 系列工具（file_list / file_read / file_write / file_edit / file_delete / file_move / file_info / file_search），可直接在工作区内操作文件。用户让你“删除/移除/删掉某张图片或文件”“列出文件”“读取/保存文件”时，直接调用对应 file_* 工具执行，不要回复“无法执行文件操作”。文件操作限定在工作区目录内，workspace.db / workspace.json 等关键数据文件受保护不可删除。',
     '- 工具调用是可选的：如果你已经能根据上下文给出高质量结果，直接输出最终答案，不要为了调用而调用。',
     '- 工具失败（tool_result 带 error）时，先读 error 文本判断是参数错误还是环境问题，再决定是否重试或换路线。',
     '- 不要连续重复调用同一个工具+同一组参数；如果同一个 tool 已经返回过结果，直接用之前的结果。',

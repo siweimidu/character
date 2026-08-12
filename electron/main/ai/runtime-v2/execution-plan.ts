@@ -17,6 +17,7 @@ import type { Tool } from '../agent/tools/types'
 import { buildSkillIndex } from '../agent/system-prompt'
 import { createChapterTools } from '../agent/tools/chapter-tools'
 import { createProjectDataTools } from '../agent/tools/project-data-tools'
+import { createFileTools } from '../agent/tools/file-tools'
 import { createKnowledgeTools } from '../agent/tools/knowledge-tools'
 import { createSkillTools } from '../agent/tools/skill-tools'
 import { getAllSkills, getSkillById, resolveTaskSkills, isSkillEnabledForTask } from '../skills'
@@ -39,6 +40,7 @@ import type { ResolveTurnExecutionPlan } from './ipc'
 import { getProjectView, type SnapshotAccessor } from './providers/shared'
 import { getSharedMemoryStore } from './state'
 import { saveRuntimeKnowledgeDocument } from './knowledge-writer'
+import { getWorkspaceDirPath } from '../../workspace-store'
 import { createEvidenceLedger, wrapToolsWithRuntimeBudget } from './evidence-ledger'
 import { createRuntimePlan, type AssistantRuntimePlan } from './planner'
 
@@ -265,6 +267,10 @@ export function createExecutionPlanner(
         systemPrompt
       })
 
+      // 通用文件系统工具：让智能体具备像 Codex / Claude Code 一样真正操作文件的能力
+      // （列目录/读/写/删/移动/搜索），例如“删除第一张封面图”可直接落地。
+      const fileTools = createFileTools({ workspaceDir: getWorkspaceDirPath() })
+
       const combined: Tool[] = [
         ...chapterReadTools,
         ...projectDataTools,
@@ -272,6 +278,7 @@ export function createExecutionPlanner(
         ...skillTools,
         ...memoryTools,
         ...delegateTools,
+        ...fileTools,
         stageChapterEdit,
         stageChapterCreate,
         stageChapterDelete,
