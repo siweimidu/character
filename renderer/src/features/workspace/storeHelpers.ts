@@ -245,6 +245,7 @@ export const defaultAppSettings: AppSettings = {
   imageBaseUrl: '',
   autoSaveInterval: '5m',
   editorFont: DEFAULT_EDITOR_FONT,
+  editorMinimap: false,
   uiScale: 1,
   darkMode: false,
   darkModeStyle: 'nord',
@@ -416,6 +417,7 @@ export function normalizeAppSettings(settings?: Partial<AppSettings> | null): Ap
     imageBaseUrl: sanitizeSettingString(source.imageBaseUrl, defaultAppSettings.imageBaseUrl),
     autoSaveInterval: sanitizeSettingString(source.autoSaveInterval, defaultAppSettings.autoSaveInterval),
     editorFont: isEditorFont(source.editorFont) ? source.editorFont : defaultAppSettings.editorFont,
+    editorMinimap: typeof source.editorMinimap === 'boolean' ? source.editorMinimap : defaultAppSettings.editorMinimap,
     uiScale:
       typeof source.uiScale === 'number' && Number.isFinite(source.uiScale)
         ? Math.min(1.75, Math.max(0.75, source.uiScale))

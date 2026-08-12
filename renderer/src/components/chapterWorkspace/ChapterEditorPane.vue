@@ -10,6 +10,7 @@ import type { ChapterRecoverySnapshot } from './SimpleChapterEditor.vue'
 import ChapterVersionDialog from './ChapterVersionDialog.vue'
 import EditorFindBar from './EditorFindBar.vue'
 import EditorContextMenu from './EditorContextMenu.vue'
+import EditorMinimap from './EditorMinimap.vue'
 import { getChapterCharacterCount } from '@/features/chapters/editorContent'
 import { editorFontOptions, getEditorFontOption, isEditorFont } from '@/features/chapters/editorTypography'
 import { formatChapterWordTargetLabel, parseChapterWordTarget } from '@/features/chapters/wordTarget'
@@ -216,6 +217,7 @@ let cachedSelectionText = ''
 const scrollRef = ref<HTMLDivElement | null>(null)
 const editorRef = ref<InstanceType<typeof SimpleChapterEditor> | null>(null)
 const findBarRef = ref<InstanceType<typeof EditorFindBar> | null>(null)
+const minimapRef = ref<InstanceType<typeof EditorMinimap> | null>(null)
 const findBarVisible = ref(false)
 const findInitialTerm = ref('')
 const recoverySnapshot = ref<ChapterRecoverySnapshot | null>(null)
@@ -306,7 +308,30 @@ async function handleCtxAction(id: string): Promise<void> {
     editor.chain().focus().selectAll().run()
   } else if (id === 'find') {
     openFindBar()
+  } else if (id === 'minimap') {
+    // 切换右侧预览缩略图开关，持久化到应用设置
+    appStore.updateAppSetting('editorMinimap', !appStore.appSettings.editorMinimap)
+    if (appStore.appSettings.editorMinimap) {
+      nextTick(() => minimapRef.value?.redraw())
+    }
   }
+}
+
+// 获取当前章节正文的纯文本，供预览缩略图绘制
+function getEditorText(): string {
+  const editor = tiptapEditor.value
+  if (editor) {
+    return editor.state.doc.textContent
+  }
+  return currentChapter.value?.content
+    ? currentChapter.value.content.replace(/<[^>]*>/g, ' ')
+    : ''
+}
+
+// 章节正文更新后触发预览缩略图重绘
+function onChapterContentUpdate(value: string, chapterId: string): void {
+  appStore.updateChapterContent(value, chapterId)
+  nextTick(() => minimapRef.value?.redraw())
 }
 
 function handleSelectionChange(): void {
@@ -474,12 +499,19 @@ onMounted(() => {
   document.addEventListener('mousedown', handleMouseDown)
   document.addEventListener('keydown', handleGlobalKeydown)
   scrollRef.value?.addEventListener('wheel', handleEditorWheel, { passive: false })
+  scrollRef.value?.addEventListener('scroll', handleEditorScroll, { passive: true })
 })
+
+function handleEditorScroll(): void {
+  minimapRef.value?.redraw()
+}
+
 onBeforeUnmount(() => {
   document.removeEventListener('selectionchange', handleSelectionChange)
   document.removeEventListener('mousedown', handleMouseDown)
   document.removeEventListener('keydown', handleGlobalKeydown)
   scrollRef.value?.removeEventListener('wheel', handleEditorWheel)
+  scrollRef.value?.removeEventListener('scroll', handleEditorScroll)
 })
 </script>
 
@@ -574,8 +606,9 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <div ref="scrollRef" class="ep-scroll arc-scrollbar" @contextmenu="handleEditorContextMenu">
-      <div class="ep-canvas" :style="{ fontSize: fontSize + 'px' }">
+    <div class="ep-body">
+      <div ref="scrollRef" class="ep-scroll arc-scrollbar" @contextmenu="handleEditorContextMenu">
+        <div class="ep-canvas" :style="{ fontSize: fontSize + 'px' }">
         <div v-if="!currentChapter" class="ep-empty">
           请在左侧选择一个章节，或新建一个章节开始写作
         </div>
@@ -649,13 +682,22 @@ onBeforeUnmount(() => {
             :chapter-id="currentChapter.id"
             :model-value="currentChapter.content ?? ''"
             :insertion-request="appStore.pendingChapterInsertion"
-            @update:model-value="(value, chapterId) => appStore.updateChapterContent(value, chapterId)"
+            @update:model-value="onChapterContentUpdate"
             @consume-insertion="appStore.consumeChapterInsertion"
             @selection-change="appStore.updateChapterSelection"
             @recovery-available="recoverySnapshot = $event"
           />
         </template>
       </div>
+      </div>
+
+      <EditorMinimap
+        ref="minimapRef"
+        :visible="appStore.appSettings.editorMinimap"
+        :get-text="getEditorText"
+        :scroll-container="scrollRef"
+        @close="appStore.updateAppSetting('editorMinimap', false)"
+      />
     </div>
 
     <EditorFindBar
@@ -672,6 +714,7 @@ onBeforeUnmount(() => {
       :x="ctxMenuX"
       :y="ctxMenuY"
       :has-selection="ctxMenuHasSelection"
+      :minimap-active="appStore.appSettings.editorMinimap"
       @close="ctxMenuVisible = false"
       @action="handleCtxAction"
     />
@@ -1021,9 +1064,18 @@ onBeforeUnmount(() => {
 .ep-scroll {
   position: relative;
   flex: 1;
+  min-width: 0;
   overflow-y: auto;
   padding: 48px 0 96px;
   min-height: 0;
+}
+
+.ep-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
 }
 
 .ep-canvas {

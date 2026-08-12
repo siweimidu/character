@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { Clipboard, ClipboardPaste, Copy, FileText, Scissors, Search, TextCursor } from 'lucide-vue-next'
+import { Clipboard, ClipboardPaste, Copy, FileText, Scissors, Search, TextCursor, PanelRight } from 'lucide-vue-next'
 
 export interface EditorContextMenuItem {
   id: string
   label: string
-  icon: 'copy' | 'cut' | 'paste' | 'paste-plain' | 'select-all' | 'find'
+  icon: 'copy' | 'cut' | 'paste' | 'paste-plain' | 'select-all' | 'find' | 'minimap'
   disabled?: boolean
   separatorBefore?: boolean
 }
@@ -15,6 +15,7 @@ const props = defineProps<{
   x: number
   y: number
   hasSelection: boolean
+  minimapActive?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -33,6 +34,12 @@ const items = computed<EditorContextMenuItem[]>(() => [
   { id: 'paste-plain', label: '粘贴为纯文本', icon: 'paste-plain' },
   { id: 'select-all', label: '全选', icon: 'select-all', separatorBefore: true },
   { id: 'find', label: '查找…', icon: 'find', separatorBefore: true },
+  {
+    id: 'minimap',
+    label: props.minimapActive ? '关闭预览缩略图' : '启用预览缩略图',
+    icon: 'minimap',
+    separatorBefore: true,
+  },
 ])
 
 function handleClickOutside(e: MouseEvent): void {
@@ -97,6 +104,7 @@ const iconMap = {
   'paste-plain': ClipboardPaste,
   'select-all': TextCursor,
   find: Search,
+  minimap: PanelRight,
   document: FileText,
 } as const
 </script>

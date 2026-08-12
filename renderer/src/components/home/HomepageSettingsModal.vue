@@ -126,6 +126,7 @@ const draftSettings = reactive<AppSettings>({
   imageBaseUrl: '',
   autoSaveInterval: '5m',
   editorFont: 'clear-mono',
+  editorMinimap: false,
   uiScale: 1,
   darkMode: false,
   darkModeStyle: 'nord',
