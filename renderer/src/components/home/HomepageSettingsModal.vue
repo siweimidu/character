@@ -37,6 +37,12 @@ async function handlePickGlobalBackground(): Promise<void> {
   const result = await window.characterArc.pickBackgroundImage()
   if (result.success && result.dataUrl) {
     appStore.updateAppSetting('backgroundImage', result.dataUrl, { flushWorkspace: false })
+    // 上传背景图时若透明度仍为默认的 0（未设置），将其默认设为 1（完全不透明），
+    // 否则背景会被 opacity:0 完全隐藏，表现为「上传了但看不到」。
+    const currentOpacity = appStore.appSettings.backgroundOpacity
+    if (typeof currentOpacity !== 'number' || currentOpacity <= 0) {
+      appStore.updateAppSetting('backgroundOpacity', 1, { flushWorkspace: false })
+    }
     message.success('全局背景图已更新')
   } else if (!result.canceled) {
     message.error(result.error ?? '背景图上传失败')

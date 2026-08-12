@@ -36,8 +36,12 @@ function getWorkspaceFilePath(): string {
   return join(getWorkspaceDirPath(), WORKSPACE_FILE)
 }
 
-function getWorkspaceDbPath(): string {
+export function getWorkspaceDbFilePath(): string {
   return join(getWorkspaceDirPath(), WORKSPACE_DB)
+}
+
+function getWorkspaceDbPath(): string {
+  return getWorkspaceDbFilePath()
 }
 
 let workspaceDb: DatabaseSync | null = null

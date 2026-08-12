@@ -77,6 +77,10 @@ contextBridge.exposeInMainWorld('characterArc', {
   pickCharacterAvatar: () => ipcRenderer.invoke('characterarc:pick-character-avatar'),
   /** 选择背景图片并返回 dataUrl（用于全局/项目自定义背景） */
   pickBackgroundImage: () => ipcRenderer.invoke('characterarc:pick-background-image'),
+  /** 获取本地 SQLite 数据库文件（workspace.db）的完整路径 */
+  getLocalSqlPath: () => ipcRenderer.invoke('characterarc:get-local-sql-path'),
+  /** 在系统文件资源管理器中打开本地 SQLite 数据库所在目录 */
+  openLocalSqlDirectory: () => ipcRenderer.invoke('characterarc:open-local-sql-directory'),
   /** 导入参考小说并执行拆书分析 */
   importReferenceNovelAnalysis: (payload: unknown) => ipcRenderer.invoke('characterarc:import-reference-novel-analysis', toIpcPayload(payload)),
   /** 批量导入多本参考小说并发拆书分析 */

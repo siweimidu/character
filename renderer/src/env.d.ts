@@ -758,6 +758,15 @@ declare global {
         fileName?: string
         error?: string
       }>
+      getLocalSqlPath: () => Promise<{
+        success: boolean
+        path?: string
+        error?: string
+      }>
+      openLocalSqlDirectory: () => Promise<{
+        success: boolean
+        error?: string
+      }>
       scanProjectSkills: (projectId: string) => Promise<{
         success: boolean
         skills?: Array<import('@/types/app').ProjectSkillItem>

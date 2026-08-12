@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { Archive, BookMarked, FileJson, FileStack, FileText, Image, Lightbulb, Network, PenTool, Save, Upload, Users } from 'lucide-vue-next'
-import { NButton, NCard, NFormItem, NInput, NSelect, NSlider, useMessage } from 'naive-ui'
+import { Archive, BookMarked, Copy, FileJson, FileStack, FileText, FolderOpen, Image, Lightbulb, Network, PenTool, Save, Upload, Users } from 'lucide-vue-next'
+import { NButton, NCard, NFormItem, NInput, NSelect, NSlider, NTooltip, useMessage } from 'naive-ui'
 import { getPlainTextFromEditorContent } from '@/features/chapters/editorContent'
 import { autoSaveOptions } from '@/features/settings/autoSave'
 import { buildProjectWritingStyleContext, defaultWritingStylePresetId, resolveStyleBoundSkillDetail } from '@/features/writingStyles/presets'
@@ -38,10 +38,47 @@ async function handlePickProjectBackground(): Promise<void> {
   if (!project?.id) return
   const result = await window.characterArc.pickBackgroundImage()
   if (result.success && result.dataUrl) {
-    appStore.updateProject(project.id, { backgroundImage: result.dataUrl })
+    // 上传背景图时若透明度仍为默认的 0（未设置），将其默认设为 1（完全不透明），
+    // 否则背景会被 opacity:0 完全隐藏，表现为「上传了但看不到」。
+    const nextOpacity =
+      typeof project.backgroundOpacity === 'number' && project.backgroundOpacity > 0
+        ? project.backgroundOpacity
+        : 1
+    appStore.updateProject(project.id, { backgroundImage: result.dataUrl, backgroundOpacity: nextOpacity })
     message.success('项目背景图已更新')
   } else if (!result.canceled) {
     message.error(result.error ?? '背景图上传失败')
+  }
+}
+
+/** 本地 SQLite 数据库文件完整路径（如 …/data/workspace.db） */
+const localSqlPath = ref('')
+/** 复制本地 SQL 文件地址 */
+async function handleCopyLocalSqlPath(): Promise<void> {
+  if (!localSqlPath.value) {
+    const result = await window.characterArc.getLocalSqlPath()
+    if (result.success && result.path) {
+      localSqlPath.value = result.path
+    } else {
+      message.error(result.error ?? '获取本地 SQL 地址失败')
+      return
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(localSqlPath.value)
+    message.success('已复制本地 SQL 文件地址')
+  } catch {
+    message.error('复制失败，请手动复制')
+  }
+}
+
+/** 在系统文件资源管理器中打开本地 SQL 目录 */
+async function handleOpenLocalSqlDirectory(): Promise<void> {
+  const result = await window.characterArc.openLocalSqlDirectory()
+  if (result.success) {
+    message.success('已打开本地 SQL 目录')
+  } else {
+    message.error(result.error ?? '打开本地 SQL 目录失败')
   }
 }
 
@@ -537,10 +574,42 @@ watch(
           </div>
         </template>
         <div class="storage-status" :class="{ error: appStore.persistenceError }">
-          <strong>{{ appStore.persistenceError ? '本地数据状态异常' : '本地数据状态正常' }}</strong>
-          <span>
-            {{ appStore.persistenceError || '当前工作区内容已接入本地 SQLite 持久化。' }}
-          </span>
+          <div class="storage-status-main">
+            <div class="storage-status-text">
+              <strong>{{ appStore.persistenceError ? '本地数据状态异常' : '本地数据状态正常' }}</strong>
+              <span>
+                {{ appStore.persistenceError || '当前工作区内容已接入本地 SQLite 持久化。' }}
+              </span>
+            </div>
+            <div class="storage-status-actions">
+              <n-tooltip>
+                <template #trigger>
+                  <button
+                    type="button"
+                    class="storage-action-btn"
+                    aria-label="跳转到本地 SQL 目录"
+                    @click="handleOpenLocalSqlDirectory"
+                  >
+                    <FolderOpen :size="16" />
+                  </button>
+                </template>
+                跳转到本地 SQL 目录（在文件资源管理器中打开）
+              </n-tooltip>
+              <n-tooltip>
+                <template #trigger>
+                  <button
+                    type="button"
+                    class="storage-action-btn"
+                    aria-label="复制本地 SQL 文件的地址"
+                    @click="handleCopyLocalSqlPath"
+                  >
+                    <Copy :size="16" />
+                  </button>
+                </template>
+                复制本地 SQL 文件的地址
+              </n-tooltip>
+            </div>
+          </div>
         </div>
         <div class="setting-card-grid">
           <div class="setting-mini-card">
@@ -1360,6 +1429,57 @@ watch(
 .storage-status.error span,
 .storage-status.error strong {
   color: var(--arc-danger);
+}
+
+/* ── 存储与备份：本地数据卡片 ── */
+.storage-status-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+}
+.storage-status-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.storage-status-text strong {
+  font-size: 13px;
+}
+.storage-status-text span {
+  color: var(--arc-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.storage-status.error .storage-status-text span,
+.storage-status.error .storage-status-text strong {
+  color: var(--arc-danger);
+}
+.storage-status-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.storage-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  border: 1px solid var(--arc-border);
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.storage-action-btn:hover {
+  border-color: color-mix(in srgb, var(--arc-primary) 35%, var(--arc-border));
+  color: var(--arc-primary);
+  background: color-mix(in srgb, var(--arc-primary) 8%, var(--arc-bg-surface));
 }
 
 /* ── 项目设置：独立小卡片（自动保存 / 界面缩放 / 深色模式）── */

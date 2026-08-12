@@ -14,7 +14,7 @@ import { getBuiltinSkillsDirPath, getProjectSkillsDirPath as getSkillsDirPath } 
 import { extractReferenceNovelContext, type ReferenceNovelLocalContext } from './referenceAnalysis'
 import { fetchWithCache } from './github-mirror'
 import { fetchFanqieTrends } from './fanqie-trends'
-import { getWorkspaceDirPath } from './workspace-store'
+import { getWorkspaceDirPath, getWorkspaceDbFilePath } from './workspace-store'
 import { inspectContinuationNovelFile } from './continuation-import'
 import {
   embedCharaJsonIntoPng,
@@ -1208,6 +1208,29 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
           ? 'image/gif'
           : 'image/jpeg'
     return { success: true, canceled: false, dataUrl: `data:${mime};base64,${buffer.toString('base64')}`, fileName: basename(result.filePaths[0]) }
+  })
+
+  // ── 本地 SQL 文件路径与目录（存储与备份） ──
+  ipcMain.handle('characterarc:get-local-sql-path', async () => {
+    try {
+      const dbPath = getWorkspaceDbFilePath()
+      return { success: true, path: dbPath }
+    } catch (err) {
+      return { success: false, path: '', error: err instanceof Error ? err.message : '获取 SQL 文件地址失败' }
+    }
+  })
+
+  ipcMain.handle('characterarc:open-local-sql-directory', async () => {
+    try {
+      const dir = getWorkspaceDirPath()
+      const errMsg = await shell.openPath(dir)
+      if (errMsg) {
+        return { success: false, error: errMsg }
+      }
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : '打开 SQL 目录失败' }
+    }
   })
 
   ipcMain.handle('characterarc:import-outline-spreadsheet', async () => {
