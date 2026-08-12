@@ -1,15 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useMessage } from 'naive-ui'
+import { NModal, NInput, NButton, NInputGroup, useMessage } from 'naive-ui'
 import {
-  Bookmark,
   History,
   MessageSquareText,
   Plus,
   Sparkles,
   SquareStack,
-  Trash2,
   X
 } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/app'
@@ -23,7 +21,7 @@ import AssistantComposer from '@/components/assistantV2/AssistantComposer.vue'
 import StagedChangesView from '@/components/assistantV2/StagedChangesView.vue'
 import ChapterFirstDraftDialog from './ChapterFirstDraftDialog.vue'
 import { useChapterFirstDraft, type FirstDraftConfig } from './useChapterFirstDraft'
-import { usePromptStore } from '@/composables/usePromptStore'
+import { usePromptStore, type SavedPrompt } from '@/composables/usePromptStore'
 
 const props = defineProps<{
   /** 由父级 ChapterWorkspace 持有的 assistant 实例，避免 v-if 销毁时丢失暂存状态 */
@@ -71,8 +69,6 @@ const activeMode = ref<ChapterMode>('chat')
 const isCommitting = ref(false)
 
 // ── 提示词库（存储/新建/删除常用提示词）──
-const newPromptLabel = ref('')
-const newPromptText = ref('')
 const promptStore = usePromptStore(selectedProjectId)
 
 /** 当前项目已启用的 skills，供输入 / 唤起时快速选择（与工作台智能体对齐） */
@@ -88,7 +84,7 @@ const modeOptions: Array<{ id: ChapterMode; label: string; description: string }
   { id: 'chat', label: '对话', description: '问答、分析、建议' },
   { id: 'diagnose', label: '诊断', description: '检查问题并给建议' },
   { id: 'polish', label: '改写', description: '直接输出修改提案' },
-  { id: 'prompts', label: '提示词', description: '存储、新建和删除常用提示词' }
+  { id: 'prompts', label: '提示词', description: '调用已保存的常用提示词' }
 ]
 
 const quickActions: Record<ChapterMode, Array<{ label: string; prompt: string }>> = {
@@ -109,6 +105,69 @@ const quickActions: Record<ChapterMode, Array<{ label: string; prompt: string }>
   ],
   prompts: []
 }
+
+// ============ 常用提示词库（与工作台智能体共用 promptStore，按项目隔离持久化）============
+const promptManagerOpen = ref(false)
+const promptEditOpen = ref(false)
+const promptDraftLabel = ref('')
+const promptDraftText = ref('')
+const promptEditingId = ref<string | null>(null)
+const promptSearch = ref('')
+
+function openNewPrompt(): void {
+  promptEditingId.value = null
+  promptDraftLabel.value = ''
+  promptDraftText.value = ''
+  promptEditOpen.value = true
+}
+
+function openEditPrompt(item: SavedPrompt): void {
+  promptEditingId.value = item.id
+  promptDraftLabel.value = item.label
+  promptDraftText.value = item.prompt
+  promptEditOpen.value = true
+}
+
+function savePromptDraft(): void {
+  const label = promptDraftLabel.value.trim()
+  const text = promptDraftText.value.trim()
+  if (!text) {
+    message.warning('提示词内容不能为空')
+    return
+  }
+  const finalLabel = label || text.slice(0, 16)
+  if (promptEditingId.value) {
+    promptStore.updatePrompt(promptEditingId.value, finalLabel, text)
+    message.success('提示词已更新')
+  } else {
+    promptStore.addPrompt(finalLabel, text)
+    message.success('提示词已保存')
+  }
+  promptEditOpen.value = false
+}
+
+function deletePrompt(id: string): void {
+  promptStore.deletePrompt(id)
+  message.success('提示词已删除')
+}
+
+const filteredSavedPrompts = computed(() => {
+  const query = promptSearch.value.trim().toLowerCase()
+  if (!query) return promptStore.prompts.value
+  return promptStore.prompts.value.filter((item) =>
+    item.label.toLowerCase().includes(query) || item.prompt.toLowerCase().includes(query)
+  )
+})
+
+/** prompts 模式下展示的快捷操作：从已保存提示词动态生成 */
+const promptQuickActions = computed<Array<{ label: string; prompt: string }>>(() =>
+  promptStore.prompts.value.map((item) => ({ label: item.label, prompt: item.prompt }))
+)
+
+/** 当前模式下的快捷操作列表（prompts 模式走动态列表） */
+const activeQuickActions = computed(() =>
+  activeMode.value === 'prompts' ? promptQuickActions.value : quickActions[activeMode.value]
+)
 
 const currentMode = computed(() =>
   modeOptions.find((mode) => mode.id === activeMode.value) ?? modeOptions[0]
@@ -142,28 +201,7 @@ function fillQuickAction(prompt: string): void {
   composerValue.value = prompt
 }
 
-// ── 提示词库操作 ──
-function handleSavePrompt(): void {
-  if (!newPromptText.value.trim()) {
-    message.warning('请输入提示词内容')
-    return
-  }
-  promptStore.savePrompt(newPromptLabel.value, newPromptText.value)
-  newPromptLabel.value = ''
-  newPromptText.value = ''
-  message.success('提示词已保存')
-}
-
-function handleUsePrompt(promptText: string): void {
-  activeTab.value = 'chat'
-  composerValue.value = promptText
-}
-
-function handleDeletePrompt(id: string, label: string): void {
-  if (!confirm(`确定删除提示词「${label}」吗？`)) return
-  promptStore.deletePrompt(id)
-  message.success('提示词已删除')
-}
+// ── 提示词库操作（新增/编辑/删除/使用由上方 prompt 逻辑与对话框统一处理）──
 
 /** 选中技能作为引用芯片加入待发送附件（与工作台智能体对齐） */
 function handleApplySkill(skill: { id: string; label: string }): void {
@@ -525,52 +563,10 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
           </button>
         </div>
 
-        <div v-if="activeMode === 'prompts'" class="prompt-manager">
-          <div class="prompt-form">
-            <input
-              v-model="newPromptLabel"
-              class="prompt-name-input"
-              placeholder="提示词名称（可选）"
-              maxlength="30"
-            />
-            <textarea
-              v-model="newPromptText"
-              class="prompt-text-input"
-              placeholder="输入要保存的常用提示词…"
-              rows="2"
-            ></textarea>
-            <button type="button" class="prompt-save-btn" @click="handleSavePrompt">
-              <Plus :size="13" />
-              保存提示词
-            </button>
-          </div>
-          <div v-if="promptStore.prompts.value.length === 0" class="prompt-empty">
-            <Bookmark :size="14" />
-            还没有保存的提示词，先在左侧填入并保存一条吧。
-          </div>
-          <div v-else class="prompt-list">
-            <div v-for="p in promptStore.prompts.value" :key="p.id" class="prompt-item">
-              <button type="button" class="prompt-item-main" @click="handleUsePrompt(p.prompt)">
-                <span class="prompt-item-label">{{ p.label }}</span>
-                <span class="prompt-item-text">{{ p.prompt }}</span>
-              </button>
-              <button
-                type="button"
-                class="prompt-del-btn"
-                title="删除提示词"
-                aria-label="删除提示词"
-                @click="handleDeletePrompt(p.id, p.label)"
-              >
-                <Trash2 :size="13" />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div v-else class="quick-list">
+        <div class="quick-list">
           <button
-            v-for="action in quickActions[activeMode]"
-            :key="action.label"
+            v-for="action in activeQuickActions"
+            :key="action.label + action.prompt"
             type="button"
             @click="fillQuickAction(action.prompt)"
           >
@@ -578,7 +574,23 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
           </button>
         </div>
 
-        <div v-if="activeMode !== 'prompts'" class="draft-entry">
+        <div v-if="activeMode === 'prompts'" class="prompt-manage-row">
+          <button type="button" class="prompt-manage-btn" @click="openNewPrompt">
+            <Plus :size="14" />
+            新建提示词
+          </button>
+          <button type="button" class="prompt-manage-btn" @click="promptManagerOpen = true">
+            <SquareStack :size="14" />
+            管理提示词
+            <span v-if="promptStore.prompts.value.length > 0" class="prompt-count">{{ promptStore.prompts.value.length }}</span>
+          </button>
+        </div>
+
+        <div v-if="activeMode === 'prompts' && promptStore.prompts.value.length === 0" class="prompt-empty">
+          还没有保存的提示词，点击上方「新建提示词」创建你的第一条常用提示词。
+        </div>
+
+        <div class="draft-entry">
           <button type="button" class="draft-btn" @click="emit('generate-draft')">
             <Sparkles :size="14" />
             生成章节初稿
@@ -646,6 +658,90 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
       @expand="(target) => handleExpandDraft(target)"
       @reduce="(target) => handleReduceDraft(target)"
     />
+
+    <!-- 提示词：新建/编辑对话框 -->
+    <NModal
+      :show="promptEditOpen"
+      preset="dialog"
+      :title="promptEditingId ? '编辑提示词' : '新建提示词'"
+      style="width: 460px"
+      @close="promptEditOpen = false"
+    >
+      <div class="prompt-dialog">
+        <label class="prompt-field">
+          <span>名称（可选）</span>
+          <NInput
+            v-model:value="promptDraftLabel"
+            placeholder="给提示词起个名字，便于识别"
+            maxlength="40"
+          />
+        </label>
+        <label class="prompt-field">
+          <span>提示词内容</span>
+          <NInput
+            v-model:value="promptDraftText"
+            type="textarea"
+            :rows="5"
+            placeholder="输入你想保存的常用提示词内容…"
+          />
+        </label>
+        <div class="prompt-dialog-actions">
+          <NButton @click="promptEditOpen = false">取消</NButton>
+          <NButton type="primary" @click="savePromptDraft">
+            {{ promptEditingId ? '保存修改' : '保存提示词' }}
+          </NButton>
+        </div>
+      </div>
+    </NModal>
+
+    <!-- 提示词：管理对话框 -->
+    <NModal
+      :show="promptManagerOpen"
+      preset="card"
+      title="管理提示词"
+      style="width: 520px"
+      @close="promptManagerOpen = false"
+    >
+      <div class="prompt-manager">
+        <div class="prompt-manager-head">
+          <NInputGroup>
+            <NInput v-model:value="promptSearch" placeholder="搜索提示词…" clearable />
+          </NInputGroup>
+          <NButton type="primary" @click="openNewPrompt">
+            <template #icon><Plus :size="14" /></template>
+            新建
+          </NButton>
+        </div>
+        <div class="prompt-manager-list">
+          <div v-if="filteredSavedPrompts.length === 0" class="prompt-manager-empty">
+            暂无提示词
+          </div>
+          <div
+            v-for="item in filteredSavedPrompts"
+            :key="item.id"
+            class="prompt-manager-item"
+          >
+            <button
+              type="button"
+              class="prompt-item-main"
+              title="点击使用"
+              @click="promptManagerOpen = false; fillQuickAction(item.prompt)"
+            >
+              <strong>{{ item.label }}</strong>
+              <span>{{ item.prompt }}</span>
+            </button>
+            <div class="prompt-item-actions">
+              <button type="button" title="编辑" @click="promptManagerOpen = false; openEditPrompt(item)">
+                <History :size="14" />
+              </button>
+              <button type="button" class="danger" title="删除" @click="deletePrompt(item.id)">
+                <X :size="14" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </NModal>
   </section>
 </template>
 
@@ -911,144 +1007,6 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
 }
 
 /* ── 提示词库 ── */
-.prompt-manager {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.prompt-form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px;
-  border: 1px solid var(--arc-border);
-  border-radius: 8px;
-  background: var(--arc-bg-surface);
-}
-
-.prompt-name-input,
-.prompt-text-input {
-  width: 100%;
-  border: 1px solid var(--arc-border);
-  border-radius: 6px;
-  background: var(--arc-bg-body);
-  color: var(--arc-text-primary);
-  font-size: 12.5px;
-  padding: 6px 8px;
-  resize: vertical;
-}
-
-.prompt-name-input:focus,
-.prompt-text-input:focus {
-  outline: none;
-  border-color: var(--arc-primary);
-}
-
-.prompt-save-btn {
-  align-self: flex-end;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid var(--arc-primary);
-  border-radius: 7px;
-  background: var(--arc-primary-soft);
-  color: var(--arc-primary);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 6px 12px;
-}
-
-.prompt-save-btn:hover {
-  background: color-mix(in srgb, var(--arc-primary) 18%, var(--arc-bg-surface));
-}
-
-.prompt-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 18px 10px;
-  border: 1px dashed var(--arc-border);
-  border-radius: 8px;
-  color: var(--arc-text-hint);
-  font-size: 12px;
-  text-align: center;
-}
-
-.prompt-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 220px;
-  overflow-y: auto;
-}
-
-.prompt-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--arc-border);
-  border-radius: 8px;
-  background: var(--arc-bg-surface);
-  padding: 4px 4px 4px 10px;
-}
-
-.prompt-item-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  border: none;
-  background: transparent;
-  color: var(--arc-text-primary);
-  text-align: left;
-  cursor: pointer;
-  padding: 6px 0;
-}
-
-.prompt-item-main:hover .prompt-item-label {
-  color: var(--arc-primary);
-}
-
-.prompt-item-label {
-  font-size: 12.5px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.prompt-item-text {
-  font-size: 11.5px;
-  color: var(--arc-text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.prompt-del-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  flex: 0 0 auto;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--arc-text-hint);
-  cursor: pointer;
-}
-
-.prompt-del-btn:hover {
-  color: var(--v2-danger);
-  background: var(--v2-del-bg);
-}
-
 .mode-switch button.active {
   background: var(--arc-primary-soft);
   color: var(--arc-primary);
@@ -1189,5 +1147,179 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
 
 .chat-pane :deep(.composer .foot) {
   align-items: flex-end;
+}
+
+.prompt-manage-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.prompt-manage-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 6px;
+  border: 1px dashed var(--arc-border-strong);
+  border-radius: 8px;
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 8px 10px;
+}
+
+.prompt-manage-btn:hover {
+  border-color: var(--arc-primary);
+  background: var(--arc-primary-soft);
+  color: var(--arc-primary);
+}
+
+.prompt-count {
+  min-width: 16px;
+  border-radius: 999px;
+  background: var(--arc-primary);
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  padding: 0 5px;
+  text-align: center;
+}
+
+.prompt-empty {
+  margin-top: 12px;
+  border: 1px dashed var(--arc-border);
+  border-radius: 8px;
+  color: var(--arc-text-hint);
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 14px 12px;
+}
+
+.prompt-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 6px;
+}
+
+.prompt-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.prompt-field > span {
+  color: var(--arc-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.prompt-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.prompt-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.prompt-manager-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.prompt-manager-head .n-input-group {
+  flex: 1;
+}
+
+.prompt-manager-list {
+  display: flex;
+  max-height: 340px;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.prompt-manager-empty {
+  color: var(--arc-text-hint);
+  font-size: 12px;
+  padding: 24px 0;
+  text-align: center;
+}
+
+.prompt-manager-item {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  background: var(--arc-bg-surface);
+  padding: 8px;
+}
+
+.prompt-manager-item:hover {
+  border-color: var(--arc-primary);
+}
+
+.prompt-item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  color: var(--arc-text-primary);
+  cursor: pointer;
+  text-align: left;
+  padding: 4px;
+}
+
+.prompt-item-main strong {
+  font-size: 12.5px;
+}
+
+.prompt-item-main span {
+  overflow: hidden;
+  color: var(--arc-text-secondary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prompt-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.prompt-item-actions button {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+}
+
+.prompt-item-actions button:hover {
+  background: var(--arc-bg-weak);
+  color: var(--arc-primary);
+}
+
+.prompt-item-actions button.danger:hover {
+  background: var(--v2-del-bg);
+  color: var(--v2-del);
 }
 </style>

@@ -55,6 +55,7 @@ export function usePromptStore(projectIdRef: Ref<string | null | undefined>): {
   savePrompt: (label: string, prompt: string) => boolean
   deletePrompt: (id: string) => void
   addPrompt: (label: string, prompt: string) => SavedPrompt
+  updatePrompt: (id: string, label: string, prompt: string) => void
   load: () => void
 } {
   const prompts = ref<SavedPrompt[]>([])
@@ -95,5 +96,11 @@ export function usePromptStore(projectIdRef: Ref<string | null | undefined>): {
     persist()
   }
 
-  return { prompts, savePrompt, deletePrompt, addPrompt, load }
+  /** 更新一条提示词的名称与内容。 */
+  function updatePrompt(id: string, label: string, prompt: string): void {
+    prompts.value = prompts.value.map((p) => (p.id === id ? { ...p, label, prompt } : p))
+    persist()
+  }
+
+  return { prompts, savePrompt, deletePrompt, addPrompt, updatePrompt, load }
 }
