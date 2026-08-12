@@ -65,6 +65,7 @@ export async function ensureWorkspaceDb(): Promise<DatabaseSync> {
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
+      premise TEXT NOT NULL DEFAULT '',
       genre TEXT NOT NULL,
       novel_length TEXT NOT NULL DEFAULT 'long',
       word_count TEXT NOT NULL,
@@ -698,6 +699,10 @@ function ensureProjectColumns(db: DatabaseSync): void {
   const columns = db.prepare(`PRAGMA table_info('projects')`).all() as Array<{ name: string }>
   const columnNames = new Set(columns.map((column) => column.name))
 
+  if (!columnNames.has('premise')) {
+    db.exec(`ALTER TABLE projects ADD COLUMN premise TEXT NOT NULL DEFAULT '';`)
+  }
+
   if (!columnNames.has('novel_length')) {
     db.exec(`ALTER TABLE projects ADD COLUMN novel_length TEXT NOT NULL DEFAULT 'long';`)
   }
@@ -763,7 +768,7 @@ async function migrateLegacyWorkspaceFile(db: DatabaseSync): Promise<void> {
 
 export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null {
   const projectRows = db.prepare(`
-    SELECT id, title, genre, novel_length AS novelLength, word_count AS wordCount, last_edited AS lastEdited, created_at AS createdAt, cover,
+    SELECT id, title, premise, genre, novel_length AS novelLength, word_count AS wordCount, last_edited AS lastEdited, created_at AS createdAt, cover,
       target_platform AS targetPlatform,
       cover_history_json AS coverHistoryJson,
       writing_style_preset_id AS writingStylePresetId,
@@ -1466,10 +1471,11 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
     }
 
     const insertProject = db.prepare(`
-      INSERT INTO projects (id, title, genre, novel_length, word_count, last_edited, created_at, cover, target_platform, cover_history_json, reference_works_json, writing_style_preset_id, writing_style_prompt, novel_workflow_stages_json, project_skills_json, chapter_assistant_templates_json)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO projects (id, title, premise, genre, novel_length, word_count, last_edited, created_at, cover, target_platform, cover_history_json, reference_works_json, writing_style_preset_id, writing_style_prompt, novel_workflow_stages_json, project_skills_json, chapter_assistant_templates_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         title = excluded.title,
+        premise = excluded.premise,
         genre = excluded.genre,
         novel_length = excluded.novel_length,
         word_count = excluded.word_count,
@@ -1490,6 +1496,7 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
       insertProject.run(
         project.id,
         project.title,
+        project.premise,
         project.genre,
         project.novelLength,
         project.wordCount,

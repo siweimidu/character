@@ -103,6 +103,7 @@ interface AssistantFocusTarget {
 interface ProjectWorkspacePayload {
   project: {
     title: string
+    premise?: string
     genre: string
     novelLength: NovelLength
     wordCount?: string
@@ -721,6 +722,7 @@ export const useAppStore = defineStore('app', () => {
     const project: ProjectSummary = {
       id: projectId,
       title: payload.project?.title?.trim() || '导入项目',
+      premise: payload.project?.premise?.trim() || '',
       genre: payload.project?.genre?.trim() || '未分类',
       novelLength: payload.project?.novelLength === 'short' ? 'short' : 'long',
       wordCount: formatProjectWordCount(importedWorkspace.chapters),
@@ -1105,6 +1107,7 @@ export const useAppStore = defineStore('app', () => {
     projects.value.unshift(normalizeProjectSummary({
       id: projectId,
       title: payload.project.title,
+      premise: payload.project.premise ?? '',
       genre: payload.project.genre,
       novelLength: payload.project.novelLength,
       wordCount: computedWordCount,
@@ -1536,6 +1539,7 @@ export const useAppStore = defineStore('app', () => {
         ? {
             ...project,
             title: payload.title?.trim() || project.title,
+            premise: payload.premise !== undefined ? payload.premise.trim() : project.premise,
             genre: payload.genre?.trim() || project.genre,
             novelLength: payload.novelLength !== undefined ? payload.novelLength : project.novelLength,
             lastEdited: payload.lastEdited?.trim() || createProjectEditedAt(),

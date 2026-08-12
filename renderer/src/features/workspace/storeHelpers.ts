@@ -96,6 +96,7 @@ export function normalizeChapterAssistantTemplates(
 export function normalizeProjectSummary(project: ProjectSummary): ProjectSummary {
   return {
     ...project,
+    premise: project.premise?.trim() || '',
     novelLength: normalizeNovelLength(project.novelLength),
     wordCount: project.wordCount?.trim() || '待统计',
     createdAt: project.createdAt || '',
