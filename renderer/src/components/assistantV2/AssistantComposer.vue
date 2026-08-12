@@ -48,6 +48,9 @@ interface SlashCommandDef {
   builtin?: boolean
 }
 const BUILTIN_COMMANDS: SlashCommandDef[] = [
+  { key: 'plan', label: '/plan', description: '规划模式：先产出分步计划，确认后执行', template: '/plan 请先产出本任务的分步执行计划（需求概述、涉及文件清单、分步任务、风险点、验证方案），等待我确认后再按顺序执行。', intentHint: 'global-assistant-v2:plan', builtin: true },
+  { key: 'spec', label: '/spec', description: '规格模式：大型重构/系统搭建，先出规格文档', template: '/spec 请先产出三份规格文档（spec.md 需求规格说明书、tasks.md 任务清单、checklist.md 交付验收清单），确认定稿后再落地开发。', intentHint: 'global-assistant-v2:spec', builtin: true },
+  { key: 'goal', label: '/goal', description: '目标自主模式：设定验收标准后自主循环执行', template: '/goal 我的目标如下：\n【最终目标】\n【验收标准】\n【限制条件】\n请自主拆解任务并持续执行，直到达成全部验收标准后输出交付总结。', intentHint: 'global-assistant-v2:goal', builtin: true },
   { key: 'audit', label: '/audit', description: '全书审计：矛盾、OOC、伏笔', template: '请审计当前项目的一致性风险，包括世界观矛盾、人物 OOC、大纲断裂、伏笔未回收和硬约束冲突。', intentHint: 'slash:audit', builtin: true },
   { key: 'fix', label: '/fix', description: '修正一致性', template: '请检查项目里可能跑偏或重复的设定，并把需要修正的内容产出为可暂存的修正方案。', intentHint: 'slash:fix', builtin: true },
   { key: 'ingest', label: '/ingest', description: '录入设定草稿', template: '我会给你一段设定草稿，请拆成可写入的世界观、人物、组织、大纲或创作记忆暂存变更。', intentHint: 'slash:ingest', builtin: true },
@@ -274,6 +277,21 @@ function flushIntent(): string | undefined {
 
 function sendWithIntent(): void {
   emit('send', flushIntent())
+}
+
+/** 三大工作模式（/plan /spec /goal）快捷按钮，置于输入框最靠近处。 */
+const QUICK_MODE_COMMANDS = BUILTIN_COMMANDS.filter((c) => ['plan', 'spec', 'goal'].includes(c.key))
+
+/** 点击模式按钮：把对应命令模板填充到输入框，并带上模式 intentHint。 */
+function applyModeCommand(cmd: SlashCommandDef): void {
+  if (!textareaRef.value) return
+  emit('update:modelValue', cmd.template)
+  textareaRef.value.focus()
+  const pos = cmd.template.length
+  textareaRef.value.setSelectionRange(pos, pos)
+  autosize(textareaRef.value)
+  pendingIntent.value = cmd.intentHint
+  slashOpen.value = false
 }
 
 /** 通过原生隐藏 input 选择本地文本文件，作为 IPC 文件对话框的可靠回退 */
@@ -573,6 +591,22 @@ watch(
             <div v-else class="slash-empty">没有匹配的 Skills</div>
           </div>
         </div>
+      </div>
+      <!-- 三大工作模式快捷按钮：置于输入框最近处，一键进入 /plan /spec /goal -->
+      <div v-if="!props.isEditing && QUICK_MODE_COMMANDS.length" class="mode-quick-bar">
+        <button
+          v-for="cmd in QUICK_MODE_COMMANDS"
+          :key="cmd.key"
+          type="button"
+          class="mode-quick-btn"
+          :class="`mode-${cmd.key}`"
+          :disabled="props.isStreaming"
+          :title="cmd.description"
+          @click="applyModeCommand(cmd)"
+        >
+          <span class="mode-quick-label">{{ cmd.label }}</span>
+          <span class="mode-quick-desc">{{ cmd.description }}</span>
+        </button>
       </div>
       <textarea
         ref="textareaRef"
@@ -924,6 +958,50 @@ watch(
   padding: 12px 32px 22px;
   background: linear-gradient(180deg, transparent, var(--arc-bg-body) 30%);
 }
+/* ── 三大工作模式快捷按钮（/plan /spec /goal） ── */
+.mode-quick-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mode-quick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--arc-border);
+  border-radius: 999px;
+  padding: 3px 10px 3px 8px;
+  background: var(--arc-bg-surface);
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+.mode-quick-btn:hover {
+  border-color: color-mix(in srgb, var(--arc-primary) 45%, var(--arc-border));
+  background: var(--arc-primary-soft);
+}
+.mode-quick-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.mode-quick-label {
+  font-family: var(--v2-mono);
+  font-weight: 700;
+  color: var(--arc-primary);
+  font-size: 12px;
+}
+.mode-quick-desc {
+  color: var(--arc-text-secondary);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mode-quick-btn.mode-plan .mode-quick-label { color: #0ea5e9; }
+.mode-quick-btn.mode-spec .mode-quick-label { color: #8b5cf6; }
+.mode-quick-btn.mode-goal .mode-quick-label { color: #10b981; }
+.mode-quick-btn.mode-plan:hover { border-color: rgba(14, 165, 233, 0.5); background: rgba(14, 165, 233, 0.08); }
+.mode-quick-btn.mode-spec:hover { border-color: rgba(139, 92, 246, 0.5); background: rgba(139, 92, 246, 0.08); }
+.mode-quick-btn.mode-goal:hover { border-color: rgba(16, 185, 129, 0.5); background: rgba(16, 185, 129, 0.08); }
 .native-file-input {
   position: absolute;
   width: 1px;

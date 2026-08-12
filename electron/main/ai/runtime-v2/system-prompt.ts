@@ -77,6 +77,8 @@ function buildSurfaceHint(surface: SurfaceDefinition): string {
 export interface BuildAssistantSystemPromptParams {
   surface: SurfaceDefinition
   intentHint?: string
+  /** 用户本轮消息正文，用于识别 /plan /spec /goal 前缀指令。 */
+  userMessage?: string
   /** 由 ContextBuilder + assembleContextBlock 产出的项目上下文段。 */
   contextBlock: string
   /** 智能体名称（用于展示）。 */
@@ -85,10 +87,24 @@ export interface BuildAssistantSystemPromptParams {
   agentSystemPrompt?: string
 }
 
-function buildIntentHintBlock(intentHint?: string): string {
+function buildIntentHintBlock(intentHint?: string, userMessage?: string): string {
   const hint = intentHint ?? ''
-  if (!hint.startsWith('global-assistant-v2:')) return ''
-  const mode = hint.slice('global-assistant-v2:'.length)
+  // 识别用户消息前缀指令：/plan /spec /goal（兼容手动输入）
+  if (hint.startsWith('global-assistant-v2:')) {
+    const mode = hint.slice('global-assistant-v2:'.length)
+    const block = buildModeBlock(mode)
+    if (block) return block
+  }
+  const textPrefix = userMessage?.trim().match(/^\/(plan|spec|goal)\b/)?.[1]
+  if (textPrefix) {
+    const block = buildModeBlock(textPrefix)
+    if (block) return block
+  }
+  return ''
+}
+
+/** 各模式对应的系统提示词片段。 */
+function buildModeBlock(mode: string): string {
   switch (mode) {
     case 'ingest':
       return `【当前模式】录入。当用户给出了具体的草稿、设定、计划文本时，把它们拆成可审阅的暂存变更；人物关系、组织归属、灵感、分卷、知识文档和项目资料也必须使用对应 stage_* 工具。若用户是在修改已有实体，且目标与方向已经在当前或最近对话里明确，不要继续追问细枝末节；应读取必要项目资料后生成方案，方向足够时调用对应 stage_* 暂存修改。若用户只表达了意图、还没给出目标或方向，先问清楚要录入/修改什么，不要自行编造内容塞进暂存区。`
@@ -96,6 +112,34 @@ function buildIntentHintBlock(intentHint?: string): string {
       return `【当前模式】修正。先读取相关资料定位冲突或跑偏点，再产出最小必要的暂存修改。不要泛泛重写；每个 stage_* 的 reason 要说明修正目标。`
     case 'audit':
       return `【当前模式】审计。先读取项目资料并输出问题、证据和风险等级；审计报告必须用 knowledge_save_document 保存到项目知识库（sourceType=canon-fact，sourceLabel=story-deep-audit，metadata 写入 auditMode=global-assistant-v2、riskCount/criticalCount 等摘要字段）。只有当修法明确且低风险时才产出暂存变更；修正章节/世界观/人物/大纲/创作记忆时使用对应 stage_* 工具。审计应覆盖设定矛盾、人物 OOC、大纲断裂、伏笔未回收和项目约束冲突。`
+    case 'plan':
+      return `【当前模式】PLAN 规划模式（Trae/Codex 式）。适用：中小型功能开发、模块新增、局部重构、bug 修复。严格流程：
+1. 解析用户全部需求，梳理项目上下文信息；
+2. 输出结构化计划文档，固定包含：① 需求概述 ② 涉及文件清单 ③ 分步执行任务（有先后依赖关系）④ 潜在风险、兼容性注意事项 ⑤ 验证自测方案；
+3. 输出计划之后【暂停执行，等待用户确认/修改计划】；
+4. 用户确认通过后，再按任务顺序逐个执行；
+5. 每完成一个任务，主动汇报进度并展示修改内容。
+禁止行为：不要直接开始写代码/改数据，必须先输出计划等待用户确认；不要合并多个步骤一次性全部修改。项目内所有写操作仍走 stage_* 暂存区，等用户审阅确认后才落库。`
+    case 'spec':
+      return `【当前模式】SPEC 规格模式（Trae/Codex 式）。适用：大型系统重构、从零搭建整套架构、多人协作长期工程。输出三份标准化文档：
+1. spec.md 需求规格说明书——项目目标、设计思路、架构分层、模块边界、技术约束、环境要求；
+2. tasks.md 完整任务清单——按模块划分、优先级、依赖关系、负责人提示；
+3. checklist.md 交付验收清单——功能验收点、性能标准、代码规范、异常边界、自测项。
+工作流程：
+1. 先生成全套三份文档展示给用户；
+2. 支持用户编辑、修改规格内容；
+3. 用户确认规格定稿后，再基于 spec 拆解长期任务逐步落地；
+4. 重大改动持续对照验收清单，防止需求偏离。
+重点约束：这是重量级工作流，必须对齐设计方案再动手；严禁在规格未确认时直接大规模修改代码/数据。`
+    case 'goal':
+      return `【当前模式】GOAL 目标自主执行模式（Trae 核心特色）。不再需要用户一步步下达指令，以【最终验收目标】为唯一导向持续自主工作。执行规则：
+1. 提取用户定义的最终目标、验收标准、限制条件；
+2. 自主拆解阶段性小任务，自动执行代码/数据修改、文件调整（写操作仍走 stage_* 暂存区）；
+3. 每一轮执行完成后进行自检：对照验收标准判断是否达标；
+4. 未达成目标：自动迭代优化，持续修复缺陷；
+5. 达成全部验收标准：主动终止流程，输出完整交付总结；
+6. 如果遇到无法解决的阻塞问题，立刻暂停，向用户上报卡点。
+边界限制：遇到架构级重大决策、大范围破坏性变更，主动请求用户确认；禁止无限循环盲目重试，连续多次优化无效必须停止并说明原因；不擅自扩大需求范围，严格守住用户给定目标边界。`
     default:
       return ''
   }
@@ -105,7 +149,7 @@ export function buildAssistantSystemPrompt(
   params: BuildAssistantSystemPromptParams
 ): string {
   const surfaceHint = buildSurfaceHint(params.surface)
-  const intentHint = buildIntentHintBlock(params.intentHint)
+  const intentHint = buildIntentHintBlock(params.intentHint, params.userMessage)
   const sections: string[] = []
 
   // 智能体自定义 system prompt 作为核心人格优先注入

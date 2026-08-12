@@ -99,6 +99,10 @@ function resolveIntent(request: TurnSendRequest, surface: SurfaceDefinition): As
   if (surface.scope === 'chapter' || surface.scope === 'selection') return 'edit'
 
   const text = request.userMessage.replace(/\s+/g, '')
+  // 用户消息以 /plan /spec /goal 开头时，直接进入对应模式（对齐 Trae/Codex 前缀指令）
+  if (/^\/(plan|spec|goal)\b/.test(request.userMessage.trim())) {
+    return 'entity-edit'
+  }
   if (/(审计|检查|矛盾|风险|OOC|ooc|连续性|伏笔)/.test(text)) return 'audit'
   if (hasEntityEditIntent(text) || hasFrameworkAdviceRequest(text)) return 'entity-edit'
   if (/(修正|纠正|统一|跑偏|冲突|不一致)/.test(text)) return 'correct'
@@ -108,6 +112,10 @@ function resolveIntent(request: TurnSendRequest, surface: SurfaceDefinition): As
   if (hint.endsWith(':audit')) return 'audit'
   if (hint.endsWith(':correct')) return 'correct'
   if (hint.endsWith(':ingest')) return 'ingest'
+  if (hint.endsWith(':plan') || hint.endsWith(':spec') || hint.endsWith(':goal')) {
+    // 规划/规格/目标模式需要读全项目上下文，按实体编辑的宽上下文处理
+    return 'entity-edit'
+  }
   return 'chat'
 }
 

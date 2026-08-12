@@ -176,6 +176,7 @@ export function createExecutionPlanner(
     const systemPrompt = buildAssistantSystemPrompt({
       surface: routedSurface,
       intentHint: request.intentHint,
+      userMessage: request.userMessage,
       agentName: agentName || undefined,
       agentSystemPrompt: agentSystemPrompt || undefined,
       contextBlock: [

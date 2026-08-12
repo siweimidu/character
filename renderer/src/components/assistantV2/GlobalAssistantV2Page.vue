@@ -157,9 +157,9 @@ function handleDeletePrompt(id: string, label: string): void {
   message.success('提示词已删除')
 }
 
-function sendWithMode(): void {
+function sendWithMode(intentHint?: string): void {
   void assistant.send({
-    intentHint: 'global-assistant-v2:chat',
+    intentHint: intentHint || 'global-assistant-v2:chat',
     agentId: selectedAgentId.value || undefined
   })
 }
