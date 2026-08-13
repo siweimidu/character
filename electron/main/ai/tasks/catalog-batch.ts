@@ -12,7 +12,7 @@ const modeRules: Record<CatalogMode, string> = {
   membership: 'targets 中每个角色生成且仅生成一项。字段：targetIndex（原样返回）、organizationName（必须从已有组织中选择）、role、notes（80-160字）。',
   worldview: '每项字段：type、title、content（80-180字）。type 必须严格使用 requestedTypes 中的中文分类原文，不得翻译成英文；各类型尽量均匀分布。',
   inspiration: '每项字段：type、title、content（60-140字）、tags（2-4项）。type 只能从 requestedTypes 中选择，各类型尽量均匀分布。\n\n灵感质量要求：\n- 标题要有故事感，能立刻激发画面感或冲突感，避免平淡概括。\n- content 要写出具体的场景画面/情绪冲突/人物动作/台词，而不仅是抽象概念。\n- 各条目之间要彼此有区分度，避免内容同质化。\n- 若为「伏笔」类型：伏笔要隐晦而有戏剧张力，设计成后续可回收的悬念，不能直接剧透。\n- 若为「场景火花」类型：给出具体到时间/地点/氛围的片段，可包含关键台词。\n- 若为「标题灵感」类型：标题要新颖、抓眼球，兼顾市场感与作品气质。\n- 若为「伏笔」类型：不得与「已有伏笔线索」重复或高度相似。',
-  'plot-thread': '每项字段：title、description、tags。title ≤ 20 字，description 40 到 120 字，tags 返回 1 到 3 个关联标签（角色名、地点、物品等）。线索必须锚定在相关角色/世界观/大纲之上，与已有线索形成伏笔—回收的呼应，覆盖不同维度（至少包含一个与身份/身世相关的悬念、一个与势力冲突相关的悬念），尽量埋设中长期钩子。'
+  'plot-thread': '每项字段：title、description、tags、priority。priority 只能是 high、medium、low 之一。title ≤ 20 字，description 40 到 120 字，tags 返回 1 到 3 个关联标签（角色名、地点、物品等）。线索必须锚定在相关角色/世界观/大纲之上，与已有线索形成伏笔—回收的呼应，覆盖不同维度（至少包含一个与身份/身世相关的悬念、一个与势力冲突相关的悬念），尽量埋设中长期钩子。伏笔的重要程度按 priority 划分：high 为最关键、影响主线走向的重大伏笔；medium 为支撑分卷推进的中等伏笔；low 为细节铺垫、氛围性的轻量伏笔。'
 }
 
 function normalizeEntry(source: unknown): Record<string, unknown> {
@@ -55,8 +55,13 @@ const handler: TaskHandler = {
     const style = resolveWritingStyleInstruction(context)
     // 伏笔模式特有的重点方向与已有线索，避免与已有线索重复并保持前后呼应
     const focus = mode === 'plot-thread' ? String(context.focus ?? '').trim() : ''
+    const threadPriority = mode === 'plot-thread' ? String(context.priority ?? '').trim() : ''
+    const priorityLabel: Record<string, string> = { high: '高优先级', medium: '中优先级', low: '低优先级' }
+    const priorityHint = threadPriority && priorityLabel[threadPriority]
+      ? `\n本批次生成的伏笔统一为【${priorityLabel[threadPriority]}】：${threadPriority === 'high' ? '最关键、影响主线走向的重大伏笔' : threadPriority === 'medium' ? '支撑分卷推进的中等伏笔' : '细节铺垫、氛围性的轻量伏笔'}。所有条目的 priority 字段都必须返回 ${threadPriority}。`
+      : ''
     const plotThreadHint = mode === 'plot-thread'
-      ? `\n伏笔重点方向（若为空则由你根据项目自行选择最合适的延展方向）：${focus || '延续当前大纲与已有人物的自然走向'}\n已有伏笔线索（新线索要与它们形成呼应或延展，避免重复）：${JSON.stringify(context.existingThreads ?? context.existingNames ?? []) || '（暂无）'}`
+      ? `\n伏笔重点方向（若为空则由你根据项目自行选择最合适的延展方向）：${focus || '延续当前大纲与已有人物的自然走向'}\n已有伏笔线索（新线索要与它们形成呼应或延展，避免重复）：${JSON.stringify(context.existingThreads ?? context.existingNames ?? []) || '（暂无）'}${priorityHint}`
       : ''
     return {
       system: `${capabilityPreamble.system}\n\n你是小说项目的批量结构化资料生成器。只返回 JSON 对象，不要 Markdown、解释或提问。必须返回格式 {"entries":[...]}。${formatStoryStateConstraint(context)}`,
@@ -70,10 +75,20 @@ const handler: TaskHandler = {
       ? context.requestedTypes.map((value) => String(value).trim()).filter(Boolean)
       : []
     const fallbackType = requestedTypes[0] ?? '地理'
+    const isPlotThread = context?.mode === 'plot-thread'
+    const requestedPriority = isPlotThread ? String(context?.priority ?? '').trim() : ''
+    const normalizePriority = (value: unknown): string => {
+      const p = String(value ?? '').trim().toLowerCase()
+      if (p === 'high' || p === 'medium' || p === 'low') return p
+      return (requestedPriority === 'high' || requestedPriority === 'medium' || requestedPriority === 'low')
+        ? requestedPriority
+        : 'medium'
+    }
     const entries = Array.isArray(parsed.entries)
       ? parsed.entries.slice(0, 10).map((entry) => {
           const normalized = normalizeEntry(entry)
           if (isWorldview) normalized.type = normalizeWorldviewType(normalized.type, fallbackType)
+          if (isPlotThread) normalized.priority = normalizePriority((entry as Record<string, unknown>).priority)
           return normalized
         })
       : []

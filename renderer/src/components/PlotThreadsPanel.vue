@@ -26,7 +26,7 @@ const message = useMessage()
 
 const editorVisible = ref(false)
 const editingThreadId = ref<string | null>(null)
-// 批量删除：已选线索 ID 集合
+// 批量删除:已选线索 ID 集合
 const selectedThreadIds = ref<string[]>([])
 const form = reactive({
   title: '',
@@ -107,7 +107,7 @@ const isEditing = computed(() => Boolean(editingThreadId.value))
 // ── 从灵感卡片跳转聚焦的伏笔 ──
 const focusedThreadId = ref<string | null>(null)
 
-// 监听 store 中的 threadFocusTarget，切换面板后自动定位到指定伏笔
+// 监听 store 中的 threadFocusTarget,切换面板后自动定位到指定伏笔
 watch(
   () => appStore.threadFocusTarget,
   async (target) => {
@@ -127,7 +127,7 @@ watch(
           focusedThreadId.value = null
         }
       }, 3000)
-      // 清除 store 中的聚焦目标，避免重复触发
+      // 清除 store 中的聚焦目标,避免重复触发
       appStore.clearThreadFocus()
     }
   },
@@ -139,7 +139,7 @@ const chapterOptions = computed(() =>
   appStore.chapters.map((c) => ({ label: c.title || '未命名章节', value: c.id }))
 )
 
-// 「计划回收章节」只允许选择埋设章节之后的分卷/章节（伏笔应在后面回收）。
+// 「计划回收章节」只允许选择埋设章节之后的分卷/章节(伏笔应在后面回收)。
 const closeChapterOptions = computed(() => {
   const openedId = form.openedInChapterId
   const opened = appStore.chapters.find((c) => c.id === openedId)
@@ -165,7 +165,7 @@ const closeChapterOptions = computed(() => {
     .map((c) => ({ label: c.title || '未命名章节', value: c.id }))
 })
 
-// 埋设章节变化后，若当前选中的计划回收章节已不在“之后章节”范围内，则自动清空
+// 埋设章节变化后,若当前选中的计划回收章节已不在"之后章节"范围内,则自动清空
 watch(
   () => form.openedInChapterId,
   () => {
@@ -216,7 +216,7 @@ function handleBatchDeleteThreads(): void {
   if (!ids.length) return
   dialog.warning({
     title: '确认批量删除',
-    content: `确定要删除选中的 ${ids.length} 条伏笔吗？删除后无法恢复。`,
+    content: `确定要删除选中的 ${ids.length} 条伏笔吗?删除后无法恢复。`,
     positiveText: '确认删除',
     negativeText: '取消',
     autoFocus: false,
@@ -431,7 +431,7 @@ function handleMenuSelect(key: string, thread: PlotThread): void {
   } else if (key === 'delete') {
     dialog.warning({
       title: '删除伏笔',
-      content: `确定删除"${thread.title}"？此操作无法撤销。`,
+      content: `确定删除"${thread.title}"?此操作无法撤销。`,
       positiveText: '删除',
       negativeText: '取消',
       onPositiveClick: () => {
@@ -484,16 +484,25 @@ function formatTime(value: string): string {
 }
 
 // ── AI 批量生成伏笔 ──
-// 复用 useCatalogBatch 的分批并行机制：单批 10 条、自适应并发（按批次数自动提升，最高 8 路），
-// 大幅缩短大量伏笔的生成耗时，且总数量不再设上限。
+// 复用 useCatalogBatch 的分批并行机制:单批 10 条、自适应并发(按批次数自动提升,最高 8 路),
+// 大幅缩短大量伏笔的生成耗时,且总数量不再设上限。
 const BATCH_TASK_KEY = 'catalog-batch:plot-thread'
-const batchLoading = computed(() => appStore.isAiTaskRunning(BATCH_TASK_KEY))
+// 三个优先级批次并行，任一优先级在运行即视为批量生成进行中
+const BATCH_TASK_KEYS = [
+  BATCH_TASK_KEY,
+  'catalog-batch:plot-thread:medium',
+  'catalog-batch:plot-thread:low'
+]
+const batchLoading = computed(() => BATCH_TASK_KEYS.some((key) => appStore.isAiTaskRunning(key)))
 const batchModalVisible = ref(false)
 const batchFocusModalVisible = ref(false)
 const batchFocus = ref('')
-const batchCount = ref(10)
+const batchHighCount = ref(3)
+const batchMediumCount = ref(3)
+const batchLowCount = ref(4)
+const batchTotal = computed(() => batchHighCount.value + batchMediumCount.value + batchLowCount.value)
 const batchProgress = ref(0)
-const generatedThreads = ref<Array<{ title: string; description: string; tags: string[]; selected: boolean }>>([])
+const generatedThreads = ref<Array<{ title: string; description: string; tags: string[]; selected: boolean; priority: PlotThreadPriority }>>([])
 const { generateCatalogBatch } = useCatalogBatch()
 
 function compactForAi(value: unknown, maxLength: number): string {
@@ -514,50 +523,84 @@ async function handleAiBatchGenerate(): Promise<void> {
     return
   }
 
+  const total = batchTotal.value
+  if (total < 10 || total > 50) {
+    message.warning('三个优先级合计数量需在 10~50 条之间')
+    return
+  }
+  if (total === 0) {
+    message.warning('请至少填写一个优先级的生成数量')
+    return
+  }
+
   const existingThreads = appStore.plotThreads
     .map((t) => (t.status === 'pending' ? `${t.title}（${t.description}）` : t.title))
+  const existingTitles = appStore.plotThreads.map((t) => t.title)
   batchFocusModalVisible.value = false
   batchProgress.value = 0
 
-  try {
-    const entries = await generateCatalogBatch({
-      mode: 'plot-thread',
-      count: batchCount.value,
-      label: 'AI 批量生成伏笔',
-      panel: 'plot-threads',
-      kind: 'plot-thread',
-      keyField: 'title',
-      existingKeys: appStore.plotThreads.map((t) => t.title),
-      onProgress: (completed, total) => { batchProgress.value = Math.round(completed / total * 100) },
-      context: {
-        projectTitle: project.title,
-        projectGenre: project.genre,
-        focus: batchFocus.value.trim(),
-        existingThreads,
-        worldviewEntries: appStore.worldviewEntries.slice(0, 12).map((e) => ({
-          type: e.type, title: e.title, content: compactForAi(e.content, 240)
-        })),
-        characters: appStore.characters.slice(0, 12).map((c) => ({
-          name: c.name, role: c.role, description: compactForAi(c.description, 200)
-        })),
-        organizations: appStore.organizations.slice(0, 8).map((o) => ({
-          name: o.name, type: o.type, description: compactForAi(o.description, 200)
-        })),
-        characterRelationships: appStore.characterRelationships,
-        organizationMemberships: appStore.organizationMemberships,
-        outlineItems: appStore.outlineItems.slice(-12).map((item) => ({
-          title: item.title, conflict: compactForAi(item.conflict, 140), summary: compactForAi(item.summary, 240)
-        }))
-      }
-    })
+  const priorityLevels: Array<{ priority: PlotThreadPriority; count: number }> = [
+    { priority: 'high' as PlotThreadPriority, count: batchHighCount.value },
+    { priority: 'medium' as PlotThreadPriority, count: batchMediumCount.value },
+    { priority: 'low' as PlotThreadPriority, count: batchLowCount.value }
+  ].filter((p) => p.count > 0)
 
+  try {
+    // 三个优先级批次并行生成，避免串行耗时过长。
+    // 各批次内部沿用 catalog-batch 的分批并行机制，总量即三个优先级数量之和。
+    const batchResults = await Promise.all(priorityLevels.map((level) =>
+      generateCatalogBatch({
+        mode: 'plot-thread',
+        count: level.count,
+        priority: level.priority,
+        // 三个优先级批次并行，需用不同 taskKey 避免 runTrackedAiTask 同 key 互斥；
+        // 高优先级沿用规范 key，保证面板的 isAiTaskRunning 加载态生效。
+        taskKey: level.priority === 'high'
+          ? 'catalog-batch:plot-thread'
+          : `catalog-batch:plot-thread:${level.priority}`,
+        label: `AI 批量生成伏笔（${PRIORITY_MAP[level.priority].label}优先级）`,
+        panel: 'plot-threads',
+        kind: 'plot-thread',
+        keyField: 'title',
+        existingKeys: existingTitles,
+        onProgress: (completed, batchTotal) => {
+          // 汇总三个批次的完成度作为整体进度
+          const doneSoFar = priorityLevels
+            .filter((p) => p.priority !== level.priority)
+            .reduce((sum, p) => sum + p.count, 0)
+          batchProgress.value = Math.round((doneSoFar + completed) / total * 100)
+        },
+        context: {
+          projectTitle: project.title,
+          projectGenre: project.genre,
+          focus: batchFocus.value.trim(),
+          existingThreads,
+          worldviewEntries: appStore.worldviewEntries.slice(0, 12).map((e) => ({
+            type: e.type, title: e.title, content: compactForAi(e.content, 240)
+          })),
+          characters: appStore.characters.slice(0, 12).map((c) => ({
+            name: c.name, role: c.role, description: compactForAi(c.description, 200)
+          })),
+          organizations: appStore.organizations.slice(0, 8).map((o) => ({
+            name: o.name, type: o.type, description: compactForAi(o.description, 200)
+          })),
+          characterRelationships: appStore.characterRelationships,
+          organizationMemberships: appStore.organizationMemberships,
+          outlineItems: appStore.outlineItems.slice(-12).map((item) => ({
+            title: item.title, conflict: compactForAi(item.conflict, 140), summary: compactForAi(item.summary, 240)
+          }))
+        }
+      })
+    ))
+
+    // 展平并按优先级分组排序（高 → 中 → 低）
+    const entries = batchResults.flat()
     if (entries.length === 0) {
       message.warning('AI 未返回有效的伏笔')
       return
     }
 
-    // 直接写入伏笔线索，避免"已完成但没有添加"的困惑。
-    // 与世界观/人物/组织等面板的批量生成行为保持一致：生成即入库。
+    // 生成即入库：与世界观/人物/组织等面板的批量生成行为保持一致。
     const openedInChapterId = appStore.selectedChapterId ?? ''
     let addedCount = 0
     entries.forEach((e) => {
@@ -568,11 +611,14 @@ async function handleAiBatchGenerate(): Promise<void> {
         description: String(e.description ?? '暂无描述'),
         openedInChapterId,
         status: 'pending',
+        priority: (e.priority === 'high' || e.priority === 'medium' || e.priority === 'low')
+          ? e.priority as PlotThreadPriority
+          : 'medium',
         tags: normalizeCatalogTags(e.tags)
       })
       addedCount += 1
     })
-    message.success(`已生成并添加 ${addedCount} 条伏笔线索`)
+    message.success(`已生成并添加 ${addedCount} 条伏笔线索（高 ${batchHighCount.value} / 中 ${batchMediumCount.value} / 低 ${batchLowCount.value}）`)
     batchModalVisible.value = false
   } catch (error) {
     if (!(error instanceof Error) || (!error.message.includes('任务已中断') && !error.message.includes('任务已被取消'))) {
@@ -583,7 +629,9 @@ async function handleAiBatchGenerate(): Promise<void> {
 
 function openBatchGenerate(): void {
   batchFocus.value = ''
-  batchCount.value = 10
+  batchHighCount.value = 3
+  batchMediumCount.value = 3
+  batchLowCount.value = 4
   generatedThreads.value = []
   batchFocusModalVisible.value = true
 }
@@ -605,6 +653,7 @@ function confirmAddGeneratedThreads(): void {
       description: t.description,
       openedInChapterId,
       status: 'pending',
+      priority: t.priority,
       tags: t.tags
     })
   })
@@ -631,7 +680,7 @@ function confirmAddGeneratedThreads(): void {
         <n-dropdown
           trigger="click"
           :options="[
-            { key: 'import', label: '导入伏笔（MD/TXT/JSON）' },
+            { key: 'import', label: '导入伏笔(MD/TXT/JSON)' },
             { type: 'divider', key: 'd1' },
             { key: 'md', label: '导出为 Markdown' },
             { key: 'txt', label: '导出为 TXT' },
@@ -696,7 +745,7 @@ function confirmAddGeneratedThreads(): void {
 
     <!-- 待回收伏笔 -->
     <div v-if="pendingThreads.length > 0" class="thread-group">
-      <div class="group-label"><Circle :size="13" class="group-icon pending-icon" /> 待回收（{{ pendingThreads.length }}）</div>
+      <div class="group-label"><Circle :size="13" class="group-icon pending-icon" /> 待回收({{ pendingThreads.length }})</div>
       <div class="thread-grid">
         <article
           v-for="thread in visiblePendingThreads"
@@ -731,10 +780,10 @@ function confirmAddGeneratedThreads(): void {
           </div>
           <div class="card-footer">
             <span v-if="thread.openedInChapterId" class="chapter-link" @click.stop="jumpToChapter(thread.openedInChapterId)">
-              埋设：{{ chapterTitleById(thread.openedInChapterId) }}
+              埋设:{{ chapterTitleById(thread.openedInChapterId) }}
             </span>
             <span v-if="thread.plannedCloseChapterId" class="chapter-link" @click.stop="jumpToChapter(thread.plannedCloseChapterId)">
-              计划回收：{{ chapterTitleById(thread.plannedCloseChapterId) }}
+              计划回收:{{ chapterTitleById(thread.plannedCloseChapterId) }}
             </span>
             <span class="meta-time">{{ formatTime(thread.updatedAt) }}</span>
           </div>
@@ -745,7 +794,7 @@ function confirmAddGeneratedThreads(): void {
     <!-- 已回收伏笔 -->
     <div v-if="resolvedThreads.length > 0" class="thread-group resolved-group">
       <n-divider class="group-divider" />
-      <div class="group-label"><CheckCircle2 :size="13" class="group-icon resolved-icon" /> 已回收（{{ resolvedThreads.length }}）</div>
+      <div class="group-label"><CheckCircle2 :size="13" class="group-icon resolved-icon" /> 已回收({{ resolvedThreads.length }})</div>
       <div class="thread-grid">
         <article
           v-for="thread in visibleResolvedThreads"
@@ -780,10 +829,10 @@ function confirmAddGeneratedThreads(): void {
           </div>
           <div class="card-footer">
             <span v-if="thread.openedInChapterId" class="chapter-link" @click.stop="jumpToChapter(thread.openedInChapterId)">
-              埋设：{{ chapterTitleById(thread.openedInChapterId) }}
+              埋设:{{ chapterTitleById(thread.openedInChapterId) }}
             </span>
             <span v-if="thread.closedInChapterId" class="chapter-link" @click.stop="jumpToChapter(thread.closedInChapterId)">
-              回收：{{ chapterTitleById(thread.closedInChapterId) }}
+              回收:{{ chapterTitleById(thread.closedInChapterId) }}
             </span>
             <span class="meta-time">{{ formatTime(thread.updatedAt) }}</span>
           </div>
@@ -794,7 +843,7 @@ function confirmAddGeneratedThreads(): void {
     <!-- 已废弃伏笔 -->
     <div v-if="abandonedThreads.length > 0" class="thread-group abandoned-group">
       <n-divider class="group-divider" />
-      <div class="group-label"><XCircle :size="13" class="group-icon abandoned-icon" /> 已废弃（{{ abandonedThreads.length }}）</div>
+      <div class="group-label"><XCircle :size="13" class="group-icon abandoned-icon" /> 已废弃({{ abandonedThreads.length }})</div>
       <div class="thread-grid">
         <article
           v-for="thread in visibleAbandonedThreads"
@@ -825,7 +874,7 @@ function confirmAddGeneratedThreads(): void {
           </div>
           <div class="card-footer">
             <span v-if="thread.openedInChapterId" class="chapter-link" @click.stop="jumpToChapter(thread.openedInChapterId)">
-              埋设：{{ chapterTitleById(thread.openedInChapterId) }}
+              埋设:{{ chapterTitleById(thread.openedInChapterId) }}
             </span>
             <span class="meta-time">{{ formatTime(thread.updatedAt) }}</span>
           </div>
@@ -858,7 +907,7 @@ function confirmAddGeneratedThreads(): void {
         <div class="arc-split-left">
           <n-form label-placement="top" :show-feedback="false" class="thread-form">
             <n-form-item label="伏笔标题" required>
-              <n-input v-model:value="form.title" placeholder="如：林莫的穿越遗物" maxlength="60" show-count />
+              <n-input v-model:value="form.title" placeholder="如:林莫的穿越遗物" maxlength="60" show-count />
             </n-form-item>
             <n-form-item label="埋设章节">
               <n-select
@@ -911,7 +960,7 @@ function confirmAddGeneratedThreads(): void {
                 v-model:value="form.remark"
                 type="textarea"
                 :rows="2"
-                placeholder="补充说明，如回收时机、关联信息等"
+                placeholder="补充说明,如回收时机、关联信息等"
               />
             </n-form-item>
           </n-form>
@@ -977,7 +1026,7 @@ function confirmAddGeneratedThreads(): void {
       style="width: 400px"
       :mask-closable="false"
     >
-      <p class="ai-modal-hint">将 {{ selectedThreadIds.length }} 条伏笔的状态改为：</p>
+      <p class="ai-modal-hint">将 {{ selectedThreadIds.length }} 条伏笔的状态改为:</p>
       <n-select
         v-model:value="batchStatus"
         :options="[
@@ -1002,7 +1051,7 @@ function confirmAddGeneratedThreads(): void {
       style="width: 400px"
       :mask-closable="false"
     >
-      <p class="ai-modal-hint">为 {{ selectedThreadIds.length }} 条伏笔统一设置标签（将覆盖原有标签）：</p>
+      <p class="ai-modal-hint">为 {{ selectedThreadIds.length }} 条伏笔统一设置标签(将覆盖原有标签):</p>
       <n-dynamic-tags v-model:value="batchTags" />
       <div class="arc-modal-footer" style="margin-top: 16px">
         <div class="arc-modal-footer-right">
@@ -1012,7 +1061,7 @@ function confirmAddGeneratedThreads(): void {
       </div>
     </n-modal>
 
-    <!-- AI 批量生成：重点方向输入 -->
+    <!-- AI 批量生成:重点方向输入 -->
     <n-modal
       v-model:show="batchFocusModalVisible"
       preset="card"
@@ -1021,22 +1070,37 @@ function confirmAddGeneratedThreads(): void {
       :mask-closable="false"
     >
       <p class="ai-modal-hint">
-        将根据项目的大纲、角色、世界观和已有伏笔，批量设计相互衔接的伏笔与悬念。可选填一个重点方向。
+        将根据项目的大纲、角色、世界观和已有伏笔,批量设计相互衔接的伏笔与悬念。可选填一个重点方向。
       </p>
       <n-input
         v-model:value="batchFocus"
         type="textarea"
         :rows="3"
-        placeholder="如：围绕主角身世 / 反派势力的阴谋 / 下一卷的冲突重点（可留空）"
+        placeholder="如:围绕主角身世 / 反派势力的阴谋 / 下一卷的冲突重点(可留空)"
       />
-      <div class="ai-modal-count-row" style="margin-top: 12px; display: flex; align-items: center; gap: 10px">
-        <span class="ai-modal-count-label">生成数量</span>
-        <n-input-number v-model:value="batchCount" :min="1" :step="1" style="width: 120px" placeholder="1" @keydown.enter="handleBatchCountEnter" />
-        <span class="ai-modal-count-hint" style="color: var(--arc-text-hint); font-size: 12px">不限条数，建议 10~50 条</span>
+      <div class="ai-modal-count-row" style="margin-top: 14px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap">
+        <div class="ai-priority-count">
+          <span class="ai-priority-dot" style="background:#ef4444"></span>
+          <span class="ai-modal-count-label">高优先级</span>
+          <n-input-number v-model:value="batchHighCount" :min="0" :max="50" :step="1" style="width: 90px" />
+        </div>
+        <div class="ai-priority-count">
+          <span class="ai-priority-dot" style="background:#eab308"></span>
+          <span class="ai-modal-count-label">中优先级</span>
+          <n-input-number v-model:value="batchMediumCount" :min="0" :max="50" :step="1" style="width: 90px" />
+        </div>
+        <div class="ai-priority-count">
+          <span class="ai-priority-dot" style="background:#94a3b8"></span>
+          <span class="ai-modal-count-label">低优先级</span>
+          <n-input-number v-model:value="batchLowCount" :min="0" :max="50" :step="1" style="width: 90px" />
+        </div>
+      </div>
+      <div class="ai-modal-count-hint" style="color: var(--arc-text-hint); font-size: 12px; margin-top: 8px">
+        合计 <b style="color: var(--arc-text-1)">{{ batchTotal }}</b> 条（建议 10~50 条，三个优先级可分别设为 0 以跳过该优先级）
       </div>
       <div v-if="batchLoading" class="ai-modal-progress" style="margin-top: 12px">
         <n-progress type="line" :percentage="batchProgress" :show-indicator="false" />
-        <span class="ai-modal-count-hint" style="color: var(--arc-text-hint); font-size: 12px">已生成 {{ batchProgress }}%（分批并行中，请稍候）</span>
+        <span class="ai-modal-count-hint" style="color: var(--arc-text-hint); font-size: 12px">已生成 {{ batchProgress }}%(分批并行中,请稍候)</span>
       </div>
       <div class="arc-modal-footer" style="margin-top: 16px">
         <div class="arc-modal-footer-right">
@@ -1048,7 +1112,7 @@ function confirmAddGeneratedThreads(): void {
       </div>
     </n-modal>
 
-    <!-- AI 批量生成：结果预览与确认 -->
+    <!-- AI 批量生成:结果预览与确认 -->
     <n-modal
       v-model:show="batchModalVisible"
       preset="card"
@@ -1432,7 +1496,7 @@ function confirmAddGeneratedThreads(): void {
   border-top: 1px dashed var(--arc-border);
 }
 
-/* AI 生成结果列表内的行样式（保留） */
+/* AI 生成结果列表内的行样式(保留) */
 .row-check {
   display: inline-flex;
   align-items: center;
@@ -1493,6 +1557,19 @@ function confirmAddGeneratedThreads(): void {
   font-size: 13px;
   line-height: 1.6;
   color: var(--arc-text-hint);
+}
+
+.ai-priority-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ai-priority-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
 }
 
 .ai-result-list {

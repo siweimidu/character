@@ -25,6 +25,10 @@ interface CatalogBatchOptions {
   panel: string
   kind: AiTaskKind
   context: Record<string, unknown>
+  /** 仅 plot-thread 模式使用：本批次伏笔的统一优先级（high / medium / low） */
+  priority?: string
+  /** 自定义任务追踪 key（用于多个同 mode 批次并行时避免 key 冲突；缺省时按 mode 自动生成） */
+  taskKey?: string
   existingKeys?: string[]
   keyField?: 'name' | 'title'
   onProgress?: (completed: number, total: number) => void
@@ -102,16 +106,17 @@ export function useCatalogBatch() {
     const total = Math.max(1, Math.floor(options.count))
     const keyField = options.keyField
     const knownKeys = new Set((options.existingKeys ?? []).map((key) => key.trim().toLowerCase()).filter(Boolean))
-    const taskKey = `catalog-batch:${options.mode}`
+    const taskKey = options.taskKey || `catalog-batch:${options.mode}`
     const allTargets = Array.isArray(options.context.targets) ? options.context.targets : null
 
-    // 注册本模式的取消控制器，供对话框"叉号=中断"时 abort。
+    // 注册本批次的取消控制器，供对话框"叉号=中断"时 abort。
+    // 用 taskKey 作为 key，使同一 mode 下的多个并行批次互不干扰。
     const controller = new AbortController()
-    batchAbortControllers.set(options.mode, controller)
+    batchAbortControllers.set(taskKey, controller)
     const signal = controller.signal
     // 记录已启动批次的主进程 clientTaskId，用于中断时主动取消底层请求。
     const runningClientIds = new Set<string>()
-    batchClientIds.set(options.mode, runningClientIds)
+    batchClientIds.set(taskKey, runningClientIds)
 
     // 每次启动一个批次并返回该批新增的、去重后仍未被占用的条目。
     // 使用递增的跟踪 key，避免 runTrackedAiTask 同 key 互斥导致并行失败；
@@ -154,6 +159,7 @@ export function useCatalogBatch() {
               projectId: appStore.currentProject?.id,
               mode: options.mode,
               count: batchCount,
+              priority: options.priority,
               existingNames: [...usedKeys]
             }
           }))
@@ -250,8 +256,8 @@ export function useCatalogBatch() {
       return await runBatches()
     } finally {
       // 任务结束（无论成功、失败或被中断）都要清理控制器，避免影响下一次生成。
-      batchAbortControllers.delete(options.mode)
-      batchClientIds.delete(options.mode)
+      batchAbortControllers.delete(taskKey)
+      batchClientIds.delete(taskKey)
     }
   }
 
