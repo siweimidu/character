@@ -975,6 +975,19 @@ function toggleCcSwitchProfile(profile: CcSwitchAiProfile & { selected: boolean 
   profile.selected = !profile.selected
 }
 
+// 是否所有 CC Switch 配置项均被选中（用于多选按钮状态）
+const ccSwitchAllSelected = computed(
+  () => ccSwitchProfiles.value.length > 0 && ccSwitchProfiles.value.every((p) => p.selected)
+)
+
+// 多选按钮：一键全选 / 取消全选所有 CC Switch 配置项
+function toggleCcSwitchSelectAll(): void {
+  const target = !ccSwitchAllSelected.value
+  ccSwitchProfiles.value.forEach((p) => {
+    p.selected = target
+  })
+}
+
 // 确认将勾选的 CC Switch AI 接口加入 aiProfiles
 function confirmCcSwitchImport(): void {
   const selected = ccSwitchProfiles.value.filter((p) => p.selected)
@@ -1863,10 +1876,24 @@ async function saveSettings(): Promise<void> {
     :show="ccSwitchImportOpen"
     preset="card"
     class="arc-settings-modal cc-switch-modal"
-    title="从 CC Switch 导入"
     :bordered="false"
     @close="ccSwitchImportOpen = false"
   >
+    <template #header>
+      <div class="cc-switch-header">
+        <span class="cc-switch-header-title">从 CC Switch 导入</span>
+        <n-button
+          v-if="ccSwitchProfiles.length"
+          size="tiny"
+          secondary
+          round
+          class="cc-switch-select-all-btn"
+          @click="toggleCcSwitchSelectAll"
+        >
+          {{ ccSwitchAllSelected ? '取消全选' : '多选' }}
+        </n-button>
+      </div>
+    </template>
     <div class="cc-switch-intro">
       <p>已读取 CC Switch 配置（{{ ccSwitchConfigPath || '~/.cc-switch/cc-switch.db' }}）。选择要导入的 AI 接口配置。</p>
       <p v-if="ccSwitchConfigError" class="cc-switch-warn">
@@ -2742,6 +2769,24 @@ async function saveSettings(): Promise<void> {
 /* ── CC Switch 导入弹窗 ── */
 .cc-switch-modal {
   width: min(620px, calc(100vw - 48px));
+}
+
+.cc-switch-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cc-switch-header-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--arc-text-primary);
+}
+
+.cc-switch-select-all-btn {
+  flex-shrink: 0;
+  padding: 0 10px;
+  font-size: 12px;
 }
 
 .cc-switch-intro p {
