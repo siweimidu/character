@@ -654,7 +654,7 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   padding: 8px;
   scrollbar-width: thin;
-  scrollbar-color: var(--arc-border) transparent;
+  scrollbar-color: transparent transparent;
 }
 
 /* ── Command Panel ── */

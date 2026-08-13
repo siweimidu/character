@@ -612,7 +612,7 @@ watch(
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
-/* 自定义滚动条风格 */
+/* 自定义滚动条风格 —— 透明隐藏 */
 .arc-scrollbar::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -621,11 +621,11 @@ watch(
   background: transparent;
 }
 .arc-scrollbar::-webkit-scrollbar-thumb {
-  background: var(--arc-border, #e5e7eb);
+  background: transparent;
   border-radius: 999px;
 }
 .arc-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--arc-border, #e5e7eb) 80%, #000);
+  background: rgba(128, 128, 128, 0.28);
 }
 
 /* 会话栏 */

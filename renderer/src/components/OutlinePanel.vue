@@ -2804,17 +2804,17 @@ watch(
 }
 
 .import-modal-body::-webkit-scrollbar-track {
-  background: var(--arc-bg-surface-hover);
+  background: transparent;
   border-radius: 4px;
 }
 
 .import-modal-body::-webkit-scrollbar-thumb {
-  background: var(--arc-border);
+  background: transparent;
   border-radius: 4px;
 }
 
 .import-modal-body::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--arc-border) 70%, var(--arc-text-hint));
+  background: rgba(128, 128, 128, 0.28);
 }
 
 .import-step-head {

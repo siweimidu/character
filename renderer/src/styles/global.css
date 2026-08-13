@@ -301,9 +301,39 @@ input {
   color: var(--arc-selection-text);
 }
 
+/* 全局滚动条透明化：侧边竖向滚动条一律隐藏（透明），仅在 hover 时轻微显示以便定位 */
+/* 覆盖到所有未被 .arc-scrollbar 覆盖的滚动条，保证全局一致 */
+/* 全局默认滚动条透明 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.28);
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dark-mode *::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 .arc-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: #d1d1d6 transparent;
+  scrollbar-color: transparent transparent;
 }
 
 .arc-scrollbar::-webkit-scrollbar {
@@ -312,8 +342,12 @@ input {
 }
 
 .arc-scrollbar::-webkit-scrollbar-thumb {
-  background: #d1d1d6;
+  background: transparent;
   border-radius: 999px;
+}
+
+.arc-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.28);
 }
 
 .arc-scrollbar::-webkit-scrollbar-track {
@@ -321,17 +355,33 @@ input {
 }
 
 .dark-mode .arc-scrollbar {
-  scrollbar-color: var(--arc-border-strong) transparent;
+  scrollbar-color: transparent transparent;
 }
 
 .dark-mode .arc-scrollbar::-webkit-scrollbar-thumb {
-  background: var(--arc-border-strong);
+  background: transparent;
+}
+
+.dark-mode .arc-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .dark-mode .app-error-banner {
   border-color: color-mix(in srgb, var(--arc-danger) 38%, var(--arc-border));
   background: color-mix(in srgb, var(--arc-danger) 10%, var(--arc-bg-surface));
   color: var(--arc-danger);
+}
+
+/* naive-ui 自定义滚动条同样透明隐藏（不影响设置里的“颜色深浅”滑动条） */
+.n-scrollbar .n-scrollbar-rail,
+.n-scrollbar .n-scrollbar-rail__scrollbar {
+  background: transparent;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.n-scrollbar:hover .n-scrollbar-rail__scrollbar,
+.n-scrollbar .n-scrollbar-rail__scrollbar:hover {
+  opacity: 0;
 }
 
 /* ── Claude 风格小说助理 ── */

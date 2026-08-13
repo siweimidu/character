@@ -926,7 +926,7 @@ onBeforeUnmount(() => {
   padding: 12px;
   overflow-x: auto;
   scrollbar-width: thin;
-  scrollbar-color: #45475a transparent;
+  scrollbar-color: transparent transparent;
 }
 
 .markdown-body .code-block pre code {

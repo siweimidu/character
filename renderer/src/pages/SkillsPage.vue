@@ -101,20 +101,20 @@ function backToProjectCenter(): void {
   padding: 0 clamp(16px, 2vw, 24px) clamp(16px, 2vw, 24px);
 }
 
-/* 右侧滑动条：更明显、更易识别，始终置顶显示 */
+/* 右侧滑动条：透明隐藏，hover 时轻微显示 */
 .skills-body::-webkit-scrollbar {
   width: 10px;
 }
 
 .skills-body::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--arc-text-hint) 45%, transparent);
+  background: transparent;
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 
 .skills-body::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--arc-text-secondary) 70%, transparent);
+  background: rgba(128, 128, 128, 0.28);
   background-clip: content-box;
   border: 2px solid transparent;
 }
