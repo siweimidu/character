@@ -150,10 +150,11 @@ async function handleCreate(): Promise<void> {
           <n-input-number
             v-model:value="count"
             :min="1"
+            :max="10"
             :disabled="isGenerating"
             class="count-input"
           />
-          <span class="form-hint">不限数量</span>
+          <span class="form-hint">只能生成 1~10 个</span>
         </div>
 
         <div class="form-row">
@@ -284,16 +285,15 @@ async function handleCreate(): Promise<void> {
   font-weight: 680;
 }
 
-.count-input {
-  width: 140px;
-}
-
-.genre-select {
+.count-input,
+.genre-select,
+.length-select {
   flex: 1;
 }
 
+.genre-select,
 .length-select {
-  width: 200px;
+  min-width: 0;
 }
 
 .form-hint {
