@@ -279,21 +279,6 @@ function sendWithIntent(): void {
   emit('send', flushIntent())
 }
 
-/** 三大工作模式（/plan /spec /goal）快捷按钮，置于输入框最靠近处。 */
-const QUICK_MODE_COMMANDS = BUILTIN_COMMANDS.filter((c) => ['plan', 'spec', 'goal'].includes(c.key))
-
-/** 点击模式按钮：把对应命令模板填充到输入框，并带上模式 intentHint。 */
-function applyModeCommand(cmd: SlashCommandDef): void {
-  if (!textareaRef.value) return
-  emit('update:modelValue', cmd.template)
-  textareaRef.value.focus()
-  const pos = cmd.template.length
-  textareaRef.value.setSelectionRange(pos, pos)
-  autosize(textareaRef.value)
-  pendingIntent.value = cmd.intentHint
-  slashOpen.value = false
-}
-
 /** 通过原生隐藏 input 选择本地文本文件，作为 IPC 文件对话框的可靠回退 */
 function triggerNativeFilePick(): void {
   if (props.isStreaming) return
@@ -591,22 +576,6 @@ watch(
             <div v-else class="slash-empty">没有匹配的 Skills</div>
           </div>
         </div>
-      </div>
-      <!-- 三大工作模式快捷按钮：置于输入框最近处，一键进入 /plan /spec /goal -->
-      <div v-if="!props.isEditing && QUICK_MODE_COMMANDS.length" class="mode-quick-bar">
-        <button
-          v-for="cmd in QUICK_MODE_COMMANDS"
-          :key="cmd.key"
-          type="button"
-          class="mode-quick-btn"
-          :class="`mode-${cmd.key}`"
-          :disabled="props.isStreaming"
-          :title="cmd.description"
-          @click="applyModeCommand(cmd)"
-        >
-          <span class="mode-quick-label">{{ cmd.label }}</span>
-          <span class="mode-quick-desc">{{ cmd.description }}</span>
-        </button>
       </div>
       <textarea
         ref="textareaRef"
@@ -958,50 +927,6 @@ watch(
   padding: 12px 32px 22px;
   background: linear-gradient(180deg, transparent, var(--arc-bg-body) 30%);
 }
-/* ── 三大工作模式快捷按钮（/plan /spec /goal） ── */
-.mode-quick-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.mode-quick-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  border: 1px solid var(--arc-border);
-  border-radius: 999px;
-  padding: 3px 10px 3px 8px;
-  background: var(--arc-bg-surface);
-  cursor: pointer;
-  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
-}
-.mode-quick-btn:hover {
-  border-color: color-mix(in srgb, var(--arc-primary) 45%, var(--arc-border));
-  background: var(--arc-primary-soft);
-}
-.mode-quick-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.mode-quick-label {
-  font-family: var(--v2-mono);
-  font-weight: 700;
-  color: var(--arc-primary);
-  font-size: 12px;
-}
-.mode-quick-desc {
-  color: var(--arc-text-secondary);
-  font-size: 11.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.mode-quick-btn.mode-plan .mode-quick-label { color: #0ea5e9; }
-.mode-quick-btn.mode-spec .mode-quick-label { color: #8b5cf6; }
-.mode-quick-btn.mode-goal .mode-quick-label { color: #10b981; }
-.mode-quick-btn.mode-plan:hover { border-color: rgba(14, 165, 233, 0.5); background: rgba(14, 165, 233, 0.08); }
-.mode-quick-btn.mode-spec:hover { border-color: rgba(139, 92, 246, 0.5); background: rgba(139, 92, 246, 0.08); }
-.mode-quick-btn.mode-goal:hover { border-color: rgba(16, 185, 129, 0.5); background: rgba(16, 185, 129, 0.08); }
 .native-file-input {
   position: absolute;
   width: 1px;

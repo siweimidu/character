@@ -22,7 +22,6 @@ import StagedChangesView from './StagedChangesView.vue'
 import AgentSelector from './AgentSelector.vue'
 import AgentMemoryDialog from './AgentMemoryDialog.vue'
 import ReferencePickerDialog from './ReferencePickerDialog.vue'
-import PromptLibrary from './PromptLibrary.vue'
 
 const appStore = useAppStore()
 const { selectedProjectId } = storeToRefs(appStore)
@@ -505,11 +504,6 @@ async function handleCommit(ids?: string[]): Promise<void> {
               <span>{{ action.label }}</span>
             </button>
           </div>
-
-          <PromptLibrary
-            :project-id="selectedProjectId"
-            :on-use="(p) => { composerValue = p }"
-          />
 
           <div class="asset-strip">
             <button
