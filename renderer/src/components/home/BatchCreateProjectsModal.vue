@@ -47,6 +47,11 @@ const canGenerate = computed(() => {
 
 const canCreate = computed(() => generatedProjects.value.length > 0 && !isCreating.value && !isGenerating.value)
 
+function handleCountEnter(): void {
+  // 数量为空时按回车自动填入 1，避免停留在灰色的 Please Input 占位状态
+  if (!count.value || count.value < 1) count.value = 1
+}
+
 function reset(): void {
   isGenerating.value = false
   isCreating.value = false
@@ -153,6 +158,8 @@ async function handleCreate(): Promise<void> {
             :max="10"
             :disabled="isGenerating"
             class="count-input"
+            placeholder="1"
+            @keydown.enter="handleCountEnter"
           />
           <span class="form-hint">只能生成 1~10 个</span>
         </div>

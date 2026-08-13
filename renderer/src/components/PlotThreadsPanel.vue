@@ -501,6 +501,11 @@ function compactForAi(value: unknown, maxLength: number): string {
   return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text
 }
 
+function handleBatchCountEnter(): void {
+  // 数量为空时按回车自动填入 1，避免停留在灰色的 Please Input 占位状态
+  if (!batchCount.value || batchCount.value < 1) batchCount.value = 1
+}
+
 async function handleAiBatchGenerate(): Promise<void> {
   if (batchLoading.value) return
   const project = appStore.currentProject
@@ -1026,7 +1031,7 @@ function confirmAddGeneratedThreads(): void {
       />
       <div class="ai-modal-count-row" style="margin-top: 12px; display: flex; align-items: center; gap: 10px">
         <span class="ai-modal-count-label">生成数量</span>
-        <n-input-number v-model:value="batchCount" :min="1" :step="1" style="width: 120px" />
+        <n-input-number v-model:value="batchCount" :min="1" :step="1" style="width: 120px" placeholder="1" @keydown.enter="handleBatchCountEnter" />
         <span class="ai-modal-count-hint" style="color: var(--arc-text-hint); font-size: 12px">不限条数，建议 10~50 条</span>
       </div>
       <div v-if="batchLoading" class="ai-modal-progress" style="margin-top: 12px">

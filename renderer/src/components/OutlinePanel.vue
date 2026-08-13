@@ -1415,6 +1415,11 @@ function openQuantityDialog(mode: QuantityDialogMode, max: number, opts: { volum
   quantityDialogVisible.value = true
 }
 
+function handleQuantityEnter(): void {
+  // 数量为空时按回车自动填入 1，避免停留在灰色的 Please Input 占位状态
+  if (!quantityDialogValue.value || quantityDialogValue.value < 1) quantityDialogValue.value = 1
+}
+
 function confirmQuantityDialog(): void {
   const count = Math.max(1, Math.min(quantityDialogMax.value, Math.floor(quantityDialogValue.value)))
   quantityDialogVisible.value = false
@@ -2611,6 +2616,8 @@ watch(
           :max="quantityDialogMax"
           :step="1"
           style="width: 100%;"
+          placeholder="1"
+          @keydown.enter="handleQuantityEnter"
         />
       </div>
     </n-modal>

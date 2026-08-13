@@ -46,6 +46,11 @@ watch(() => props.show, (show) => {
   types.value = [...props.defaultTypes]
 })
 
+function handleCountEnter(): void {
+  // 输入框为空时按回车自动填入 1，避免停留在灰色的 Please Input 占位状态
+  if (!count.value || count.value < 1) count.value = 1
+}
+
 function submit(): void {
   const normalizedTypes = [...new Set(types.value.map((type) => type.trim()).filter(Boolean))]
   if (props.loading || count.value < 1 || (hasTypes.value && normalizedTypes.length === 0)) return
@@ -100,7 +105,7 @@ function submit(): void {
         />
       </n-form-item>
       <n-form-item :label="`${itemLabel}数量`">
-        <n-input-number v-model:value="count" :min="1" :max="maxCount" :precision="0" style="width: 100%" />
+        <n-input-number v-model:value="count" :min="1" :max="maxCount" :precision="0" style="width: 100%" placeholder="1" @keydown.enter="handleCountEnter" />
       </n-form-item>
       <n-form-item label="补充要求（可选）">
         <n-input
