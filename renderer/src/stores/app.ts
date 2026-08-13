@@ -353,7 +353,12 @@ export const useAppStore = defineStore('app', () => {
       scope === 'global' || scope === 'all'
         ? Object.values(projectWorkspaces.value).flatMap((workspace) => workspace.recycleBin ?? [])
         : projectRecycleBinOf(String(scope))
-    return [...projectEntries, ...globalRecycleBin.value].sort((a, b) =>
+    // 全局类数据（AI 接口配置、参考作品等）仅在全局回收站展示；项目回收站不显示
+    const globalEntries =
+      scope === 'global'
+        ? globalRecycleBin.value
+        : globalRecycleBin.value.filter((entry) => !GLOBAL_RECYCLE_CATEGORIES.has(entry.category))
+    return [...projectEntries, ...globalEntries].sort((a, b) =>
       (b.deletedAt || '').localeCompare(a.deletedAt || '')
     )
   })

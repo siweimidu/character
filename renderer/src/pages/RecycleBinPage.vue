@@ -163,8 +163,8 @@ function emptyBin(): void {
 /** 保存保留天数 */
 function saveRetention(): void {
   const days = retentionDraft.value
-  if (!Number.isFinite(days) || days < 1 || days > 365) {
-    message.warning('保留天数需在 1 ~ 365 天之间')
+  if (!Number.isFinite(days) || days < 1) {
+    message.warning('保留天数需为大于 0 的整数')
     return
   }
   appStore.setRecycleBinRetentionDays(days)
@@ -222,7 +222,7 @@ function backToProjectCenter(): void {
           显示所有项目删除的内容，以及 AI 接口配置、参考作品等全局数据。
         </span>
         <span v-else class="recycle-scope-hint">
-          显示当前项目删除的内容，以及 AI 接口配置、参考作品等所有项目共有的全局数据。
+          显示当前项目删除的内容。AI 接口配置、参考作品等全局数据仅在全局回收站中展示。
         </span>
       </div>
 
@@ -245,7 +245,6 @@ function backToProjectCenter(): void {
             <n-input-number
               v-model:value="retentionDraft"
               :min="1"
-              :max="365"
               size="small"
               style="width: 90px"
             />
