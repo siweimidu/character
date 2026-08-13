@@ -1303,6 +1303,12 @@ export const useAppStore = defineStore('app', () => {
     return expiry.toISOString()
   }
 
+  /** 全局类别集合：这些内容跨项目共享，删除后进入全局回收站 */
+  const GLOBAL_RECYCLE_CATEGORIES = new Set<import('@/types/app').RecycleBinCategory>([
+    'ai-profile',
+    'reference-work'
+  ])
+
   /** 向当前项目回收站写入一条删除记录 */
   function pushRecycleEntry(
     category: import('@/types/app').RecycleBinCategory,
@@ -1311,10 +1317,12 @@ export const useAppStore = defineStore('app', () => {
     options: { projectId?: string; summary?: string } = {}
   ): void {
     const now = new Date().toISOString()
+    // 全局类别的 projectId 固定为空字符串，确保在全局回收站中可被所有项目找到
+    const isGlobal = GLOBAL_RECYCLE_CATEGORIES.has(category)
     const entry: import('@/types/app').RecycleBinEntry = {
       id: `recycle-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       category,
-      projectId: options.projectId ?? selectedProjectId.value,
+      projectId: isGlobal ? '' : (options.projectId ?? selectedProjectId.value),
       title: String(title ?? '').trim() || '未命名',
       summary: options.summary,
       data: data ?? {},
@@ -1323,7 +1331,7 @@ export const useAppStore = defineStore('app', () => {
     }
 
     // 全局类别（AI 接口、参考作品等）写入全局回收站
-    if (category === 'ai-profile' || category === 'reference-work') {
+    if (isGlobal) {
       globalRecycleBin.value = [entry, ...globalRecycleBin.value]
     } else {
       updateCurrentWorkspace((workspace) => ({
@@ -3831,22 +3839,21 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function saveAppSettingsDraft(nextSettings: AppSettings, nextTheme: ThemeName = theme.value): Promise<boolean> {
-    // 捕获本次设置保存中被删除的 AI 接口配置：设置弹窗通过草稿直接覆盖 aiProfiles，
-    // 不会经过 deleteAiProfile，这里需要主动 diff 并把被删接口写入全局回收站。
+    theme.value = nextTheme
+
+    // 检测被删除的 AI 接口配置，写入全局回收站（AI 接口为跨项目共享的全局数据）
+    const previousProfiles = normalizeAppSettings(appSettings.value).aiProfiles
     const nextProfiles = normalizeAppSettings(nextSettings).aiProfiles
-    const nextProfileIds = new Set(nextProfiles.map((profile) => profile.id))
-    for (const previous of appSettings.value.aiProfiles) {
-      if (!nextProfileIds.has(previous.id)) {
-        pushRecycleEntry('ai-profile', previous.name || previous.model || '未命名接口', { ...previous })
+    for (const profile of previousProfiles) {
+      if (nextProfiles.some((p) => p.id === profile.id)) continue
+      // 避免重复写入（例如恢复后再次保存）
+      if (!globalRecycleBin.value.some((entry) => entry.category === 'ai-profile' && (entry.data as { id?: string })?.id === profile.id)) {
+        pushRecycleEntry('ai-profile', profile.name || profile.model || '未命名接口', { ...profile })
       }
     }
 
-    theme.value = nextTheme
     appSettings.value = normalizeAppSettings(nextSettings)
     await persistAppSettings()
-    // 设置持久化结束后再落一次完整快照，确保 AI 接口等全局回收站记录
-    //（globalRecycleBin 随 workspace 快照持久化）不会因写入时序丢失。
-    await persistWorkspace()
     return !persistenceError.value
   }
 
