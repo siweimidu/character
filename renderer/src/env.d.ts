@@ -625,6 +625,39 @@ declare global {
         filePath?: string
         error?: string
       }>
+      exportReferenceAsset: (payload: {
+        format: 'txt' | 'md' | 'json' | 'excel'
+        asset?: {
+          title?: string
+          source?: string
+          fileName?: string
+          notes?: string
+          summary?: string
+          topKeywords?: string[]
+          styleRules?: string[]
+          documentCount?: number
+          summaryCount?: number
+          chunkCount?: number
+          chapterCount?: number
+          characterCount?: number
+          updatedAtLabel?: string
+        }
+        documents?: Array<{
+          title?: string
+          sourceType?: string
+          sourceTypeLabel?: string
+          sourceLabel?: string
+          summary?: string
+          content?: string
+          keywords?: string[]
+          updatedAtLabel?: string
+        }>
+      }) => Promise<{
+        success: boolean
+        canceled: boolean
+        filePath?: string
+        error?: string
+      }>
       exportRelationsData: (payload: {
         dataType: 'organization' | 'membership' | 'relationship'
         format: 'json' | 'txt' | 'markdown' | 'excel'

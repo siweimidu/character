@@ -34,6 +34,13 @@ import {
   type ProjectArchiveImportMode,
   type ProjectArchiveModule
 } from './archive/project-archive'
+import {
+  buildReferenceAssetExportContent,
+  resolveReferenceAssetFileName,
+  type ReferenceAssetExportAsset,
+  type ReferenceAssetExportDocument,
+  type ReferenceAssetExportFormat
+} from './reference-asset-export'
 import type { WorkspacePayload } from './workspace-types'
 import type { WindowManager } from './window-manager'
 
@@ -991,6 +998,59 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
 
     await writeFile(result.filePath, content, 'utf-8')
     return { success: true, canceled: false, filePath: result.filePath }
+  })
+
+  // ── 拆书知识库：单本参考作品资产导出（txt / md / json / excel） ──
+  ipcMain.handle('characterarc:export-reference-asset', async (_event, payload: unknown) => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) {
+      return { success: false, canceled: true }
+    }
+
+    const request = (payload && typeof payload === 'object' ? payload : {}) as {
+      format?: ReferenceAssetExportFormat
+      asset?: ReferenceAssetExportAsset
+      documents?: ReferenceAssetExportDocument[]
+    }
+
+    const format: ReferenceAssetExportFormat = request.format ?? 'md'
+    const asset = request.asset ?? {}
+    const documents = Array.isArray(request.documents) ? request.documents : []
+    if (!documents.length) {
+      return { success: false, canceled: false, error: '没有可导出的拆书文档。' }
+    }
+
+    const { baseName, extension } = resolveReferenceAssetFileName(format, asset)
+    const dateTag = new Date().toISOString().slice(0, 10)
+    const filterMap: Record<ReferenceAssetExportFormat, { name: string; extensions: string[] }> = {
+      txt: { name: '文本文档', extensions: ['txt'] },
+      md: { name: 'Markdown 文档', extensions: ['md'] },
+      json: { name: 'JSON 文件', extensions: ['json'] },
+      excel: { name: 'Excel 工作簿', extensions: ['xlsx'] }
+    }
+    const safeTitle = String(asset.title ?? '参考作品').trim() || '参考作品'
+
+    const result = await dialog.showSaveDialog(window, {
+      title: `导出《${safeTitle}》拆书资产`,
+      defaultPath: `${baseName}-拆书资产-${dateTag}.${extension}`,
+      filters: [filterMap[format]]
+    })
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true }
+    }
+
+    try {
+      const content = buildReferenceAssetExportContent(format, asset, documents)
+      await writeFile(result.filePath, content)
+      return { success: true, canceled: false, filePath: result.filePath }
+    } catch (error) {
+      return {
+        success: false,
+        canceled: false,
+        error: error instanceof Error ? error.message : '导出拆书资产失败'
+      }
+    }
   })
 
   // ── 人物卡片导入导出（兼容酒馆 SillyTavern 角色卡 V2） ──

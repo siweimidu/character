@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Search, Sparkles } from 'lucide-vue-next'
+import { Download, Search, Sparkles } from 'lucide-vue-next'
 import {
   NAlert,
   NButton,
@@ -9,6 +9,7 @@ import {
   NCollapseItem,
   NDescriptions,
   NDescriptionsItem,
+  NDropdown,
   NEmpty,
   NInput,
   NList,
@@ -18,7 +19,8 @@ import {
   NStatistic,
   NTag,
   useDialog,
-  useMessage
+  useMessage,
+  type DropdownOption
 } from 'naive-ui'
 import {
   buildKnowledgeCenterState,
@@ -29,6 +31,7 @@ import {
 } from '@/features/knowledge/knowledgeCenter'
 import { useAppStore } from '@/stores/app'
 import { useBatchImport } from '@/composables/useBatchImport'
+import { toIpcPayload } from '@/utils/ipcPayload'
 import BatchImportModal from './BatchImportModal.vue'
 
 const appStore = useAppStore()
@@ -265,6 +268,76 @@ function resolveAssetDocuments(asset: ReferenceAssetLibrary): KnowledgeDocumentV
     .filter((item) => asset.relatedDocumentIds.includes(item.document.id))
     .sort((left, right) => compareReferenceAssetDocuments(left.document, right.document))
 }
+
+// ── 导出拆书资产（txt / md / json / excel） ──
+const exportingAssetId = ref<string | null>(null)
+const exportMenuOptions: DropdownOption[] = [
+  { key: 'md', label: '导出为 Markdown' },
+  { key: 'txt', label: '导出为 TXT' },
+  { key: 'json', label: '导出为 JSON' },
+  { key: 'excel', label: '导出为 Excel 表格' }
+]
+
+async function handleExportAsset(asset: ReferenceAssetLibrary, format: 'txt' | 'md' | 'json' | 'excel'): Promise<void> {
+  if (exportingAssetId.value) {
+    return
+  }
+
+  const documents = resolveAssetDocuments(asset).map((item) => ({
+    title: item.document.title,
+    sourceType: item.document.sourceType,
+    sourceTypeLabel: item.sourceTypeLabel,
+    sourceLabel: item.sourceLabelText,
+    summary: item.document.summary,
+    content: item.document.content,
+    keywords: item.document.keywords ?? [],
+    updatedAtLabel: item.updatedAtLabel
+  }))
+
+  if (!documents.length) {
+    message.warning('该参考作品还没有可导出的拆书文档')
+    return
+  }
+
+  exportingAssetId.value = asset.id
+  try {
+    const result = await window.characterArc.exportReferenceAsset(toIpcPayload({
+      format,
+      asset: {
+        title: asset.title,
+        source: asset.source,
+        fileName: asset.fileName,
+        notes: asset.notes,
+        summary: asset.summary,
+        topKeywords: asset.topKeywords,
+        styleRules: asset.styleRules,
+        documentCount: asset.documentCount,
+        summaryCount: asset.summaryCount,
+        chunkCount: asset.chunkCount,
+        chapterCount: asset.chapterCount,
+        characterCount: asset.characterCount,
+        updatedAtLabel: asset.updatedAtLabel
+      },
+      documents
+    }))
+
+    if (!result.success) {
+      if (!result.canceled) {
+        message.error(result.error ?? '导出失败')
+      }
+      return
+    }
+    message.success(`已导出《${asset.title}》拆书资产`)
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '导出失败')
+  } finally {
+    exportingAssetId.value = null
+  }
+}
+
+function handleExportSelect(asset: ReferenceAssetLibrary, key: string | number): void {
+  void handleExportAsset(asset, key as 'txt' | 'md' | 'json' | 'excel')
+}
 </script>
 
 <template>
@@ -347,6 +420,17 @@ function resolveAssetDocuments(asset: ReferenceAssetLibrary): KnowledgeDocumentV
 
         <div class="asset-actions">
           <n-button tertiary type="primary" size="small" @click="openReferenceAsset(asset)">查看主文档</n-button>
+          <n-dropdown
+            :options="exportMenuOptions"
+            placement="bottom-end"
+            trigger="click"
+            @select="handleExportSelect(asset, $event)"
+          >
+            <n-button tertiary size="small" :loading="exportingAssetId === asset.id" :disabled="Boolean(exportingAssetId) && exportingAssetId !== asset.id">
+              <template #icon><Download :size="14" /></template>
+              导出
+            </n-button>
+          </n-dropdown>
           <n-button
             type="primary"
             size="small"
