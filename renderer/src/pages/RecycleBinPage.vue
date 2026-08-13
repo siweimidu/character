@@ -290,7 +290,7 @@ function backToProjectCenter(): void {
           <span class="chip-count">{{ entries.length }}</span>
         </button>
         <button
-          v-for="(meta, key) in visibleCategories"
+          v-for="([key, meta]) in visibleCategories"
           :key="key"
           type="button"
           class="recycle-cat-chip"

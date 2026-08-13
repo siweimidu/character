@@ -3384,7 +3384,7 @@ export const useAppStore = defineStore('app', () => {
           ? {
               ...thread,
               status,
-              closedInChapterId: status === 'resolved' ? (thread.closedInChapterId || selectedChapterId.value) : thread.closedInChapterId,
+              closedInChapterId: status === 'resolved' ? (thread.closedInChapterId || selectedChapterId.value) : undefined,
               updatedAt: new Date().toISOString()
             }
           : thread

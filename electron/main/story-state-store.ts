@@ -725,8 +725,14 @@ export function applyStateDelta(
     }
   }
 
-  // Timeline
-  if (normalizedDelta.timeline) {
+  // Timeline（仅当时间线包含实际内容时才写入，避免为无时间线信息的章节插入空记录）
+  if (
+    normalizedDelta.timeline
+    && (normalizedDelta.timeline.events.length > 0
+      || Boolean(normalizedDelta.timeline.world_state_changes?.length)
+      || Boolean(normalizedDelta.timeline.current_story_date)
+      || Boolean(normalizedDelta.timeline.story_time_elapsed))
+  ) {
     db.prepare(`
       INSERT OR REPLACE INTO story_timeline
         (id, project_id, chapter_index, story_date, events_json, world_state_changes_json, updated_at)
