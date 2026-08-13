@@ -387,6 +387,10 @@ async function deleteSelectedSkills(): Promise<void> {
         if (!result.success) {
           throw new Error(result.error ?? 'skills 删除失败')
         }
+        // 把删除的 skills 记入回收站（skill 文件已由主进程移入暂存区，可恢复）
+        if (result.deletedSkills?.length) {
+          appStore.recordDeletedSkills(result.deletedSkills, currentProject.value.id)
+        }
         selectedSkillPaths.value = selectedSkillPaths.value.filter((p) => !deletableSkillIds.value.has(p))
         await scanProjectSkills()
         // 删除后同步刷新分组列表及计数，避免导入分组弹窗展示过时的分组/数量
@@ -416,6 +420,10 @@ function deleteSingleSkill(skill: ProjectSkillItem): void {
         const result = await window.characterArc.deleteProjectSkills(currentProject.value.id, [skill.path])
         if (!result.success) {
           throw new Error(result.error ?? 'skill 删除失败')
+        }
+        // 把删除的 skill 记入回收站，可在回收站中恢复
+        if (result.deletedSkills?.length) {
+          appStore.recordDeletedSkills(result.deletedSkills, currentProject.value.id)
         }
         selectedSkillPaths.value = selectedSkillPaths.value.filter((p) => p !== skill.path)
         await scanProjectSkills()
@@ -459,7 +467,7 @@ function deleteGroup(group: {
     onPositiveClick: async () => {
       isDeletingSkills.value = true
       try {
-        let result: { success: boolean; deleted?: string[]; error?: string }
+        let result: { success: boolean; deleted?: string[]; deletedSkills?: Array<{ path: string; id: string; name: string; group: string; stashId: string }>; error?: string }
         if (isUngrouped) {
           // 未分组：删除所有项目级 skills（路径形如 project-skills/<skill>）
           const ungroupedPaths = resolvedProjectSkills.value
@@ -471,6 +479,10 @@ function deleteGroup(group: {
         }
         if (!result.success) {
           throw new Error((result as { error?: string }).error ?? '分组删除失败')
+        }
+        // 把删除的 skills 记入回收站
+        if (result.deletedSkills?.length) {
+          appStore.recordDeletedSkills(result.deletedSkills, currentProject.value.id)
         }
         // 清除该分组下已选中的 skill 路径
         selectedSkillPaths.value = selectedSkillPaths.value.filter(

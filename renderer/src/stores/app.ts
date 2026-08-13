@@ -1364,6 +1364,34 @@ export const useAppStore = defineStore('app', () => {
     } as Record<string, unknown>)
   }
 
+  /**
+   * 记录一组被删除的项目级 skills 到回收站（skill 文件已由主进程移入暂存区）。
+   * @param skills 主进程 project-skills-delete 返回的 deletedSkills 列表
+   * @param projectId 删除时所在项目 id（用于确定归属项目回收站）
+   */
+  function recordDeletedSkills(
+    skills: Array<{ path: string; id: string; name: string; group: string; stashId: string }>,
+    projectId?: string
+  ): void {
+    for (const skill of skills) {
+      pushRecycleEntry(
+        'skill',
+        skill.name || skill.id,
+        {
+          stashId: skill.stashId,
+          path: skill.path,
+          id: skill.id,
+          group: skill.group,
+          scope: 'project'
+        },
+        {
+          projectId: projectId ?? selectedProjectId.value,
+          summary: `项目 Skills · ${skill.path}`
+        }
+      )
+    }
+  }
+
   /** 移除过期回收站条目（到期自动删除），并返回移除数量 */
   function purgeExpiredRecycleBin(): number {
     const now = Date.now()
@@ -1372,7 +1400,10 @@ export const useAppStore = defineStore('app', () => {
     // 清理全局回收站过期项
     const nextGlobal = globalRecycleBin.value.filter((entry) => {
       const expired = new Date(entry.expiresAt).getTime() <= now
-      if (expired) removed += 1
+      if (expired) {
+        removed += 1
+        void purgeSkillStash(entry)
+      }
       return !expired
     })
     if (nextGlobal.length !== globalRecycleBin.value.length) {
@@ -1384,7 +1415,10 @@ export const useAppStore = defineStore('app', () => {
     for (const [projectId, workspace] of Object.entries(projectWorkspaces.value)) {
       const nextEntries = (workspace.recycleBin ?? []).filter((entry) => {
         const expired = new Date(entry.expiresAt).getTime() <= now
-        if (expired) removed += 1
+        if (expired) {
+          removed += 1
+          void purgeSkillStash(entry)
+        }
         return !expired
       })
       if (nextEntries.length !== (workspace.recycleBin ?? []).length) {
@@ -1402,8 +1436,29 @@ export const useAppStore = defineStore('app', () => {
     return removed
   }
 
+  /** 若回收站条目是 skill，则同步清理主进程中的暂存文件 */
+  async function purgeSkillStash(entry: import('@/types/app').RecycleBinEntry): Promise<void> {
+    if (entry.category !== 'skill') return
+    const stashId = String((entry.data as Record<string, unknown>)?.stashId ?? '').trim()
+    if (!stashId) return
+    try {
+      await window.characterArc.purgeProjectSkill(stashId)
+    } catch {
+      // 静默失败，暂存文件留待下次清理
+    }
+  }
+
   /** 从回收站永久删除一条记录（按当前查看范围定位，兼容任意项目） */
   function permanentlyDeleteRecycleEntry(entryId: string): void {
+    // 若目标条目是 skill，先清理主进程中的暂存文件
+    const target = globalRecycleBin.value.find((entry) => entry.id === entryId)
+      ?? Object.values(projectWorkspaces.value)
+        .flatMap((workspace) => workspace.recycleBin ?? [])
+        .find((entry) => entry.id === entryId)
+    if (target?.category === 'skill') {
+      void purgeSkillStash(target)
+    }
+
     const cleanedGlobal = globalRecycleBin.value.filter((entry) => entry.id !== entryId)
     if (cleanedGlobal.length !== globalRecycleBin.value.length) {
       globalRecycleBin.value = cleanedGlobal
@@ -1428,8 +1483,17 @@ export const useAppStore = defineStore('app', () => {
   /** 清空当前回收站视图（仅清空当前查看范围：全局 / 指定项目 / 全部） */
   function emptyRecycleBin(): void {
     const scope = recycleBinScope.value
+    // 清理 skill 暂存文件，避免残留垃圾数据
+    const purgeAll = () => {
+      for (const entry of allRecycleBinEntries.value) {
+        if (entry.category === 'skill') {
+          void purgeSkillStash(entry)
+        }
+      }
+    }
     // 全局视图展示“所有项目 + 全局数据”，清空时应一并清空
     if (scope === 'global' || scope === 'all') {
+      purgeAll()
       globalRecycleBin.value = []
       projectWorkspaces.value = Object.fromEntries(
         Object.entries(projectWorkspaces.value).map(([projectId, workspace]) => [
@@ -1442,6 +1506,12 @@ export const useAppStore = defineStore('app', () => {
     }
 
     // 指定项目：只清空该项目的回收站；全局数据（AI 接口等所有项目共有）保留在全局回收站
+    const targetWorkspace = projectWorkspaces.value[scope]
+    for (const entry of targetWorkspace?.recycleBin ?? []) {
+      if (entry.category === 'skill') {
+        void purgeSkillStash(entry)
+      }
+    }
     updateProjectWorkspace(scope, (workspace) => ({ ...workspace, recycleBin: [] }))
     schedulePersist('fast')
   }
@@ -1708,6 +1778,15 @@ export const useAppStore = defineStore('app', () => {
         selectedProjectId.value = project.id
         syncSelectedChapter(project.id)
         schedulePersist('fast')
+        break
+      }
+      case 'skill': {
+        // 项目级 skill：调用主进程把暂存文件移回原目录
+        const stashId = String((data as Record<string, unknown>)?.stashId ?? '').trim()
+        const targetProjectId = String((data as Record<string, unknown>)?.projectId ?? entry.projectId ?? '').trim()
+        if (!stashId) return false
+        const res = await window.characterArc.restoreProjectSkill(targetProjectId || selectedProjectId.value, stashId)
+        if (!res.success) return false
         break
       }
       default:
@@ -4592,6 +4671,7 @@ export const useAppStore = defineStore('app', () => {
     recycleBinRetentionDays,
     restoreRecycleEntry,
     recordDeletedAssistantSessionV2,
+    recordDeletedSkills,
     setRecycleBinRetentionDays,
     setRecycleBinScope,
     openCurrentProjectRecycleBin,

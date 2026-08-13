@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { existsSync } from 'node:fs'
 import { cp, mkdir, readFile, readdir, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -2836,9 +2836,38 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
       if (existsSync(join(groupDir, 'SKILL.md'))) {
         return { success: false, error: '该目录是一个 skill 而非分组，无法作为分组删除' }
       }
+
+      // 把分组内每个 skill 移入回收暂存区，供回收站恢复
+      const recycleRoot = join(app.getPath('userData'), 'project-skills-recycle')
+      await mkdir(recycleRoot, { recursive: true })
+      const deletedSkills: Array<{ path: string; id: string; name: string; group: string; stashId: string }> = []
+      const subEntries = await readdir(groupDir, { withFileTypes: true })
+      for (const subEntry of subEntries) {
+        if (!subEntry.isDirectory()) continue
+        const skillDir = join(groupDir, subEntry.name)
+        if (!existsSync(join(skillDir, 'SKILL.md'))) continue
+        const stashId = `skill-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        const stashDir = join(recycleRoot, stashId)
+        await mkdir(stashDir, { recursive: true })
+        await cp(skillDir, stashDir, { recursive: true, force: true })
+        await writeFile(
+          join(stashDir, 'meta.json'),
+          JSON.stringify({ skillId: subEntry.name, group: name, scope: 'project' })
+        )
+        deletedSkills.push({
+          path: `project-skills/${name}/${subEntry.name}`,
+          id: subEntry.name,
+          name: subEntry.name,
+          group: name,
+          stashId
+        })
+      }
+
       await rm(groupDir, { recursive: true, force: true })
+      // 刷新项目 + 共享作用域注册表
       await refreshSkillRegistry(resolvedProjectId || undefined)
-      return { success: true, deletedGroup: name }
+      await refreshSkillRegistry(undefined)
+      return { success: true, deletedGroup: name, deletedSkills }
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : '删除分组失败' }
     }
@@ -3088,6 +3117,10 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
         return { success: false, error: '未选择要删除的 skills' }
       }
 
+      // 先刷新项目与共享作用域的注册表，确保以最新磁盘状态定位，避免命中陈旧数据。
+      await refreshSkillRegistry(resolvedProjectId || undefined)
+      await refreshSkillRegistry(undefined)
+
       // 以注册表为准定位 skill 的真实磁盘目录，避免“导入到共享/未分组目录但删除时用项目目录重建”导致路径不匹配。
       const registrySkills = skillScanEntries(resolvedProjectId || undefined)
       const byPath = new Map<string, { id: string; scope: string; rootDir: string }>()
@@ -3101,7 +3134,11 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
         byId.set(skill.id, { id: skill.id, scope: skill.scope, rootDir: (skill as { rootDir?: string }).rootDir ?? '' })
       }
 
-      const deleted: string[] = []
+      // 删除的 skills 移入回收暂存区，供回收站恢复；恢复时从暂存区移回原目录。
+      const recycleRoot = join(app.getPath('userData'), 'project-skills-recycle')
+      await mkdir(recycleRoot, { recursive: true })
+
+      const deleted: Array<{ path: string; id: string; name: string; group: string; stashId: string }> = []
       for (const skillPath of targets) {
         const matched = byPath.get(skillPath) ?? byId.get(skillPath)
         if (!matched) continue
@@ -3109,24 +3146,113 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
         if (matched.scope !== 'project') continue
         const targetDir = matched.rootDir
         if (!targetDir || !existsSync(join(targetDir, 'SKILL.md'))) continue
+
+        const stashId = `skill-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        const stashDir = join(recycleRoot, stashId)
+        await mkdir(stashDir, { recursive: true })
+        await cp(targetDir, stashDir, { recursive: true, force: true })
+        // 写入恢复元信息（skill id、分组、作用域），meta.json 不随 skill 一起搬回。
+        const relParts = skillPath.split('/').filter(Boolean)
+        const group = relParts.length > 2 ? relParts.slice(1, -1).join('/') : ''
+        await writeFile(
+          join(stashDir, 'meta.json'),
+          JSON.stringify({ skillId: matched.id, group, scope: matched.scope })
+        )
         await rm(targetDir, { recursive: true, force: true })
-        deleted.push(skillPath)
+        deleted.push({ path: skillPath, id: matched.id, name: matched.id, group, stashId })
       }
 
-      // 刷新技能注册表，反映删除结果
+      // 刷新技能注册表（项目 + 共享作用域都要刷新，避免共享 skill 删除后仍残留在内存中）
       if (deleted.length) {
         await refreshSkillRegistry(resolvedProjectId || undefined)
+        await refreshSkillRegistry(undefined)
       }
 
       return {
         success: deleted.length > 0,
-        deleted,
+        deleted: deleted.map((d) => d.path),
+        deletedSkills: deleted,
         error: deleted.length === targets.length
           ? undefined
           : (deleted.length ? '部分 skills 删除失败（内置或路径不合法）' : '所选 skills 均为内置或路径不合法，无法删除')
       }
     } catch (error) {
       return { success: false, deleted: [], error: error instanceof Error ? error.message : 'skills 删除失败' }
+    }
+  })
+
+  // ── 从回收站恢复一个被删除的项目级 skill ──
+  // 入参：stashId（删除时生成的暂存标识）与目标 projectId。
+  // 把 <userData>/project-skills-recycle/<stashId>/ 下的 skill 目录移回原作用域目录。
+  ipcMain.handle('characterarc:project-skills-restore', async (_event, projectId: unknown, stashId: unknown) => {
+    try {
+      const resolvedProjectId = String(projectId ?? '').trim()
+      const stashKey = String(stashId ?? '').trim()
+      if (!stashKey || stashKey.includes('..') || stashKey.includes('/') || stashKey.includes('\\')) {
+        return { success: false, error: '非法的暂存标识' }
+      }
+
+      const recycleRoot = join(app.getPath('userData'), 'project-skills-recycle')
+      const stashDir = join(recycleRoot, stashKey)
+      if (!stashDir.startsWith(recycleRoot) || !existsSync(stashDir)) {
+        return { success: false, error: '未找到可恢复的 skill 暂存数据' }
+      }
+
+      // 读取恢复信息（skill id、目标分组、作用域），由删除时写入的 meta.json 提供。
+      const metaPath = join(stashDir, 'meta.json')
+      const meta: { skillId?: string; group?: string; scope?: string } = existsSync(metaPath)
+        ? JSON.parse(await readFile(metaPath, 'utf-8').catch(() => '{}'))
+        : {}
+      const skillId = String(meta.skillId ?? '').trim()
+      const group = String(meta.group ?? '').trim()
+      const scope = String(meta.scope ?? 'project').trim()
+      if (!skillId) {
+        return { success: false, error: '恢复信息缺失，无法定位 skill' }
+      }
+
+      // 定位目标作用域目录：project 且带项目时落到项目目录，否则落到共享作用域
+      const targetRoot = scope === 'project' && resolvedProjectId
+        ? getSkillsDirPath(resolvedProjectId)
+        : getSkillsDirPath(undefined)
+      const targetDir = group ? join(targetRoot, group, skillId) : join(targetRoot, skillId)
+      if (!targetDir.startsWith(targetRoot)) {
+        return { success: false, error: '非法的恢复路径' }
+      }
+      await mkdir(join(targetDir, '..'), { recursive: true })
+      // 若目标位置已存在同名 skill，先清理，避免覆盖冲突报错
+      await rm(targetDir, { recursive: true, force: true })
+
+      // meta.json 仅用于恢复信息，不随 skill 一起搬回
+      await rm(metaPath, { recursive: true, force: true }).catch(() => undefined)
+      await cp(stashDir, targetDir, { recursive: true, force: true })
+      await rm(stashDir, { recursive: true, force: true })
+
+      // 刷新注册表（项目 + 共享作用域）
+      await refreshSkillRegistry(resolvedProjectId || undefined)
+      await refreshSkillRegistry(undefined)
+
+      return { success: true, restoredPath: skillId, name: skillId }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'skill 恢复失败' }
+    }
+  })
+
+  // ── 从回收站彻底删除一个项目级 skill（清理暂存区文件） ──
+  ipcMain.handle('characterarc:project-skills-purge', async (_event, stashId: unknown) => {
+    try {
+      const stashKey = String(stashId ?? '').trim()
+      if (!stashKey || stashKey.includes('..') || stashKey.includes('/') || stashKey.includes('\\')) {
+        return { success: false, error: '非法的暂存标识' }
+      }
+      const recycleRoot = join(app.getPath('userData'), 'project-skills-recycle')
+      const stashDir = join(recycleRoot, stashKey)
+      if (!stashDir.startsWith(recycleRoot) || !existsSync(stashDir)) {
+        return { success: true }
+      }
+      await rm(stashDir, { recursive: true, force: true })
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'skill 暂存清理失败' }
     }
   })
 

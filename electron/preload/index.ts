@@ -113,6 +113,10 @@ contextBridge.exposeInMainWorld('characterArc', {
   deleteProjectSkills: (projectId: string, paths: string[]) => ipcRenderer.invoke('characterarc:project-skills-delete', projectId, paths),
   /** 批量导出 skills（内置 + 项目导入）为 zip，入参为 skill path 列表 */
   exportProjectSkills: (projectId: string, paths: string[]) => ipcRenderer.invoke('characterarc:project-skills-export', projectId, paths),
+  /** 从回收站恢复一个被删除的项目级 skill（按暂存标识把暂存文件移回原目录） */
+  restoreProjectSkill: (projectId: string, stashId: string) => ipcRenderer.invoke('characterarc:project-skills-restore', projectId, stashId),
+  /** 从回收站彻底删除一个被删除的项目级 skill（清理暂存区文件） */
+  purgeProjectSkill: (stashId: string) => ipcRenderer.invoke('characterarc:project-skills-purge', stashId),
   /** 读取当前项目可用 skills 的正文内容（供 AI 内部使用） */
   getProjectSkillsContext: (projectId: string) => ipcRenderer.invoke('characterarc:project-skills-context', projectId),
   /** 从 CC Switch 导入 AI 接口配置（skills 改由「内置 Skills 与项目扩展」页面导入） */

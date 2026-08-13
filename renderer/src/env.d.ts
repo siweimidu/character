@@ -854,11 +854,25 @@ declare global {
       deleteProjectSkillGroup: (projectId: string, groupName: string) => Promise<{
         success: boolean
         deletedGroup?: string
+        deletedSkills?: Array<{
+          path: string
+          id: string
+          name: string
+          group: string
+          stashId: string
+        }>
         error?: string
       }>
       deleteProjectSkills: (projectId: string, paths: string[]) => Promise<{
         success: boolean
         deleted?: string[]
+        deletedSkills?: Array<{
+          path: string
+          id: string
+          name: string
+          group: string
+          stashId: string
+        }>
         error?: string
       }>
       exportProjectSkills: (projectId: string, paths: string[]) => Promise<{
@@ -866,6 +880,16 @@ declare global {
         canceled?: boolean
         exportedCount?: number
         filePath?: string
+        error?: string
+      }>
+      restoreProjectSkill: (projectId: string, stashId: string) => Promise<{
+        success: boolean
+        restoredPath?: string
+        name?: string
+        error?: string
+      }>
+      purgeProjectSkill: (stashId: string) => Promise<{
+        success: boolean
         error?: string
       }>
       getProjectSkillsContext: (projectId: string) => Promise<{

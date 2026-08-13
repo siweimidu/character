@@ -10,6 +10,7 @@ import {
   Network,
   RotateCcw,
   Settings2,
+  Sparkles,
   Trash2,
   Users,
   X
@@ -41,7 +42,8 @@ const CATEGORY_META: Record<RecycleBinCategory, { label: string; color: string }
   'character-version': { label: '角色版本快照', color: '#d946ef' },
   'project': { label: '项目', color: '#f43f5e' },
   'ai-profile': { label: 'AI 接口配置', color: '#8b5cf6' },
-  'reference-work': { label: '参考作品', color: '#06b6d4' }
+  'reference-work': { label: '参考作品', color: '#06b6d4' },
+  'skill': { label: '项目 Skills', color: '#a855f7' }
 }
 
 const CATEGORY_ICON: Record<RecycleBinCategory, unknown> = {
@@ -63,7 +65,8 @@ const CATEGORY_ICON: Record<RecycleBinCategory, unknown> = {
   'character-version': Users,
   'project': BookMarked,
   'ai-profile': Settings2,
-  'reference-work': FileCheck2
+  'reference-work': FileCheck2,
+  'skill': Sparkles
 }
 
 /** 当前选中的类别筛选；'all' 表示全部 */
