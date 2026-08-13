@@ -1082,6 +1082,14 @@ textarea {
   line-height: 1.5;
   padding: 0;
   font-size: 14px;
+  /* 隐藏原生滚动条（上/下箭头+滑块），保留滚动功能，滚动条视觉上隐形 */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+textarea::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 textarea:disabled {
   cursor: not-allowed;
