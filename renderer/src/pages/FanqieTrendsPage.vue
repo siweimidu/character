@@ -448,11 +448,14 @@ const exportPeriod = ref('7')
 const exportFormat = ref<FanqieExportFormat>('txt')
 
 const EXPORT_BOARD_OPTIONS = [
+  { slug: 'all', name: '全部榜单' },
   { slug: 'female-new', name: '女频新书榜' },
   { slug: 'male-new', name: '男频新书榜' },
   { slug: 'female-read', name: '女频阅读榜' },
   { slug: 'male-read', name: '男频阅读榜' }
 ]
+/** “全部榜单”导出时实际汇总的榜单列表（不包含 all 本身） */
+const EXPORT_ALL_SLUGS = ['female-new', 'male-new', 'female-read', 'male-read']
 const EXPORT_PERIOD_OPTIONS = [
   { key: '7', label: '近 7 日' },
   { key: '14', label: '近 14 日' },
@@ -477,10 +480,20 @@ function fmtScoreRaw(n: unknown): string {
   return fmtScore(v)
 }
 
-async function collectExportData(
+export type ExportDataBlock = {
+  slug: string
+  summary: AnyRecord
+  all: AnyRecord
+  boardName: string
+  date: string
+  periodLabel: string
+  periodData: AnyRecord
+}
+
+async function collectSingleExportData(
   slug: string,
   period: string
-): Promise<{ summary: AnyRecord; all: AnyRecord; boardName: string; date: string; periodLabel: string; periodData: AnyRecord }> {
+): Promise<ExportDataBlock> {
   const board = EXPORT_BOARD_OPTIONS.find((b) => b.slug === slug)
   const boardName = board?.name ?? slug
   const periodLabel = EXPORT_PERIOD_OPTIONS.find((p) => p.key === period)?.label ?? period
@@ -490,10 +503,17 @@ async function collectExportData(
   ])
   const periodData: AnyRecord = summary?.periods?.[period] ?? {}
   const date = String(all?.date || summary?.date || '')
-  return { summary, all, boardName, date, periodLabel, periodData }
+  return { slug, summary, all, boardName, date, periodLabel, periodData }
 }
 
-function buildExportText(d: Awaited<ReturnType<typeof collectExportData>>): string {
+async function collectExportData(slug: string, period: string): Promise<ExportDataBlock[]> {
+  if (slug === 'all') {
+    return Promise.all(EXPORT_ALL_SLUGS.map((s) => collectSingleExportData(s, period)))
+  }
+  return [await collectSingleExportData(slug, period)]
+}
+
+function buildExportTextBlock(d: ExportDataBlock): string {
   const lines: string[] = []
   const p = d.periodData
   lines.push(`【${d.boardName}】${d.periodLabel} 导出报告`)
@@ -574,7 +594,17 @@ function buildExportText(d: Awaited<ReturnType<typeof collectExportData>>): stri
   return lines.join('\n')
 }
 
-function buildExportMarkdown(d: Awaited<ReturnType<typeof collectExportData>>): string {
+function buildExportText(blocks: ExportDataBlock[]): string {
+  return blocks
+    .map((d, i) => {
+      const block = buildExportTextBlock(d)
+      if (i === 0) return block
+      return `\n${'='.repeat(60)}\n\n${block}`
+    })
+    .join('\n')
+}
+
+function buildExportMarkdownBlock(d: ExportDataBlock): string {
   const out: string[] = []
   const p = d.periodData
   out.push(`# ${d.boardName} · ${d.periodLabel}导出报告`)
@@ -655,10 +685,20 @@ function buildExportMarkdown(d: Awaited<ReturnType<typeof collectExportData>>): 
   return out.join('\n')
 }
 
-function buildExportJson(d: Awaited<ReturnType<typeof collectExportData>>): unknown {
+function buildExportMarkdown(blocks: ExportDataBlock[]): string {
+  return blocks
+    .map((d, i) => {
+      const block = buildExportMarkdownBlock(d)
+      if (i === 0) return block
+      return `\n---\n\n${block}`
+    })
+    .join('\n')
+}
+
+function buildExportJsonBlock(d: ExportDataBlock): AnyRecord {
   return {
     board: {
-      slug: exportBoard.value,
+      slug: d.slug,
       name: d.boardName
     },
     period: exportPeriod.value,
@@ -677,10 +717,17 @@ function buildExportJson(d: Awaited<ReturnType<typeof collectExportData>>): unkn
   }
 }
 
-function buildExportContent(format: FanqieExportFormat, d: Awaited<ReturnType<typeof collectExportData>>): string | unknown {
-  if (format === 'json') return buildExportJson(d)
-  if (format === 'md') return buildExportMarkdown(d)
-  return buildExportText(d)
+function buildExportJson(blocks: ExportDataBlock[]): unknown {
+  if (blocks.length === 1) return buildExportJsonBlock(blocks[0])
+  return {
+    all_boards: blocks.map((d) => buildExportJsonBlock(d))
+  }
+}
+
+function buildExportContent(format: FanqieExportFormat, blocks: ExportDataBlock[]): string | unknown {
+  if (format === 'json') return buildExportJson(blocks)
+  if (format === 'md') return buildExportMarkdown(blocks)
+  return buildExportText(blocks)
 }
 
 function sanitizeFileName(name: string): string {
@@ -694,9 +741,9 @@ async function handleExport(): Promise<void> {
   const format = exportFormat.value
   exportLoading.value = true
   try {
-    const d = await collectExportData(slug, exportPeriod.value)
-    const content = buildExportContent(format, d)
-    const datePart = (d.date || new Date().toISOString().slice(0, 10)).replace(/-/g, '')
+    const blocks = await collectExportData(slug, exportPeriod.value)
+    const content = buildExportContent(format, blocks)
+    const datePart = (blocks[0]?.date || new Date().toISOString().slice(0, 10)).replace(/-/g, '')
     const defaultPath = `${datePart}-${sanitizeFileName(boardName)}.${format === 'json' ? 'json' : format === 'md' ? 'md' : 'txt'}`
     const res = await window.characterArc.exportFanqieTrends({
       data: content,
