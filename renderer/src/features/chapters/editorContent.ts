@@ -1,14 +1,32 @@
 // 匹配 HTML 标签的正则，用于判断内容是富文本还是纯文本
 const HTML_TAG_PATTERN = /<\/?[a-z][\s\S]*>/i
 
-// HTML 实体到字符的映射表，用于解码 HTML 实体
-const ENTITY_MAP: Record<string, string> = {
+// HTML 实体到字符的映射表，用于解码常见命名实体
+const NAMED_ENTITY_MAP: Record<string, string> = {
   nbsp: ' ',
   amp: '&',
   lt: '<',
   gt: '>',
   quot: '"',
-  '#39': "'"
+  apos: "'",
+  mdash: '—',
+  ndash: '–',
+  hellip: '…',
+  copy: '©',
+  reg: '®',
+  trade: '™',
+  laquo: '«',
+  raquo: '»',
+  lsquo: '‘',
+  rsquo: '’',
+  ldquo: '“',
+  rdquo: '”',
+  middot: '·',
+  bull: '•',
+  deg: '°',
+  times: '×',
+  divide: '÷',
+  minus: '−'
 }
 
 // 将字符串中的特殊字符转义为 HTML 实体，防止 XSS 和富文本解析问题
@@ -21,9 +39,36 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;')
 }
 
-// 将 HTML 实体（如 &amp;、&#39;）解码为对应的原始字符
+/**
+ * 将单个 HTML 实体（含分号）解码为对应的字符。
+ * 支持命名实体（如 &amp;、&mdash;）、十进制数字实体（&#39;）和十六进制数字实体（&#x27;）。
+ * 无法识别的实体原样返回。
+ */
+function decodeHtmlEntity(entityToken: string): string {
+  const raw = entityToken.slice(1, -1) // 去掉 & 与 ;
+
+  // 数字实体：&#39; 或 &#x27;
+  if (raw[0] === '#') {
+    const body = raw.slice(1)
+    const codePoint = body[0]?.toLowerCase() === 'x'
+      ? Number.parseInt(body.slice(1), 16)
+      : Number.parseInt(body, 10)
+    if (Number.isFinite(codePoint) && codePoint > 0 && codePoint <= 0x10ffff) {
+      try {
+        return String.fromCodePoint(codePoint)
+      } catch {
+        // 非法码点（如孤立代理项）回退为原样
+      }
+    }
+    return entityToken
+  }
+
+  return NAMED_ENTITY_MAP[raw] ?? entityToken
+}
+
+// 将 HTML 实体（如 &amp;、&#39;、&#x27;、&mdash;）解码为对应的原始字符
 function decodeHtmlEntities(value: string): string {
-  return value.replace(/&([^;]+);/g, (match, entity) => ENTITY_MAP[entity] ?? match)
+  return value.replace(/&[^;\s]{1,16};/g, decodeHtmlEntity)
 }
 
 // 判断内容是否为富文本（包含 HTML 标签）
