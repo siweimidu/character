@@ -4980,6 +4980,34 @@ export const useAppStore = defineStore('app', () => {
     })
   }
 
+  /**
+   * 暂停某条正在运行的任务（前端展示层暂停）：冻结进度与耗时计时，按钮图标切换为播放。
+   * 注：底层 LLM 请求无法真正中断后恢复，暂停的是悬浮窗对任务的进度/耗时展示。
+   */
+  function pauseAiTask(key: string): void {
+    const run = aiTaskRuns.value.get(key)
+    if (!run || run.stage !== 'running' || run.paused) return
+    replaceTaskRuns((next) => {
+      next.set(key, { ...run, paused: true, pausedAt: Date.now() })
+    })
+  }
+
+  /** 继续一条被暂停的任务，恢复进度与耗时计时（暂停期间的耗时不计入）。 */
+  function resumeAiTask(key: string): void {
+    const run = aiTaskRuns.value.get(key)
+    if (!run || !run.paused) return
+    const pauseMs = run.pausedAt ? Math.max(0, Date.now() - run.pausedAt) : 0
+    replaceTaskRuns((next) => {
+      // 把 startedAt 顺延暂停时长，让 formatElapsed 忽略暂停期间
+      next.set(key, { ...run, paused: false, pausedAt: undefined, startedAt: run.startedAt + pauseMs })
+    })
+  }
+
+  /** 查询某条任务是否处于暂停状态。 */
+  function isAiTaskPaused(key: string): boolean {
+    return aiTaskRuns.value.get(key)?.paused === true
+  }
+
   /** 更新某条正在运行任务的实时进度（0-100），驱动进度面板进度条。 */
   function updateAiTaskProgress(key: string, progress: number): void {
     const run = aiTaskRuns.value.get(key)
@@ -5272,6 +5300,9 @@ export const useAppStore = defineStore('app', () => {
     cancelAiTask,
     minimizeAiTask,
     unminimizeAiTask,
+    pauseAiTask,
+    resumeAiTask,
+    isAiTaskPaused,
     updateAiTaskProgress,
     registerManualTask,
     finalizeManualTask,

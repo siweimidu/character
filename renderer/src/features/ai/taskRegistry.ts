@@ -43,6 +43,10 @@ export interface AiTaskRun {
   progress?: number
   /** 是否被用户最小化到后台（隐藏任务行但继续执行，不取消）。 */
   minimized?: boolean
+  /** 是否被用户暂停（前端展示层暂停，进度/耗时冻结；图标切换为播放）。 */
+  paused?: boolean
+  /** 暂停时刻时间戳（毫秒），用于冻结耗时展示。 */
+  pausedAt?: number
 }
 
 /**

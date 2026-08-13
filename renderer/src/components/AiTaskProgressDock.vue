@@ -11,7 +11,7 @@
  *   - 运行中 tick 每秒刷新一次耗时；空闲时 interval 会被清掉，不白跑。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { Bot, BookOpen, Brush, ChevronDown, Feather, FileText, Image as ImageIcon, Library, Minus, Sparkles, X } from 'lucide-vue-next'
+import { Bot, BookOpen, Brush, ChevronDown, Feather, FileText, Image as ImageIcon, Library, Minus, Pause, Play, Sparkles, X } from 'lucide-vue-next'
 import { NButton, NProgress } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import type { AiTaskKind, AiTaskRun } from '@/features/ai/taskRegistry'
@@ -103,7 +103,8 @@ function handleUnminimize(run: AiTaskRun): void {
 }
 
 function formatElapsed(run: AiTaskRun): string {
-  const endTs = run.stage === 'running' ? nowTick.value : run.finishedAt ?? nowTick.value
+  // 暂停时冻结耗时：以暂停时刻为终点计算，不再随时间跳动
+  const endTs = run.paused ? (run.pausedAt ?? nowTick.value) : run.stage === 'running' ? nowTick.value : run.finishedAt ?? nowTick.value
   const elapsedMs = Math.max(0, endTs - run.startedAt)
   if (elapsedMs < 1000) return '刚刚启动'
   const seconds = Math.round(elapsedMs / 1000)
@@ -150,6 +151,14 @@ function handleDismiss(run: AiTaskRun): void {
   appStore.dismissAiTask(run.key)
 }
 
+function handlePause(run: AiTaskRun): void {
+  appStore.pauseAiTask(run.key)
+}
+
+function handleResume(run: AiTaskRun): void {
+  appStore.resumeAiTask(run.key)
+}
+
 const runningCount = computed(() => appStore.runningAiTasks.length)
 </script>
 
@@ -182,9 +191,20 @@ const runningCount = computed(() => appStore.runningAiTasks.length)
             <template v-else>AI 任务已完成</template>
           </span>
         </div>
-        <button class="dock-toggle" type="button" :aria-expanded="!collapsed" :aria-label="collapsed ? '展开 AI 任务列表' : '折叠 AI 任务列表'" @click.stop="toggleCollapsed">
-          <ChevronDown :size="14" :class="{ 'rotate-icon': collapsed }" />
-        </button>
+        <div class="dock-header-actions">
+          <button class="dock-toggle" type="button" :aria-expanded="!collapsed" :aria-label="collapsed ? '展开 AI 任务列表' : '折叠 AI 任务列表'" @click.stop="toggleCollapsed">
+            <ChevronDown :size="14" :class="{ 'rotate-icon': collapsed }" />
+          </button>
+          <button
+            class="dock-close"
+            type="button"
+            title="关闭面板（任务仍在后台运行，可从右下角小点恢复）"
+            aria-label="关闭 AI 任务面板"
+            @click.stop="toggleDotMode"
+          >
+            <X :size="14" />
+          </button>
+        </div>
       </header>
 
       <div v-show="!collapsed" class="dock-body">
@@ -222,8 +242,9 @@ const runningCount = computed(() => appStore.runningAiTasks.length)
           <div class="task-main">
             <div class="task-head">
               <span class="task-label">{{ run.label }}</span>
-              <span class="task-meta">
-                <template v-if="run.stage === 'running'">{{ formatElapsed(run) }}</template>
+              <span class="task-meta" :class="{ paused: run.paused }">
+                <template v-if="run.stage === 'running' && run.paused">已暂停 · {{ formatElapsed(run) }}</template>
+                <template v-else-if="run.stage === 'running'">{{ formatElapsed(run) }}</template>
                 <template v-else-if="run.stage === 'done'">已完成 · {{ formatElapsed(run) }}</template>
                 <template v-else-if="run.stage === 'canceled'">已替换 · {{ formatElapsed(run) }}</template>
                 <template v-else>失败 · {{ formatElapsed(run) }}</template>
@@ -237,15 +258,26 @@ const runningCount = computed(() => appStore.runningAiTasks.length)
               class="task-progress"
               type="line"
               status="info"
-              :processing="run.progress == null"
+              :processing="run.progress == null && !run.paused"
               :percentage="run.progress ?? 100"
               :show-indicator="false"
               :height="3"
             />
           </div>
           <div class="task-actions">
-            <!-- 运行中：减号（后台执行/收起）+ 停止 -->
+            <!-- 运行中：暂停/继续 + 减号（后台执行/收起）+ 停止 -->
             <template v-if="run.stage === 'running'">
+              <button
+                class="task-icon-btn"
+                :class="{ 'is-paused': run.paused }"
+                type="button"
+                :title="run.paused ? '继续执行此任务' : '暂停此任务'"
+                :aria-label="run.paused ? '继续执行此任务' : '暂停此任务'"
+                @click="run.paused ? handleResume(run) : handlePause(run)"
+              >
+                <Play v-if="run.paused" :size="14" />
+                <Pause v-else :size="14" />
+              </button>
               <button
                 class="task-icon-btn"
                 type="button"
@@ -338,7 +370,14 @@ const runningCount = computed(() => appStore.runningAiTasks.length)
   animation: pulse-ring 1.6s cubic-bezier(0.66, 0, 0, 1) infinite;
 }
 
-.dock-toggle {
+.dock-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dock-toggle,
+.dock-close {
   display: inline-flex;
   width: 26px;
   height: 26px;
@@ -352,9 +391,15 @@ const runningCount = computed(() => appStore.runningAiTasks.length)
   transition: background 0.18s ease;
 }
 
-.dock-toggle:hover {
+.dock-toggle:hover,
+.dock-close:hover {
   background: var(--arc-glass-06);
   color: var(--arc-text-primary);
+}
+
+.dock-close:hover {
+  background: color-mix(in srgb, #dc2626 12%, transparent);
+  color: #dc2626;
 }
 
 .rotate-icon {
@@ -441,6 +486,10 @@ const runningCount = computed(() => appStore.runningAiTasks.length)
   white-space: nowrap;
 }
 
+.task-meta.paused {
+  color: var(--arc-primary);
+}
+
 .task-desc {
   margin: 0;
   color: var(--arc-text-secondary);
@@ -502,6 +551,12 @@ const runningCount = computed(() => appStore.runningAiTasks.length)
 
 .task-icon-btn:hover {
   background: color-mix(in srgb, var(--arc-primary) 12%, transparent);
+  color: var(--arc-primary);
+  border-color: color-mix(in srgb, var(--arc-primary) 30%, transparent);
+}
+
+.task-icon-btn.is-paused {
+  background: color-mix(in srgb, var(--arc-primary) 10%, transparent);
   color: var(--arc-primary);
   border-color: color-mix(in srgb, var(--arc-primary) 30%, transparent);
 }
