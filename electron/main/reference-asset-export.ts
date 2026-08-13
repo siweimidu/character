@@ -1,6 +1,4 @@
-import * as XLSX from 'xlsx'
-
-export type ReferenceAssetExportFormat = 'txt' | 'md' | 'json' | 'excel'
+export type ReferenceAssetExportFormat = 'txt' | 'md' | 'json'
 
 export interface ReferenceAssetExportDocument {
   title?: string
@@ -35,7 +33,7 @@ export function resolveReferenceAssetFileName(
 ): { baseName: string; extension: string } {
   const safeTitle = String(asset.title ?? '参考作品').trim() || '参考作品'
   const baseName = safeTitle.replace(/[\\/:*?"<>|]/g, '_')
-  const extension = format === 'md' ? 'md' : format === 'txt' ? 'txt' : format === 'excel' ? 'xlsx' : 'json'
+  const extension = format === 'md' ? 'md' : format === 'txt' ? 'txt' : 'json'
   return { baseName, extension }
 }
 
@@ -54,7 +52,7 @@ export function buildReferenceAssetExportContent(
   format: ReferenceAssetExportFormat,
   asset: ReferenceAssetExportAsset,
   documents: ReferenceAssetExportDocument[]
-): Buffer | string {
+): string {
   const safeTitle = String(asset.title ?? '参考作品').trim() || '参考作品'
   const metaLine = buildMetaLine(asset)
 
@@ -115,44 +113,20 @@ export function buildReferenceAssetExportContent(
     ].filter(Boolean).join('\n').trimEnd() + '\n'
   }
 
-  if (format === 'txt') {
-    return [
-      `《${safeTitle}》拆书资产`,
-      metaLine,
-      ''.padEnd(48, '='),
-      asset.summary ? `摘要：${String(asset.summary).trim()}` : '',
+  return [
+    `《${safeTitle}》拆书资产`,
+    metaLine,
+    ''.padEnd(48, '='),
+    asset.summary ? `摘要：${String(asset.summary).trim()}` : '',
+    '',
+    ...documents.map((doc) => [
+      `【${doc.sourceTypeLabel ?? doc.sourceType ?? '知识文档'}】${doc.title ?? '未命名文档'}`,
+      doc.sourceLabel ? `来源：${doc.sourceLabel}` : '',
+      (doc.keywords ?? []).length ? `关键词：${(doc.keywords ?? []).join('、')}` : '',
+      doc.summary ? `摘要：${String(doc.summary).trim()}` : '',
       '',
-      ...documents.map((doc) => [
-        `【${doc.sourceTypeLabel ?? doc.sourceType ?? '知识文档'}】${doc.title ?? '未命名文档'}`,
-        doc.sourceLabel ? `来源：${doc.sourceLabel}` : '',
-        (doc.keywords ?? []).length ? `关键词：${(doc.keywords ?? []).join('、')}` : '',
-        doc.summary ? `摘要：${String(doc.summary).trim()}` : '',
-        '',
-        doc.content || '（暂无正文内容）',
-        ''.padEnd(40, '-')
-      ].filter(Boolean).join('\n'))
-    ].filter(Boolean).join('\n\n') + '\n'
-  }
-
-  const workbook = XLSX.utils.book_new()
-  const rows = documents.map((doc) => ({
-    '标题': doc.title ?? '',
-    '类型': doc.sourceTypeLabel ?? doc.sourceType ?? '',
-    '来源': doc.sourceLabel ?? '',
-    '摘要': doc.summary ?? '',
-    '关键词': (doc.keywords ?? []).join('、'),
-    '正文': doc.content ?? ''
-  }))
-  const sheet = XLSX.utils.json_to_sheet(rows)
-  sheet['!cols'] = [
-    { wch: 26 },
-    { wch: 14 },
-    { wch: 22 },
-    { wch: 50 },
-    { wch: 24 },
-    { wch: 80 }
-  ]
-  sheet['!autofilter'] = { ref: `A1:F${rows.length + 1}` }
-  XLSX.utils.book_append_sheet(workbook, sheet, safeTitle.slice(0, 31) || '拆书资产')
-  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer
+      doc.content || '（暂无正文内容）',
+      ''.padEnd(40, '-')
+    ].filter(Boolean).join('\n'))
+  ].filter(Boolean).join('\n\n') + '\n'
 }

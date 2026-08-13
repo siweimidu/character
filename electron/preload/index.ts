@@ -59,9 +59,9 @@ contextBridge.exposeInMainWorld('characterArc', {
   worldviewImport: () => ipcRenderer.invoke('characterarc:worldview-import'),
   /** 批量导出世界观设定（txt/md/json/excel） */
   worldviewExport: (payload: unknown) => ipcRenderer.invoke('characterarc:worldview-export', toIpcPayload(payload)),
-  /** 导出拆书知识库（txt/md/json/excel） */
+  /** 导出拆书知识库（txt/md/json） */
   exportKnowledge: (payload: unknown) => ipcRenderer.invoke('characterarc:export-knowledge', toIpcPayload(payload)),
-  /** 导出拆书知识库中单本参考作品资产（txt/md/json/excel） */
+  /** 导出拆书知识库中单本参考作品资产（txt/md/json） */
   exportReferenceAsset: (payload: unknown) => ipcRenderer.invoke('characterarc:export-reference-asset', toIpcPayload(payload)),
   /** 导出关系组织数据（组织势力/成员归属/人物关系）为指定格式 */
   exportRelationsData: (payload: unknown) => ipcRenderer.invoke('characterarc:export-relations-data', toIpcPayload(payload)),

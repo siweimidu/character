@@ -307,7 +307,7 @@ function buildExportAssets(): Array<{
   }))
 }
 
-async function handleExportKnowledge(format: 'txt' | 'md' | 'json' | 'excel'): Promise<void> {
+async function handleExportKnowledge(format: 'txt' | 'md' | 'json'): Promise<void> {
   if (!referenceAssets.value.length) {
     message.warning('拆书知识库中还没有可导出的内容')
     return
@@ -333,21 +333,20 @@ async function handleExportKnowledge(format: 'txt' | 'md' | 'json' | 'excel'): P
   }
 }
 
-// ── 导出拆书资产（txt / md / json / excel） ──
+// ── 导出拆书资产（txt / md / json） ──
 const exportingAssetId = ref<string | null>(null)
 
 const exportMenuOptions: DropdownOption[] = [
   { key: 'md', label: '导出为 Markdown' },
   { key: 'txt', label: '导出为 TXT' },
-  { key: 'json', label: '导出为 JSON' },
-  { key: 'excel', label: '导出为 Excel 表格' }
+  { key: 'json', label: '导出为 JSON' }
 ]
 
 function handleExportLibrarySelect(key: string | number): void {
-  void handleExportKnowledge(key as 'txt' | 'md' | 'json' | 'excel')
+  void handleExportKnowledge(key as 'txt' | 'md' | 'json')
 }
 
-async function handleExportAsset(asset: ReferenceAssetLibrary, format: 'txt' | 'md' | 'json' | 'excel'): Promise<void> {
+async function handleExportAsset(asset: ReferenceAssetLibrary, format: 'txt' | 'md' | 'json'): Promise<void> {
   if (exportingAssetId.value) {
     return
   }
@@ -405,7 +404,7 @@ async function handleExportAsset(asset: ReferenceAssetLibrary, format: 'txt' | '
 }
 
 function handleExportAssetSelect(asset: ReferenceAssetLibrary, key: string | number): void {
-  void handleExportAsset(asset, key as 'txt' | 'md' | 'json' | 'excel')
+  void handleExportAsset(asset, key as 'txt' | 'md' | 'json')
 }
 </script>
 

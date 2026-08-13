@@ -1000,13 +1000,13 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     return { success: true, canceled: false, filePath: result.filePath }
   })
 
-  // ── 拆书知识库导出（TXT / Markdown / JSON / Excel） ──
+  // ── 拆书知识库导出（TXT / Markdown / JSON） ──
   ipcMain.handle('characterarc:export-knowledge', async (_event, payload: unknown) => {
     const window = deps.windowManager.getActiveWindow()
     if (!window) return { success: false, canceled: true }
 
     const request = (payload && typeof payload === 'object' ? payload : {}) as {
-      format?: 'txt' | 'md' | 'json' | 'excel'
+      format?: 'txt' | 'md' | 'json'
       projectTitle?: string
       assets?: Array<{
         title: string
@@ -1029,13 +1029,12 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     const format = request.format ?? 'md'
     const assets = request.assets ?? []
     const projectTitle = String(request.projectTitle ?? '').trim() || '拆书知识库'
-    const defaultFileName = `拆书知识库-${new Date().toISOString().slice(0, 10)}.${format === 'md' ? 'md' : format === 'txt' ? 'txt' : format === 'excel' ? 'xlsx' : 'json'}`
+    const defaultFileName = `拆书知识库-${new Date().toISOString().slice(0, 10)}.${format === 'md' ? 'md' : format === 'txt' ? 'txt' : 'json'}`
 
     const filterMap = {
       txt: { name: '文本文档', extensions: ['txt'] },
       md: { name: 'Markdown 文档', extensions: ['md'] },
-      json: { name: 'JSON 文件', extensions: ['json'] },
-      excel: { name: 'Excel 表格', extensions: ['xlsx'] }
+      json: { name: 'JSON 文件', extensions: ['json'] }
     }
 
     const result = await dialog.showSaveDialog(window, {
@@ -1045,58 +1044,6 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     })
     if (result.canceled || !result.filePath) {
       return { success: false, canceled: true }
-    }
-
-    if (format === 'excel') {
-      const workbook = XLSX.utils.book_new()
-      const assetRows = assets.map((asset) => ({
-        '作品标题': asset.title ?? '',
-        '来源': asset.source ?? '',
-        '文件名': asset.fileName ?? '',
-        '简介': asset.summary ?? '',
-        '关键词': (asset.topKeywords ?? []).join('、'),
-        '风格规则': (asset.styleRules ?? []).join('、'),
-        '文档数': (asset.documents ?? []).length
-      }))
-      const documentRows = assets.flatMap((asset) =>
-        (asset.documents ?? []).map((doc) => ({
-          '作品标题': asset.title ?? '',
-          '文档标题': doc.title ?? '',
-          '来源类型': doc.sourceType ?? '',
-          '来源标签': doc.sourceLabel ?? '',
-          '摘要': doc.summary ?? '',
-          '关键词': (doc.keywords ?? []).join('、'),
-          '正文内容': doc.content ?? ''
-        }))
-      )
-
-      const overviewSheet = XLSX.utils.json_to_sheet(assetRows.length ? assetRows : [{ '作品标题': '', '来源': '', '文件名': '', '简介': '', '关键词': '', '风格规则': '', '文档数': 0 }])
-      overviewSheet['!cols'] = [
-        { wch: 24 },
-        { wch: 14 },
-        { wch: 22 },
-        { wch: 50 },
-        { wch: 24 },
-        { wch: 30 },
-        { wch: 10 }
-      ]
-      XLSX.utils.book_append_sheet(workbook, overviewSheet, '拆书总览')
-
-      const docSheet = XLSX.utils.json_to_sheet(documentRows.length ? documentRows : [{ '作品标题': '', '文档标题': '', '来源类型': '', '来源标签': '', '摘要': '', '关键词': '', '正文内容': '' }])
-      docSheet['!cols'] = [
-        { wch: 24 },
-        { wch: 28 },
-        { wch: 14 },
-        { wch: 22 },
-        { wch: 50 },
-        { wch: 24 },
-        { wch: 80 }
-      ]
-      XLSX.utils.book_append_sheet(workbook, docSheet, '知识文档')
-
-      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
-      await writeFile(result.filePath, buffer)
-      return { success: true, canceled: false, filePath: result.filePath }
     }
 
     if (format === 'json') {
@@ -1200,7 +1147,7 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     return { success: true, canceled: false, filePath: result.filePath }
   })
 
-  // ── 拆书知识库：单本参考作品资产导出（txt / md / json / excel） ──
+  // ── 拆书知识库：单本参考作品资产导出（txt / md / json） ──
   ipcMain.handle('characterarc:export-reference-asset', async (_event, payload: unknown) => {
     const window = deps.windowManager.getActiveWindow()
     if (!window) {
@@ -1225,8 +1172,7 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     const filterMap: Record<ReferenceAssetExportFormat, { name: string; extensions: string[] }> = {
       txt: { name: '文本文档', extensions: ['txt'] },
       md: { name: 'Markdown 文档', extensions: ['md'] },
-      json: { name: 'JSON 文件', extensions: ['json'] },
-      excel: { name: 'Excel 工作簿', extensions: ['xlsx'] }
+      json: { name: 'JSON 文件', extensions: ['json'] }
     }
     const safeTitle = String(asset.title ?? '参考作品').trim() || '参考作品'
 
