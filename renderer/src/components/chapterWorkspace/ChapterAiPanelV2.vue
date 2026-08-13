@@ -570,6 +570,7 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
         @edit-draft="assistant.updateEditingDraft"
         @resend="handleResendTurn"
         @undo="handleUndoTurn"
+        @regenerate="assistant.regenerateTurn"
       />
 
       <div v-else class="starter">

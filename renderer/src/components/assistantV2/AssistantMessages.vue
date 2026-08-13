@@ -14,6 +14,7 @@ import {
   GitFork,
   Layers3,
   Pencil,
+  RefreshCw,
   SearchCheck,
   Sparkles,
   SquareTerminal,
@@ -109,6 +110,7 @@ const emit = defineEmits<{
   (e: 'edit-draft', value: string): void
   (e: 'resend'): void
   (e: 'undo', turnId: string): void
+  (e: 'regenerate', turnId: string): void
   (e: 'delete-turns', turnIds: string[]): void
 }>()
 
@@ -587,6 +589,15 @@ const hasContent = computed(() => props.messages.length > 0)
         </div>
         <div class="user-content">{{ msg.userMessage }}</div>
         <div v-if="!props.isStreaming && msg.status !== 'streaming'" class="user-actions">
+          <button
+            type="button"
+            title="重新生成"
+            aria-label="重新生成"
+            :disabled="props.isMutating"
+            @click="emit('regenerate', msg.turnId)"
+          >
+            <RefreshCw :size="13" />
+          </button>
           <button
             type="button"
             :title="copiedTurnId === msg.turnId ? '已复制' : '复制提问'"

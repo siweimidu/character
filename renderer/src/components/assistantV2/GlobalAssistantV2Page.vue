@@ -482,6 +482,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
         @edit-draft="assistant.updateEditingDraft"
         @resend="handleResendTurn"
         @undo="handleUndoTurn"
+        @regenerate="assistant.regenerateTurn"
         @delete-turns="(ids) => assistant.deleteTurns(ids)"
       />
 
