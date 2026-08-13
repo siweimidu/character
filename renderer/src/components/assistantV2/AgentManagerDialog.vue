@@ -290,9 +290,11 @@ watch(
             <div v-else-if="availableSkills.length === 0" class="skill-hint">
               暂无已导入的 Skill。可先在「内置 Skills 与项目扩展」页面导入后再绑定。
             </div>
-            <NCheckboxGroup v-else v-model:value="selectedSkillIds" class="skill-grid">
-              <NCheckbox v-for="skill in availableSkills" :key="skill.id" :value="skill.id" :label="skill.name" />
-            </NCheckboxGroup>
+            <div v-else class="skill-scroll">
+              <NCheckboxGroup v-model:value="selectedSkillIds" class="skill-grid">
+                <NCheckbox v-for="skill in availableSkills" :key="skill.id" :value="skill.id" :label="skill.name" />
+              </NCheckboxGroup>
+            </div>
           </div>
         </NFormItem>
 
@@ -419,10 +421,19 @@ watch(
   font-size: 12px;
   color: var(--arc-text-hint);
 }
+.skill-scroll {
+  max-height: 200px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 6px;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  padding: 8px;
+}
 .skill-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px 12px;
+  gap: 6px 12px;
   width: 100%;
 }
 .avatar-section {
