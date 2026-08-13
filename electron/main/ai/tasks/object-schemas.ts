@@ -220,6 +220,13 @@ const taskObjectSchemas: Partial<Record<AiTaskName, z.ZodTypeAny>> = {
       tags: stringList
     }))
   }),
+  'plot-thread-generate': z.object({
+    entries: z.array(z.object({
+      title: stringField,
+      description: stringField,
+      tags: stringList
+    }))
+  }),
   'plot-thread-batch': z.object({
     entries: z.array(z.object({
       title: stringField,

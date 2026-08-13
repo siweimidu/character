@@ -58,6 +58,7 @@ const TASK_DEFAULT_CAPABILITIES: Record<AiTaskName, PromptCapabilityId[]> = {
   'chapter-audit': ['settings', 'chapters', 'analysis'],
   'chapter-humanize': ['settings', 'chapters', 'writing-style', 'project-skills'],
   'plot-thread-detect': ['settings', 'chapters', 'analysis'],
+  'plot-thread-generate': ['settings', 'chapters', 'worldview', 'characters', 'writing-style'],
   'plot-thread-batch': ['settings', 'outline', 'worldview', 'characters', 'relations', 'writing-style'],
   'fanqie-seed': ['settings', 'writing-style'],
   'chapter-repair': ['settings', 'chapters', 'worldview', 'characters', 'relations', 'outline', 'writing-style', 'project-skills'],

@@ -11,8 +11,9 @@ import ChapterVersionDialog from './ChapterVersionDialog.vue'
 import EditorFindBar from './EditorFindBar.vue'
 import EditorContextMenu from './EditorContextMenu.vue'
 import EditorMinimap from './EditorMinimap.vue'
-import { getChapterCharacterCount } from '@/features/chapters/editorContent'
+import { getChapterCharacterCount, getPlainTextFromEditorContent } from '@/features/chapters/editorContent'
 import { editorFontOptions, getEditorFontOption, isEditorFont } from '@/features/chapters/editorTypography'
+import { toIpcPayload } from '@/utils/ipcPayload'
 import { formatChapterWordTargetLabel, parseChapterWordTarget } from '@/features/chapters/wordTarget'
 import { formatVolumeLabel } from '@/features/workspace/outlineVolumes'
 import { useAppStore } from '@/stores/app'
@@ -46,6 +47,8 @@ const fontSizeInputEl = ref<HTMLInputElement | null>(null)
 const versionDialogVisible = ref(false)
 // ── 章节内快速新建伏笔 ──
 const quickCreateThreadVisible = ref(false)
+// AI 生成伏笔进行中标记
+const aiGeneratingThread = ref(false)
 const quickThreadForm = reactive({
   title: '',
   description: '',
@@ -115,6 +118,85 @@ function confirmQuickCreateThread(): void {
   })
   message.success('伏笔已添加')
   quickCreateThreadVisible.value = false
+}
+
+// AI 生成伏笔：调用 AI 根据章节正文与项目设定生成一条伏笔，并自动写入伏笔线索
+async function aiGenerateThread(): Promise<void> {
+  if (aiGeneratingThread.value || appStore.isAiTaskRunning('plot-thread-generate')) {
+    message.warning('AI 正在生成伏笔，请稍候')
+    return
+  }
+  const project = appStore.currentProject
+  const chapter = currentChapter.value
+  if (!project || !chapter) {
+    message.warning('当前没有可用的项目或章节，无法生成伏笔')
+    return
+  }
+  const plainText = getPlainTextFromEditorContent(chapter.content ?? '').trim()
+  const existingThreads = appStore.plotThreads
+    .filter((t) => t.status === 'pending')
+    .map((t) => `${t.title}（${t.description}）`)
+  const hint = quickThreadForm.title.trim() || quickThreadForm.description.trim() || quickThreadForm.remark.trim()
+
+  aiGeneratingThread.value = true
+  try {
+    const result = await appStore.runTrackedAiTask(
+      {
+        key: 'plot-thread-generate',
+        kind: 'plot-thread',
+        label: 'AI 生成伏笔',
+        description: `为《${chapter.title || '未命名章节'}》生成一条新伏笔`,
+        panel: 'chapters'
+      },
+      () =>
+        window.characterArc.generateAi(toIpcPayload({
+          task: 'plot-thread-generate',
+          settings: appStore.appSettings,
+          context: {
+            projectTitle: project.title,
+            projectGenre: project.genre,
+            chapterTitle: chapter.title || '未命名章节',
+            chapterContent: plainText.slice(0, 6000),
+            hint,
+            existingThreads,
+            worldviewEntries: appStore.worldviewEntries.slice(0, 8).map((e) => ({
+              type: e.type, title: e.title, content: String(e.content ?? '').replace(/\s+/g, ' ').slice(0, 200)
+            })),
+            characters: appStore.characters.slice(0, 8).map((c) => ({
+              name: c.name, role: c.role, description: String(c.description ?? '').replace(/\s+/g, ' ').slice(0, 160)
+            }))
+          }
+        }))
+    )
+
+    if (!result.success) {
+      message.error(result.error ?? 'AI 生成伏笔失败')
+      return
+    }
+    const entries = Array.isArray((result.result as Record<string, unknown>)?.entries)
+      ? ((result.result as Record<string, unknown>).entries as Array<Record<string, unknown>>)
+      : []
+    const entry = entries[0]
+    if (!entry || !String(entry.title ?? '').trim()) {
+      message.warning('AI 未生成有效的伏笔，请重试')
+      return
+    }
+    appStore.createPlotThread({
+      title: String(entry.title).trim(),
+      description: String(entry.description ?? '暂无描述'),
+      openedInChapterId: chapter.id,
+      status: 'pending',
+      tags: Array.isArray(entry.tags) ? (entry.tags as string[]).map(String) : []
+    })
+    message.success('AI 伏笔已生成并同步到伏笔线索')
+    quickCreateThreadVisible.value = false
+  } catch (error) {
+    if (!(error instanceof Error) || (!error.message.includes('任务已中断') && !error.message.includes('任务已被取消'))) {
+      message.error(error instanceof Error ? error.message : 'AI 生成伏笔失败，请检查模型配置')
+    }
+  } finally {
+    aiGeneratingThread.value = false
+  }
 }
 // 章节摘要默认折叠，点击目标字数右侧按钮展开
 const summaryExpanded = ref(false)
@@ -896,6 +978,16 @@ onBeforeUnmount(() => {
       </n-form>
       <template #footer>
         <div class="quick-thread-actions">
+          <n-button
+            type="info"
+            ghost
+            :loading="aiGeneratingThread"
+            :disabled="aiGeneratingThread"
+            @click="aiGenerateThread"
+          >
+            <template #icon><Sparkles :size="14" /></template>
+            AI 生成伏笔
+          </n-button>
           <n-button @click="quickCreateThreadVisible = false">取消</n-button>
           <n-button type="primary" @click="confirmQuickCreateThread">添加伏笔</n-button>
         </div>

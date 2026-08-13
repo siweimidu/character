@@ -25,6 +25,7 @@ import chapterMemo from './chapter-memo'
 import chapterAudit from './chapter-audit'
 import chapterHumanize from './chapter-humanize'
 import plotThreadDetect from './plot-thread-detect'
+import plotThreadGenerate from './plot-thread-generate'
 import plotThreadBatch from './plot-thread-batch'
 import fanqieSeed from './fanqie-seed'
 import workflowDocuments from './workflow-documents'
@@ -89,6 +90,7 @@ register(chapterMemo)
 register(chapterAudit)
 register(chapterHumanize)
 register(plotThreadDetect)
+register(plotThreadGenerate)
 register(plotThreadBatch)
 register(fanqieSeed)
 register(workflowDocuments)

@@ -92,6 +92,7 @@ export type AiTaskName =
   | 'chapter-audit'
   | 'chapter-humanize'
   | 'plot-thread-detect'
+  | 'plot-thread-generate'
   | 'plot-thread-batch'
   | 'fanqie-seed'
   | 'project-bootstrap'

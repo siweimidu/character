@@ -113,6 +113,7 @@ export function resolveMaxTokens(task?: AiTaskPayload): number | undefined {
     case 'reference-style-analysis':
     case 'inspiration-pack':
     case 'plot-thread-detect':
+    case 'plot-thread-generate':
     case 'outline-batch':
     case 'outline-chain':
     case 'workflow-documents':
