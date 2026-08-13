@@ -759,6 +759,21 @@ const hasContent = computed(() => props.messages.length > 0)
         <button type="button" class="ms-cancel-btn" @click="exitSelectionMode">取消</button>
       </div>
     </div>
+
+    <!-- opencode 风格：右侧透明横杠，悬浮放大，点击跳转到对应对话 -->
+    <div v-if="props.messages.length > 1" class="turn-rail" aria-hidden="true">
+      <button
+        v-for="(msg, idx) in props.messages"
+        :key="'rail-' + msg.turnId"
+        type="button"
+        class="rail-tick"
+        :class="{ active: isTurnInView(msg.turnId), hover: barHoverIdx === idx }"
+        :title="msg.userMessage"
+        @mouseenter="barHoverIdx = idx"
+        @mouseleave="barHoverIdx = null"
+        @click="jumpToTurnIndex(idx)"
+      />
+    </div>
   </div>
 
   <!-- 批量删除确认弹层 -->
@@ -773,21 +788,6 @@ const hasContent = computed(() => props.messages.length > 0)
         <button type="button" class="rollback-confirm" @click="confirmDeleteSelectedTurns">确认删除</button>
       </div>
     </div>
-  </div>
-
-  <!-- opencode 风格：右侧透明横杠，悬浮放大，点击跳转到对应对话 -->
-  <div v-if="props.messages.length > 1" class="turn-rail" aria-hidden="true">
-    <button
-      v-for="(msg, idx) in props.messages"
-      :key="'rail-' + msg.turnId"
-      type="button"
-      class="rail-tick"
-      :class="{ active: isTurnInView(msg.turnId), hover: barHoverIdx === idx }"
-      :title="msg.userMessage"
-      @mouseenter="barHoverIdx = idx"
-      @mouseleave="barHoverIdx = null"
-      @click="jumpToTurnIndex(idx)"
-    />
   </div>
 
   <!-- 回退确认弹层 -->
@@ -1091,10 +1091,11 @@ const hasContent = computed(() => props.messages.length > 0)
 
 /* ── opencode 风格右侧透明横杠 ── */
 .turn-rail {
-  position: absolute;
-  top: 0;
-  right: 6px;
-  bottom: 0;
+  position: sticky;
+  top: 50%;
+  transform: translateY(-50%);
+  align-self: flex-end;
+  margin-top: -18px;
   z-index: 6;
   display: flex;
   flex-direction: column;
@@ -1102,6 +1103,7 @@ const hasContent = computed(() => props.messages.length > 0)
   justify-content: center;
   gap: 5px;
   width: 10px;
+  flex: 0 0 auto;
   pointer-events: none;
 }
 .rail-tick {
