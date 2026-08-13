@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { Upload, X } from 'lucide-vue-next'
-import { NButton, NModal, NInput, NForm, NFormItem, NCheckboxGroup, NCheckbox } from 'naive-ui'
+import { NButton, NDrawer, NDrawerContent, NInput, NForm, NFormItem, NCheckboxGroup, NCheckbox } from 'naive-ui'
 import type { AgentProfile } from '@shared/assistant-runtime'
 import { PRESET_AGENT_AVATARS } from '@shared/agent-avatars'
 import type { ProjectSkillItem } from '@/types/app'
@@ -223,22 +223,24 @@ watch(
 </script>
 
 <template>
-  <NModal
+  <NDrawer
     :show="visible"
     :mask-closable="false"
-    preset="card"
-    style="width: 560px"
+    placement="right"
+    :width="520"
+    class="agent-drawer"
     @update:show="(v: boolean) => { if (!v) emit('close') }"
   >
-    <template #header>
-      <div class="agent-dialog-title">
-        <span class="title-icon">✦</span>
-        {{ agent ? '编辑智能体' : '创建智能体' }}
-      </div>
-    </template>
+    <NDrawerContent class="agent-drawer-content">
+      <template #header>
+        <div class="agent-dialog-title">
+          <span class="title-icon">✦</span>
+          {{ agent ? '编辑智能体' : '创建智能体' }}
+        </div>
+      </template>
 
-    <div class="agent-form">
-      <NForm label-placement="top" size="small">
+      <div class="agent-form">
+        <NForm label-placement="top" size="small">
         <NFormItem label="智能体名称" required>
           <NInput v-model:value="name" placeholder="例如：大纲师、设定校对、去AI味专家" :maxlength="30" />
         </NFormItem>
@@ -346,20 +348,30 @@ watch(
           </div>
         </NFormItem>
       </NForm>
-    </div>
-
-    <template #footer>
-      <div class="dialog-actions">
-        <NButton @click="emit('close')">取消</NButton>
-        <NButton type="primary" :loading="isSaving" @click="handleSave">
-          保存智能体
-        </NButton>
       </div>
-    </template>
-  </NModal>
+
+      <template #footer>
+        <div class="dialog-actions">
+          <NButton @click="emit('close')">取消</NButton>
+          <NButton type="primary" :loading="isSaving" @click="handleSave">
+            保存智能体
+          </NButton>
+        </div>
+      </template>
+    </NDrawerContent>
+  </NDrawer>
 </template>
 
 <style scoped>
+/* 抽屉整体：内容区可上下滚动，header/footer 固定 */
+.agent-drawer-content {
+  height: 100%;
+}
+.agent-drawer-content :deep(.n-drawer-body-content-wrapper) {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
 .agent-dialog-title {
   display: flex;
   align-items: center;
