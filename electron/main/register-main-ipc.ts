@@ -3407,7 +3407,10 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
         return { success: false, error: '未找到可导出的 skill 目录' }
       }
 
-      const buffer = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' })
+      // streamFiles: false 禁用 JSZip 的异步 stream/worker 处理路径（该路径会通过
+      // postMessage/structuredClone 传递数据块，在 Electron 主进程的 Node 环境下可能抛出
+      // “An object could not be cloned”）。改为主线程同步压缩，彻底规避该问题。
+      const buffer = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', streamFiles: false })
       const ownerWindow = deps.windowManager.getMainWindow() ?? BrowserWindow.getFocusedWindow()
       const saveResult = ownerWindow
         ? await dialog.showSaveDialog(ownerWindow, {
