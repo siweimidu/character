@@ -36,7 +36,10 @@ function applyDarkModeImmediately(value: boolean): void {
 /** 调节主题主色深浅（即时生效），替换旧的纸质纹理强度滑动条 */
 function setThemeColorIntensity(value: number): void {
   const safe = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0.5
+  // 即时更新内存状态并持久化，无需点保存设置即立即生效
   appStore.updateAppSetting('themeColorIntensity', safe, { flushWorkspace: false })
+  // 同步草稿值，避免后续点「保存设置」时用旧值覆盖回退颜色深浅
+  draftSettings.themeColorIntensity = safe
 }
 
 function themeTextColor(color: string): string {
