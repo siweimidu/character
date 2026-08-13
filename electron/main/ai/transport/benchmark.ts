@@ -3,6 +3,7 @@ import type { AppSettings } from '../shared-types'
 import { normalizeSettings } from '../settings'
 import { createModel, buildSystemPrompt } from '../provider'
 import { createProxyFetch } from '../proxy-fetch'
+import { estimateTokens } from './token-estimate'
 
 /** 模型基准测试的结果 */
 export interface ModelBenchmarkResult {
@@ -71,8 +72,14 @@ export async function benchmarkModel(rawSettings: AppSettings): Promise<ModelBen
   })
   const speedElapsedMs = measureTiming(performance.now() - speedStart)
 
-  const completionTokens = Number.isFinite(speedResult.usage?.outputTokens) ? (speedResult.usage?.outputTokens ?? 0) : 0
-  const promptTokens = Number.isFinite(speedResult.usage?.inputTokens) ? (speedResult.usage?.inputTokens ?? 0) : 0
+  // 部分供应商（如 GitCode/AtomGit 的 Qwen3-VL 视觉模型）在纯文本测速请求下
+  // 不返回 usage 或返回 completion_tokens = 0，导致测速与输出 token 显示为 0。
+  // 当 AI SDK 解析出的 usage 缺失或为 0，且确实生成了文本时，用文本长度兜底估算。
+  const rawOutputTokens = Number.isFinite(speedResult.usage?.outputTokens) ? (speedResult.usage?.outputTokens ?? 0) : 0
+  const outputText = typeof speedResult.text === 'string' ? speedResult.text : ''
+  const completionTokens = rawOutputTokens > 0 ? rawOutputTokens : estimateTokens(outputText)
+  const rawPromptTokens = Number.isFinite(speedResult.usage?.inputTokens) ? (speedResult.usage?.inputTokens ?? 0) : 0
+  const promptTokens = rawPromptTokens > 0 ? rawPromptTokens : 0
 
   const seconds = speedElapsedMs / 1000
   const tokensPerSec = seconds > 0 ? completionTokens / seconds : 0
