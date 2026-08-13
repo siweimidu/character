@@ -117,6 +117,7 @@ function submitProject(payload: {
   id: string
   title: string
   genre: string
+  premise: string
   novelLength: ProjectSummary['novelLength']
   cover: string
   targetPlatform: string
@@ -124,6 +125,7 @@ function submitProject(payload: {
   appStore.updateProject(payload.id, {
     title: payload.title,
     genre: payload.genre,
+    premise: payload.premise,
     novelLength: payload.novelLength,
     cover: payload.cover,
     targetPlatform: payload.targetPlatform

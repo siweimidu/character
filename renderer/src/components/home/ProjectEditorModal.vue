@@ -17,6 +17,7 @@ const emit = defineEmits<{
     id: string
     title: string
     genre: string
+    premise: string
     novelLength: NovelLength
     cover: string
     targetPlatform: string
@@ -30,6 +31,7 @@ const PLATFORM_SUGGESTIONS = ['番茄小说', '起点中文网', '晋江文学�
 const form = reactive({
   title: '',
   genre: '',
+  premise: '',
   novelLength: 'long' as NovelLength,
   cover: '',
   targetPlatform: ''
@@ -40,6 +42,7 @@ const coverPreviewStyle = computed(() => resolveCoverStyle(form.cover))
 function syncFormFromProject(project: ProjectSummary | null): void {
   form.title = project?.title ?? ''
   form.genre = project?.genre ?? ''
+  form.premise = project?.premise ?? ''
   form.novelLength = project?.novelLength === 'short' ? 'short' : 'long'
   form.cover = project?.cover ?? ''
   form.targetPlatform = project?.targetPlatform ?? ''
@@ -87,6 +90,7 @@ function submitForm(): void {
     id: props.project.id,
     title: form.title,
     genre: form.genre,
+    premise: form.premise,
     novelLength: form.novelLength,
     cover: form.cover,
     targetPlatform: form.targetPlatform
@@ -163,6 +167,17 @@ function clearCover(): void {
               </n-tag>
             </div>
           </div>
+        </n-form-item>
+
+        <n-form-item label="作品简介">
+          <n-input
+            v-model:value="form.premise"
+            type="textarea"
+            :autosize="{ minRows: 4, maxRows: 10 }"
+            placeholder="例如：一位普通少年意外觉醒代码超能力，在赛博都市中一路逆袭……"
+            maxlength="2000"
+            show-count
+          />
         </n-form-item>
 
         <n-form-item label="作品长度">

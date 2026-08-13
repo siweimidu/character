@@ -1000,6 +1000,206 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     return { success: true, canceled: false, filePath: result.filePath }
   })
 
+  // ── 拆书知识库导出（TXT / Markdown / JSON / Excel） ──
+  ipcMain.handle('characterarc:export-knowledge', async (_event, payload: unknown) => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) return { success: false, canceled: true }
+
+    const request = (payload && typeof payload === 'object' ? payload : {}) as {
+      format?: 'txt' | 'md' | 'json' | 'excel'
+      projectTitle?: string
+      assets?: Array<{
+        title: string
+        source?: string
+        fileName?: string
+        notes?: string
+        summary?: string
+        topKeywords?: string[]
+        styleRules?: string[]
+        documents?: Array<{
+          title: string
+          sourceType?: string
+          sourceLabel?: string
+          content?: string
+          summary?: string
+          keywords?: string[]
+        }>
+      }>
+    }
+    const format = request.format ?? 'md'
+    const assets = request.assets ?? []
+    const projectTitle = String(request.projectTitle ?? '').trim() || '拆书知识库'
+    const defaultFileName = `拆书知识库-${new Date().toISOString().slice(0, 10)}.${format === 'md' ? 'md' : format === 'txt' ? 'txt' : format === 'excel' ? 'xlsx' : 'json'}`
+
+    const filterMap = {
+      txt: { name: '文本文档', extensions: ['txt'] },
+      md: { name: 'Markdown 文档', extensions: ['md'] },
+      json: { name: 'JSON 文件', extensions: ['json'] },
+      excel: { name: 'Excel 表格', extensions: ['xlsx'] }
+    }
+
+    const result = await dialog.showSaveDialog(window, {
+      title: '导出拆书知识库',
+      defaultPath: defaultFileName,
+      filters: [filterMap[format]]
+    })
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true }
+    }
+
+    if (format === 'excel') {
+      const workbook = XLSX.utils.book_new()
+      const assetRows = assets.map((asset) => ({
+        '作品标题': asset.title ?? '',
+        '来源': asset.source ?? '',
+        '文件名': asset.fileName ?? '',
+        '简介': asset.summary ?? '',
+        '关键词': (asset.topKeywords ?? []).join('、'),
+        '风格规则': (asset.styleRules ?? []).join('、'),
+        '文档数': (asset.documents ?? []).length
+      }))
+      const documentRows = assets.flatMap((asset) =>
+        (asset.documents ?? []).map((doc) => ({
+          '作品标题': asset.title ?? '',
+          '文档标题': doc.title ?? '',
+          '来源类型': doc.sourceType ?? '',
+          '来源标签': doc.sourceLabel ?? '',
+          '摘要': doc.summary ?? '',
+          '关键词': (doc.keywords ?? []).join('、'),
+          '正文内容': doc.content ?? ''
+        }))
+      )
+
+      const overviewSheet = XLSX.utils.json_to_sheet(assetRows.length ? assetRows : [{ '作品标题': '', '来源': '', '文件名': '', '简介': '', '关键词': '', '风格规则': '', '文档数': 0 }])
+      overviewSheet['!cols'] = [
+        { wch: 24 },
+        { wch: 14 },
+        { wch: 22 },
+        { wch: 50 },
+        { wch: 24 },
+        { wch: 30 },
+        { wch: 10 }
+      ]
+      XLSX.utils.book_append_sheet(workbook, overviewSheet, '拆书总览')
+
+      const docSheet = XLSX.utils.json_to_sheet(documentRows.length ? documentRows : [{ '作品标题': '', '文档标题': '', '来源类型': '', '来源标签': '', '摘要': '', '关键词': '', '正文内容': '' }])
+      docSheet['!cols'] = [
+        { wch: 24 },
+        { wch: 28 },
+        { wch: 14 },
+        { wch: 22 },
+        { wch: 50 },
+        { wch: 24 },
+        { wch: 80 }
+      ]
+      XLSX.utils.book_append_sheet(workbook, docSheet, '知识文档')
+
+      const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+      await writeFile(result.filePath, buffer)
+      return { success: true, canceled: false, filePath: result.filePath }
+    }
+
+    if (format === 'json') {
+      const content = JSON.stringify({
+        app: 'CharacterArc',
+        module: 'knowledge-library',
+        exportedAt: new Date().toISOString(),
+        projectTitle,
+        assets: assets.map((asset) => ({
+          title: asset.title,
+          source: asset.source,
+          fileName: asset.fileName,
+          notes: asset.notes,
+          summary: asset.summary,
+          topKeywords: asset.topKeywords ?? [],
+          styleRules: asset.styleRules ?? [],
+          documents: (asset.documents ?? []).map((doc) => ({
+            title: doc.title,
+            sourceType: doc.sourceType,
+            sourceLabel: doc.sourceLabel,
+            content: doc.content,
+            summary: doc.summary,
+            keywords: doc.keywords ?? []
+          }))
+        }))
+      }, null, 2)
+      await writeFile(result.filePath, content, 'utf-8')
+      return { success: true, canceled: false, filePath: result.filePath }
+    }
+
+    const separator = ''.padEnd(64, '=')
+    type ExportKnowledgeAsset = {
+      title: string
+      source?: string
+      fileName?: string
+      notes?: string
+      summary?: string
+      topKeywords?: string[]
+      styleRules?: string[]
+      documents?: Array<{
+        title: string
+        sourceType?: string
+        sourceLabel?: string
+        content?: string
+        summary?: string
+        keywords?: string[]
+      }>
+    }
+    const blockForAsset = (asset: ExportKnowledgeAsset, useMarkdown: boolean): string[] => {
+      const title = asset.title || '未命名参考资产'
+      const meta: string[] = []
+      if (asset.source) meta.push(`来源：${asset.source}`)
+      if (asset.fileName) meta.push(`文件：${asset.fileName}`)
+      if ((asset.topKeywords ?? []).length) meta.push(`关键词：${(asset.topKeywords ?? []).join('、')}`)
+      if ((asset.styleRules ?? []).length) meta.push(`风格规则：${(asset.styleRules ?? []).join('、')}`)
+
+      const header = useMarkdown ? `# ${title}` : title
+      const lines: string[] = [header]
+      if (meta.length) {
+        if (useMarkdown) {
+          lines.push('', meta.map((item) => `- ${item}`).join('\n'))
+        } else {
+          lines.push('', meta.join(' / '))
+        }
+      }
+      const summary = asset.summary || asset.notes || ''
+      if (summary) {
+        lines.push('', '【作品简介】', '', summary)
+      }
+
+      ;(asset.documents ?? []).forEach((doc, index) => {
+        const docTitle = doc.title || `文档 ${index + 1}`
+        const docMeta: string[] = []
+        if (doc.sourceType) docMeta.push(`类型：${doc.sourceType}`)
+        if (doc.sourceLabel) docMeta.push(`来源：${doc.sourceLabel}`)
+        if ((doc.keywords ?? []).length) docMeta.push(`关键词：${(doc.keywords ?? []).join('、')}`)
+
+        lines.push('', ''.padEnd(48, '-'))
+        if (useMarkdown) {
+          lines.push('', `## ${docTitle}`)
+          if (docMeta.length) lines.push('', docMeta.map((item) => `- ${item}`).join('\n'))
+          if (doc.summary) lines.push('', `> ${doc.summary}`)
+          lines.push('', doc.content || '（暂无正文内容）')
+        } else {
+          lines.push('', `【${docTitle}】`)
+          if (docMeta.length) lines.push(docMeta.join(' / '))
+          if (doc.summary) lines.push(`摘要：${doc.summary}`)
+          lines.push('', doc.content || '（暂无正文内容）')
+        }
+      })
+      return lines
+    }
+
+    const sections = assets.map((asset) => blockForAsset(asset, format === 'md').join('\n'))
+    const body = sections.join(`\n\n${separator}\n\n`)
+    const content = format === 'md'
+      ? `# ${projectTitle} · 拆书知识库导出\n\n> 导出时间：${new Date().toLocaleString('zh-CN', { hour12: false })}\n\n${body}`
+      : `【${projectTitle} · 拆书知识库导出】\n导出时间：${new Date().toLocaleString('zh-CN', { hour12: false })}\n\n${body}`
+
+    await writeFile(result.filePath, content, 'utf-8')
+    return { success: true, canceled: false, filePath: result.filePath }
+  })
+
   // ── 拆书知识库：单本参考作品资产导出（txt / md / json / excel） ──
   ipcMain.handle('characterarc:export-reference-asset', async (_event, payload: unknown) => {
     const window = deps.windowManager.getActiveWindow()
@@ -1054,6 +1254,7 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
   })
 
   // ── 人物卡片导入导出（兼容酒馆 SillyTavern 角色卡 V2） ──
+
   ipcMain.handle('characterarc:character-card-pick', async () => {
     const window = deps.windowManager.getActiveWindow()
     if (!window) return { success: false, canceled: true, cards: [] }

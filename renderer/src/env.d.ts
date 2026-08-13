@@ -625,6 +625,32 @@ declare global {
         filePath?: string
         error?: string
       }>
+      exportKnowledge: (payload: {
+        format: 'txt' | 'md' | 'json' | 'excel'
+        projectTitle?: string
+        assets?: Array<{
+          title: string
+          source?: string
+          fileName?: string
+          notes?: string
+          summary?: string
+          topKeywords?: string[]
+          styleRules?: string[]
+          documents?: Array<{
+            title: string
+            sourceType?: string
+            sourceLabel?: string
+            content?: string
+            summary?: string
+            keywords?: string[]
+          }>
+        }>
+      }) => Promise<{
+        success: boolean
+        canceled: boolean
+        filePath?: string
+        error?: string
+      }>
       exportReferenceAsset: (payload: {
         format: 'txt' | 'md' | 'json' | 'excel'
         asset?: {

@@ -269,14 +269,83 @@ function resolveAssetDocuments(asset: ReferenceAssetLibrary): KnowledgeDocumentV
     .sort((left, right) => compareReferenceAssetDocuments(left.document, right.document))
 }
 
+const exportLoading = ref(false)
+
+function buildExportAssets(): Array<{
+  title: string
+  source: string
+  fileName: string
+  notes: string
+  summary: string
+  topKeywords: string[]
+  styleRules: string[]
+  documents: Array<{
+    title: string
+    sourceType: string
+    sourceLabel: string
+    content: string
+    summary: string
+    keywords: string[]
+  }>
+}> {
+  return referenceAssets.value.map((asset) => ({
+    title: asset.title,
+    source: asset.source,
+    fileName: asset.fileName,
+    notes: asset.notes,
+    summary: asset.summary,
+    topKeywords: asset.topKeywords,
+    styleRules: asset.styleRules,
+    documents: resolveAssetDocuments(asset).map((item) => ({
+      title: item.document.title,
+      sourceType: item.document.sourceType,
+      sourceLabel: item.document.sourceLabel,
+      content: item.document.content,
+      summary: item.document.summary,
+      keywords: item.document.keywords
+    }))
+  }))
+}
+
+async function handleExportKnowledge(format: 'txt' | 'md' | 'json' | 'excel'): Promise<void> {
+  if (!referenceAssets.value.length) {
+    message.warning('拆书知识库中还没有可导出的内容')
+    return
+  }
+
+  const assets = buildExportAssets()
+  const projectTitle = appStore.selectedProjectId
+    ? (appStore.projects.find((project) => project.id === appStore.selectedProjectId)?.title ?? '')
+    : ''
+
+  exportLoading.value = true
+  try {
+    const result = await window.characterArc.exportKnowledge(toIpcPayload({ format, projectTitle, assets }))
+    if (!result.success) {
+      if (!result.canceled) message.error(result.error ?? '导出失败')
+      return
+    }
+    message.success(`已导出 ${assets.length} 部拆书资产`)
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '导出失败')
+  } finally {
+    exportLoading.value = false
+  }
+}
+
 // ── 导出拆书资产（txt / md / json / excel） ──
 const exportingAssetId = ref<string | null>(null)
+
 const exportMenuOptions: DropdownOption[] = [
   { key: 'md', label: '导出为 Markdown' },
   { key: 'txt', label: '导出为 TXT' },
   { key: 'json', label: '导出为 JSON' },
   { key: 'excel', label: '导出为 Excel 表格' }
 ]
+
+function handleExportLibrarySelect(key: string | number): void {
+  void handleExportKnowledge(key as 'txt' | 'md' | 'json' | 'excel')
+}
 
 async function handleExportAsset(asset: ReferenceAssetLibrary, format: 'txt' | 'md' | 'json' | 'excel'): Promise<void> {
   if (exportingAssetId.value) {
@@ -335,7 +404,7 @@ async function handleExportAsset(asset: ReferenceAssetLibrary, format: 'txt' | '
   }
 }
 
-function handleExportSelect(asset: ReferenceAssetLibrary, key: string | number): void {
+function handleExportAssetSelect(asset: ReferenceAssetLibrary, key: string | number): void {
   void handleExportAsset(asset, key as 'txt' | 'md' | 'json' | 'excel')
 }
 </script>
@@ -351,9 +420,15 @@ function handleExportSelect(asset: ReferenceAssetLibrary, key: string | number):
         </n-tag>
       </div>
       <div class="knowledge-header-actions">
-        <n-button secondary @click="openModal">
+        <n-button secondary class="knowledge-header-btn" @click="openModal">
           导入小说并拆书
         </n-button>
+        <n-dropdown :options="exportMenuOptions" placement="bottom-end" @select="handleExportLibrarySelect">
+          <n-button secondary class="knowledge-header-btn" :loading="exportLoading">
+            <template #icon><Download :size="16" /></template>
+            导出拆书知识库
+          </n-button>
+        </n-dropdown>
       </div>
     </div>
 
@@ -424,7 +499,7 @@ function handleExportSelect(asset: ReferenceAssetLibrary, key: string | number):
             :options="exportMenuOptions"
             placement="bottom-end"
             trigger="click"
-            @select="handleExportSelect(asset, $event)"
+            @select="handleExportAssetSelect(asset, $event)"
           >
             <n-button tertiary size="small" :loading="exportingAssetId === asset.id" :disabled="Boolean(exportingAssetId) && exportingAssetId !== asset.id">
               <template #icon><Download :size="14" /></template>
@@ -556,6 +631,11 @@ function handleExportSelect(asset: ReferenceAssetLibrary, key: string | number):
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.knowledge-header-btn {
+  min-width: 168px;
+  justify-content: center;
 }
 
 .knowledge-stats-row {
