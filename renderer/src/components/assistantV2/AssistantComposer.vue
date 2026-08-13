@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { NButton } from 'naive-ui'
-import { Paperclip, Plus, Square, Trash2, Undo2, Upload, X } from 'lucide-vue-next'
+import { Bookmark, Paperclip, Plus, Square, Trash2, Undo2, Upload, X } from 'lucide-vue-next'
 import type { TurnAttachment } from '@shared/assistant-runtime'
+import PromptLibrary from './PromptLibrary.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   modelValue: string
   isStreaming: boolean
   isCanceling?: boolean
@@ -16,7 +17,11 @@ const props = defineProps<{
   attachments?: TurnAttachment[]
   /** 可被 / 快捷指令选择的 skills（命令菜单第二类） */
   skills?: Array<{ id: string; name: string; description?: string }>
-}>()
+  /** 项目 ID：用于斜杠唤起提示词库（按项目隔离持久化）。 */
+  projectId?: string | null | undefined
+}>(), {
+  projectId: undefined
+})
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
@@ -141,10 +146,22 @@ const slashIdxByTab = { command: ref(0), skill: ref(0) }
 /** 统一把「命令」和「Skills」合并为一个可滑动选择的列表，供键盘/鼠标操作。 */
 type SlashEntry =
   | { kind: 'command'; key: string; label: string; description: string; template: string; intentHint: string; builtin?: boolean }
+  | { kind: 'promptlib'; key: string; label: string; description: string }
   | { kind: 'skill'; id: string; label: string; name: string; description: string }
 
-const slashCommandEntries = computed<Array<Extract<SlashEntry, { kind: 'command' }>>>(() =>
-  allCommands.value.map((c) => ({ kind: 'command', ...c }))
+/** 提示词库入口：始终位于斜杠命令首位，点击唤起提示词库管理弹窗。 */
+const PROMPT_LIB_ENTRY: Extract<SlashEntry, { kind: 'promptlib' }> = {
+  kind: 'promptlib',
+  key: 'promptlib',
+  label: '/prompts',
+  description: '打开提示词库（选用/新建/编辑/删除）'
+}
+
+/** 提示词库管理弹窗开关。 */
+const promptLibOpen = ref(false)
+
+const slashCommandEntries = computed<Array<Extract<SlashEntry, { kind: 'command' } | { kind: 'promptlib' }>>>(() =>
+  [PROMPT_LIB_ENTRY, ...allCommands.value.map((c) => ({ ...c, kind: 'command' as const }))]
 )
 const slashSkillEntries = computed<Array<Extract<SlashEntry, { kind: 'skill' }>>>(() =>
   (props.skills ?? []).map((s) => ({
@@ -176,7 +193,9 @@ const slashMatches = computed<SlashEntry[]>(() =>
 )
 
 function slashEntryKey(e: SlashEntry): string {
-  return e.kind === 'command' ? `cmd:${e.key}` : `skill:${e.id}`
+  if (e.kind === 'command') return `cmd:${e.key}`
+  if (e.kind === 'promptlib') return 'cmd:promptlib'
+  return `skill:${e.id}`
 }
 
 /** 把「组内索引」映射为整个列表的平铺索引，用于键盘/鼠标高亮对齐。 */
@@ -246,6 +265,17 @@ function applySlashCommand(idx: number): void {
     textareaRef.value.setSelectionRange(pos, pos)
     autosize(textareaRef.value)
     pendingIntent.value = entry.intentHint
+  } else if (entry.kind === 'promptlib') {
+    // 提示词库：移除 / 输入，弹出管理弹窗
+    const newValue = prefix + afterCaret
+    emit('update:modelValue', newValue)
+    slashOpen.value = false
+    slashQuery.value = ''
+    textareaRef.value.focus()
+    const pos = prefix.length
+    textareaRef.value.setSelectionRange(pos, pos)
+    autosize(textareaRef.value)
+    promptLibOpen.value = true
   } else {
     // skill：作为引用芯片加入待发送附件，移除 / 输入
     const newValue = prefix + afterCaret
@@ -258,6 +288,21 @@ function applySlashCommand(idx: number): void {
     textareaRef.value.setSelectionRange(pos, pos)
     autosize(textareaRef.value)
   }
+}
+
+/** 提示词库选中回调：把提示词内容回填到输入框。 */
+function usePromptFromLibrary(prompt: string): void {
+  if (!textareaRef.value) return
+  const value = props.modelValue
+  const caret = textareaRef.value.selectionStart ?? value.length
+  const before = value.slice(0, caret)
+  const after = value.slice(caret)
+  const newValue = before + prompt + after
+  emit('update:modelValue', newValue)
+  textareaRef.value.focus()
+  const pos = (before + prompt).length
+  textareaRef.value.setSelectionRange(pos, pos)
+  autosize(textareaRef.value)
 }
 
 function selectSlash(delta: number): void {
@@ -535,14 +580,15 @@ watch(
                 :key="slashEntryKey(entry)"
                 type="button"
                 class="slash-item"
-                :class="{ active: ei === slashActiveIdx }"
+                :class="{ active: ei === slashActiveIdx, 'slash-item-promptlib': entry.kind === 'promptlib' }"
                 @mousedown.prevent="onSlashItemMouseDown($event, ei)"
                 @mouseenter="slashActiveIdx = ei"
               >
+                <Bookmark v-if="entry.kind === 'promptlib'" :size="13" class="slash-promptlib-icon" />
                 <span class="slash-label">{{ entry.label }}</span>
                 <span class="slash-desc">{{ entry.description }}</span>
                 <button
-                  v-if="!entry.builtin"
+                  v-if="entry.kind === 'command' && !entry.builtin"
                   type="button"
                   class="slash-del"
                   title="删除命令"
@@ -667,6 +713,11 @@ watch(
           </div>
         </div>
       </div>
+      <PromptLibrary
+        v-model:open="promptLibOpen"
+        :project-id="props.projectId"
+        :on-use="usePromptFromLibrary"
+      />
     </div>
   </div>
 </template>
@@ -907,6 +958,18 @@ watch(
 }
 .slash-item.active {
   background: var(--arc-primary-soft);
+}
+.slash-item-promptlib {
+  border: 1px solid color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border));
+  background: color-mix(in srgb, var(--arc-primary) 8%, transparent);
+  margin-bottom: 4px;
+}
+.slash-item-promptlib.active {
+  background: var(--arc-primary-soft);
+}
+.slash-promptlib-icon {
+  color: var(--arc-primary);
+  flex: 0 0 auto;
 }
 .slash-label {
   font-family: var(--v2-mono);

@@ -1,21 +1,28 @@
 <script setup lang="ts">
-import { computed, ref, toRef } from 'vue'
-import { Bookmark, History, Plus, Search, X } from 'lucide-vue-next'
+import { computed, ref, toRef, watch } from 'vue'
+import { History, Plus, Search, X } from 'lucide-vue-next'
 import { NButton, NInput, NInputGroup, NModal } from 'naive-ui'
 import { usePromptStore, type SavedPrompt } from '@/composables/usePromptStore'
 
 /**
- * 智能体常用提示词库：紧凑按钮 + 管理对话框。
- * 供工作台智能体 / 章节智能体等所有"含智能体"的地方复用，
- * 避免每个面板各写一大块提示词表单占用空间。
+ * 智能体常用提示词库：管理对话框（弹窗）。
+ * 不再渲染常驻按钮，改由斜杠 / 命令唤出，供所有"含智能体"的地方复用。
+ * 支持：选用（onUse 回填）、新建、编辑、删除。
  */
 const props = withDefaults(defineProps<{
   projectId: string | null | undefined
+  /** 受控打开：true 时弹出管理对话框。 */
+  open?: boolean
   /** 触发"使用某条提示词"的回调，由调用方把内容回填到输入框。 */
   onUse?: (prompt: string) => void
 }>(), {
+  open: false,
   onUse: () => {}
 })
+
+const emit = defineEmits<{
+  (e: 'update:open', value: boolean): void
+}>()
 
 const projectIdRef = toRef(props, 'projectId')
 const promptStore = usePromptStore(projectIdRef)
@@ -35,6 +42,21 @@ const filteredPrompts = computed(() => {
     (p) => p.label.toLowerCase().includes(q) || p.prompt.toLowerCase().includes(q)
   )
 })
+
+// 外部受控打开：open 变为 true 时同步弹出管理对话框
+watch(
+  () => props.open,
+  (v) => {
+    if (v) {
+      managerOpen.value = true
+      search.value = ''
+    }
+  }
+)
+function closeManager(): void {
+  managerOpen.value = false
+  emit('update:open', false)
+}
 
 function openNew(): void {
   editingId.value = null
@@ -73,33 +95,21 @@ function remove(item: SavedPrompt): void {
 
 function usePrompt(prompt: string): void {
   managerOpen.value = false
+  emit('update:open', false)
   props.onUse(prompt)
 }
 </script>
 
 <template>
   <div class="prompt-library">
-    <button
-      type="button"
-      class="prompt-lib-btn"
-      title="打开提示词库"
-      @click="managerOpen = true"
-    >
-      <Bookmark :size="14" />
-      <span>提示词库</span>
-      <span v-if="promptStore.prompts.value.length > 0" class="prompt-count">
-        {{ promptStore.prompts.value.length }}
-      </span>
-    </button>
-
-    <!-- 管理对话框 -->
+    <!-- 管理对话框（由斜杠 / 命令唤出） -->
     <NModal
       :show="managerOpen"
       preset="card"
       title="提示词库"
       style="width: 520px"
-      @close="managerOpen = false"
-      @update:show="(v) => { if (!v) managerOpen = false }"
+      @close="closeManager"
+      @update:show="(v) => { if (!v) closeManager() }"
     >
       <div class="prompt-manager">
         <div class="prompt-manager-head">
@@ -144,6 +154,10 @@ function usePrompt(prompt: string): void {
       @close="editOpen = false"
       @update:show="(v) => { if (!v) editOpen = false }"
     >
+      <template #action>
+        <NButton @click="editOpen = false">取消</NButton>
+        <NButton type="primary" @click="save">{{ editingId ? '保存修改' : '保存提示词' }}</NButton>
+      </template>
       <div class="prompt-dialog">
         <label class="prompt-field">
           <span>名称（可选）</span>
@@ -153,50 +167,12 @@ function usePrompt(prompt: string): void {
           <span>提示词内容</span>
           <NInput v-model:value="draftText" type="textarea" :rows="5" placeholder="输入你想保存的常用提示词内容…" />
         </label>
-        <div class="prompt-dialog-actions">
-          <NButton @click="editOpen = false">取消</NButton>
-          <NButton type="primary" @click="save">{{ editingId ? '保存修改' : '保存提示词' }}</NButton>
-        </div>
       </div>
     </NModal>
   </div>
 </template>
 
 <style scoped>
-.prompt-lib-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border: 1px solid var(--arc-border);
-  border-radius: 8px;
-  background: var(--arc-bg-surface);
-  color: var(--arc-text-secondary);
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-
-.prompt-lib-btn:hover {
-  color: var(--arc-primary);
-  border-color: color-mix(in srgb, var(--arc-primary) 45%, var(--arc-border));
-  background: var(--arc-bg-surface-hover);
-}
-
-.prompt-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--arc-primary) 14%, transparent);
-  color: var(--arc-primary);
-  font-size: 11px;
-  font-weight: 600;
-}
-
 .prompt-manager-head {
   display: flex;
   align-items: center;
@@ -307,12 +283,5 @@ function usePrompt(prompt: string): void {
 .prompt-field > span {
   font-size: 12px;
   color: var(--arc-text-secondary);
-}
-
-.prompt-dialog-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 4px;
 }
 </style>

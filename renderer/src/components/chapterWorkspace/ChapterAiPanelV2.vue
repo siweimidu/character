@@ -614,6 +614,7 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
 
       <AssistantComposer
         v-model="composerValue"
+        :project-id="selectedProjectId"
         :is-streaming="assistant.isStreaming.value"
         :is-canceling="assistant.isCanceling.value"
         :streaming-char-count="assistant.streamingCharCount.value"

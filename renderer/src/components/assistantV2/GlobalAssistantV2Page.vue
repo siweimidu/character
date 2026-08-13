@@ -527,6 +527,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
 
       <AssistantComposer
         v-model="composerValue"
+        :project-id="selectedProjectId"
         :is-streaming="assistant.isStreaming.value"
         :is-canceling="assistant.isCanceling.value"
         :is-editing="Boolean(assistant.editingTurnId.value)"

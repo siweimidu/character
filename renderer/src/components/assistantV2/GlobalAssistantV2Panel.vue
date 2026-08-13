@@ -19,7 +19,6 @@ import AssistantComposer from './AssistantComposer.vue'
 import StagedChangesView from './StagedChangesView.vue'
 import AgentSelector from './AgentSelector.vue'
 import ReferencePickerDialog from './ReferencePickerDialog.vue'
-import PromptLibrary from './PromptLibrary.vue'
 
 const props = defineProps<{
   activeViewLabel?: string
@@ -383,11 +382,6 @@ async function handleCommit(ids?: string[]): Promise<void> {
             {{ action.label }}
           </button>
         </div>
-
-        <PromptLibrary
-          :project-id="selectedProjectId"
-          :on-use="(p) => { composerValue = p }"
-        />
       </div>
 
       <div v-if="assistant.lastError.value" class="err-banner">
@@ -396,6 +390,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
 
       <AssistantComposer
         v-model="composerValue"
+        :project-id="selectedProjectId"
         :is-streaming="assistant.isStreaming.value"
         :is-canceling="assistant.isCanceling.value"
         :streaming-char-count="assistant.streamingCharCount.value"
