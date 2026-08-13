@@ -544,6 +544,9 @@ export function useAssistant(options: UseAssistantOptions) {
     isCanceling.value = false
     cancelEditing()
     restoredDraftLabel.value = ''
+    // 切换到/新建对话时清空输入框草稿与待发送的引用/上传附件，避免残留上一个对话的内容
+    composerValue.value = ''
+    pendingAttachments.value = []
     await Promise.all([reloadTurns(), reloadStaged()])
   }
 

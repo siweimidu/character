@@ -19,6 +19,7 @@ import AssistantSessionList from '@/components/assistantV2/AssistantSessionList.
 import AssistantMessages from '@/components/assistantV2/AssistantMessages.vue'
 import AssistantComposer from '@/components/assistantV2/AssistantComposer.vue'
 import StagedChangesView from '@/components/assistantV2/StagedChangesView.vue'
+import ReferencePickerDialog from '@/components/assistantV2/ReferencePickerDialog.vue'
 import ChapterFirstDraftDialog from './ChapterFirstDraftDialog.vue'
 import { useChapterFirstDraft, type FirstDraftConfig } from './useChapterFirstDraft'
 import { usePromptStore, type SavedPrompt } from '@/composables/usePromptStore'
@@ -278,6 +279,9 @@ function sendWithMode(): void {
   })
 }
 
+// 引用选择对话框（支持多选章节/分卷）
+const referencePickerVisible = ref(false)
+
 function handleAttachFile(): void {
   const chapter = appStore.selectedChapter
   if (!chapter) {
@@ -285,13 +289,26 @@ function handleAttachFile(): void {
     return
   }
   activeTab.value = 'chat'
-  // 以“引用附件芯片”形式加入待发送附件（在输入框上方展示为可移除的按钮），
-  // 而非把文本直接写入输入框；发送时随 pendingAttachments 一并携带。
-  assistant.addPendingAttachment({
-    kind: 'chapter',
-    ref: `chapter:${chapter.id}`,
-    label: `章节《${chapter.title}》`
-  })
+  // 打开多选对话框，支持一次勾选多个章节/分卷作为引用附件芯片加入待发送区
+  referencePickerVisible.value = true
+}
+
+function handleReferenceConfirm(refs: Array<{ kind: 'chapter' | 'volume'; id: string; label: string }>): void {
+  for (const ref of refs) {
+    if (ref.kind === 'volume') {
+      assistant.addPendingAttachment({
+        kind: 'chapter',
+        ref: `volume:${ref.id}`,
+        label: `分卷《${ref.label}》`
+      })
+    } else {
+      assistant.addPendingAttachment({
+        kind: 'chapter',
+        ref: `chapter:${ref.id}`,
+        label: `章节《${ref.label}》`
+      })
+    }
+  }
 }
 
 function notifyTruncate(result: TurnTruncateResult, action: '撤回' | '重新分叉'): void {
@@ -612,6 +629,11 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
       <div v-if="assistant.lastError.value" class="err-banner">
         {{ assistant.lastError.value }}
       </div>
+
+      <ReferencePickerDialog
+        v-model:visible="referencePickerVisible"
+        @confirm="handleReferenceConfirm"
+      />
 
       <AssistantComposer
         v-model="composerValue"
