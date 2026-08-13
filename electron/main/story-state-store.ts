@@ -663,11 +663,10 @@ export function applyStateDelta(
       params.push(timestamp)
       params.push(projectId, relUpdate.relationship_id)
 
-      if (updates.length >= 2) {
-        db.prepare(
-          `UPDATE story_relationships SET ${updates.join(', ')} WHERE project_id = ? AND relationship_id = ?`
-        ).run(...params)
-      }
+      // last_interaction_chapter 和 updated_at 始终在更新，SQL 至少包含这两个字段
+      db.prepare(
+        `UPDATE story_relationships SET ${updates.join(', ')} WHERE project_id = ? AND relationship_id = ?`
+      ).run(...params)
     } else if (relUpdate.participants) {
       db.prepare(`
         INSERT OR IGNORE INTO story_relationships

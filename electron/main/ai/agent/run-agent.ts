@@ -156,6 +156,7 @@ export async function runAgent(params: RunAgentParams): Promise<RunAgentResult> 
     system: buildSystemPrompt(params.settings, params.systemPrompt),
     prompt: params.userPrompt,
     ...(params.disableTools ? {} : { tools: sdkTools, stopWhen: stepCountIs(maxSteps) }),
+    ...(params.maxTokens !== undefined ? { maxOutputTokens: params.maxTokens } : {}),
     abortSignal: params.ctx.signal,
     onError: ({ error }) => captureError(error),
     experimental_onToolCallStart: onToolCallStart,
@@ -327,6 +328,7 @@ async function synthesizeFinalAnswer(
       observationText,
       '请不要调用任何工具，直接给出完整的最终答案，并严格满足任务要求的输出格式。'
     ].join('\n\n'),
+    ...(params.maxTokens !== undefined ? { maxOutputTokens: params.maxTokens } : {}),
     abortSignal: params.ctx.signal
   })
 

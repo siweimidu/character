@@ -1402,7 +1402,7 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
       return { success: false, canceled: true, dataUrl: '' }
     }
     const buffer = await readFile(result.filePaths[0])
-    const mime = result.filePaths[0].toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg'
+    const mime = deps.resolveImageMime(result.filePaths[0])
     return { success: true, canceled: false, dataUrl: `data:${mime};base64,${buffer.toString('base64')}`, fileName: basename(result.filePaths[0]) }
   })
 

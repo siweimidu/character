@@ -109,6 +109,7 @@ export async function aiGenerateTextWithUsage(
         prompt: prompt.user,
         schema: options.schema,
         ...samplingOptions,
+        ...(maxTokens !== undefined ? { maxOutputTokens: maxTokens } : {}),
         providerOptions,
         abortSignal: signal,
         onError: ({ error }) => { streamError = error }
@@ -129,6 +130,7 @@ export async function aiGenerateTextWithUsage(
       prompt: prompt.user,
       schema: options.schema,
       ...samplingOptions,
+      ...(maxTokens !== undefined ? { maxOutputTokens: maxTokens } : {}),
       providerOptions,
       abortSignal: signal
     })
@@ -147,6 +149,7 @@ export async function aiGenerateTextWithUsage(
           system,
           prompt: prompt.user,
           ...samplingOptions,
+          ...(maxTokens !== undefined ? { maxOutputTokens: maxTokens } : {}),
           providerOptions,
           abortSignal: signal,
           onError: ({ error }) => { streamError = error }
@@ -178,6 +181,7 @@ export async function aiGenerateTextWithUsage(
     system,
     prompt: prompt.user,
     ...samplingOptions,
+    ...(maxTokens !== undefined ? { maxOutputTokens: maxTokens } : {}),
     providerOptions,
     abortSignal: signal
   })
@@ -214,6 +218,7 @@ export async function aiStreamTextWithUsage(
     system: buildSystemPrompt(settings, prompt.system),
     prompt: prompt.user,
     ...samplingOptions,
+    ...(maxTokens !== undefined ? { maxOutputTokens: maxTokens } : {}),
     providerOptions,
     abortSignal: signal,
     onError: ({ error }) => { streamError = error }
@@ -302,6 +307,7 @@ export async function aiStreamObjectWithUsage(
     prompt: prompt.user,
     schema,
     ...samplingOptions,
+    ...(maxTokens !== undefined ? { maxOutputTokens: maxTokens } : {}),
     providerOptions: resolveProviderOptions(settings, { preferLowReasoning: true }),
     abortSignal: signal,
     onError: ({ error }) => { streamError = error }
