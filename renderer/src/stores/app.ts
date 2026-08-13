@@ -407,20 +407,23 @@ export const useAppStore = defineStore('app', () => {
   /** 全局回收站条目（AI 接口、参考作品等跨项目共享数据的删除快照） */
   const globalRecycleBinEntries = computed(() => globalRecycleBin.value)
   /** 当前回收站视图下展示的条目，按删除时间倒序。
-   *  - 'global'：全局回收站，展示所有项目的删除内容 + 全局数据删除快照
-   *  - 项目 ID：该项目回收站，展示该项目删除内容 + 全局数据（AI 接口等所有项目共有）
+   *  - 'global'：全局回收站，展示所有项目的删除内容 + 全局数据删除快照（含 AI 接口、项目 Skills、参考作品）
+   *  - 项目 ID：该项目回收站，仅展示该项目删除内容（不显示 AI 接口、项目 Skills、参考作品等全局数据）
    */
   const recycleBinEntries = computed<import('@/types/app').RecycleBinEntry[]>(() => {
     const scope = recycleBinScope.value
-    const projectEntries =
+    const isGlobalScope = scope === 'global'
+    let projectEntries =
       scope === 'global' || scope === 'all'
         ? Object.values(projectWorkspaces.value).flatMap((workspace) => workspace.recycleBin ?? [])
         : projectRecycleBinOf(String(scope))
-    // 全局类数据（AI 接口配置、参考作品等）仅在全局回收站展示；项目回收站不显示
-    const globalEntries =
-      scope === 'global'
-        ? globalRecycleBin.value
-        : globalRecycleBin.value.filter((entry) => !GLOBAL_RECYCLE_CATEGORIES.has(entry.category))
+    // 全局类数据（AI 接口配置、项目 Skills、参考作品等）仅在全局回收站展示；项目回收站不显示
+    if (!isGlobalScope) {
+      projectEntries = projectEntries.filter((entry) => !GLOBAL_RECYCLE_CATEGORIES.has(entry.category))
+    }
+    const globalEntries = isGlobalScope
+      ? globalRecycleBin.value
+      : globalRecycleBin.value.filter((entry) => !GLOBAL_RECYCLE_CATEGORIES.has(entry.category))
     return [...projectEntries, ...globalEntries].sort((a, b) =>
       (b.deletedAt || '').localeCompare(a.deletedAt || '')
     )
@@ -1453,7 +1456,8 @@ export const useAppStore = defineStore('app', () => {
   /** 全局类别集合：这些内容跨项目共享，删除后进入全局回收站 */
   const GLOBAL_RECYCLE_CATEGORIES = new Set<import('@/types/app').RecycleBinCategory>([
     'ai-profile',
-    'reference-work'
+    'reference-work',
+    'skill'
   ])
 
   /** 向当前项目回收站写入一条删除记录 */
@@ -1508,6 +1512,7 @@ export const useAppStore = defineStore('app', () => {
     projectId?: string
   ): void {
     for (const skill of skills) {
+      const ownerProjectId = projectId ?? selectedProjectId.value
       pushRecycleEntry(
         'skill',
         skill.name || skill.id,
@@ -1516,10 +1521,11 @@ export const useAppStore = defineStore('app', () => {
           path: skill.path,
           id: skill.id,
           group: skill.group,
-          scope: 'project'
+          scope: 'project',
+          projectId: ownerProjectId
         },
         {
-          projectId: projectId ?? selectedProjectId.value,
+          projectId: ownerProjectId,
           summary: `项目 Skills · ${skill.path}`
         }
       )

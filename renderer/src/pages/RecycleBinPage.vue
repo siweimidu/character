@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
   BookMarked,
   ChevronLeft,
@@ -48,6 +48,19 @@ const CATEGORY_META: Record<RecycleBinCategory, { label: string; color: string }
   'skill': { label: '项目 Skills', color: '#a855f7' }
 }
 
+/** 是否处于全局视图（用于展示“所有项目”提示） */
+const isGlobalScope = computed(() => appStore.recycleBinScope === 'global')
+
+/** 仅在全局回收站展示的类别（AI 接口配置、项目 Skills 等全局数据） */
+const GLOBAL_ONLY_CATEGORIES = new Set<RecycleBinCategory>(['ai-profile', 'reference-work', 'skill'])
+
+/** 当前范围下可见的类别（全局类别仅在全局回收站展示，项目/汇总视图不显示） */
+const visibleCategories = computed(() =>
+  Object.entries(CATEGORY_META).filter(
+    ([key]) => isGlobalScope.value || !GLOBAL_ONLY_CATEGORIES.has(key as RecycleBinCategory)
+  )
+)
+
 const CATEGORY_ICON: Record<RecycleBinCategory, unknown> = {
   worldview: Globe2,
   character: Users,
@@ -76,6 +89,16 @@ const CATEGORY_ICON: Record<RecycleBinCategory, unknown> = {
 /** 当前选中的类别筛选；'all' 表示全部 */
 const activeCategory = ref<'all' | RecycleBinCategory>('all')
 
+// 离开全局回收站视图时，若选中了仅全局展示的类别，则重置为“全部”
+watch(
+  () => appStore.recycleBinScope,
+  (scope) => {
+    if (scope !== 'global' && GLOBAL_ONLY_CATEGORIES.has(activeCategory.value as RecycleBinCategory)) {
+      activeCategory.value = 'all'
+    }
+  }
+)
+
 /** 保留天数编辑状态 */
 const editingRetention = ref(false)
 const retentionDraft = ref<number>(appStore.recycleBinRetentionDays)
@@ -94,9 +117,6 @@ const scopeValue = computed({
   get: () => appStore.recycleBinScope,
   set: (value: string) => appStore.setRecycleBinScope(value)
 })
-
-/** 是否处于全局视图（用于展示“所有项目”提示） */
-const isGlobalScope = computed(() => appStore.recycleBinScope === 'global')
 
 /** 按类别筛选后的条目 */
 const filteredEntries = computed(() =>
@@ -270,7 +290,7 @@ function backToProjectCenter(): void {
           <span class="chip-count">{{ entries.length }}</span>
         </button>
         <button
-          v-for="(meta, key) in CATEGORY_META"
+          v-for="(meta, key) in visibleCategories"
           :key="key"
           type="button"
           class="recycle-cat-chip"
