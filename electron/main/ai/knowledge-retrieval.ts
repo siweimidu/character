@@ -711,6 +711,9 @@ export async function indexReferenceNovel(
   for (let i = 0; i < segments.length; i += BATCH) {
     const batch = segments.slice(i, i + BATCH)
     const embeddings = await embedTexts(settings, batch)
+    if (embeddings.length !== batch.length) {
+      throw new Error('Embedding API 返回数量与批次分段数量不一致')
+    }
     for (let j = 0; j < batch.length; j++) {
       const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
       const buffer = Buffer.from(embeddings[j].buffer)

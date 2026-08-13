@@ -3350,11 +3350,15 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
       const currentVersion = app.getVersion()
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 15_000)
-      const response = await fetch('https://api.github.com/repos/uu201/character-arc/releases/latest', {
-        headers: { Accept: 'application/vnd.github.v3+json', 'User-Agent': 'CharacterArc-Desktop' },
-        signal: controller.signal
-      })
-      clearTimeout(timer)
+      let response: Response
+      try {
+        response = await fetch('https://api.github.com/repos/uu201/character-arc/releases/latest', {
+          headers: { Accept: 'application/vnd.github.v3+json', 'User-Agent': 'CharacterArc-Desktop' },
+          signal: controller.signal
+        })
+      } finally {
+        clearTimeout(timer)
+      }
       if (!response.ok) {
         return { success: false, error: `GitHub API 请求失败 (${response.status})` }
       }

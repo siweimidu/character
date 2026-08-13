@@ -255,7 +255,7 @@ export function mergeGlobalAssistantProposals(
     worldviewUpdates: mergeByKey([...(base?.worldviewUpdates ?? []), ...(add?.worldviewUpdates ?? [])], (item) => item.matchTitle, (current, incoming) => ({
       ...current,
       ...incoming,
-      content: mergeLongText(current.content, incoming.content)
+      content: mergeLongText(current.content, incoming.content) ?? current.content
     })),
     characterCreates: mergeByKey([...(base?.characterCreates ?? []), ...(add?.characterCreates ?? [])], (item) => item.name, (current, incoming) => ({
       ...current,
@@ -266,7 +266,7 @@ export function mergeGlobalAssistantProposals(
     characterUpdates: mergeByKey([...(base?.characterUpdates ?? []), ...(add?.characterUpdates ?? [])], (item) => item.matchName, (current, incoming) => ({
       ...current,
       ...incoming,
-      description: mergeLongText(current.description, incoming.description),
+      description: mergeLongText(current.description, incoming.description) ?? current.description,
       tags: incoming.tags?.length || current.tags?.length ? dedupe([...(current.tags ?? []), ...(incoming.tags ?? [])], (tag) => tag) : undefined
     })),
     organizationCreates: mergeByKey([...(base?.organizationCreates ?? []), ...(add?.organizationCreates ?? [])], (item) => item.name, (current, incoming) => ({
@@ -277,7 +277,7 @@ export function mergeGlobalAssistantProposals(
     organizationUpdates: mergeByKey([...(base?.organizationUpdates ?? []), ...(add?.organizationUpdates ?? [])], (item) => item.matchName, (current, incoming) => ({
       ...current,
       ...incoming,
-      description: mergeLongText(current.description, incoming.description)
+      description: mergeLongText(current.description, incoming.description) ?? current.description
     })),
     outlineCreates: mergeByKey([...(base?.outlineCreates ?? []), ...(add?.outlineCreates ?? [])], (item) => item.title, (current, incoming) => ({
       ...current,
@@ -287,7 +287,7 @@ export function mergeGlobalAssistantProposals(
     outlineUpdates: mergeByKey([...(base?.outlineUpdates ?? []), ...(add?.outlineUpdates ?? [])], (item) => item.matchTitle, (current, incoming) => ({
       ...current,
       ...incoming,
-      summary: mergeLongText(current.summary, incoming.summary)
+      summary: mergeLongText(current.summary, incoming.summary) ?? current.summary
     })),
     notes: dedupe([...(base?.notes ?? []), ...(add?.notes ?? [])].filter((note) => String(note).trim()), (note) => String(note))
   }
