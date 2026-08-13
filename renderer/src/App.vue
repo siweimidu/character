@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Home, Image, Library, Moon, Settings, Sparkles, Sun, Trash2, TrendingUp } from 'lucide-vue-next'
+import { Bot, Home, Image, Library, Moon, Settings, Sparkles, Sun, Trash2, TrendingUp } from 'lucide-vue-next'
 import { createDiscreteApi, NConfigProvider, NDialogProvider, NGlobalStyle, NMessageProvider, NSpin, darkTheme } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import { createNaiveThemeOverrides, getThemeColorScheme } from '@/theme/presets'
@@ -14,6 +14,7 @@ import SkillsPage from '@/pages/SkillsPage.vue'
 import CoverWorkbenchPage from '@/pages/CoverWorkbenchPage.vue'
 import FanqieTrendsPage from '@/pages/FanqieTrendsPage.vue'
 import RecycleBinPage from '@/pages/RecycleBinPage.vue'
+import GlobalAgentPage from '@/pages/GlobalAgentPage.vue'
 import AiTaskProgressDock from '@/components/AiTaskProgressDock.vue'
 import TitlebarModelSwitcher from '@/components/TitlebarModelSwitcher.vue'
 import HomepageSettingsModal from '@/components/home/HomepageSettingsModal.vue'
@@ -260,6 +261,15 @@ onBeforeUnmount(() => {
               >
                 <Trash2 :size="16" />
               </button>
+              <button
+                type="button"
+                class="app-titlebar__nav-btn"
+                title="全局智能体"
+                aria-label="全局智能体"
+                @click="appStore.openGlobalAgent()"
+              >
+                <Bot :size="16" />
+              </button>
             </div>
             <div class="app-titlebar__tools">
               <TitlebarModelSwitcher />
@@ -295,6 +305,7 @@ onBeforeUnmount(() => {
               <CoverWorkbenchPage v-else-if="appStore.currentView === 'cover-workbench'" key="cover-workbench" />
               <FanqieTrendsPage v-else-if="appStore.currentView === 'fanqie-trends'" key="fanqie-trends" />
               <RecycleBinPage v-else-if="appStore.currentView === 'recycle-bin'" key="recycle-bin" />
+              <GlobalAgentPage v-else-if="appStore.currentView === 'global-agent'" key="global-agent" />
               <WorkbenchPage v-else key="workbench" />
             </Transition>
           </div>

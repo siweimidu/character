@@ -219,7 +219,7 @@ export const useAppStore = defineStore('app', () => {
   /** 是否已完成初始化水合（从 SQLite 加载数据） */
   const hasHydrated = ref(false)
   /** 当前视图：项目列表 / 新建向导 / 工作台 / 章节写作 / 独立能力页 */
-  const currentView = ref<'projects' | 'wizard' | 'continuation-import' | 'workbench' | 'chapter-studio' | 'deconstruction-library' | 'skills' | 'cover-workbench' | 'fanqie-trends' | 'recycle-bin'>('projects')
+  const currentView = ref<'projects' | 'wizard' | 'continuation-import' | 'workbench' | 'chapter-studio' | 'deconstruction-library' | 'skills' | 'cover-workbench' | 'fanqie-trends' | 'recycle-bin' | 'global-agent'>('projects')
   /** 工作台中当前激活的面板 */
   const activePanel = ref<PanelName>('outline')
   /** 上一次在工作台中查看的面板（非 chapters），用于从章节写作返回时恢复 */
@@ -581,6 +581,16 @@ export const useAppStore = defineStore('app', () => {
       ...projectWorkspaces.value,
       [projectId]: normalizeProjectWorkspaceData(undefined)
     }
+  }
+
+  /** 切换当前选中的项目（仅改变上下文，不跳转视图）。供全局智能体在项目树中切换。 */
+  function selectProject(projectId: string): void {
+    const target = projects.value.find((item) => item.id === projectId)
+    if (!target) return
+    ensureProjectWorkspace(projectId)
+    selectedProjectId.value = projectId
+    pendingChapterInsertion.value = null
+    syncSelectedChapter(projectId)
   }
 
   /** 用 updater 函数更新指定项目的工作区数据，自动标准化 */
@@ -1141,6 +1151,12 @@ export const useAppStore = defineStore('app', () => {
     recycleBinScope.value = scope
   }
 
+
+  /** 打开全局智能体独立页面（全局功能，不依赖具体项目，可跨项目批量操作） */
+  function openGlobalAgent(): void {
+    pendingChapterInsertion.value = null
+    currentView.value = 'global-agent'
+  }
 
   function backToProjects(): void {
     currentView.value = 'projects'
@@ -4587,6 +4603,8 @@ export const useAppStore = defineStore('app', () => {
     coverWorkbenchHistory,
     openRecycleBin,
     backToProjects,
+    openGlobalAgent,
+    selectProject,
     backToWorkbench,
     chapterVersions,
     chapters,
