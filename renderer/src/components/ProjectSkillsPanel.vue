@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { BookOpenText, ChevronDown, Trash2 } from 'lucide-vue-next'
+import { BookOpenText, ChevronDown, ChevronsDownUp, ChevronsUpDown, Trash2 } from 'lucide-vue-next'
 import { NButton, NInput, NModal, NTag, NTooltip, useDialog, useMessage } from 'naive-ui'
 import { novelWorkflowStageDefinitions } from '@/features/novelWorkflow/stages'
 import { useAppStore } from '@/stores/app'
@@ -111,6 +111,19 @@ const collapsedGroups = reactive<Record<string, boolean>>({})
 
 function toggleGroup(groupName: string): void {
   collapsedGroups[groupName] = !collapsedGroups[groupName]
+}
+
+/** 判断当前是否有分组被折叠（用于切换“全部收起 / 全部展开”按钮文案与图标） */
+const hasCollapsedGroup = computed(() =>
+  groupedSkills.value.some((group) => collapsedGroups[group.name])
+)
+
+/** 点击收起/展开全部分组 */
+function toggleAllGroups(): void {
+  const anyCollapsed = groupedSkills.value.some((group) => collapsedGroups[group.name])
+  for (const group of groupedSkills.value) {
+    collapsedGroups[group.name] = anyCollapsed ? false : true
+  }
 }
 
 async function refreshSkillDirPaths(): Promise<void> {
@@ -652,6 +665,22 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
       </div>
 
       <div v-if="resolvedProjectSkills.length > 0" class="project-skill-groups">
+        <div class="project-skill-groups-toolbar">
+          <span class="project-skill-groups-title">分组（{{ groupedSkills.length }}）</span>
+          <button
+            class="skill-collapse-all-btn"
+            type="button"
+            :title="hasCollapsedGroup ? '全部展开' : '全部收起'"
+            @click="toggleAllGroups"
+          >
+            <component
+              :is="hasCollapsedGroup ? ChevronsUpDown : ChevronsDownUp"
+              :size="15"
+              class="skill-collapse-all-icon"
+            />
+            <span>{{ hasCollapsedGroup ? '全部展开' : '全部收起' }}</span>
+          </button>
+        </div>
         <div v-for="group in groupedSkills" :key="group.name" class="skill-group">
           <div class="skill-group-header">
             <button class="skill-group-toggle" type="button" @click="toggleGroup(group.name)">
@@ -888,6 +917,49 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.project-skill-groups-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.project-skill-groups-title {
+  color: var(--arc-text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.skill-collapse-all-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  background: var(--arc-bg-body);
+  color: var(--arc-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.skill-collapse-all-btn:hover {
+  color: var(--arc-primary);
+  border-color: var(--arc-primary);
+  background: color-mix(in srgb, var(--arc-primary) 8%, transparent);
+}
+
+.skill-collapse-all-icon {
+  color: var(--arc-text-hint);
+}
+
+.skill-collapse-all-btn:hover .skill-collapse-all-icon {
+  color: var(--arc-primary);
 }
 
 .skill-group {

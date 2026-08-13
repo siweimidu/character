@@ -43,55 +43,59 @@ export async function scanSkillsFromDisk(projectId?: string): Promise<SkillDefin
   return Array.from(mergedMap.values()).sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
 }
 
-/** 扫描指定根目录下所有子目录，将每个目录解析为 SkillDefinition（支持一层分组目录） */
+/** 扫描指定根目录下所有子目录，将每个目录解析为 SkillDefinition（支持任意深度分组目录） */
 async function scanSkillsUnderRoot(root: string, scope: 'builtin' | 'project'): Promise<SkillDefinition[]> {
   if (!existsSync(root)) return []
 
-  const entries = await readdir(root, { withFileTypes: true })
   const skills: SkillDefinition[] = []
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue
-    const dirPath = join(root, entry.name)
-    if (existsSync(join(dirPath, 'SKILL.md'))) {
-      const skill = await loadSkillDefinition(root, entry.name, scope)
-      if (skill) skills.push(skill)
-    } else {
-      const subEntries = await readdir(dirPath, { withFileTypes: true })
-      for (const subEntry of subEntries) {
-        if (!subEntry.isDirectory()) continue
-        if (existsSync(join(dirPath, subEntry.name, 'SKILL.md'))) {
-          const skill = await loadSkillDefinition(dirPath, subEntry.name, scope, entry.name)
-          if (skill) skills.push(skill)
-        }
+  // 深度优先遍历，收集所有包含 SKILL.md 的目录；skill 目录自包含，找到即收为一个 skill 并停止向下展开。
+  async function walk(dir: string, relSegments: string[]): Promise<void> {
+    let entries: import('node:fs').Dirent[]
+    try {
+      entries = await readdir(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const childDir = join(dir, entry.name)
+      if (existsSync(join(childDir, 'SKILL.md'))) {
+        const skill = await loadSkillDefinition(root, [...relSegments, entry.name], scope)
+        if (skill) skills.push(skill)
+      } else {
+        await walk(childDir, [...relSegments, entry.name])
       }
     }
   }
 
+  await walk(root, [])
   return skills
 }
 
 /** 从单个 skill 目录加载完整定义，解析失败时返回 null */
-async function loadSkillDefinition(root: string, dirName: string, scope: 'builtin' | 'project', group?: string): Promise<SkillDefinition | null> {
-  const skillDir = join(root, dirName)
+async function loadSkillDefinition(root: string, relSegments: string[], scope: 'builtin' | 'project'): Promise<SkillDefinition | null> {
+  const relPath = relSegments.join('/')
+  const skillDir = join(root, relPath)
   const skillPath = join(skillDir, 'SKILL.md')
+  const skillName = relSegments[relSegments.length - 1] ?? ''
 
   try {
     const content = await readFile(skillPath, 'utf-8')
     const frontmatter = parseSkillFrontmatter(content)
     const validatedManifest = validateManifest(frontmatter.manifest)
-    const heuristic = inferSkillMeta(dirName, frontmatter.description)
+    const heuristic = inferSkillMeta(skillName, frontmatter.description)
     const fullManifest = buildFullManifest(validatedManifest, heuristic)
 
     const referencesDir = join(skillDir, 'references')
     const referenceFiles = existsSync(referencesDir) ? await listFilesRecursive(referencesDir) : []
     const referencesCount = referenceFiles.length
     const pathPrefix = scope === 'builtin' ? 'skills' : 'project-skills'
-    const pathSegment = group ? `${pathPrefix}/${group}/${dirName}` : `${pathPrefix}/${dirName}`
+    const pathSegment = `${pathPrefix}/${relPath}`
 
     return {
-      id: dirName,
-      name: frontmatter.name || dirName,
+      id: skillName,
+      name: frontmatter.name || skillName,
       version: frontmatter.version || '',
       path: pathSegment,
       scope,

@@ -2819,6 +2819,24 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
   })
 
+  // 从 skill 目录的 SKILL.md frontmatter 中读取 name，作为 skill 目录名/ID 的兜底。
+  // 用于压缩包内 SKILL.md 直接位于包根（无外层包裹文件夹）时，导入得到合理目录名而非 .skills-extract-* 临时名。
+  async function deriveSkillIdFromFrontmatter(skillDir: string): Promise<string> {
+    try {
+      const skillPath = join(skillDir, 'SKILL.md')
+      if (!existsSync(skillPath)) return ''
+      const content = await readFile(skillPath, 'utf-8')
+      const m = content.match(/^---\r?\n[\s\S]*?^name:\s*(.+)$/m)
+      const raw = m?.[1]?.trim().replace(/^["']|["']$/g, '') ?? ''
+      if (!raw) return ''
+      // 与分组名一致的安全化处理：仅保留字母、数字、中文与连字符，避免非法目录名
+      const safe = raw.replace(/[\\/]/g, '').replace(/[^A-Za-z0-9\u4e00-\u9fa5-]/g, '')
+      return safe || ''
+    } catch {
+      return ''
+    }
+  }
+
   ipcMain.handle('characterarc:project-skills-import', async (_event, projectId: unknown, targetGroup: unknown, mode: unknown) => {
     // 记录本次导入过程中创建的所有解压临时目录，统一在导入完成后清理（复制完成后再删）。
     const pendingTempRoots: string[] = []
@@ -2999,8 +3017,11 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
           continue
         }
         for (const sourceDir of sourceDirs) {
-          const skillId = basename(sourceDir)
-          // 去重：同名 skill 只导入一次，避免重复覆盖
+          let skillId = basename(sourceDir)
+          if (/^\.skills-extract-/.test(skillId)) {
+            const derived = await deriveSkillIdFromFrontmatter(sourceDir)
+            if (derived) skillId = derived
+          }
           if (seenSkillIds.has(skillId)) continue
           seenSkillIds.add(skillId)
           // 若指定了目标分组，则导入到 project-skills/<group>/<skill>
