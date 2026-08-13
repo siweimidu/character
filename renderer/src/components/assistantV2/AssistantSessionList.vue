@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
-import { PanelLeftClose, Pencil, Trash2 } from 'lucide-vue-next'
+import { Check, PanelLeftClose, Pencil, Trash2, X } from 'lucide-vue-next'
 import type { AssistantSession } from '@shared/assistant-runtime'
 
 const props = defineProps<{
@@ -12,12 +12,53 @@ const emit = defineEmits<{
   (e: 'switch', sessionId: string): void
   (e: 'create'): void
   (e: 'delete', sessionId: string): void
+  (e: 'deleteBatch', sessionIds: string[]): void
   (e: 'rename', sessionId: string, title: string): void
   (e: 'collapse'): void
 }>()
 
 /** 待确认删除的会话 id */
 const pendingDeleteId = ref<string | null>(null)
+
+/** 多选模式开关 */
+const selectionMode = ref(false)
+/** 已选中的会话 id 集合 */
+const selectedIds = ref<Set<string>>(new Set())
+/** 是否正在批量删除确认 */
+const pendingBatchDelete = ref(false)
+
+/** 是否所有会话均被选中 */
+const allSelected = computed(
+  () => props.sessions.length > 0 && selectedIds.value.size === props.sessions.length
+)
+
+function toggleSelectionMode(): void {
+  selectionMode.value = !selectionMode.value
+  if (!selectionMode.value) {
+    selectedIds.value = new Set()
+    pendingBatchDelete.value = false
+  }
+}
+
+function toggleSelect(sessionId: string): void {
+  const next = new Set(selectedIds.value)
+  if (next.has(sessionId)) next.delete(sessionId)
+  else next.add(sessionId)
+  selectedIds.value = next
+}
+
+function toggleSelectAll(): void {
+  selectedIds.value = allSelected.value
+    ? new Set()
+    : new Set(props.sessions.map((s) => s.id))
+}
+
+function confirmBatchDelete(): void {
+  emit('deleteBatch', [...selectedIds.value])
+  selectionMode.value = false
+  selectedIds.value = new Set()
+  pendingBatchDelete.value = false
+}
 
 /** 正在重命名的会话 id */
 const renamingId = ref<string | null>(null)
@@ -100,15 +141,48 @@ const grouped = computed(() => {
         <span>智能体</span>
         <span class="ver">v2</span>
       </div>
-      <button class="collapse-side" title="收起对话记录" @click="emit('collapse')">
-        <PanelLeftClose :size="16" />
-      </button>
+      <div class="head-actions">
+        <button
+          v-if="!selectionMode && props.sessions.length > 0"
+          class="multi-btn"
+          title="多选批量删除"
+          @click="toggleSelectionMode"
+        >
+          多选
+        </button>
+        <button class="collapse-side" title="收起对话记录" @click="emit('collapse')">
+          <PanelLeftClose :size="16" />
+        </button>
+      </div>
     </div>
 
     <button class="new-btn" @click="emit('create')">
       <span class="plus">+</span>
       <span>新建对话</span>
     </button>
+
+    <!-- 批量操作条：多选模式时展示 -->
+    <div v-if="selectionMode" class="batch-bar">
+      <button class="batch-select-all" type="button" @click="toggleSelectAll">
+        <span class="batch-check" :class="{ checked: allSelected }">
+          <Check v-if="allSelected" :size="12" />
+        </span>
+        {{ allSelected ? '取消全选' : '全选' }}
+      </button>
+      <div class="batch-actions">
+        <button
+          class="batch-del"
+          type="button"
+          :disabled="selectedIds.size === 0"
+          @click="pendingBatchDelete = true"
+        >
+          <Trash2 :size="13" />批量删除{{ selectedIds.size ? `（${selectedIds.size}）` : '' }}
+        </button>
+        <button class="batch-exit" type="button" title="退出多选" @click="toggleSelectionMode">
+          <X :size="14" />
+        </button>
+      </div>
+    </div>
 
     <div class="list">
       <div v-if="props.sessions.length === 0" class="empty">
@@ -122,9 +196,12 @@ const grouped = computed(() => {
           v-for="s in group.items"
           :key="s.id"
           class="item"
-          :class="{ active: s.id === props.activeSessionId }"
-          @click="emit('switch', s.id)"
+          :class="{ active: s.id === props.activeSessionId, selected: selectionMode && selectedIds.has(s.id) }"
+          @click="selectionMode ? toggleSelect(s.id) : emit('switch', s.id)"
         >
+          <div v-if="selectionMode" class="sel-check" :class="{ checked: selectedIds.has(s.id) }" @click.stop="toggleSelect(s.id)">
+            <Check v-if="selectedIds.has(s.id)" :size="12" />
+          </div>
           <div v-if="renamingId === s.id" class="rename-box" @click.stop>
             <input
               ref="renameInput"
@@ -139,6 +216,7 @@ const grouped = computed(() => {
           <div v-else class="title-row">
             <span class="title">{{ s.title }}</span>
             <button
+              v-if="!selectionMode"
               class="rename-btn"
               title="重命名会话"
               aria-label="重命名会话"
@@ -150,6 +228,7 @@ const grouped = computed(() => {
           <div class="meta">
             <span>{{ formatTime(s.updatedAt) }}</span>
             <button
+              v-if="!selectionMode"
               class="del"
               title="删除会话"
               aria-label="删除会话"
@@ -169,6 +248,15 @@ const grouped = computed(() => {
         </div>
       </template>
     </div>
+
+    <!-- 批量删除确认弹层 -->
+    <div v-if="pendingBatchDelete" class="batch-confirm" @click.stop>
+      <div class="batch-confirm-text">确认删除选中的 {{ selectedIds.size }} 个对话？</div>
+      <div class="batch-confirm-actions">
+        <button class="dc-cancel" type="button" @click="pendingBatchDelete = false">取消</button>
+        <button class="dc-ok" type="button" @click="confirmBatchDelete">删除</button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -186,6 +274,142 @@ const grouped = computed(() => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.multi-btn {
+  border: 1px solid var(--arc-border-strong);
+  background: var(--arc-bg-weak);
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+.multi-btn:hover {
+  background: var(--arc-primary-soft);
+  color: var(--arc-primary);
+  border-color: var(--arc-primary);
+}
+.batch-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin: 0 12px 10px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: var(--arc-bg-weak);
+  border: 1px solid var(--arc-border);
+}
+.batch-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+.batch-select-all:hover {
+  color: var(--arc-primary);
+}
+.batch-check {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1.5px solid var(--arc-border-strong);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: transparent;
+  transition: all 0.15s ease;
+}
+.batch-check.checked {
+  background: var(--arc-primary);
+  border-color: var(--arc-primary);
+}
+.batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.batch-del {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: var(--v2-danger-soft);
+  color: var(--v2-danger);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  padding: 5px 9px;
+  border-radius: 7px;
+  transition: all 0.15s ease;
+}
+.batch-del:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.batch-del:not(:disabled):hover {
+  background: var(--v2-danger);
+  color: #fff;
+}
+.batch-exit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--arc-text-hint);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+}
+.batch-exit:hover {
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-primary);
+}
+.batch-confirm {
+  margin: 8px 12px 12px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--arc-bg-surface);
+  border: 1px solid var(--arc-border-strong);
+  box-shadow: var(--arc-shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.batch-confirm-text {
+  font-size: 12px;
+  color: var(--arc-text-primary);
+  font-weight: 500;
+}
+.batch-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.batch-confirm-actions button {
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
 }
 .collapse-side {
   border: none;
@@ -292,6 +516,26 @@ const grouped = computed(() => {
 .item:hover { background: var(--arc-bg-weak); }
 .item.active { background: var(--arc-primary-soft); }
 .item.active .title { color: var(--arc-primary); }
+.item.selected { background: var(--arc-primary-soft); }
+.item.selected .title { color: var(--arc-primary); }
+.sel-check {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1.5px solid var(--arc-border-strong);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: transparent;
+  margin-bottom: 3px;
+  transition: all 0.15s ease;
+}
+.sel-check.checked {
+  background: var(--arc-primary);
+  border-color: var(--arc-primary);
+}
 .title-row {
   display: flex;
   align-items: center;

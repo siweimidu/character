@@ -248,6 +248,7 @@ interface SessionCreateRequest {
   title: string
 }
 interface SessionDeleteRequest { sessionId: string }
+interface SessionDeleteBatchRequest { sessionIds: string[] }
 interface SessionLoadRequest { sessionId: string; withReplay?: boolean }
 interface SessionRenameRequest { sessionId: string; title: string }
 interface SessionRestoreRequest {
@@ -296,6 +297,17 @@ function registerSessionHandlers(): void {
       cm.deleteSession(payload.sessionId)
       stagedChangesStore.clearSession(payload.sessionId)
       return { ok: true }
+    }
+  )
+
+  ipcMain.handle(
+    ASSISTANT_IPC_CHANNELS.SESSION_DELETE_BATCH,
+    async (_event, payload: SessionDeleteBatchRequest) => {
+      const cm = await getConversation()
+      const ids = payload.sessionIds ?? []
+      cm.deleteSessions(ids)
+      for (const id of ids) stagedChangesStore.clearSession(id)
+      return { ok: true, deleted: ids.length }
     }
   )
 

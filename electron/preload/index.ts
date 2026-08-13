@@ -314,6 +314,8 @@ contextBridge.exposeInMainWorld('characterArc', {
       ipcRenderer.invoke('characterarc:assistant:session:create', toIpcPayload(payload)),
     sessionDelete: (payload: unknown) =>
       ipcRenderer.invoke('characterarc:assistant:session:delete', toIpcPayload(payload)),
+    sessionDeleteBatch: (payload: unknown) =>
+      ipcRenderer.invoke('characterarc:assistant:session:delete-batch', toIpcPayload(payload)),
     sessionLoad: (payload: unknown) =>
       ipcRenderer.invoke('characterarc:assistant:session:load', toIpcPayload(payload)),
     sessionRename: (payload: unknown) =>

@@ -998,6 +998,7 @@ declare global {
           title: string
         }) => Promise<import('@shared/assistant-runtime').AssistantSession>
         sessionDelete: (payload: { sessionId: string }) => Promise<{ ok: boolean }>
+        sessionDeleteBatch: (payload: { sessionIds: string[] }) => Promise<{ ok: boolean; deleted: number }>
         sessionLoad: (payload: { sessionId: string; withReplay?: boolean }) => Promise<{
           session: import('@shared/assistant-runtime').AssistantSession | null
           turns: import('@shared/assistant-runtime').AssistantTurn[]

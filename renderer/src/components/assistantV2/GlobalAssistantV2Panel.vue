@@ -323,6 +323,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
         @switch="switchSession"
         @create="createSession"
         @delete="(id) => assistant.deleteSession(id)"
+        @delete-batch="(ids) => { assistant.deleteSessions(ids); message.success(`已删除 ${ids.length} 个对话`) }"
         @rename="(id, title) => assistant.renameSession(id, title)"
         @collapse="activeTab = 'chat'"
       />

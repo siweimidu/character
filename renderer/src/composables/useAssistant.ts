@@ -105,6 +105,9 @@ export function useAssistant(options: UseAssistantOptions) {
   const isChapterSurface =
     options.surface.id === 'chapter-panel' || options.surface.id === 'inline-selection'
   const sessionScopeRef = (): string | undefined => (isChapterSurface ? undefined : options.scopeRef?.())
+  // 会话存储统一的 surface：章节创作等入口与项目工作台智能体共用同一份项目级会话历史，
+  // 保证「章节创作里的对话」与「项目工作台里的智能体对话」完全同步。
+  const sessionSurfaceId: string = isChapterSurface ? 'global-page' : options.surface.id
 
   // === 会话 ===
   const sessions = ref<AssistantSession[]>([])
@@ -455,7 +458,7 @@ export function useAssistant(options: UseAssistantOptions) {
     }
     isInitializing.value = true
     try {
-      const list = await A.sessionList({ projectId: pid, surfaceId: options.surface.id, scopeRef })
+      const list = await A.sessionList({ projectId: pid, surfaceId: sessionSurfaceId, scopeRef })
       sessions.value = list
       if (!activeSessionId.value && list.length > 0) {
         await switchSession(list[0].id)
@@ -519,7 +522,7 @@ export function useAssistant(options: UseAssistantOptions) {
     if (!pid) return null
     const session = await A.sessionCreate({
       projectId: pid,
-      surfaceId: options.surface.id,
+      surfaceId: sessionSurfaceId,
       scopeRef: sessionScopeRef(),
       title: title || defaultSessionTitle()
     })
@@ -569,6 +572,52 @@ export function useAssistant(options: UseAssistantOptions) {
     await A.sessionDelete({ sessionId })
     sessions.value = sessions.value.filter((s) => s.id !== sessionId)
     if (activeSessionId.value === sessionId) {
+      activeSessionId.value = null
+      turns.value = []
+      eventsByTurn.value = new Map()
+      stagedChanges.value = []
+      cancelEditing()
+      restoredDraftLabel.value = ''
+      if (sessions.value.length > 0) {
+        await switchSession(sessions.value[0].id)
+      }
+    }
+  }
+
+  /**
+   * 批量删除多个会话。逐个把会话快照写入回收站后，调用后端批量删除接口（级联删除 turns / events / 暂存变更）。
+   */
+  async function deleteSessions(sessionIds: string[]): Promise<void> {
+    const ids = [...new Set(sessionIds)].filter((id) =>
+      sessions.value.some((s) => s.id === id)
+    )
+    if (ids.length === 0) return
+    if (isStreaming.value) {
+      lastError.value = '请先停止当前生成，再删除会话。'
+      return
+    }
+
+    // 逐个把会话快照写入回收站，失败不阻断删除
+    await Promise.all(ids.map(async (id) => {
+      const target = sessions.value.find((s) => s.id === id)
+      if (!target) return
+      try {
+        const loaded = await A.sessionLoad({ sessionId: id, withReplay: true })
+        appStore.recordDeletedAssistantSessionV2({
+          ...target,
+          turns: loaded?.turns ?? [],
+          events: loaded?.events ?? []
+        })
+      } catch (e) {
+        console.error('[useAssistant] 记录删除会话到回收站失败:', e)
+      }
+    }))
+
+    await A.sessionDeleteBatch({ sessionIds: ids })
+    sessions.value = sessions.value.filter((s) => !ids.includes(s.id))
+
+    // 若活动会话被批量删除，切到剩余的第一个会话；没有剩余则重置为空会话
+    if (activeSessionId.value && ids.includes(activeSessionId.value)) {
       activeSessionId.value = null
       turns.value = []
       eventsByTurn.value = new Map()
@@ -965,6 +1014,7 @@ export function useAssistant(options: UseAssistantOptions) {
     createSession,
     switchSession,
     deleteSession,
+    deleteSessions,
     renameSession,
     send,
     continueWithPrompt,

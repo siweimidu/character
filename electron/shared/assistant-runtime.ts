@@ -346,6 +346,7 @@ export const ASSISTANT_IPC_CHANNELS = {
   SESSION_LIST: 'characterarc:assistant:session:list',
   SESSION_CREATE: 'characterarc:assistant:session:create',
   SESSION_DELETE: 'characterarc:assistant:session:delete',
+  SESSION_DELETE_BATCH: 'characterarc:assistant:session:delete-batch',
   SESSION_LOAD: 'characterarc:assistant:session:load',
   SESSION_RENAME: 'characterarc:assistant:session:rename',
   SESSION_RESTORE: 'characterarc:assistant:session:restore',

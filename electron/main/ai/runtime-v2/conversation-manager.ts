@@ -412,6 +412,13 @@ export class ConversationManager {
   }
 
   /**
+   * 批量删除多个会话。每个会话均按 CASCADE 语义删除其 turns / events / 暂存变更。
+   */
+  deleteSessions(ids: string[]): void {
+    for (const id of ids) this.deleteSession(id)
+  }
+
+  /**
    * 从回收站恢复完整会话（含 turns / events）。
    * input 应来自 recycle bin 的 snapshot。若 sessionId 已存在则跳过。
    */
