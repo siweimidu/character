@@ -627,7 +627,7 @@ declare global {
         error?: string
       }>
       exportKnowledge: (payload: {
-        format: 'txt' | 'md' | 'json'
+        format: 'txt' | 'md' | 'json' | 'docx'
         projectTitle?: string
         assets?: Array<{
           title: string
@@ -653,7 +653,7 @@ declare global {
         error?: string
       }>
       exportReferenceAsset: (payload: {
-        format: 'txt' | 'md' | 'json'
+        format: 'txt' | 'md' | 'json' | 'docx'
         asset?: {
           title?: string
           source?: string

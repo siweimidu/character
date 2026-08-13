@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Download, Search, Sparkles, Upload } from 'lucide-vue-next'
+import { Download, Search, Sparkles, Trash2, Upload } from 'lucide-vue-next'
 import {
   NAlert,
   NButton,
@@ -307,7 +307,7 @@ function buildExportAssets(): Array<{
   }))
 }
 
-async function handleExportKnowledge(format: 'txt' | 'md' | 'json'): Promise<void> {
+async function handleExportKnowledge(format: 'txt' | 'md' | 'json' | 'docx'): Promise<void> {
   if (!referenceAssets.value.length) {
     message.warning('拆书知识库中还没有可导出的内容')
     return
@@ -339,14 +339,15 @@ const exportingAssetId = ref<string | null>(null)
 const exportMenuOptions: DropdownOption[] = [
   { key: 'md', label: '导出为 Markdown' },
   { key: 'txt', label: '导出为 TXT' },
-  { key: 'json', label: '导出为 JSON' }
+  { key: 'json', label: '导出为 JSON' },
+  { key: 'docx', label: '导出为 Word (.docx)' }
 ]
 
 function handleExportLibrarySelect(key: string | number): void {
-  void handleExportKnowledge(key as 'txt' | 'md' | 'json')
+  void handleExportKnowledge(key as 'txt' | 'md' | 'json' | 'docx')
 }
 
-async function handleExportAsset(asset: ReferenceAssetLibrary, format: 'txt' | 'md' | 'json'): Promise<void> {
+async function handleExportAsset(asset: ReferenceAssetLibrary, format: 'txt' | 'md' | 'json' | 'docx'): Promise<void> {
   if (exportingAssetId.value) {
     return
   }
@@ -404,7 +405,7 @@ async function handleExportAsset(asset: ReferenceAssetLibrary, format: 'txt' | '
 }
 
 function handleExportAssetSelect(asset: ReferenceAssetLibrary, key: string | number): void {
-  void handleExportAsset(asset, key as 'txt' | 'md' | 'json')
+  void handleExportAsset(asset, key as 'txt' | 'md' | 'json' | 'docx')
 }
 </script>
 
@@ -540,7 +541,19 @@ function handleExportAssetSelect(asset: ReferenceAssetLibrary, key: string | num
                 <div class="doc-item">
                   <div class="doc-item-top">
                     <strong>{{ item.document.title }}</strong>
-                    <n-tag size="tiny" :bordered="false" type="info">{{ item.sourceTypeLabel }}</n-tag>
+                    <div class="doc-item-top-right">
+                      <n-tag size="tiny" :bordered="false" type="info">{{ item.sourceTypeLabel }}</n-tag>
+                      <n-button
+                        tertiary
+                        type="error"
+                        size="tiny"
+                        class="doc-item-delete"
+                        title="删除该文档"
+                        @click.stop="removeKnowledgeDocument(item)"
+                      >
+                        <template #icon><Trash2 :size="12" /></template>
+                      </n-button>
+                    </div>
                   </div>
                   <p>{{ item.preview || '暂无摘要' }}</p>
                   <span>{{ item.updatedAtLabel }}</span>
@@ -765,6 +778,17 @@ function handleExportAssetSelect(asset: ReferenceAssetLibrary, key: string | num
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.doc-item-top-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.doc-item-delete {
+  padding: 2px 4px;
 }
 
 .doc-item p {

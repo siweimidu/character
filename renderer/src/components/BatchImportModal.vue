@@ -57,7 +57,7 @@ defineExpose({ isRunningInBackground })
         <div v-if="pickedFiles.length === 0" class="file-picker-empty" @click="handlePickFiles">
           <span class="big">📚</span>
           <span class="label">点击选择文件</span>
-          <span class="hint">支持 .txt / .md / .docx，可一次选多本</span>
+          <span class="hint">支持 .txt / .md / .docx / .json，可一次选多本</span>
         </div>
 
         <template v-else>

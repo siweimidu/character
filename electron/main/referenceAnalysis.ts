@@ -1,7 +1,7 @@
 import { basename, extname } from 'node:path'
 import { readFile } from 'node:fs/promises'
 
-export type ReferenceFileType = 'txt' | 'md' | 'docx'
+export type ReferenceFileType = 'txt' | 'md' | 'docx' | 'json'
 
 export type ReferenceStyleMetric = {
   label: string
@@ -232,6 +232,10 @@ function resolveFileType(filePath: string): ReferenceFileType {
     return 'md'
   }
 
+  if (extension === '.json') {
+    return 'json'
+  }
+
   return 'txt'
 }
 
@@ -253,7 +257,103 @@ async function readNovelText(filePath: string, fileType: ReferenceFileType): Pro
   }
 
   const buffer = await readFile(filePath)
-  return normalizeNovelText(buffer.toString('utf-8'))
+  const raw = buffer.toString('utf-8')
+  if (fileType === 'json') {
+    return normalizeNovelText(extractJsonNovel(raw).text)
+  }
+  return normalizeNovelText(raw)
+}
+
+/**
+ * 解析 JSON 参考小说，返回正文文本与可选标题。支持多种常见结构：
+ *   - { "title": "...", "content": "..." }（单个 content 字段）
+ *   - { "chapters": ["...", "..."] }（章节数组）
+ *   - { "content": ["段落1", "段落2"] }（段落数组）
+ *   - 顶层直接为字符串或字符串数组
+ * 若解析失败或没有可用文本则抛出错误。
+ */
+function extractJsonNovel(rawJson: string): { title: string; text: string } {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(rawJson)
+  } catch {
+    throw new Error('JSON 文件解析失败，请确认是有效的 JSON 格式。')
+  }
+
+  let title = ''
+
+  if (typeof parsed === 'string') {
+    return { title, text: parsed }
+  }
+
+  if (Array.isArray(parsed)) {
+    const parts = parsed.filter((item): item is string => typeof item === 'string')
+    if (!parts.length) {
+      throw new Error('JSON 文件中没有可用的文本内容。')
+    }
+    return { title, text: parts.join('\n\n') }
+  }
+
+  if (parsed && typeof parsed === 'object') {
+    const record = parsed as Record<string, unknown>
+
+    const titleValue = record.title ?? record.name ?? record.bookTitle
+    if (typeof titleValue === 'string' && titleValue.trim()) {
+      title = titleValue.trim()
+    }
+
+    // 收集可能包含正文的字段（优先级从高到低）
+    const content = collectTextField(record, ['content', 'text', 'body', '正文', '内容'])
+    if (content) {
+      return { title, text: content }
+    }
+
+    const chapters = collectTextField(record, ['chapters', 'sections', 'chaptersText', '章节'])
+    if (chapters) {
+      return { title, text: chapters }
+    }
+
+    // 兜底：尝试拼接所有字符串值
+    const fallback = Object.values(record)
+      .filter((value): value is string => typeof value === 'string')
+      .join('\n\n')
+    if (fallback.trim()) {
+      return { title, text: fallback }
+    }
+  }
+
+  throw new Error('JSON 文件中没有可用的文本内容。')
+}
+
+function collectTextField(record: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value === 'string' && value.trim()) {
+      return value
+    }
+    if (Array.isArray(value)) {
+      const parts = value
+        .map((item) => (typeof item === 'string' ? item.trim() : ''))
+        .filter(Boolean)
+      if (parts.length) {
+        return parts.join('\n\n')
+      }
+      const nestedChapters = value
+        .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+        .map((chapter) => collectTextField(chapter as Record<string, unknown>, ['content', 'text', 'body', '正文', '内容']))
+        .filter(Boolean)
+      if (nestedChapters.length) {
+        return nestedChapters.join('\n\n')
+      }
+    }
+    if (value && typeof value === 'object') {
+      const nested = collectTextField(value as Record<string, unknown>, keys)
+      if (nested) {
+        return nested
+      }
+    }
+  }
+  return ''
 }
 
 function splitParagraphs(text: string): string[] {
@@ -505,8 +605,20 @@ async function buildAnalysisChunks(chapters: string[]): Promise<ReferenceNovelCh
 export async function extractReferenceNovelContext(filePath: string): Promise<ReferenceNovelLocalContext> {
   const fileType = resolveFileType(filePath)
   const fileName = basename(filePath)
-  const title = basename(filePath, extname(filePath)).trim() || '未命名参考作品'
-  const text = await readNovelText(filePath, fileType)
+  const defaultTitle = basename(filePath, extname(filePath)).trim() || '未命名参考作品'
+  let title = defaultTitle
+  let text = ''
+
+  if (fileType === 'json') {
+    const buffer = await readFile(filePath)
+    const parsed = extractJsonNovel(buffer.toString('utf-8'))
+    text = normalizeNovelText(parsed.text)
+    if (parsed.title) {
+      title = parsed.title
+    }
+  } else {
+    text = await readNovelText(filePath, fileType)
+  }
 
   if (!text.trim()) {
     throw new Error('导入的文件没有可用正文，请确认文件内容不是空白。')

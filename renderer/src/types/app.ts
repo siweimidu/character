@@ -207,7 +207,7 @@ export interface ReferenceStyleAnalysis {
   /** 来源文件名 */
   fileName: string
   /** 来源文件类型 */
-  fileType: 'txt' | 'md' | 'docx'
+  fileType: 'txt' | 'md' | 'docx' | 'json'
   /** 参考作品字数 */
   characterCount: number
   /** 章节估计数 */

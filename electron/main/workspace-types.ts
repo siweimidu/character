@@ -30,7 +30,7 @@ export type WorkspaceReferenceWork = {
   analysis?: {
     createdAt: string
     fileName: string
-    fileType: 'txt' | 'md' | 'docx'
+    fileType: 'txt' | 'md' | 'docx' | 'json'
     characterCount: number
     chapterCount: number
     excerpt: string

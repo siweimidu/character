@@ -35,6 +35,7 @@ import {
   type ProjectArchiveModule
 } from './archive/project-archive'
 import {
+  buildReferenceAssetDocx,
   buildReferenceAssetExportContent,
   resolveReferenceAssetFileName,
   type ReferenceAssetExportAsset,
@@ -1006,7 +1007,7 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     if (!window) return { success: false, canceled: true }
 
     const request = (payload && typeof payload === 'object' ? payload : {}) as {
-      format?: 'txt' | 'md' | 'json'
+      format?: 'txt' | 'md' | 'json' | 'docx'
       projectTitle?: string
       assets?: Array<{
         title: string
@@ -1029,12 +1030,13 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     const format = request.format ?? 'md'
     const assets = request.assets ?? []
     const projectTitle = String(request.projectTitle ?? '').trim() || '拆书知识库'
-    const defaultFileName = `拆书知识库-${new Date().toISOString().slice(0, 10)}.${format === 'md' ? 'md' : format === 'txt' ? 'txt' : 'json'}`
+    const defaultFileName = `拆书知识库-${new Date().toISOString().slice(0, 10)}.${format === 'md' ? 'md' : format === 'txt' ? 'txt' : format === 'docx' ? 'docx' : 'json'}`
 
     const filterMap = {
       txt: { name: '文本文档', extensions: ['txt'] },
       md: { name: 'Markdown 文档', extensions: ['md'] },
-      json: { name: 'JSON 文件', extensions: ['json'] }
+      json: { name: 'JSON 文件', extensions: ['json'] },
+      docx: { name: 'Word 文档', extensions: ['docx'] }
     }
 
     const result = await dialog.showSaveDialog(window, {
@@ -1072,6 +1074,114 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
       }, null, 2)
       await writeFile(result.filePath, content, 'utf-8')
       return { success: true, canceled: false, filePath: result.filePath }
+    }
+
+    if (format === 'docx') {
+      try {
+        const { Document, HeadingLevel, Packer, Paragraph, TextRun } = await import('docx')
+        const docParagraphs: InstanceType<typeof Paragraph>[] = [
+          new Paragraph({
+            heading: HeadingLevel.HEADING_1,
+            children: [new TextRun({ text: projectTitle, bold: true, size: 48 })]
+          }),
+          new Paragraph({
+            spacing: { after: 240 },
+            children: [new TextRun({ text: `导出时间：${new Date().toLocaleString('zh-CN', { hour12: false })}`, italics: true, size: 22, color: '666666' })]
+          })
+        ]
+
+        assets.forEach((asset) => {
+          const title = asset.title || '未命名参考资产'
+          const metaParts: string[] = []
+          if (asset.source) metaParts.push(`来源：${asset.source}`)
+          if (asset.fileName) metaParts.push(`文件：${asset.fileName}`)
+          if ((asset.topKeywords ?? []).length) metaParts.push(`关键词：${(asset.topKeywords ?? []).join('、')}`)
+          if ((asset.styleRules ?? []).length) metaParts.push(`风格规则：${(asset.styleRules ?? []).join('、')}`)
+
+          docParagraphs.push(
+            new Paragraph({
+              heading: HeadingLevel.HEADING_1,
+              spacing: { before: 320 },
+              children: [new TextRun({ text: title, bold: true, size: 40 })]
+            })
+          )
+          if (metaParts.length) {
+            docParagraphs.push(
+              new Paragraph({
+                spacing: { after: 120 },
+                children: [new TextRun({ text: metaParts.join('　'), italics: true, size: 22, color: '666666' })]
+              })
+            )
+          }
+          const summary = asset.summary || asset.notes || ''
+          if (summary) {
+            docParagraphs.push(
+              new Paragraph({
+                spacing: { before: 80, after: 200 },
+                children: [new TextRun({ text: `【作品简介】${summary}`, size: 24 })]
+              })
+            )
+          }
+
+          ;(asset.documents ?? []).forEach((doc, index) => {
+            const docTitle = doc.title || `文档 ${index + 1}`
+            const docMetaParts: string[] = []
+            if (doc.sourceType) docMetaParts.push(`类型：${doc.sourceType}`)
+            if (doc.sourceLabel) docMetaParts.push(`来源：${doc.sourceLabel}`)
+            if ((doc.keywords ?? []).length) docMetaParts.push(`关键词：${(doc.keywords ?? []).join('、')}`)
+
+            docParagraphs.push(
+              new Paragraph({
+                heading: HeadingLevel.HEADING_2,
+                spacing: { before: 240, after: 100 },
+                children: [new TextRun({ text: docTitle, bold: true, size: 32 })]
+              })
+            )
+            if (docMetaParts.length) {
+              docParagraphs.push(
+                new Paragraph({
+                  spacing: { after: 100 },
+                  children: [new TextRun({ text: docMetaParts.join('　'), italics: true, size: 21, color: '888888' })]
+                })
+              )
+            }
+            if (doc.summary) {
+              docParagraphs.push(
+                new Paragraph({
+                  spacing: { after: 100 },
+                  children: [new TextRun({ text: `摘要：${doc.summary}`, size: 24, bold: true })]
+                })
+              )
+            }
+            const body = (doc.content || '（暂无正文内容）').split(/\r?\n/)
+            body.forEach((line) => {
+              docParagraphs.push(
+                new Paragraph({
+                  spacing: { line: 320, after: 60 },
+                  children: [new TextRun({ text: line, size: 24 })]
+                })
+              )
+            })
+          })
+        })
+
+        const doc = new Document({
+          creator: 'CharacterArc',
+          title: projectTitle,
+          description: '拆书知识库导出',
+          sections: [{ children: docParagraphs }]
+        })
+
+        const buffer = await Packer.toBuffer(doc)
+        await writeFile(result.filePath, buffer)
+        return { success: true, canceled: false, filePath: result.filePath }
+      } catch (error) {
+        return {
+          success: false,
+          canceled: false,
+          error: error instanceof Error ? error.message : '导出拆书知识库失败'
+        }
+      }
     }
 
     const separator = ''.padEnd(64, '=')
@@ -1172,7 +1282,8 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     const filterMap: Record<ReferenceAssetExportFormat, { name: string; extensions: string[] }> = {
       txt: { name: '文本文档', extensions: ['txt'] },
       md: { name: 'Markdown 文档', extensions: ['md'] },
-      json: { name: 'JSON 文件', extensions: ['json'] }
+      json: { name: 'JSON 文件', extensions: ['json'] },
+      docx: { name: 'Word 文档', extensions: ['docx'] }
     }
     const safeTitle = String(asset.title ?? '参考作品').trim() || '参考作品'
 
@@ -1187,8 +1298,13 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
 
     try {
-      const content = buildReferenceAssetExportContent(format, asset, documents)
-      await writeFile(result.filePath, content)
+      if (format === 'docx') {
+        const buffer = await buildReferenceAssetDocx(safeTitle, asset, documents)
+        await writeFile(result.filePath, buffer)
+      } else {
+        const content = buildReferenceAssetExportContent(format, asset, documents)
+        await writeFile(result.filePath, content)
+      }
       return { success: true, canceled: false, filePath: result.filePath }
     } catch (error) {
       return {
@@ -2005,7 +2121,7 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     const result = await dialog.showOpenDialog(window, {
       title: '导入参考小说',
       properties: ['openFile'],
-      filters: [{ name: '小说文本', extensions: ['txt', 'md', 'docx'] }]
+      filters: [{ name: '小说文本', extensions: ['txt', 'md', 'docx', 'json'] }]
     })
 
     if (result.canceled || result.filePaths.length === 0) {
@@ -2186,7 +2302,7 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     const result = await dialog.showOpenDialog(window, {
       title: '选择参考小说',
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: '小说文本', extensions: ['txt', 'md', 'docx'] }]
+      filters: [{ name: '小说文本', extensions: ['txt', 'md', 'docx', 'json'] }]
     })
 
     if (result.canceled || result.filePaths.length === 0) {
@@ -2257,7 +2373,7 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
       const result = await dialog.showOpenDialog(window, {
         title: '批量导入参考小说',
         properties: ['openFile', 'multiSelections'],
-        filters: [{ name: '小说文本', extensions: ['txt', 'md', 'docx'] }]
+        filters: [{ name: '小说文本', extensions: ['txt', 'md', 'docx', 'json'] }]
       })
       if (result.canceled || result.filePaths.length === 0) {
         return { success: false, canceled: true }
