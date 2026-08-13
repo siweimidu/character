@@ -285,11 +285,12 @@ function handleAttachFile(): void {
     return
   }
   activeTab.value = 'chat'
-  composerValue.value = `【引用文件】章节《${chapter.title}》\n${composerValue.value}`
-  void assistant.send({
-    intentHint: `chapter-assistant-v2:attach:chapter`,
-    attachments: [{ kind: 'chapter', ref: chapter.id, label: chapter.title }],
-    ...agentSendOptions()
+  // 以“引用附件芯片”形式加入待发送附件（在输入框上方展示为可移除的按钮），
+  // 而非把文本直接写入输入框；发送时随 pendingAttachments 一并携带。
+  assistant.addPendingAttachment({
+    kind: 'chapter',
+    ref: `chapter:${chapter.id}`,
+    label: `章节《${chapter.title}》`
   })
 }
 
