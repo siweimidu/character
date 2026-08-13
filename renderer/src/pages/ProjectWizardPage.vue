@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ArrowLeft, BookA, CheckCircle2, ChevronRight, Info, LoaderCircle, Sparkles, X } from 'lucide-vue-next'
 import { NButton, NInput, NModal, useMessage } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
@@ -364,6 +364,37 @@ async function goNext(): Promise<void> {
 }
 
 onBeforeUnmount(() => stopGenerationTimer(true))
+
+/** 将外部传入的题材字符串匹配到向导内的题材选项 key；匹配不到则回退到自定义题材 */
+function resolveGenreKey(genre: string): string {
+  const normalized = genre.trim()
+  if (!normalized) return DEFAULT_PROJECT_GENRE_KEY
+  const matched = PROJECT_GENRE_OPTIONS.find(
+    (option) => !option.isCustom && option.label === normalized
+  )
+  return matched?.key ?? 'custom'
+}
+
+// 消费番茄风向标等入口携带的预填数据，预填作品名 / 题材 / 篇幅 / 简介
+onMounted(() => {
+  const prefill = appStore.consumeWizardPrefill()
+  if (!prefill) return
+  const genreKey = resolveGenreKey(prefill.genre ?? '')
+  if (genreKey === 'custom') {
+    formData.selectedGenreKey = 'custom'
+    formData.customGenre = (prefill.genre ?? '').trim()
+  } else {
+    formData.selectedGenreKey = genreKey
+  }
+  if (prefill.title) formData.title = prefill.title
+  if (prefill.novelLength === 'short' || prefill.novelLength === 'long') {
+    formData.novelLength = prefill.novelLength
+  }
+  if (prefill.premise) formData.premise = prefill.premise
+  if (prefill.generationMode === 'deep' || prefill.generationMode === 'quick' || prefill.generationMode === 'off') {
+    formData.generationMode = prefill.generationMode
+  }
+})
 </script>
 
 <template>

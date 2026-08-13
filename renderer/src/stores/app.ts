@@ -135,6 +135,16 @@ interface ProjectWorkspacePayload {
   messages?: ChatMessage[]
 }
 
+/** 携带初始数据进入新建作品向导的预填内容（供番茄风向标等入口使用） */
+export interface WizardPrefill {
+  title: string
+  genre?: string
+  novelLength?: NovelLength
+  premise?: string
+  /** 预置的初始化方式：'deep' 深度生成 / 'quick' 快速生成 / 'off' 空白项目 */
+  generationMode?: 'deep' | 'quick' | 'off'
+}
+
 /** 将日期字符串转换为 ISO 时间戳，无效值时使用当前时间 */
 function toIsoTimestamp(value?: string): string {
   const parsed = value ? new Date(value) : null
@@ -267,6 +277,8 @@ export const useAppStore = defineStore('app', () => {
   const hasHydrated = ref(false)
   /** 当前视图：项目列表 / 新建向导 / 工作台 / 章节写作 / 独立能力页 */
   const currentView = ref<'projects' | 'wizard' | 'continuation-import' | 'workbench' | 'chapter-studio' | 'deconstruction-library' | 'skills' | 'cover-workbench' | 'fanqie-trends' | 'recycle-bin' | 'global-agent'>('projects')
+  /** 从番茄风向标等入口携带初始数据进入新建向导时的预填内容 */
+  const wizardPrefill = ref<WizardPrefill | null>(null)
   /** 工作台中当前激活的面板 */
   const activePanel = ref<PanelName>('outline')
   /** 上一次在工作台中查看的面板（非 chapters），用于从章节写作返回时恢复 */
@@ -1268,7 +1280,21 @@ export const useAppStore = defineStore('app', () => {
 
   /** 打开新建项目向导 */
   function openWizard(): void {
+    wizardPrefill.value = null
     currentView.value = 'wizard'
+  }
+
+  /** 携带预填数据打开新建项目向导（番茄风向标等入口使用） */
+  function openWizardWithPrefill(prefill: WizardPrefill): void {
+    wizardPrefill.value = prefill
+    currentView.value = 'wizard'
+  }
+
+  /** 读取并清空向导预填数据，返回是否消费成功（供向导在挂载时调用） */
+  function consumeWizardPrefill(): WizardPrefill | null {
+    const prefill = wizardPrefill.value
+    wizardPrefill.value = null
+    return prefill
   }
 
   /** 从主页打开独立的小说续写导入向导 */
@@ -5069,6 +5095,9 @@ export const useAppStore = defineStore('app', () => {
     currentProject,
     currentChapterSelection,
     currentView,
+    wizardPrefill,
+    openWizardWithPrefill,
+    consumeWizardPrefill,
     globalAssistantSessions,
     hasHydrated,
     initialize,

@@ -260,6 +260,35 @@ const seedCount = ref(3)
 const seedCandidates = ref<FanqieSeedCandidate[]>([])
 const selectedSeeds = ref<boolean[]>([])
 
+// ===== 热门综合赛道多选 =====
+const seedGenres = computed<AnyRecord[]>(() => curPeriodData.value?.hot_genres || [])
+const selectedGenres = ref<string[]>([])
+const seedGenresCollapsed = ref(false)
+
+function toggleGenre(name: string): void {
+  const idx = selectedGenres.value.indexOf(name)
+  if (idx >= 0) selectedGenres.value.splice(idx, 1)
+  else selectedGenres.value.push(name)
+}
+
+function isGenreSelected(name: string): boolean {
+  return selectedGenres.value.includes(name)
+}
+
+function toggleAllGenres(): void {
+  if (selectedGenres.value.length === seedGenres.value.length) {
+    selectedGenres.value = []
+  } else {
+    selectedGenres.value = seedGenres.value.map((g) => String(g.name))
+  }
+}
+
+// ===== 生成作品时的初始化方式弹窗 =====
+const initModalVisible = ref(false)
+const initMethod = ref<'deep' | 'quick' | 'off'>('deep')
+const pendingBuildSeeds = ref<FanqieSeedCandidate[]>([])
+const buildLoading = ref(false)
+
 function toggleSeed(index: number): void {
   if (index >= 0 && index < selectedSeeds.value.length) {
     selectedSeeds.value[index] = !selectedSeeds.value[index]
@@ -288,9 +317,12 @@ function buildSeedContext(): Record<string, unknown> {
     intro: typeof b.intro === 'string' ? b.intro.slice(0, 200) : '',
     reads: b.reads ?? ''
   }))
+  // 用户勾选的综合赛道：作为生成选题时的目标赛道偏好
+  const checkedGenres = selectedGenres.value
   return {
     platform: curBoardItem.value?.name || '番茄小说',
     targetGenre: targetGenre.value.trim(),
+    checkedGenres: checkedGenres.join('、'),
     count: seedCount.value,
     summary: summaryText.value,
     hotGenres: JSON.stringify(hotGenres),
@@ -347,28 +379,50 @@ async function handleSeedGenerate(): Promise<void> {
 
 function openSeedGenerator(): void {
   targetGenre.value = ''
+  selectedGenres.value = []
+  seedGenresCollapsed.value = false
   seedOptionsVisible.value = false
   seedModalVisible.value = true
 }
 
+/** 点击“生成作品”：先弹出初始化方式弹窗 */
 function handleGenerateWorks(): void {
   const picked = seedCandidates.value
     .map((seed, index) => ({ seed, index }))
     .filter(({ index }) => selectedSeeds.value[index])
+    .map(({ seed }) => seed)
   if (picked.length === 0) {
     message.warning('请先勾选要生成的新书选题')
     return
   }
-  for (const { seed } of picked) {
-    appStore.createProject({
-      title: seed.title,
-      genre: seed.genre || '都市',
-      novelLength: 'long'
-    })
-  }
+  pendingBuildSeeds.value = picked
+  initMethod.value = 'deep'
+  initModalVisible.value = true
+}
+
+/** 用户选定初始化方式后，携带选题数据进入“新建作品”向导，走完新建作品流程再开始构建 */
+async function confirmInitAndBuild(): Promise<void> {
+  if (buildLoading.value) return
+  const seeds = pendingBuildSeeds.value
+  if (seeds.length === 0) return
+  buildLoading.value = true
+  initModalVisible.value = false
   seedOptionsVisible.value = false
-  message.success(`已生成 ${picked.length} 个新书项目`)
-  appStore.backToProjects()
+
+  try {
+    // 多个选题：逐个打开向导并预填；用户完成一个后回到向导入口（由向导处理返回）。
+    // 这里依次携带第一个选题进入向导，向导完成后用户可再次触发后续选题。
+    const first = seeds[0]
+    appStore.openWizardWithPrefill({
+      title: first.title,
+      genre: first.genre || '都市',
+      novelLength: 'long',
+      premise: first.concept || first.outline || '',
+      generationMode: initMethod.value
+    })
+  } finally {
+    buildLoading.value = false
+  }
 }
 
 function formatSeedCandidate(seed: FanqieSeedCandidate): string {
@@ -911,6 +965,37 @@ async function handleExport(): Promise<void> {
         />
         <span class="seed-count-range">1 ~ 10</span>
       </div>
+
+      <!-- 热门综合赛道多选：可上下滑动、可折叠收起 -->
+      <div v-if="seedGenres.length" class="seed-genres-panel">
+        <div class="seed-genres-head" @click="seedGenresCollapsed = !seedGenresCollapsed">
+          <span class="seed-genres-title">勾选热门综合赛道</span>
+          <span class="seed-genres-hint">勾选哪个赛道就围绕该赛道生成选题（可多选）</span>
+          <span class="seed-genres-toggle">{{ seedGenresCollapsed ? '展开' : '收起' }}</span>
+        </div>
+        <div v-if="!seedGenresCollapsed" class="seed-genres-body">
+          <div class="seed-genres-toolbar">
+            <n-checkbox :checked="selectedGenres.length === seedGenres.length" @update:checked="toggleAllGenres" class="seed-check-all">
+              全选
+            </n-checkbox>
+            <span class="seed-selected-count">已选 {{ selectedGenres.length }} / {{ seedGenres.length }}</span>
+          </div>
+          <div class="seed-genres-scroll">
+            <label
+              v-for="g in seedGenres"
+              :key="g.name"
+              class="seed-genre-item"
+              :class="{ 'seed-genre-item-checked': isGenreSelected(g.name) }"
+            >
+              <n-checkbox :checked="isGenreSelected(g.name)" @update:checked="toggleGenre(g.name)" />
+              <span class="seed-genre-name">{{ g.name }}</span>
+              <span v-if="g.lead_category" class="seed-genre-lead">领涨 {{ g.lead_category }}</span>
+              <span class="seed-genre-val num">+{{ fmt(g.read_growth_total ?? g.score) }}</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
       <n-input
         v-model:value="targetGenre"
         type="textarea"
@@ -978,6 +1063,54 @@ async function handleExport(): Promise<void> {
         <n-button @click="seedOptionsVisible = false">关闭</n-button>
         <n-button @click="openSeedGenerator">换一批</n-button>
         <n-button type="primary" @click="handleGenerateWorks">生成作品</n-button>
+      </div>
+    </n-modal>
+
+    <!-- 生成作品：选择初始化方式 -->
+    <n-modal
+      v-model:show="initModalVisible"
+      preset="card"
+      title="选择初始化方式"
+      style="width: 540px"
+      :mask-closable="false"
+    >
+      <p class="init-modal-hint">
+        将为勾选的 {{ pendingBuildSeeds.length }} 个新书选题创建项目。选择初始化方式后，将进入“新建作品”流程完善作品名、题材、篇幅与小说简介，再开始构建。
+      </p>
+      <div class="init-mode-list">
+        <button
+          type="button"
+          class="init-mode-card"
+          :class="{ active: initMethod === 'deep' }"
+          @click="initMethod = 'deep'"
+        >
+          <strong>深度生成</strong>
+          <span>螺旋式推导：从角色核心矛盾出发，生成完整角色、章节大纲和世界设定。通常耗时 1 到 3 分钟。</span>
+        </button>
+        <button
+          type="button"
+          class="init-mode-card"
+          :class="{ active: initMethod === 'quick' }"
+          @click="initMethod = 'quick'"
+        >
+          <strong>快速生成</strong>
+          <span>一次性生成世界观和大纲骨架，不含角色设计。速度快，约 10 秒。</span>
+        </button>
+        <button
+          type="button"
+          class="init-mode-card"
+          :class="{ active: initMethod === 'off' }"
+          @click="initMethod = 'off'"
+        >
+          <strong>空白项目</strong>
+          <span>只创建项目骨架与首章草稿，从零开始搭建。</span>
+        </button>
+      </div>
+      <div class="seed-modal-footer">
+        <n-button @click="initModalVisible = false">取消</n-button>
+        <n-button type="primary" :loading="buildLoading" :disabled="buildLoading" @click="confirmInitAndBuild">
+          {{ initMethod === 'off' ? '开始创建项目' : initMethod === 'deep' ? '开始深度构建' : '开始快速构建' }}
+        </n-button>
       </div>
     </n-modal>
 
@@ -1674,5 +1807,138 @@ async function handleExport(): Promise<void> {
   box-shadow: 0 0 0 1px var(--arc-primary);
 }
 .seed-check { margin-right: 2px; }
+
+/* 热门综合赛道多选 */
+.seed-genres-panel {
+  margin-bottom: 12px;
+  border: 1px solid var(--arc-border);
+  border-radius: var(--arc-radius-md);
+  overflow: hidden;
+}
+.seed-genres-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  cursor: pointer;
+  background: var(--arc-bg-weak);
+  user-select: none;
+}
+.seed-genres-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--arc-text-primary);
+}
+.seed-genres-hint {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--arc-text-hint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.seed-genres-toggle {
+  font-size: 12px;
+  color: var(--arc-primary);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.seed-genres-body {
+  border-top: 1px solid var(--arc-border);
+  padding: 8px 10px 10px;
+}
+.seed-genres-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.seed-genres-scroll {
+  max-height: 168px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 4px;
+}
+.seed-genre-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--arc-border);
+  border-radius: var(--arc-radius-sm);
+  background: var(--arc-bg-body);
+  cursor: pointer;
+  transition: border-color 0.16s, background 0.16s;
+}
+.seed-genre-item:hover { border-color: var(--arc-border-strong); }
+.seed-genre-item-checked {
+  border-color: var(--arc-primary);
+  background: var(--arc-primary-soft);
+}
+.seed-genre-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--arc-text-primary);
+}
+.seed-genre-lead {
+  font-size: 11px;
+  color: var(--arc-text-hint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.seed-genre-val {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--arc-success, #15803d);
+  flex-shrink: 0;
+}
+
+/* 生成作品：初始化方式弹窗 */
+.init-modal-hint {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--arc-text-hint);
+}
+.init-mode-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.init-mode-card {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--arc-border);
+  background: var(--arc-bg-weak);
+  border-radius: var(--arc-radius-md);
+  padding: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.16s, background 0.16s, box-shadow 0.16s;
+}
+.init-mode-card:hover { border-color: var(--arc-border-strong); }
+.init-mode-card.active {
+  border-color: var(--arc-primary);
+  background: var(--arc-primary-soft);
+  box-shadow: inset 2px 0 0 var(--arc-primary);
+}
+.init-mode-card strong {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--arc-text-primary);
+}
+.init-mode-card span {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--arc-text-secondary);
+}
 </style>
 
