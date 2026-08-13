@@ -398,18 +398,36 @@ function openEditEditor(thread: PlotThread): void {
   editorVisible.value = true
 }
 
+// 单卡片状态切换：允许自由选择切换到任意状态
+const statusSwitchModalVisible = ref(false)
+const statusSwitchThread = ref<PlotThread | null>(null)
+const statusSwitchTarget = ref<PlotThreadStatus>('pending')
+const ALL_STATUSES: PlotThreadStatus[] = ['pending', 'resolved', 'abandoned']
+
+function openStatusSwitch(thread: PlotThread): void {
+  statusSwitchThread.value = thread
+  // 默认选中与当前状态不同的第一个状态
+  statusSwitchTarget.value = ALL_STATUSES.find((s) => s !== thread.status) ?? 'pending'
+  statusSwitchModalVisible.value = true
+}
+function confirmStatusSwitch(): void {
+  const thread = statusSwitchThread.value
+  if (!thread) return
+  const target = statusSwitchTarget.value
+  appStore.updatePlotThread(thread.id, {
+    status: target,
+    closedInChapterId: target === 'resolved' ? (appStore.selectedChapterId ?? '') : undefined
+  })
+  message.success(`已将「${thread.title}」标记为「${STATUS_MAP[target].label}」`)
+  statusSwitchModalVisible.value = false
+  statusSwitchThread.value = null
+}
+
 function handleMenuSelect(key: string, thread: PlotThread): void {
   if (key === 'edit') {
     openEditEditor(thread)
   } else if (key === 'toggle') {
-    const nextStatus: PlotThreadStatus =
-      thread.status === 'pending' ? 'resolved' :
-      thread.status === 'resolved' ? 'abandoned' : 'pending'
-    appStore.updatePlotThread(thread.id, {
-      status: nextStatus,
-      closedInChapterId: nextStatus === 'resolved' ? (appStore.selectedChapterId ?? '') : undefined
-    })
-    message.success(`已标记为「${STATUS_MAP[nextStatus].label}」`)
+    openStatusSwitch(thread)
   } else if (key === 'delete') {
     dialog.warning({
       title: '删除伏笔',
@@ -740,6 +758,9 @@ function confirmAddGeneratedThreads(): void {
                 @change="toggleSelectThread(thread.id)"
               />
             </label>
+            <span class="priority-badge" :style="{ color: PRIORITY_MAP[thread.priority].color }">
+              <Flag :size="12" /> {{ PRIORITY_MAP[thread.priority].label }}
+            </span>
             <n-dropdown :options="menuOptions" placement="bottom-end" @select="(key: string) => handleMenuSelect(key, thread)">
               <button class="more-button" type="button" title="更多操作" @click.stop>
                 <MoreVertical :size="16" />
@@ -915,6 +936,32 @@ function confirmAddGeneratedThreads(): void {
       <template #footer>
         <span />
       </template>
+    </n-modal>
+
+    <!-- 切换状态弹窗：可自由选择切换到任意状态 -->
+    <n-modal
+      v-model:show="statusSwitchModalVisible"
+      preset="card"
+      title="切换伏笔状态"
+      style="width: 400px"
+      :mask-closable="false"
+    >
+      <p v-if="statusSwitchThread" class="ai-modal-hint">
+        将「{{ statusSwitchThread.title }}」从「{{ STATUS_MAP[statusSwitchThread.status].label }}」切换到：
+      </p>
+      <n-select
+        v-model:value="statusSwitchTarget"
+        :options="ALL_STATUSES.map((s) => ({ label: STATUS_MAP[s].label, value: s }))"
+      />
+      <div v-if="statusSwitchTarget === 'resolved'" class="ai-modal-hint" style="margin: 10px 0 0">
+        切换到「已回收」将自动把当前选中章节记录为实际回收章节。
+      </div>
+      <div class="arc-modal-footer" style="margin-top: 16px">
+        <div class="arc-modal-footer-right">
+          <n-button @click="statusSwitchModalVisible = false">取消</n-button>
+          <n-button type="primary" @click="confirmStatusSwitch">确认切换</n-button>
+        </div>
+      </div>
     </n-modal>
 
     <!-- 批量修改状态弹窗 -->
@@ -1215,6 +1262,13 @@ function confirmAddGeneratedThreads(): void {
 .resolved-card {
   opacity: 0.72;
   background: var(--arc-bg-body);
+}
+
+/* 已回收卡片最左边的颜色统一为绿色（覆盖优先级颜色） */
+.resolved-card.priority-high,
+.resolved-card.priority-medium,
+.resolved-card.priority-low {
+  box-shadow: inset 3px 0 0 #22c55e;
 }
 
 .abandoned-card {
