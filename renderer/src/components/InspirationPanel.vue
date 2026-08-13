@@ -41,6 +41,10 @@ const form = reactive({
 })
 
 const focusTypes = ['标题灵感', '开篇钩子', '场景火花', '剧情转折', '设定补完', '人物动机', '伏笔'] // 灵感焦点类型列表
+// 新建/编辑灵感弹窗可选类型：预设焦点类型 + 灵感生成类型管理中自定义的类型
+const editorTypeOptions = computed(() =>
+  [...new Set([...focusTypes, ...appStore.inspirationTypes])]
+)
 // 批量生成默认可选类型：在原有基础上扩充更多生成类型
 const presetBatchTypes = [
   '场景火花', '伏笔', '标题灵感', '开篇钩子', '剧情转折', '设定补完', '人物动机',
@@ -507,7 +511,7 @@ function handleMenuSelect(action: string | number, entry: InspirationEntry): voi
             <n-form-item label="灵感类型">
               <div class="modal-chip-row">
                 <button
-                  v-for="type in focusTypes"
+                  v-for="type in editorTypeOptions"
                   :key="type"
                   type="button"
                   class="modal-chip"
