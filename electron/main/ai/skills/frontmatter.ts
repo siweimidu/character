@@ -1,4 +1,4 @@
-import type { SkillCompatibility, SkillManifest } from './types'
+import type { SkillCompatibility, SkillManifest, SkillReferenceRule } from './types'
 
 /** 用户在 frontmatter 中显式覆盖的 skill 属性 */
 export type SkillFrontmatterOverrides = {
@@ -127,7 +127,8 @@ function parseManifestBlock(frontmatter: string): {
 
   const manifestKeys = ['category', 'tasks', 'stages', 'triggers', 'priority', 'required']
   const hasManifestField = manifestKeys.some((k) => result[k] !== undefined)
-  if (!hasManifestField) return { manifest: null, overrides }
+  const references = parseReferencesBlock(frontmatter)
+  if (!hasManifestField && references.length === 0) return { manifest: null, overrides }
 
   const manifest: Partial<SkillManifest> = {
     category: typeof result.category === 'string' ? result.category as SkillManifest['category'] : undefined,
@@ -135,10 +136,92 @@ function parseManifestBlock(frontmatter: string): {
     stages: Array.isArray(result.stages) ? result.stages as SkillManifest['stages'] : undefined,
     triggers: Array.isArray(result.triggers) ? result.triggers as string[] : undefined,
     priority: typeof result.priority === 'number' ? result.priority : undefined,
-    required: result.required === true ? true : undefined
+    required: result.required === true ? true : undefined,
+    references
   }
 
   return { manifest, overrides }
+}
+
+/**
+ * 解析 manifest 下的 references 列表，支持两种写法：
+ * 1. 对象列表（含 file / loadWhen.task / loadWhen.chapterIndexMax）：
+ *    references:
+ *      - file: references/x.md
+ *        loadWhen:
+ *          task: chapter-first-draft
+ * 2. 简单字符串列表（仅文件路径）：
+ *    references:
+ *      - references/x.md
+ * 这里做独立的容错解析，避免因 references 未解析导致参考文件永远不加载。
+ */
+function parseReferencesBlock(frontmatter: string): SkillReferenceRule[] {
+  const lines = frontmatter.split(/\r?\n/)
+  const startIndex = lines.findIndex((line) => /^\s{0,2}references:\s*$/.test(line))
+  if (startIndex < 0) return []
+
+  const rules: SkillReferenceRule[] = []
+  let current: SkillReferenceRule | null = null
+  let inLoadWhen = false
+
+  for (let i = startIndex + 1; i < lines.length; i += 1) {
+    const line = lines[i]
+    // 遇到下一个顶层（无缩进）字段说明 references 结束
+    if (line && !/^\s/.test(line)) break
+    if (!line.trim()) {
+      if (current && !inLoadWhen) {
+        rules.push(current)
+        current = null
+      }
+      continue
+    }
+
+    const itemMatch = line.match(/^\s{2,4}-\s*(.*)$/)
+    if (itemMatch) {
+      if (current) rules.push(current)
+      current = null
+      inLoadWhen = false
+      const body = itemMatch[1].trim()
+      const fileMatch = body.match(/^file:\s*(.+)$/)
+      if (fileMatch) {
+        current = { file: stripYamlScalar(fileMatch[1]) }
+      } else if (body && !body.includes(':')) {
+        // 简单字符串列表写法
+        current = { file: stripYamlScalar(body) }
+      }
+      continue
+    }
+
+    if (!current) continue
+
+    const loadWhenMatch = line.match(/^\s{4,6}loadWhen:\s*$/)
+    if (loadWhenMatch) {
+      inLoadWhen = true
+      current.loadWhen = {}
+      continue
+    }
+
+    const fileMatch = line.match(/^\s{4,6}file:\s*(.+)$/)
+    if (fileMatch && !inLoadWhen) {
+      current.file = stripYamlScalar(fileMatch[1])
+      continue
+    }
+
+    const taskMatch = line.match(/^\s{6,8}task:\s*(.+)$/)
+    if (taskMatch && inLoadWhen && current.loadWhen) {
+      current.loadWhen.task = stripYamlScalar(taskMatch[1]) as SkillReferenceRule['loadWhen'] extends { task?: infer T } ? T : never
+      continue
+    }
+
+    const chapterMatch = line.match(/^\s{6,8}chapterIndexMax:\s*(\d+)\s*$/)
+    if (chapterMatch && inLoadWhen && current.loadWhen) {
+      current.loadWhen.chapterIndexMax = Number(chapterMatch[1])
+      continue
+    }
+  }
+
+  if (current) rules.push(current)
+  return rules.filter((rule) => rule.file)
 }
 
 /** 去除 YAML 标量值两端的引号并 trim */

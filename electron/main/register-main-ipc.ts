@@ -3104,10 +3104,13 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
   // ── 批量删除项目级 skills ──
   // 仅允许删除「项目导入」的 skills（project scope），内置 skills 不可删除。
   // 入参：projectId 与要删除的 skill path 列表（形如 project-skills/xxx 或 project-skills/group/xxx）。
+  // 为兼容旧版本导入产生的路径，也接受无前缀的 skill id / 名称，后端会按磁盘真实目录重新解析，
+  // 避免“路径不合法”误报。
   ipcMain.handle('characterarc:project-skills-delete', async (_event, projectId: unknown, paths: unknown) => {
     try {
       const resolvedProjectId = String(projectId ?? '').trim()
       const skillsRoot = getSkillsDirPath(resolvedProjectId || undefined)
+      const builtinRoot = getBuiltinSkillsDirPath()
       const targets = Array.isArray(paths) ? paths.map((p) => String(p ?? '').trim()).filter(Boolean) : []
       if (!targets.length) {
         return { success: false, error: '未选择要删除的 skills' }
@@ -3115,13 +3118,20 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
 
       const deleted: string[] = []
       for (const skillPath of targets) {
-        // 只允许删除项目级（project-skills/ 前缀）路径，内置（skills/）不可删
-        if (!skillPath.startsWith('project-skills/')) continue
-        const rel = skillPath.slice('project-skills/'.length)
-        if (!rel || rel.includes('..')) continue
+        const candidate = skillPath.replace(/\\/g, '/')
+        // 内置 skills/ 前缀一律拒绝删除
+        if (candidate.startsWith('skills/')) continue
+
+        // 剥离 project-skills/ 前缀；旧版本或无前缀时直接用原路径作为相对路径
+        const rel = candidate.startsWith('project-skills/')
+          ? candidate.slice('project-skills/'.length)
+          : candidate.replace(/^\.?\//, '')
+        if (!rel || rel === '.' || rel.split('/').some((seg) => seg === '..')) continue
+
         const targetDir = join(skillsRoot, rel)
-        // 安全校验：必须位于项目 skills 根目录之内，且确实是 SKILL.md 目录
+        // 安全校验：必须位于项目 skills 根目录之内，且不是内置根目录，且确实是 SKILL.md 目录
         if (!targetDir.startsWith(skillsRoot)) continue
+        if (skillsRoot === builtinRoot || targetDir.startsWith(builtinRoot)) continue
         if (!existsSync(join(targetDir, 'SKILL.md'))) continue
         await rm(targetDir, { recursive: true, force: true })
         deleted.push(skillPath)

@@ -41,19 +41,37 @@ const naiveTheme = computed(() => appStore.appSettings.darkMode ? darkTheme : nu
 const appStyleVars = computed(() => {
   const dark = appStore.appSettings.darkMode
   const themeColors = getThemeColorScheme(appStore.theme, dark)
+  const strength = appStore.appSettings.themeColorStrength ?? 1
+  const safeStrength = Number.isFinite(strength) ? Math.min(1.2, Math.max(0.3, strength)) : 1
+
+  // 根据主题主色深浅对主色与背景色做明暗混合，让「颜色深浅」滑动条真正生效。
+  const mix = (color: string, towards: 'white' | 'black', amount: number): string =>
+    `color-mix(in srgb, ${color} ${Math.round(amount * 100)}%, ${towards === 'white' ? '#ffffff' : '#000000'})`
+  const shift = (color: string): string =>
+    safeStrength >= 1
+      ? mix(color, 'black', Math.min(0.35, (safeStrength - 1) * 1.2))
+      : mix(color, 'white', Math.min(0.5, (1 - safeStrength) * 1.2))
+
+  const primary = shift(themeColors.primary)
+  const primaryHover = shift(themeColors.primaryHover)
+  const primaryPressed = shift(themeColors.primaryPressed)
+  const bgBody = shift(themeColors.bgBody)
+  const bgWeak = shift(themeColors.bgWeak)
+  const bgSurface = shift(themeColors.bgSurface)
+
   return {
-    '--arc-bg-body': themeColors.bgBody,
-    '--arc-bg-weak': themeColors.bgWeak,
-    '--arc-bg-surface': themeColors.bgSurface,
+    '--arc-bg-body': bgBody,
+    '--arc-bg-weak': bgWeak,
+    '--arc-bg-surface': bgSurface,
     '--arc-bg-surface-hover': themeColors.bgSurfaceHover,
     '--arc-bg-sidebar': themeColors.bgSidebar,
     '--arc-sidebar-border': themeColors.sidebarBorder,
     '--arc-text-primary': themeColors.textPrimary,
     '--arc-text-secondary': themeColors.textSecondary,
     '--arc-text-hint': themeColors.textHint,
-    '--arc-primary': themeColors.primary,
-    '--arc-primary-hover': themeColors.primaryHover,
-    '--arc-primary-pressed': themeColors.primaryPressed,
+    '--arc-primary': primary,
+    '--arc-primary-hover': primaryHover,
+    '--arc-primary-pressed': primaryPressed,
     '--arc-primary-soft': themeColors.primarySoft,
     '--arc-border': themeColors.border,
     '--arc-border-strong': themeColors.borderStrong,
@@ -70,10 +88,10 @@ const appStyleVars = computed(() => {
     '--arc-warning': themeColors.warning,
     '--arc-danger': themeColors.danger,
     '--arc-selection-bg': dark
-      ? `color-mix(in srgb, ${themeColors.primary} 48%, ${themeColors.bgBody})`
-      : 'color-mix(in srgb, ' + themeColors.primary + ' 20%, transparent)',
+      ? `color-mix(in srgb, ${primary} 48%, ${bgBody})`
+      : 'color-mix(in srgb, ' + primary + ' 20%, transparent)',
     '--arc-selection-text': themeColors.textPrimary,
-    '--arc-caret-color': themeColors.primary,
+    '--arc-caret-color': primary,
     '--arc-radius-sm': '4px',
     '--arc-radius-md': '6px',
     '--arc-radius-lg': '10px',
@@ -82,30 +100,7 @@ const appStyleVars = computed(() => {
   }
 })
 
-// 生效中的自定义背景：优先取当前项目的局部背景，否则回退到全局背景
-const activeBackground = computed(() => {
-  const project = appStore.currentProject
-  const projectImage = project?.backgroundImage?.trim() || ''
-  if (projectImage) {
-    return { image: projectImage, opacity: project?.backgroundOpacity ?? 0 }
-  }
-  const globalImage = appStore.appSettings.backgroundImage?.trim() || ''
-  if (globalImage) {
-    return { image: globalImage, opacity: appStore.appSettings.backgroundOpacity ?? 0 }
-  }
-  return null
-})
-
-// 是否启用纸质主题（用于叠加纸纤维纹理层）
-const isPaperTheme = computed(() => appStore.theme === 'paper')
-// 纸质主题纹理强度（0-1，决定纤维密度）
-const paperTextureStyle = computed(() => {
-  const strength = appStore.appSettings.paperTextureStrength ?? 0.5
-  const safe = Number.isFinite(strength) ? Math.min(1, Math.max(0, strength)) : 0.5
-  return {
-    '--arc-paper-strength': safe
-  }
-})
+// 生效中的自定义背景已移除（用户要求彻底删除自定义背景与背景不透明度功能）。
 
 // 监听 UI 缩放比例变化，限制在 0.75~1.75 倍之间并同步给 Electron 窗口
 watch(
@@ -202,16 +197,7 @@ onBeforeUnmount(() => {
     <n-message-provider>
       <n-dialog-provider>
         <n-global-style />
-        <div class="app-shell" :class="{ 'platform-darwin': platform === 'darwin' }" :style="paperTextureStyle">
-          <div
-            v-if="activeBackground"
-            class="app-background"
-            :style="{
-              backgroundImage: `url('${activeBackground.image}')`,
-              opacity: activeBackground.opacity
-            }"
-          ></div>
-          <div v-if="isPaperTheme" class="app-paper-texture"></div>
+        <div class="app-shell" :class="{ 'platform-darwin': platform === 'darwin' }">
           <div class="app-titlebar">
             <div class="app-titlebar__nav">
               <button

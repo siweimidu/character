@@ -347,10 +347,6 @@ export interface ProjectSummary {
   projectSkills: ProjectSkillItem[]
   /** 项目目标平台 */
   targetPlatform: string
-  /** 项目级自定义背景图（dataURL 或空字符串表示未设置，回退到全局背景） */
-  backgroundImage: string
-  /** 项目级自定义背景透明度 0-1 */
-  backgroundOpacity: number
   /** 本次用于生成创作记忆的参考作品 ID 列表（指向全局拆书库），可为空 */
   selectedReferenceWorkIds: string[]
   /** 封面生成历史记录 */
@@ -1008,6 +1004,30 @@ export interface AiProfile {
   topP?: number
 }
 
+/** 图片生成接口配置（与 AI 接口配置一致，支持新建/复制/删除） */
+export interface ImageProfile {
+  id: string
+  name: string
+  provider: string
+  baseUrl: string
+  apiKey: string
+  model: string
+  /** 该图片配置下保存的多个模型 ID */
+  models?: string[]
+}
+
+/** 图片识别接口配置（与 AI 接口配置一致，支持新建/复制/删除） */
+export interface VisionProfile {
+  id: string
+  name: string
+  provider: string
+  baseUrl: string
+  apiKey: string
+  model: string
+  /** 该图片识别配置下保存的多个模型 ID */
+  models?: string[]
+}
+
 export type EditorFont = 'clear-mono' | 'modern-sans' | 'classic-serif' | 'relaxed-kai' | 'system'
 
 export interface AppSettings {
@@ -1031,7 +1051,11 @@ export interface AppSettings {
   aiProfiles: AiProfile[]
   /** 当前激活的 AI 接口配置 ID */
   activeAiProfileId: string
-  /** 图片服务预设标识 */
+  /** 图片生成接口配置列表（支持新建/复制/删除） */
+  imageProfiles: ImageProfile[]
+  /** 当前激活的图片生成接口配置 ID */
+  activeImageProfileId: string
+  /** 图片服务预设标识（兼容旧字段，指向当前激活图片配置） */
   imageProvider: string
   /** 图片生成模型名称 */
   imageModel: string
@@ -1039,7 +1063,11 @@ export interface AppSettings {
   imageApiKey: string
   /** 图片生成接口基础地址 */
   imageBaseUrl: string
-  /** 图片识别配置名称（用于识别模型转人物提示词的接口配置） */
+  /** 图片识别接口配置列表（支持新建/复制/删除） */
+  visionProfiles: VisionProfile[]
+  /** 当前激活的图片识别接口配置 ID */
+  activeVisionProfileId: string
+  /** 图片识别配置名称（兼容旧字段，用于识别模型转人物提示词的接口配置） */
   visionProfileName: string
   /** 图片识别服务预设标识 */
   visionProvider: string
@@ -1063,12 +1091,8 @@ export interface AppSettings {
   darkMode: boolean
   /** 深色模式风格预设 */
   darkModeStyle: DarkModeStyle
-  /** 全局自定义背景图（dataURL 或空字符串表示未设置） */
-  backgroundImage: string
-  /** 全局自定义背景透明度 0-1 */
-  backgroundOpacity: number
-  /** 纸质主题纸纤维纹理强度 0-1 */
-  paperTextureStrength: number
+  /** 主题主色深浅（0.3-1.2，1 为默认），作用于当前主题主色与背景叠加浓度 */
+  themeColorStrength: number
   /** 旧数据兼容字段；AI 请求不再按时长自动取消。 */
   aiTimeoutSeconds: number
   /** 回收站全局配置：内容保留天数 */

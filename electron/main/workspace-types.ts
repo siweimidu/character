@@ -141,10 +141,6 @@ export type WorkspacePayload = {
     createdAt?: string
     cover: string
     targetPlatform: string
-    /** 项目级自定义背景图（dataURL 或空字符串表示未设置，回退到全局背景） */
-    backgroundImage: string
-    /** 项目级自定义背景透明度 0-1，默认 0 表示不启用覆盖 */
-    backgroundOpacity: number
     coverHistory: Array<{
       id: string
       createdAt: string
@@ -383,10 +379,30 @@ export type WorkspacePayload = {
       topP?: number
     }>
     activeAiProfileId: string
+    imageProfiles: Array<{
+      id: string
+      name: string
+      provider: string
+      baseUrl: string
+      apiKey: string
+      model: string
+      models?: string[]
+    }>
+    activeImageProfileId: string
     imageProvider: string
     imageModel: string
     imageApiKey: string
     imageBaseUrl: string
+    visionProfiles: Array<{
+      id: string
+      name: string
+      provider: string
+      baseUrl: string
+      apiKey: string
+      model: string
+      models?: string[]
+    }>
+    activeVisionProfileId: string
     visionProfileName: string
     visionProvider: string
     visionModel: string
@@ -402,10 +418,8 @@ export type WorkspacePayload = {
     darkModeStyle: string
     /** AI 请求超时秒数 */
     aiTimeoutSeconds: number
-    /** 全局自定义背景图（dataURL 或空字符串表示未设置） */
-    backgroundImage: string
-    /** 全局自定义背景透明度 0-1 */
-    backgroundOpacity: number
+    /** 主题主色深浅（0.3-1.2，1 为默认） */
+    themeColorStrength: number
   }
   coverWorkbenchHistory: Array<{
     id: string
@@ -591,10 +605,42 @@ export function normalizeAppSettings(
           .filter((item) => item.id)
       : [],
     activeAiProfileId: typeof settings?.activeAiProfileId === 'string' ? settings.activeAiProfileId : '',
+    imageProfiles: Array.isArray(settings?.imageProfiles)
+      ? settings.imageProfiles
+          .map((item) => ({
+            id: String(item.id ?? '').trim(),
+            name: String(item.name ?? '').trim(),
+            provider: String(item.provider ?? '').trim(),
+            baseUrl: String(item.baseUrl ?? '').trim(),
+            apiKey: String(item.apiKey ?? '').trim(),
+            model: String(item.model ?? '').trim(),
+            models: Array.isArray(item.models)
+              ? [...new Set(item.models.map((m) => String(m).trim()).filter(Boolean))].slice(0, 50)
+              : undefined
+          }))
+          .filter((item) => item.id)
+      : [],
+    activeImageProfileId: typeof settings?.activeImageProfileId === 'string' ? settings.activeImageProfileId : '',
     imageProvider: settings?.imageProvider || '',
     imageModel: settings?.imageModel || '',
     imageApiKey: settings?.imageApiKey || '',
     imageBaseUrl: settings?.imageBaseUrl || '',
+    visionProfiles: Array.isArray(settings?.visionProfiles)
+      ? settings.visionProfiles
+          .map((item) => ({
+            id: String(item.id ?? '').trim(),
+            name: String(item.name ?? '').trim(),
+            provider: String(item.provider ?? '').trim(),
+            baseUrl: String(item.baseUrl ?? '').trim(),
+            apiKey: String(item.apiKey ?? '').trim(),
+            model: String(item.model ?? '').trim(),
+            models: Array.isArray(item.models)
+              ? [...new Set(item.models.map((m) => String(m).trim()).filter(Boolean))].slice(0, 50)
+              : undefined
+          }))
+          .filter((item) => item.id)
+      : [],
+    activeVisionProfileId: typeof settings?.activeVisionProfileId === 'string' ? settings.activeVisionProfileId : '',
     visionProfileName: settings?.visionProfileName || '',
     visionProvider: settings?.visionProvider || '',
     visionModel: settings?.visionModel || '',
@@ -620,11 +666,10 @@ export function normalizeAppSettings(
       typeof settings?.aiTimeoutSeconds === 'number' && Number.isFinite(settings.aiTimeoutSeconds)
         ? Math.min(600, Math.max(30, settings.aiTimeoutSeconds))
         : 180,
-    backgroundImage: typeof settings?.backgroundImage === 'string' ? settings.backgroundImage : '',
-    backgroundOpacity:
-      typeof settings?.backgroundOpacity === 'number' && Number.isFinite(settings.backgroundOpacity)
-        ? Math.min(1, Math.max(0, settings.backgroundOpacity))
-        : 0
+    themeColorStrength:
+      typeof settings?.themeColorStrength === 'number' && Number.isFinite(settings.themeColorStrength)
+        ? Math.min(1.2, Math.max(0.3, settings.themeColorStrength))
+        : 1
   }
 }
 
@@ -666,11 +711,6 @@ export function normalizeProjectRecord(
     createdAt: project.createdAt || '',
     cover: project.cover || 'linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%)',
     targetPlatform: project.targetPlatform || '',
-    backgroundImage: typeof project.backgroundImage === 'string' ? project.backgroundImage : '',
-    backgroundOpacity:
-      typeof project.backgroundOpacity === 'number' && Number.isFinite(project.backgroundOpacity)
-        ? Math.min(1, Math.max(0, project.backgroundOpacity))
-        : 0,
     coverHistory: Array.isArray(project.coverHistory) ? project.coverHistory : [],
     writingStylePresetId: project.writingStylePresetId || 'cinematic-cool',
     writingStylePrompt: project.writingStylePrompt || '',

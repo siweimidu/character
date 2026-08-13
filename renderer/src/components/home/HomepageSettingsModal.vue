@@ -10,7 +10,7 @@ import { visionProviderOptions, resolveVisionProviderDefaults, resolveVisionProv
 import { useAppStore } from '@/stores/app'
 import { darkModePresets, themePresets } from '@/theme/presets'
 import { toIpcPayload } from '@/utils/ipcPayload'
-import type { AiProfile, AppSettings, DarkModeStyle, ThemeName } from '@/types/app'
+import type { AiProfile, AppSettings, DarkModeStyle, ImageProfile, ThemeName, VisionProfile } from '@/types/app'
 
 const props = defineProps<{
   show: boolean
@@ -33,39 +33,19 @@ function applyDarkModeImmediately(value: boolean): void {
   appStore.updateAppSetting('darkMode', value, { flushWorkspace: false })
 }
 
-/** 全局自定义背景图：写入草稿状态，点击「保存设置」后统一生效并持久化 */
-async function handlePickGlobalBackground(): Promise<void> {
-  const result = await window.characterArc.pickBackgroundImage()
-  if (result.success && result.dataUrl) {
-    draftSettings.backgroundImage = result.dataUrl
-    // 上传背景图时若透明度仍为默认的 0（未设置），将其默认设为 1（完全不透明），
-    // 否则背景会被 opacity:0 完全隐藏，表现为「上传了但看不到」。
-    const currentOpacity = draftSettings.backgroundOpacity
-    if (typeof currentOpacity !== 'number' || currentOpacity <= 0) {
-      draftSettings.backgroundOpacity = 1
-    }
-    message.success('已选择全局背景图，点击「保存设置」生效')
-  } else if (!result.canceled) {
-    message.error(result.error ?? '背景图上传失败')
-  }
+/** 当前选中主题的主色深浅（0.3-1.2，1 为默认），作用于主色与背景的叠加浓度，即时生效 */
+const themeColorStrength = ref(1)
+
+/** 调节当前主题颜色深浅（即时生效），替换旧的“纸质纹理强度”滑动条 */
+function setThemeColorStrength(value: number): void {
+  const safe = Number.isFinite(value) ? Math.min(1.2, Math.max(0.3, value)) : 1
+  themeColorStrength.value = safe
+  appStore.updateAppSetting('themeColorStrength', safe, { flushWorkspace: false })
 }
 
-/** 移除全局自定义背景图（写入草稿状态） */
-function clearGlobalBackground(): void {
-  draftSettings.backgroundImage = ''
-  message.success('已移除全局背景图，点击「保存设置」生效')
-}
-
-/** 调节全局自定义背景透明度（写入草稿状态） */
-function setGlobalBackgroundOpacity(value: number): void {
-  const safe = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0
-  draftSettings.backgroundOpacity = safe
-}
-
-/** 调节纸质主题纹理强度（即时生效） */
-function setPaperTextureStrength(value: number): void {
-  const safe = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0.5
-  appStore.updateAppSetting('paperTextureStrength', safe, { flushWorkspace: false })
+/** 返回当前主题色卡对应的 CSS 主色（用于色块展示） */
+function activeThemePreset() {
+  return themePresets.find((p) => p.name === draftTheme.value) ?? themePresets[0]
 }
 
 function themeTextColor(color: string): string {
@@ -161,10 +141,14 @@ const draftSettings = reactive<AppSettings>({
   topP: undefined,
   aiProfiles: [],
   activeAiProfileId: '',
+  imageProfiles: [],
+  activeImageProfileId: '',
   imageProvider: '',
   imageModel: '',
   imageApiKey: '',
   imageBaseUrl: '',
+  visionProfiles: [],
+  activeVisionProfileId: '',
   visionProfileName: '',
   visionProvider: '',
   visionModel: '',
@@ -178,18 +162,32 @@ const draftSettings = reactive<AppSettings>({
   darkMode: false,
   darkModeStyle: 'nord',
   aiTimeoutSeconds: 180,
-  backgroundImage: '',
-  backgroundOpacity: 0,
-  paperTextureStrength: 0.5
+  themeColorStrength: 1
 })
 const draftTheme = ref<ThemeName>('ocean')
 const editingProfileId = ref<string>('')
+const editingImageProfileId = ref<string>('')
+const editingVisionProfileId = ref<string>('')
 
 const editingProfile = computed<AiProfile | undefined>(() =>
   draftSettings.aiProfiles.find((p) => p.id === editingProfileId.value)
 )
 const isEditingActiveProfile = computed(
   () => editingProfileId.value === draftSettings.activeAiProfileId
+)
+
+const editingImageProfile = computed<ImageProfile | undefined>(() =>
+  draftSettings.imageProfiles.find((p) => p.id === editingImageProfileId.value)
+)
+const isEditingActiveImageProfile = computed(
+  () => editingImageProfileId.value === draftSettings.activeImageProfileId
+)
+
+const editingVisionProfile = computed<VisionProfile | undefined>(() =>
+  draftSettings.visionProfiles.find((p) => p.id === editingVisionProfileId.value)
+)
+const isEditingActiveVisionProfile = computed(
+  () => editingVisionProfileId.value === draftSettings.activeVisionProfileId
 )
 
 const scrollContainer = ref<HTMLElement | null>(null)
@@ -282,10 +280,14 @@ function syncDraftFromStore(): void {
   draftSettings.topP = appStore.appSettings.topP
   draftSettings.aiProfiles = appStore.appSettings.aiProfiles.map((profile) => ({ ...profile }))
   draftSettings.activeAiProfileId = appStore.appSettings.activeAiProfileId
+  draftSettings.imageProfiles = appStore.appSettings.imageProfiles.map((profile) => ({ ...profile, models: [...(profile.models ?? [])] }))
+  draftSettings.activeImageProfileId = appStore.appSettings.activeImageProfileId
   draftSettings.imageProvider = appStore.appSettings.imageProvider
   draftSettings.imageModel = appStore.appSettings.imageModel
   draftSettings.imageApiKey = appStore.appSettings.imageApiKey
   draftSettings.imageBaseUrl = appStore.appSettings.imageBaseUrl
+  draftSettings.visionProfiles = appStore.appSettings.visionProfiles.map((profile) => ({ ...profile, models: [...(profile.models ?? [])] }))
+  draftSettings.activeVisionProfileId = appStore.appSettings.activeVisionProfileId
   draftSettings.visionProfileName = appStore.appSettings.visionProfileName
   draftSettings.visionProvider = appStore.appSettings.visionProvider
   draftSettings.visionModel = appStore.appSettings.visionModel
@@ -298,8 +300,7 @@ function syncDraftFromStore(): void {
   draftSettings.darkMode = appStore.appSettings.darkMode
   draftSettings.darkModeStyle = appStore.appSettings.darkModeStyle
   draftSettings.aiTimeoutSeconds = appStore.appSettings.aiTimeoutSeconds
-  draftSettings.backgroundImage = appStore.appSettings.backgroundImage ?? ''
-  draftSettings.backgroundOpacity = appStore.appSettings.backgroundOpacity ?? 0
+  themeColorStrength.value = appStore.appSettings.themeColorStrength ?? 1
   draftTheme.value = appStore.theme
 }
 
@@ -332,6 +333,8 @@ watch(
     if (show) {
       syncDraftFromStore()
       editingProfileId.value = draftSettings.activeAiProfileId || draftSettings.aiProfiles[0]?.id || ''
+      editingImageProfileId.value = draftSettings.activeImageProfileId || draftSettings.imageProfiles[0]?.id || ''
+      editingVisionProfileId.value = draftSettings.activeVisionProfileId || draftSettings.visionProfiles[0]?.id || ''
       fetchedModels.value = []
     }
   },
@@ -447,11 +450,240 @@ function handleProviderChange(provider: string): void {
   fetchedModels.value = []
 }
 
+// ── 图片生成接口配置：新建 / 复制 / 删除（与 AI 接口配置一致） ──
+function generateImageProfileId(): string {
+  return `image-profile-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function generateVisionProfileId(): string {
+  return `vision-profile-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function generateUniqueImageName(base: string): string {
+  const existing = new Set(draftSettings.imageProfiles.map((p) => p.name))
+  if (!existing.has(base)) return base
+  let i = 2
+  while (existing.has(`${base} ${i}`)) i++
+  return `${base} ${i}`
+}
+
+function generateUniqueVisionName(base: string): string {
+  const existing = new Set(draftSettings.visionProfiles.map((p) => p.name))
+  if (!existing.has(base)) return base
+  let i = 2
+  while (existing.has(`${base} ${i}`)) i++
+  return `${base} ${i}`
+}
+
+function handleAddImageProfile(): void {
+  const id = generateImageProfileId()
+  const defaults = resolveImageProviderDefaults('gpt-image-openai')
+  const newProfile: ImageProfile = {
+    id,
+    name: generateUniqueImageName('GPT-Image'),
+    provider: 'gpt-image-openai',
+    baseUrl: defaults.baseUrl,
+    apiKey: '',
+    model: defaults.model,
+    models: defaults.model ? [defaults.model] : []
+  }
+  draftSettings.imageProfiles.push(newProfile)
+  editingImageProfileId.value = id
+  fetchedImageModels.value = []
+}
+
+function handleCopyImageProfile(): void {
+  const source = editingImageProfile.value
+  if (!source) return
+  const id = generateImageProfileId()
+  draftSettings.imageProfiles.push({
+    id,
+    name: generateUniqueImageName(`${source.name} 副本`),
+    provider: source.provider,
+    baseUrl: source.baseUrl,
+    apiKey: source.apiKey,
+    model: source.model,
+    models: Array.isArray(source.models) ? [...source.models] : (source.model ? [source.model] : [])
+  })
+  editingImageProfileId.value = id
+  fetchedImageModels.value = []
+}
+
+function handleDeleteImageProfile(): void {
+  const profile = editingImageProfile.value
+  if (!profile) return
+  if (isEditingActiveImageProfile.value) {
+    message.warning('当前激活的图片生成接口不能删除，请先切换到其他配置')
+    return
+  }
+  if (draftSettings.imageProfiles.length <= 1) {
+    message.warning('至少保留一个图片生成接口配置')
+    return
+  }
+  const removingId = editingImageProfileId.value
+  draftSettings.imageProfiles = draftSettings.imageProfiles.filter((p) => p.id !== removingId)
+  editingImageProfileId.value = draftSettings.activeImageProfileId || draftSettings.imageProfiles[0]?.id || ''
+  fetchedImageModels.value = []
+}
+
+function selectImageProfile(profileId: string): void {
+  editingImageProfileId.value = profileId
+  fetchedImageModels.value = []
+}
+
+function updateEditingImageProfile(updates: Partial<ImageProfile>): void {
+  const profile = editingImageProfile.value
+  if (!profile) return
+  Object.assign(profile, updates)
+  if (isEditingActiveImageProfile.value) {
+    if (updates.provider !== undefined) draftSettings.imageProvider = updates.provider
+    if (updates.model !== undefined) draftSettings.imageModel = updates.model
+    if (updates.apiKey !== undefined) draftSettings.imageApiKey = updates.apiKey
+    if (updates.baseUrl !== undefined) draftSettings.imageBaseUrl = updates.baseUrl
+  }
+}
+
+function imageProfileModels(): string[] {
+  return editingImageProfile.value?.models ?? []
+}
+
+function handleSaveImageProfileModel(): void {
+  const profile = editingImageProfile.value
+  if (!profile) return
+  const model = profile.model?.trim()
+  if (!model) {
+    message.warning('请先填写图片模型名称后再保存。')
+    return
+  }
+  const models = Array.isArray(profile.models) ? [...profile.models] : []
+  if (!models.includes(model)) {
+    models.push(model)
+    updateEditingImageProfile({ models: models.slice(0, 50) })
+    message.success(`已保存模型：${model}`)
+  } else {
+    message.info(`模型 ${model} 已在列表中。`)
+  }
+}
+
+function handleRemoveImageProfileModel(model: string): void {
+  const profile = editingImageProfile.value
+  if (!profile) return
+  updateEditingImageProfile({ models: (profile.models ?? []).filter((m) => m !== model) })
+  if (profile.model === model) updateEditingImageProfile({ model: '' })
+}
+
+function handleApplyImageProfileModel(model: string): void {
+  updateEditingImageProfile({ model })
+  message.success(`已切换模型：${model}`)
+}
+
+// ── 图片识别接口配置：新建 / 复制 / 删除（与 AI 接口配置一致） ──
+function handleAddVisionProfile(): void {
+  const id = generateVisionProfileId()
+  const defaults = resolveVisionProviderDefaults('vision-openai')
+  const newProfile: VisionProfile = {
+    id,
+    name: generateUniqueVisionName('GPT-4o 识别'),
+    provider: 'vision-openai',
+    baseUrl: defaults.baseUrl,
+    apiKey: '',
+    model: defaults.model,
+    models: defaults.model ? [defaults.model] : []
+  }
+  draftSettings.visionProfiles.push(newProfile)
+  editingVisionProfileId.value = id
+  fetchedVisionModels.value = []
+}
+
+function handleCopyVisionProfile(): void {
+  const source = editingVisionProfile.value
+  if (!source) return
+  const id = generateVisionProfileId()
+  draftSettings.visionProfiles.push({
+    id,
+    name: generateUniqueVisionName(`${source.name} 副本`),
+    provider: source.provider,
+    baseUrl: source.baseUrl,
+    apiKey: source.apiKey,
+    model: source.model,
+    models: Array.isArray(source.models) ? [...source.models] : (source.model ? [source.model] : [])
+  })
+  editingVisionProfileId.value = id
+  fetchedVisionModels.value = []
+}
+
+function handleDeleteVisionProfile(): void {
+  const profile = editingVisionProfile.value
+  if (!profile) return
+  if (isEditingActiveVisionProfile.value) {
+    message.warning('当前激活的图片识别接口不能删除，请先切换到其他配置')
+    return
+  }
+  if (draftSettings.visionProfiles.length <= 1) {
+    message.warning('至少保留一个图片识别接口配置')
+    return
+  }
+  const removingId = editingVisionProfileId.value
+  draftSettings.visionProfiles = draftSettings.visionProfiles.filter((p) => p.id !== removingId)
+  editingVisionProfileId.value = draftSettings.activeVisionProfileId || draftSettings.visionProfiles[0]?.id || ''
+  fetchedVisionModels.value = []
+}
+
+function selectVisionProfile(profileId: string): void {
+  editingVisionProfileId.value = profileId
+  fetchedVisionModels.value = []
+}
+
+function updateEditingVisionProfile(updates: Partial<VisionProfile>): void {
+  const profile = editingVisionProfile.value
+  if (!profile) return
+  Object.assign(profile, updates)
+  if (isEditingActiveVisionProfile.value) {
+    if (updates.provider !== undefined) draftSettings.visionProvider = updates.provider
+    if (updates.model !== undefined) draftSettings.visionModel = updates.model
+    if (updates.apiKey !== undefined) draftSettings.visionApiKey = updates.apiKey
+    if (updates.baseUrl !== undefined) draftSettings.visionBaseUrl = updates.baseUrl
+  }
+}
+
+function visionProfileModels(): string[] {
+  return editingVisionProfile.value?.models ?? []
+}
+
+function handleSaveVisionProfileModel(): void {
+  const profile = editingVisionProfile.value
+  if (!profile) return
+  const model = profile.model?.trim()
+  if (!model) {
+    message.warning('请先填写图片识别模型名称后再保存。')
+    return
+  }
+  const models = Array.isArray(profile.models) ? [...profile.models] : []
+  if (!models.includes(model)) {
+    models.push(model)
+    updateEditingVisionProfile({ models: models.slice(0, 50) })
+    message.success(`已保存模型：${model}`)
+  } else {
+    message.info(`模型 ${model} 已在列表中。`)
+  }
+}
+
+function handleRemoveVisionProfileModel(model: string): void {
+  const profile = editingVisionProfile.value
+  if (!profile) return
+  updateEditingVisionProfile({ models: (profile.models ?? []).filter((m) => m !== model) })
+  if (profile.model === model) updateEditingVisionProfile({ model: '' })
+}
+
+function handleApplyVisionProfileModel(model: string): void {
+  updateEditingVisionProfile({ model })
+  message.success(`已切换模型：${model}`)
+}
+
 function handleImageProviderChange(value: string): void {
   draftSettings.imageProvider = value
   const defaults = resolveImageProviderDefaults(value)
-  draftSettings.imageModel = defaults.model
-  draftSettings.imageBaseUrl = defaults.baseUrl
+  updateEditingImageProfile({ provider: value, model: defaults.model, baseUrl: defaults.baseUrl })
   fetchedImageModels.value = []
 }
 
@@ -478,8 +710,7 @@ async function handleFetchImageModels(): Promise<void> {
 function handleVisionProviderChange(value: string): void {
   draftSettings.visionProvider = value
   const defaults = resolveVisionProviderDefaults(value)
-  draftSettings.visionModel = defaults.model
-  draftSettings.visionBaseUrl = defaults.baseUrl
+  updateEditingVisionProfile({ provider: value, model: defaults.model, baseUrl: defaults.baseUrl })
   fetchedVisionModels.value = []
 }
 
@@ -558,41 +789,25 @@ async function handleBenchmarkVisionModel(): Promise<void> {
 }
 
 function handleSaveVisionModel(): void {
-  const model = draftSettings.visionModel?.trim()
-  if (!model) {
-    message.warning('请先填写图片识别模型名称后再保存。')
-    return
-  }
-  const models = Array.isArray(draftSettings.visionSavedModels) ? [...draftSettings.visionSavedModels] : []
-  if (!models.includes(model)) {
-    models.push(model)
-    draftSettings.visionSavedModels = models.slice(0, 50)
-    message.success(`已保存模型：${model}`)
-  } else {
-    message.info(`模型 ${model} 已在列表中。`)
-  }
+  handleSaveVisionProfileModel()
 }
 
 function handleApplyVisionModel(model: string): void {
-  draftSettings.visionModel = model
-  message.success(`已切换模型：${model}`)
+  handleApplyVisionProfileModel(model)
 }
 
 function handleRemoveVisionModel(model: string): void {
-  draftSettings.visionSavedModels = (draftSettings.visionSavedModels ?? []).filter((m) => m !== model)
-  if (draftSettings.visionModel === model) {
-    draftSettings.visionModel = ''
-  }
+  handleRemoveVisionProfileModel(model)
 }
 
 
 function openVisionProviderWebsite(): void {
-  const url = resolveVisionProviderWebsite(draftSettings.visionProvider)
+  const url = resolveVisionProviderWebsite(editingVisionProfile.value?.provider ?? draftSettings.visionProvider)
   window.open(url, '_blank')
 }
 
 function openImageProviderWebsite(): void {
-  const url = resolveImageProviderWebsite(draftSettings.imageProvider)
+  const url = resolveImageProviderWebsite(editingImageProfile.value?.provider ?? draftSettings.imageProvider)
   window.open(url, '_blank')
 }
 
@@ -787,6 +1002,8 @@ function confirmCcSwitchImport(): void {
 
 async function saveSettings(): Promise<void> {
   const activeProfile = draftSettings.aiProfiles.find(p => p.id === draftSettings.activeAiProfileId)
+  const activeImageProfile = draftSettings.imageProfiles.find(p => p.id === draftSettings.activeImageProfileId)
+  const activeVisionProfile = draftSettings.visionProfiles.find(p => p.id === draftSettings.activeVisionProfileId)
   const nextSettings: AppSettings = {
     ...draftSettings,
     aiProfiles: draftSettings.aiProfiles.map((profile) => ({ ...profile })),
@@ -797,7 +1014,19 @@ async function saveSettings(): Promise<void> {
     baseUrl: activeProfile?.baseUrl ?? draftSettings.baseUrl,
     apiProtocol: activeProfile?.apiProtocol ?? draftSettings.apiProtocol ?? 'auto',
     temperature: activeProfile?.temperature ?? draftSettings.temperature,
-    topP: activeProfile?.topP ?? draftSettings.topP
+    topP: activeProfile?.topP ?? draftSettings.topP,
+    imageProfiles: draftSettings.imageProfiles.map((profile) => ({ ...profile, models: [...(profile.models ?? [])] })),
+    activeImageProfileId: draftSettings.activeImageProfileId,
+    imageProvider: activeImageProfile?.provider ?? draftSettings.imageProvider,
+    imageModel: activeImageProfile?.model ?? draftSettings.imageModel,
+    imageApiKey: activeImageProfile?.apiKey ?? draftSettings.imageApiKey,
+    imageBaseUrl: activeImageProfile?.baseUrl ?? draftSettings.imageBaseUrl,
+    visionProfiles: draftSettings.visionProfiles.map((profile) => ({ ...profile, models: [...(profile.models ?? [])] })),
+    activeVisionProfileId: draftSettings.activeVisionProfileId,
+    visionProvider: activeVisionProfile?.provider ?? draftSettings.visionProvider,
+    visionModel: activeVisionProfile?.model ?? draftSettings.visionModel,
+    visionApiKey: activeVisionProfile?.apiKey ?? draftSettings.visionApiKey,
+    visionBaseUrl: activeVisionProfile?.baseUrl ?? draftSettings.visionBaseUrl
   }
 
   const saved = await appStore.saveAppSettingsDraft(nextSettings, draftTheme.value)
@@ -1155,221 +1384,355 @@ async function saveSettings(): Promise<void> {
         </section>
 
         <section id="sec-image" class="settings-section">
-          <div class="section-title">
+          <div class="section-title section-title--actions">
             <Image :size="18" />
-            <div>
+            <div class="section-title-copy">
               <strong>图片生成配置</strong>
-              <p>封面工作台使用专用的图片生成接口，需单独配置。</p>
+              <p>封面工作台使用专用的图片生成接口，支持多套配置的新建、复制与删除。修改后需点击右下角「保存设置」按钮才生效。</p>
+            </div>
+            <div class="profile-tab-actions">
+              <button class="profile-action-btn" title="新建图片生成配置" @click="handleAddImageProfile">
+                <Plus :size="14" />
+              </button>
+              <button class="profile-action-btn" title="复制当前图片生成配置" :disabled="!editingImageProfile" @click="handleCopyImageProfile">
+                <Copy :size="14" />
+              </button>
+              <button
+                class="profile-action-btn profile-action-btn--danger"
+                title="删除当前图片生成配置"
+                :disabled="!editingImageProfile || isEditingActiveImageProfile || draftSettings.imageProfiles.length <= 1"
+                @click="handleDeleteImageProfile"
+              >
+                <Trash2 :size="14" />
+              </button>
             </div>
           </div>
-          <div class="settings-grid">
-            <n-form-item label="图片服务预设">
-              <n-select
-                :options="imageProviderOptions"
-                :value="draftSettings.imageProvider"
-                placeholder="选择预设快速填充模型和地址"
-                clearable
-                @update:value="(value) => handleImageProviderChange(value ?? '')"
-              />
-            </n-form-item>
-            <n-form-item label="图片模型名称">
-              <div class="model-input-row">
-                <n-select
-                  v-if="fetchedImageModels.length > 0"
-                  :options="imageModelSelectOptions"
-                  :value="draftSettings.imageModel"
-                  filterable
-                  tag
-                  placeholder="选择或输入图片模型名称"
-                  @update:value="(value: string) => { draftSettings.imageModel = value }"
-                />
+
+          <div class="profile-tabs">
+            <div class="profile-tab-list">
+              <button
+                v-for="profile in draftSettings.imageProfiles"
+                :key="profile.id"
+                class="profile-tab"
+                :class="{
+                  active: editingImageProfileId === profile.id,
+                  'is-active-profile': profile.id === draftSettings.activeImageProfileId
+                }"
+                @click="selectImageProfile(profile.id)"
+              >
+                <span class="profile-tab-name">{{ profile.name }}</span>
+                <span v-if="profile.id === draftSettings.activeImageProfileId" class="profile-tab-badge">当前</span>
+              </button>
+            </div>
+          </div>
+
+          <template v-if="editingImageProfile">
+            <div class="profile-name-row">
+              <n-form-item label="配置名称">
                 <n-input
-                  v-else
-                  :value="draftSettings.imageModel"
-                  placeholder="例如：gpt-image-1 / flux.1-dev"
-                  @update:value="(value) => { draftSettings.imageModel = value }"
+                  :value="editingImageProfile.name"
+                  placeholder="为这个图片生成配置起个名字"
+                  @update:value="(value) => updateEditingImageProfile({ name: value })"
                 />
-                <n-button
-                  quaternary
-                  class="model-fetch-btn"
-                  :disabled="isFetchingImageModels || !draftSettings.imageBaseUrl.trim()"
-                  @click="handleFetchImageModels"
+              </n-form-item>
+            </div>
+            <div class="settings-grid">
+              <n-form-item label="图片服务预设">
+                <n-select
+                  :options="imageProviderOptions"
+                  :value="editingImageProfile.provider"
+                  placeholder="选择预设快速填充模型和地址"
+                  filterable
+                  clearable
+                  @update:value="(value) => handleImageProviderChange(value ?? '')"
+                />
+              </n-form-item>
+              <n-form-item label="图片模型名称">
+                <div class="model-input-row">
+                  <n-select
+                    v-if="fetchedImageModels.length > 0"
+                    :options="imageModelSelectOptions"
+                    :value="editingImageProfile.model"
+                    filterable
+                    tag
+                    placeholder="选择或输入图片模型名称"
+                    @update:value="(value: string) => updateEditingImageProfile({ model: value })"
+                  />
+                  <n-input
+                    v-else
+                    :value="editingImageProfile.model"
+                    placeholder="例如：gpt-image-1 / flux.1-dev"
+                    @update:value="(value) => updateEditingImageProfile({ model: value })"
+                  />
+                  <n-button
+                    quaternary
+                    class="model-fetch-btn"
+                    :disabled="isFetchingImageModels || !editingImageProfile.baseUrl.trim()"
+                    @click="handleFetchImageModels"
+                  >
+                    <template #icon>
+                      <RefreshCw v-if="fetchedImageModels.length > 0" :size="16" :class="{ 'spin-icon': isFetchingImageModels }" />
+                      <Download v-else :size="16" :class="{ 'spin-icon': isFetchingImageModels }" />
+                    </template>
+                  </n-button>
+                </div>
+              </n-form-item>
+            </div>
+            <p class="settings-grid-hint">切换预设仅更新模型名和 Base URL，API Key 不会被覆盖。</p>
+            <div class="settings-grid">
+              <n-form-item label="图片 Base URL">
+                <n-input
+                  :value="editingImageProfile.baseUrl"
+                  placeholder="例如：https://api.openai.com/v1"
+                  @update:value="(value) => updateEditingImageProfile({ baseUrl: value })"
+                />
+              </n-form-item>
+              <n-form-item label="图片 API Key">
+                <n-input
+                  type="password"
+                  show-password-on="click"
+                  :value="editingImageProfile.apiKey"
+                  placeholder="图片接口专用 API Key"
+                  @update:value="(value) => updateEditingImageProfile({ apiKey: value })"
+                />
+              </n-form-item>
+            </div>
+            <div class="saved-models-block">
+              <div class="saved-models-head">
+                <span class="saved-models-title">已保存的模型</span>
+                <span class="saved-models-count">{{ imageProfileModels().length }} 个</span>
+                <button
+                  class="saved-models-add"
+                  type="button"
+                  title="把当前模型保存到列表"
+                  :disabled="!editingImageProfile.model.trim()"
+                  @click="handleSaveImageProfileModel"
                 >
-                  <template #icon>
-                    <RefreshCw v-if="fetchedImageModels.length > 0" :size="16" :class="{ 'spin-icon': isFetchingImageModels }" />
-                    <Download v-else :size="16" :class="{ 'spin-icon': isFetchingImageModels }" />
-                  </template>
-                </n-button>
+                  <Plus :size="13" />
+                  保存当前模型
+                </button>
               </div>
-            </n-form-item>
-          </div>
-          <p class="settings-grid-hint">切换预设仅更新模型名和 Base URL，API Key 不会被覆盖。</p>
-          <div class="settings-grid">
-            <n-form-item label="图片 Base URL">
-              <n-input
-                :value="draftSettings.imageBaseUrl"
-                placeholder="例如：https://api.openai.com/v1"
-                @update:value="(value) => { draftSettings.imageBaseUrl = value }"
-              />
-            </n-form-item>
-            <n-form-item label="图片 API Key">
-              <n-input
-                type="password"
-                show-password-on="click"
-                :value="draftSettings.imageApiKey"
-                placeholder="图片接口专用 API Key"
-                @update:value="(value) => { draftSettings.imageApiKey = value }"
-              />
-            </n-form-item>
-          </div>
-          <div class="model-test-row">
-            <n-button
-              strong
-              secondary
-              :disabled="!draftSettings.imageModel.trim() || !draftSettings.imageBaseUrl.trim() || isTestingImageConnection"
-              @click="handleTestImageConnection"
-            >
-              <template #icon><PlugZap :size="16" /></template>
-              {{ isTestingImageConnection ? '测试中...' : '测试模型连接' }}
-            </n-button>
-            <n-button strong secondary @click="openImageProviderWebsite">
-              <template #icon><ExternalLink :size="16" /></template>
-              打开模型厂商官网
-            </n-button>
-          </div>
+              <div v-if="imageProfileModels().length === 0" class="saved-models-empty">
+                暂无已保存的模型。输入模型名称后点击「保存当前模型」，即可在同一接口下维护多个模型 ID 并快速切换。
+              </div>
+              <div v-else class="saved-models-list">
+                <button
+                  v-for="model in imageProfileModels()"
+                  :key="model"
+                  class="saved-model-chip"
+                  :class="{ 'is-current': model === editingImageProfile.model }"
+                  type="button"
+                  :title="`切换到 ${model}`"
+                  @click="handleApplyImageProfileModel(model)"
+                >
+                  <span class="saved-model-name">{{ model }}</span>
+                  <span
+                    class="saved-model-remove"
+                    title="移除该模型"
+                    @click.stop="handleRemoveImageProfileModel(model)"
+                  >
+                    <Trash2 :size="12" />
+                  </span>
+                </button>
+              </div>
+            </div>
+            <div class="model-test-row">
+              <n-button
+                strong
+                secondary
+                :disabled="!editingImageProfile.model.trim() || !editingImageProfile.baseUrl.trim() || isTestingImageConnection"
+                @click="handleTestImageConnection"
+              >
+                <template #icon><PlugZap :size="16" /></template>
+                {{ isTestingImageConnection ? '测试中...' : '测试模型连接' }}
+              </n-button>
+              <n-button strong secondary @click="openImageProviderWebsite">
+                <template #icon><ExternalLink :size="16" /></template>
+                打开模型厂商官网
+              </n-button>
+            </div>
+          </template>
         </section>
 
         <section id="sec-vision" class="settings-section">
-          <div class="section-title">
+          <div class="section-title section-title--actions">
             <ScanEye :size="18" />
-            <div>
+            <div class="section-title-copy">
               <strong>图片识别配置</strong>
-              <p>识别人物图片并反推为人物卡片（名称、定位、外貌、性格、标签等），使用独立的视觉模型接口。</p>
+              <p>识别人物图片并反推为人物卡片（名称、定位、外貌、性格、标签等），支持多套配置的新建、复制与删除。修改后需点击右下角「保存设置」按钮才生效。</p>
             </div>
-          </div>
-          <div class="settings-grid">
-            <n-form-item label="配置名称">
-              <n-input
-                :value="draftSettings.visionProfileName"
-                placeholder="例如：我的视觉识别接口"
-                @update:value="(value) => { draftSettings.visionProfileName = value }"
-              />
-            </n-form-item>
-            <n-form-item label="模型厂商">
-              <n-select
-                :options="visionProviderOptions"
-                :value="draftSettings.visionProvider"
-                placeholder="选择预设快速填充模型和地址"
-                clearable
-                @update:value="(value) => handleVisionProviderChange(value ?? '')"
-              />
-            </n-form-item>
-          </div>
-          <p class="settings-grid-hint">切换预设仅更新模型名和 Base URL，API Key 不会被覆盖。</p>
-          <div class="settings-grid">
-            <n-form-item label="模型名称">
-              <div class="model-input-row">
-                <n-select
-                  v-if="fetchedVisionModels.length > 0"
-                  :options="visionModelSelectOptions"
-                  :value="draftSettings.visionModel"
-                  filterable
-                  tag
-                  placeholder="选择或输入图片识别模型名称"
-                  @update:value="(value: string) => { draftSettings.visionModel = value }"
-                />
-                <n-input
-                  v-else
-                  :value="draftSettings.visionModel"
-                  placeholder="例如：gpt-4o / glm-4v / qwen-vl-plus"
-                  @update:value="(value) => { draftSettings.visionModel = value }"
-                />
-                <n-button
-                  quaternary
-                  class="model-fetch-btn"
-                  :disabled="isFetchingVisionModels || !draftSettings.visionBaseUrl.trim()"
-                  @click="handleFetchVisionModels"
-                >
-                  <template #icon>
-                    <RefreshCw v-if="fetchedVisionModels.length > 0" :size="16" :class="{ 'spin-icon': isFetchingVisionModels }" />
-                    <Download v-else :size="16" :class="{ 'spin-icon': isFetchingVisionModels }" />
-                  </template>
-                </n-button>
-              </div>
-            </n-form-item>
-            <n-form-item label="API Key">
-              <n-input
-                type="password"
-                show-password-on="click"
-                :value="draftSettings.visionApiKey"
-                placeholder="图片识别接口专用 API Key"
-                @update:value="(value) => { draftSettings.visionApiKey = value }"
-              />
-            </n-form-item>
-          </div>
-          <div class="settings-grid">
-            <n-form-item label="Base URL">
-              <n-input
-                :value="draftSettings.visionBaseUrl"
-                placeholder="例如：https://api.openai.com/v1"
-                @update:value="(value) => { draftSettings.visionBaseUrl = value }"
-              />
-            </n-form-item>
-          </div>
-          <p class="settings-grid-hint">识别接口使用 OpenAI 兼容的 /chat/completions 图片输入格式。</p>
-          <div class="model-test-row">
-            <n-button
-              strong
-              secondary
-              :disabled="!draftSettings.visionModel.trim() || !draftSettings.visionBaseUrl.trim() || isTestingVisionConnection"
-              @click="handleTestVisionConnection"
-            >
-              <template #icon><PlugZap :size="16" /></template>
-              {{ isTestingVisionConnection ? '测试中...' : '测试模型连接' }}
-            </n-button>
-            <n-button
-              strong
-              secondary
-              :disabled="!draftSettings.visionModel.trim() || isBenchmarkingVisionModel"
-              @click="handleBenchmarkVisionModel"
-            >
-              <template #icon><Activity :size="16" /></template>
-              {{ isBenchmarkingVisionModel ? '测试中...' : '测试模型性能' }}
-            </n-button>
-            <n-button
-              strong
-              secondary
-              :disabled="!draftSettings.visionModel.trim()"
-              @click="handleSaveVisionModel"
-            >
-              <template #icon><Plus :size="16" /></template>
-              保存当前模型
-            </n-button>
-            <n-button strong secondary @click="openVisionProviderWebsite">
-              <template #icon><ExternalLink :size="16" /></template>
-              打开模型厂商官网
-            </n-button>
-          </div>
-          <div v-if="(draftSettings.visionSavedModels ?? []).length" class="saved-models-block vision-saved-models">
-            <div class="saved-models-head">
-              <span class="saved-models-title">已保存模型</span>
-              <span class="saved-models-count">{{ draftSettings.visionSavedModels.length }} 个</span>
-            </div>
-            <div class="saved-models-list vision-saved-models-list">
-              <n-tag
-                v-for="model in draftSettings.visionSavedModels"
-                :key="model"
-                size="small"
-                :type="model === draftSettings.visionModel ? 'primary' : 'default'"
-                closable
-                class="saved-model-tag"
-                @click="handleApplyVisionModel(model)"
-                @close="handleRemoveVisionModel(model)"
+            <div class="profile-tab-actions">
+              <button class="profile-action-btn" title="新建图片识别配置" @click="handleAddVisionProfile">
+                <Plus :size="14" />
+              </button>
+              <button class="profile-action-btn" title="复制当前图片识别配置" :disabled="!editingVisionProfile" @click="handleCopyVisionProfile">
+                <Copy :size="14" />
+              </button>
+              <button
+                class="profile-action-btn profile-action-btn--danger"
+                title="删除当前图片识别配置"
+                :disabled="!editingVisionProfile || isEditingActiveVisionProfile || draftSettings.visionProfiles.length <= 1"
+                @click="handleDeleteVisionProfile"
               >
-                {{ model }}
-              </n-tag>
+                <Trash2 :size="14" />
+              </button>
             </div>
           </div>
+
+          <div class="profile-tabs">
+            <div class="profile-tab-list">
+              <button
+                v-for="profile in draftSettings.visionProfiles"
+                :key="profile.id"
+                class="profile-tab"
+                :class="{
+                  active: editingVisionProfileId === profile.id,
+                  'is-active-profile': profile.id === draftSettings.activeVisionProfileId
+                }"
+                @click="selectVisionProfile(profile.id)"
+              >
+                <span class="profile-tab-name">{{ profile.name }}</span>
+                <span v-if="profile.id === draftSettings.activeVisionProfileId" class="profile-tab-badge">当前</span>
+              </button>
+            </div>
+          </div>
+
+          <template v-if="editingVisionProfile">
+            <div class="profile-name-row">
+              <n-form-item label="配置名称">
+                <n-input
+                  :value="editingVisionProfile.name"
+                  placeholder="为这个图片识别配置起个名字"
+                  @update:value="(value) => updateEditingVisionProfile({ name: value })"
+                />
+              </n-form-item>
+            </div>
+            <div class="settings-grid">
+              <n-form-item label="模型厂商">
+                <n-select
+                  :options="visionProviderOptions"
+                  :value="editingVisionProfile.provider"
+                  placeholder="选择预设快速填充模型和地址"
+                  filterable
+                  clearable
+                  @update:value="(value) => handleVisionProviderChange(value ?? '')"
+                />
+              </n-form-item>
+              <n-form-item label="模型名称">
+                <div class="model-input-row">
+                  <n-select
+                    v-if="fetchedVisionModels.length > 0"
+                    :options="visionModelSelectOptions"
+                    :value="editingVisionProfile.model"
+                    filterable
+                    tag
+                    placeholder="选择或输入图片识别模型名称"
+                    @update:value="(value: string) => updateEditingVisionProfile({ model: value })"
+                  />
+                  <n-input
+                    v-else
+                    :value="editingVisionProfile.model"
+                    placeholder="例如：gpt-4o / glm-4v / qwen-vl-plus"
+                    @update:value="(value) => updateEditingVisionProfile({ model: value })"
+                  />
+                  <n-button
+                    quaternary
+                    class="model-fetch-btn"
+                    :disabled="isFetchingVisionModels || !editingVisionProfile.baseUrl.trim()"
+                    @click="handleFetchVisionModels"
+                  >
+                    <template #icon>
+                      <RefreshCw v-if="fetchedVisionModels.length > 0" :size="16" :class="{ 'spin-icon': isFetchingVisionModels }" />
+                      <Download v-else :size="16" :class="{ 'spin-icon': isFetchingVisionModels }" />
+                    </template>
+                  </n-button>
+                </div>
+              </n-form-item>
+            </div>
+            <p class="settings-grid-hint">切换预设仅更新模型名和 Base URL，API Key 不会被覆盖。</p>
+            <div class="settings-grid">
+              <n-form-item label="API Key">
+                <n-input
+                  type="password"
+                  show-password-on="click"
+                  :value="editingVisionProfile.apiKey"
+                  placeholder="图片识别接口专用 API Key"
+                  @update:value="(value) => updateEditingVisionProfile({ apiKey: value })"
+                />
+              </n-form-item>
+              <n-form-item label="Base URL">
+                <n-input
+                  :value="editingVisionProfile.baseUrl"
+                  placeholder="例如：https://api.openai.com/v1"
+                  @update:value="(value) => updateEditingVisionProfile({ baseUrl: value })"
+                />
+              </n-form-item>
+            </div>
+            <p class="settings-grid-hint">识别接口使用 OpenAI 兼容的 /chat/completions 图片输入格式。</p>
+            <div class="saved-models-block">
+              <div class="saved-models-head">
+                <span class="saved-models-title">已保存的模型</span>
+                <span class="saved-models-count">{{ visionProfileModels().length }} 个</span>
+                <button
+                  class="saved-models-add"
+                  type="button"
+                  title="把当前模型保存到列表"
+                  :disabled="!editingVisionProfile.model.trim()"
+                  @click="handleSaveVisionProfileModel"
+                >
+                  <Plus :size="13" />
+                  保存当前模型
+                </button>
+              </div>
+              <div v-if="visionProfileModels().length === 0" class="saved-models-empty">
+                暂无已保存的模型。输入模型名称后点击「保存当前模型」，即可在同一接口下维护多个模型 ID 并快速切换。
+              </div>
+              <div v-else class="saved-models-list">
+                <button
+                  v-for="model in visionProfileModels()"
+                  :key="model"
+                  class="saved-model-chip"
+                  :class="{ 'is-current': model === editingVisionProfile.model }"
+                  type="button"
+                  :title="`切换到 ${model}`"
+                  @click="handleApplyVisionProfileModel(model)"
+                >
+                  <span class="saved-model-name">{{ model }}</span>
+                  <span
+                    class="saved-model-remove"
+                    title="移除该模型"
+                    @click.stop="handleRemoveVisionProfileModel(model)"
+                  >
+                    <Trash2 :size="12" />
+                  </span>
+                </button>
+              </div>
+            </div>
+            <div class="model-test-row">
+              <n-button
+                strong
+                secondary
+                :disabled="!editingVisionProfile.model.trim() || !editingVisionProfile.baseUrl.trim() || isTestingVisionConnection"
+                @click="handleTestVisionConnection"
+              >
+                <template #icon><PlugZap :size="16" /></template>
+                {{ isTestingVisionConnection ? '测试中...' : '测试模型连接' }}
+              </n-button>
+              <n-button
+                strong
+                secondary
+                :disabled="!editingVisionProfile.model.trim() || isBenchmarkingVisionModel"
+                @click="handleBenchmarkVisionModel"
+              >
+                <template #icon><Activity :size="16" /></template>
+                {{ isBenchmarkingVisionModel ? '测试中...' : '测试模型性能' }}
+              </n-button>
+              <n-button strong secondary @click="openVisionProviderWebsite">
+                <template #icon><ExternalLink :size="16" /></template>
+                打开模型厂商官网
+              </n-button>
+            </div>
+          </template>
         </section>
 
         <section id="sec-theme" class="settings-section">
@@ -1393,76 +1756,26 @@ async function saveSettings(): Promise<void> {
             </button>
           </div>
 
-          <div v-if="draftTheme === 'paper'" class="paper-texture-card">
+          <div class="paper-texture-card theme-color-strength-card">
             <div class="paper-texture-card__head">
               <div>
-                <strong>纸质纹理强度</strong>
-                <p>调节纸张纤维的细腻与粗糙程度，配合暖黄色护眼纸张背景，即刻生效。</p>
+                <strong>颜色深浅</strong>
+                <p>调节当前选中主题（{{ activeThemePreset().label }}）的主色深浅，向左更浅、向右更深，即刻生效。</p>
               </div>
             </div>
             <div class="paper-texture-card__control">
-              <span class="paper-texture-card__label">纹理强度</span>
+              <span class="paper-texture-card__label">颜色深浅</span>
               <div class="paper-texture-card__slider">
                 <n-slider
-                  :value="appStore.appSettings.paperTextureStrength ?? 0.5"
-                  :min="0"
-                  :max="1"
+                  :value="themeColorStrength"
+                  :min="0.3"
+                  :max="1.2"
                   :step="0.05"
-                  @update:value="setPaperTextureStrength"
+                  @update:value="setThemeColorStrength"
                 />
                 <span class="paper-texture-card__value">
-                  {{ Math.round((appStore.appSettings.paperTextureStrength ?? 0.5) * 100) }}%
+                  {{ Math.round(themeColorStrength * 100) }}%
                 </span>
-              </div>
-            </div>
-          </div>
-
-          <div class="custom-background-block">
-            <div class="custom-background-head">
-              <div>
-                <strong>自定义背景</strong>
-                <p>上传一张图片作为全局背景，并调节其不透明度。应用到所有页面。</p>
-              </div>
-            </div>
-            <div class="custom-background-preview" :class="{ 'has-image': !!draftSettings.backgroundImage }">
-              <img
-                v-if="draftSettings.backgroundImage"
-                :src="draftSettings.backgroundImage"
-                alt="全局背景预览"
-                class="custom-background-img"
-              />
-              <div v-else class="custom-background-placeholder">
-                <Image :size="20" />
-                <span>未设置背景图</span>
-              </div>
-            </div>
-            <div class="custom-background-actions">
-              <n-button size="small" round strong @click="handlePickGlobalBackground">
-                <template #icon><Image :size="14" /></template>
-                {{ draftSettings.backgroundImage ? '更换背景图' : '上传背景图' }}
-              </n-button>
-              <n-button
-                v-if="draftSettings.backgroundImage"
-                size="small"
-                round
-                type="error"
-                ghost
-                @click="clearGlobalBackground"
-              >
-                移除背景图
-              </n-button>
-            </div>
-            <div class="custom-background-opacity">
-              <span class="opacity-label">背景不透明度</span>
-              <div class="opacity-control">
-                <n-slider
-                  :value="draftSettings.backgroundOpacity"
-                  :min="0"
-                  :max="1"
-                  :step="0.05"
-                  @update:value="setGlobalBackgroundOpacity"
-                />
-                <span class="opacity-value">{{ Math.round((draftSettings.backgroundOpacity || 0) * 100) }}%</span>
               </div>
             </div>
           </div>
@@ -2214,88 +2527,14 @@ async function saveSettings(): Promise<void> {
   box-shadow: 0 0 0 2px var(--arc-bg-surface), 0 0 0 4px color-mix(in srgb, var(--arc-primary) 34%, transparent);
 }
 
-.custom-background-block {
-  margin-top: 18px;
-  border: 1px solid var(--arc-border);
-  border-radius: 10px;
-  padding: 14px 16px;
-  background: var(--arc-bg-surface);
-}
-
-.custom-background-head strong {
-  font-size: 13.5px;
-  font-weight: 650;
-  color: var(--arc-text-primary);
-}
-
-.custom-background-head p {
-  margin: 4px 0 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--arc-text-hint);
-}
-
-.custom-background-preview {
-  position: relative;
-  display: flex;
-  height: 120px;
-  margin-top: 12px;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  border-radius: 8px;
-  border: 1px dashed var(--arc-border-strong);
-  background:
-    linear-gradient(45deg, color-mix(in srgb, var(--arc-border) 45%, transparent) 25%, transparent 25%),
-    linear-gradient(-45deg, color-mix(in srgb, var(--arc-border) 45%, transparent) 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, color-mix(in srgb, var(--arc-border) 45%, transparent) 75%),
-    linear-gradient(-45deg, transparent 75%, color-mix(in srgb, var(--arc-border) 45%, transparent) 75%);
-  background-size: 16px 16px;
-  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
-}
-
-.custom-background-preview.has-image {
-  border-style: solid;
-  border-color: var(--arc-border);
-}
-
-.custom-background-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.custom-background-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  color: var(--arc-text-hint);
-  font-size: 12px;
-}
-
-.custom-background-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-  flex-wrap: wrap;
-}
-
-.custom-background-opacity {
-  margin-top: 14px;
-}
-
-/* 纸质主题纹理强度卡片（选中纸质主题后显示） */
+/* 主题颜色深浅卡片（替换旧的纸质纹理强度卡片） */
 .paper-texture-card {
   margin-top: 18px;
   border: 1px solid color-mix(in srgb, var(--arc-primary) 28%, var(--arc-border));
   border-radius: 10px;
   padding: 14px 16px;
-  background:
-    radial-gradient(ellipse at 90% 0%, rgba(184, 134, 11, 0.06), transparent 60%),
-    var(--arc-bg-surface);
-  box-shadow: 0 2px 10px rgba(92, 74, 40, 0.05);
+  background: var(--arc-bg-surface);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
 }
 
 .paper-texture-card__head strong {
@@ -2334,32 +2573,6 @@ async function saveSettings(): Promise<void> {
 }
 
 .paper-texture-card__value {
-  width: 40px;
-  text-align: right;
-  font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
-  color: var(--arc-text-primary);
-}
-
-.opacity-label {
-  display: block;
-  font-size: 12.5px;
-  font-weight: 620;
-  color: var(--arc-text-secondary);
-  margin-bottom: 6px;
-}
-
-.opacity-control {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.opacity-control :deep(.n-slider) {
-  flex: 1;
-}
-
-.opacity-value {
   width: 40px;
   text-align: right;
   font-size: 12.5px;

@@ -57,45 +57,65 @@ async function fetchModelsOpenAiCompatible(baseUrl: string, apiKey: string, requ
 }
 
 /**
- * 通过 OpenAI 兼容接口获取 GitCode / AtomGit 模型列表，自动分页遍历以取回完整列表。
- * GitCode 的 /models 接口默认只返回单页，需按 page 递增拉取全部模型。
+ * 通过 OpenAI 兼容接口获取 GitCode / AtomGit 模型列表。
+ *
+ * 兼容两类实现：
+ * 1. 一次返回全部模型的 /v1/models（不带分页参数）；
+ * 2. 分页返回的 /v1/models（page / per_page 或 page / page_size）。
+ *
+ * 先请求一次无分页参数的完整列表，再按两种分页参数约定补齐，避免因分页参数
+ * 不被支持（被忽略或直接报错）导致“拿不到某个模型 ID”的问题。
  */
 async function fetchModelsGitCode(baseUrl: string, apiKey: string, requestFetch: typeof fetch): Promise<FetchedModel[]> {
   const candidates = buildModelsUrlCandidates(baseUrl)
   if (candidates.length === 0) throw new Error('Base URL 为空，无法获取模型列表。')
   const seen = new Map<string, FetchedModel>()
+  const pageParamNames = ['per_page', 'page_size']
   let lastError: string | null = null
+
+  const requestPage = async (url: string): Promise<Array<{ id: string; owned_by?: string | null }>> => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), FETCH_MODELS_TIMEOUT_MS)
+    try {
+      const response = await requestFetch(url, {
+        method: 'GET',
+        headers: { ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
+        signal: controller.signal
+      })
+      if (response.status === 404 || response.status === 405) { lastError = `HTTP ${response.status}`; return [] }
+      if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`)
+      const data = (await response.json()) as { data?: Array<{ id: string; owned_by?: string | null }> }
+      return data.data ?? []
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
   for (const base of candidates) {
     try {
-      for (let page = 1; page <= GITCODE_MODELS_MAX_PAGES; page++) {
-        const separator = base.includes('?') ? '&' : '?'
-        const url = `${base}${separator}page=${page}&per_page=${GITCODE_MODELS_PAGE_SIZE}`
-        const controller = new AbortController()
-        const timer = setTimeout(() => controller.abort(), FETCH_MODELS_TIMEOUT_MS)
-        let pageModels: Array<{ id: string; owned_by?: string | null }> = []
-        try {
-          const response = await requestFetch(url, {
-            method: 'GET',
-            headers: { ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
-            signal: controller.signal
-          })
-          if (response.status === 404 || response.status === 405) { lastError = `HTTP ${response.status}`; break }
-          if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`)
-          const data = (await response.json()) as { data?: Array<{ id: string; owned_by?: string | null }> }
-          pageModels = data.data ?? []
-        } finally {
-          clearTimeout(timer)
-        }
-        for (const m of pageModels) {
-          seen.set(m.id, { id: m.id, ownedBy: m.owned_by ?? null })
-        }
-        // 一页未满说明已到末尾；空页也说明已拉取完毕
-        if (pageModels.length === 0 || pageModels.length < GITCODE_MODELS_PAGE_SIZE) break
-      }
-      if (seen.size > 0) {
-        const models = [...seen.values()]
-        models.sort((a, b) => a.id.localeCompare(b.id))
+      // 先尝试不带分页参数的完整列表
+      const plainModels = await requestPage(base)
+      for (const m of plainModels) seen.set(m.id, { id: m.id, ownedBy: m.owned_by ?? null })
+      if (plainModels.length > 0) {
+        const models = [...seen.values()].sort((a, b) => a.id.localeCompare(b.id))
         return models
+      }
+
+      // 完整列表为空时，尝试分页参数（兼容 per_page 与 page_size 两种约定）
+      for (const paramName of pageParamNames) {
+        for (let page = 1; page <= GITCODE_MODELS_MAX_PAGES; page++) {
+          const separator = base.includes('?') ? '&' : '?'
+          const url = `${base}${separator}page=${page}&${paramName}=${GITCODE_MODELS_PAGE_SIZE}`
+          const pageModels = await requestPage(url)
+          if (pageModels.length === 0) break
+          for (const m of pageModels) seen.set(m.id, { id: m.id, ownedBy: m.owned_by ?? null })
+          // 一页未满说明已到末尾
+          if (pageModels.length < GITCODE_MODELS_PAGE_SIZE) break
+        }
+        if (seen.size > 0) {
+          const models = [...seen.values()].sort((a, b) => a.id.localeCompare(b.id))
+          return models
+        }
       }
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') throw new Error('获取模型列表超时，请检查网络或代理设置。')
@@ -103,6 +123,7 @@ async function fetchModelsGitCode(baseUrl: string, apiKey: string, requestFetch:
       throw error
     }
   }
+  if (seen.size > 0) return [...seen.values()].sort((a, b) => a.id.localeCompare(b.id))
   throw new Error(`所有候选端点均返回 ${lastError ?? '错误'}，该供应商可能未开放模型列表接口。`)
 }
 

@@ -9,6 +9,8 @@ import type {
   AiProfile,
   AiRunRecord,
   AppSettings,
+  ImageProfile,
+  VisionProfile,
   ChapterAssistantPromptTemplate,
   ChapterDraft,
   ChapterVersion,
@@ -106,11 +108,6 @@ export function normalizeProjectSummary(project: ProjectSummary): ProjectSummary
     novelWorkflowStages: normalizeNovelWorkflowStages(project.novelWorkflowStages),
     projectSkills: normalizeProjectSkills(project.projectSkills),
     targetPlatform: project.targetPlatform?.trim() || '',
-    backgroundImage: typeof project.backgroundImage === 'string' ? project.backgroundImage : '',
-    backgroundOpacity:
-      typeof project.backgroundOpacity === 'number' && Number.isFinite(project.backgroundOpacity)
-        ? Math.min(1, Math.max(0, project.backgroundOpacity))
-        : 0,
     selectedReferenceWorkIds: Array.isArray(project.selectedReferenceWorkIds)
       ? project.selectedReferenceWorkIds.map((id) => String(id).trim()).filter(Boolean)
       : [],
@@ -247,10 +244,14 @@ export const defaultAppSettings: AppSettings = {
   proxyUrl: '',
   aiProfiles: [],
   activeAiProfileId: '',
+  imageProfiles: [],
+  activeImageProfileId: '',
   imageProvider: '',
   imageModel: '',
   imageApiKey: '',
   imageBaseUrl: '',
+  visionProfiles: [],
+  activeVisionProfileId: '',
   visionProfileName: '',
   visionProvider: '',
   visionModel: '',
@@ -263,10 +264,8 @@ export const defaultAppSettings: AppSettings = {
   uiScale: 1,
   darkMode: false,
   darkModeStyle: 'nord',
-  aiTimeoutSeconds: 180,
-  backgroundImage: '',
-  backgroundOpacity: 0,
-  paperTextureStrength: 0.5
+  themeColorStrength: 1,
+  aiTimeoutSeconds: 180
 }
 
 // 合并用户设置与默认设置，uiScale 限制在 0.75-1.75 的合理范围内
@@ -366,6 +365,31 @@ function normalizeAiProfile(profile: AiProfile): AiProfile {
   }
 }
 
+/** 规范化图片生成 / 图片识别接口配置（与 AI 接口配置保持一致的模型列表处理） */
+function normalizeImageProfile(profile: ImageProfile): ImageProfile {
+  return {
+    id: String(profile.id ?? '').trim(),
+    name: String(profile.name ?? '').trim(),
+    provider: String(profile.provider ?? '').trim(),
+    baseUrl: String(profile.baseUrl ?? '').trim(),
+    apiKey: String(profile.apiKey ?? '').trim(),
+    model: String(profile.model ?? '').trim(),
+    models: normalizeProfileModels(profile.models)
+  }
+}
+
+function normalizeVisionProfile(profile: VisionProfile): VisionProfile {
+  return {
+    id: String(profile.id ?? '').trim(),
+    name: String(profile.name ?? '').trim(),
+    provider: String(profile.provider ?? '').trim(),
+    baseUrl: String(profile.baseUrl ?? '').trim(),
+    apiKey: String(profile.apiKey ?? '').trim(),
+    model: String(profile.model ?? '').trim(),
+    models: normalizeProfileModels(profile.models)
+  }
+}
+
 /** 线协议集合：与 types/app.ts 中 AppSettings.apiProtocol 定义保持一致。 */
 const API_PROTOCOLS = new Set<NonNullable<AppSettings['apiProtocol']>>([
   'auto',
@@ -440,10 +464,18 @@ export function normalizeAppSettings(settings?: Partial<AppSettings> | null): Ap
     topP,
     aiProfiles,
     activeAiProfileId,
+    imageProfiles: Array.isArray(source.imageProfiles)
+      ? source.imageProfiles.map(normalizeImageProfile).filter((profile) => profile.id)
+      : [],
+    activeImageProfileId: sanitizeSettingString(source.activeImageProfileId, ''),
     imageProvider: sanitizeSettingString(source.imageProvider, defaultAppSettings.imageProvider),
     imageModel: sanitizeSettingString(source.imageModel, defaultAppSettings.imageModel),
     imageApiKey: sanitizeSettingString(source.imageApiKey, defaultAppSettings.imageApiKey),
     imageBaseUrl: sanitizeSettingString(source.imageBaseUrl, defaultAppSettings.imageBaseUrl),
+    visionProfiles: Array.isArray(source.visionProfiles)
+      ? source.visionProfiles.map(normalizeVisionProfile).filter((profile) => profile.id)
+      : [],
+    activeVisionProfileId: sanitizeSettingString(source.activeVisionProfileId, ''),
     visionProfileName: sanitizeSettingString(source.visionProfileName, defaultAppSettings.visionProfileName),
     visionProvider: sanitizeSettingString(source.visionProvider, defaultAppSettings.visionProvider),
     visionModel: sanitizeSettingString(source.visionModel, defaultAppSettings.visionModel),
@@ -461,19 +493,14 @@ export function normalizeAppSettings(settings?: Partial<AppSettings> | null): Ap
         : defaultAppSettings.uiScale,
     darkMode: typeof source.darkMode === 'boolean' ? source.darkMode : defaultAppSettings.darkMode,
     darkModeStyle: source.darkModeStyle === 'nord' ? 'nord' : defaultAppSettings.darkModeStyle,
+    themeColorStrength:
+      typeof source.themeColorStrength === 'number' && Number.isFinite(source.themeColorStrength)
+        ? Math.min(1.2, Math.max(0.3, source.themeColorStrength))
+        : defaultAppSettings.themeColorStrength,
     aiTimeoutSeconds:
       typeof source.aiTimeoutSeconds === 'number' && Number.isFinite(source.aiTimeoutSeconds)
         ? Math.min(600, Math.max(30, source.aiTimeoutSeconds))
-        : defaultAppSettings.aiTimeoutSeconds,
-    backgroundImage: typeof source.backgroundImage === 'string' ? source.backgroundImage : '',
-    backgroundOpacity:
-      typeof source.backgroundOpacity === 'number' && Number.isFinite(source.backgroundOpacity)
-        ? Math.min(1, Math.max(0, source.backgroundOpacity))
-        : 0,
-    paperTextureStrength:
-      typeof source.paperTextureStrength === 'number' && Number.isFinite(source.paperTextureStrength)
-        ? Math.min(1, Math.max(0, source.paperTextureStrength))
-        : defaultAppSettings.paperTextureStrength
+        : defaultAppSettings.aiTimeoutSeconds
   }
 }
 
