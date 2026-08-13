@@ -30,6 +30,19 @@ import type { ConversationManager } from './conversation-manager'
 import type { StagedChangesStore } from './staged-changes-store'
 import { formatAiErrorMessage } from '../error-message'
 
+/**
+ * 收敛为纯 JSON 结构，避免不可结构化克隆的对象（Uint8Array / 类实例等）
+ * 跨 IPC 回传渲染进程时抛出 "An object could not be cloned"。
+ */
+function toPlainArgs(input: unknown): Record<string, unknown> {
+  if (input == null) return {}
+  try {
+    return JSON.parse(JSON.stringify(input)) as Record<string, unknown>
+  } catch {
+    return {}
+  }
+}
+
 export interface AgentLoopRunOptions {
   session: AssistantSession
   surface: SurfaceDefinition
@@ -171,13 +184,17 @@ export class AgentLoopCore {
       },
       onToolUseStart: (toolUseId, toolName, args) => {
         flush()
-        toolArgs.set(toolUseId, args)
+        // 收敛成纯 JSON，避免不可结构化克隆的对象（Uint8Array / 类实例等）
+        // 进入 EVENT_STREAM 事件或 turnSend 返回值，触发跨 IPC 的
+        // "An object could not be cloned" 报错。
+        const plainArgs = toPlainArgs(args)
+        toolArgs.set(toolUseId, plainArgs)
         this.dispatch(sessionId, turnId, {
           kind: 'tool_use_start',
           seq: 0,
           toolUseId,
           toolName,
-          args
+          args: plainArgs
         })
       },
       onToolResult: (toolUseId, toolName, content, isError, durationMs) => {

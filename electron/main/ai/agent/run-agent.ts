@@ -39,6 +39,20 @@ type AgentToolCallFinishEvent = AgentToolCallStartEvent & {
   error?: unknown
 }
 
+/**
+ * 把 AI SDK 提供的工具调用参数收敛成纯 JSON 结构，避免某些 provider 在
+ * input 中携带不可结构化克隆的对象（如 Uint8Array / 类实例），跨 IPC 回传
+ * 渲染进程时抛出 "An object could not be cloned"。
+ */
+function toPlainArgs(input: unknown): Record<string, unknown> {
+  if (input == null) return {}
+  try {
+    return JSON.parse(JSON.stringify(input)) as Record<string, unknown>
+  } catch {
+    return {}
+  }
+}
+
 function shouldSynthesizeFinalAnswer(input: {
   disableTools?: boolean
   finalStepText: string
@@ -119,7 +133,7 @@ export async function runAgent(params: RunAgentParams): Promise<RunAgentResult> 
   const onToolCallStart = ({ toolCall }: AgentToolCallStartEvent): void => {
     const id = toolCall.toolCallId
     toolStartTimes.set(id, Date.now())
-    params.handlers.onToolUseStart(id, toolCall.toolName, (toolCall.input as Record<string, unknown>) ?? {})
+    params.handlers.onToolUseStart(id, toolCall.toolName, toPlainArgs(toolCall.input))
   }
   const onToolCallFinish = (event: AgentToolCallFinishEvent): void => {
     const id = event.toolCall.toolCallId
@@ -132,7 +146,7 @@ export async function runAgent(params: RunAgentParams): Promise<RunAgentResult> 
     params.handlers.onToolResult(id, event.toolCall.toolName, content.slice(0, 800), errored, durationMs)
     toolCalls.push({
       tool: event.toolCall.toolName,
-      args: (event.toolCall.input as Record<string, unknown>) ?? {},
+      args: toPlainArgs(event.toolCall.input),
       durationMs,
       status: errored ? 'error' : 'ok',
       ...(errored ? { error: content.slice(0, 240) } : {})
