@@ -256,6 +256,21 @@ function applySlashCommand(idx: number): void {
   const afterCaret = value.slice(caret)
 
   if (entry.kind === 'command') {
+    // 内置模式命令（/plan /spec /goal）：不往输入框里塞冗长模板文本，
+    // 而是以一个「模式芯片」标示当前已选中的模式，用户只需描述自己的任务即可。
+    if (entry.builtin && entry.intentHint.startsWith('global-assistant-v2:')) {
+      const newValue = prefix + afterCaret
+      emit('update:modelValue', newValue)
+      slashOpen.value = false
+      slashQuery.value = ''
+      textareaRef.value.focus()
+      const pos = prefix.length
+      textareaRef.value.setSelectionRange(pos, pos)
+      autosize(textareaRef.value)
+      selectedMode.value = { key: entry.key, label: entry.label, intentHint: entry.intentHint }
+      pendingIntent.value = entry.intentHint
+      return
+    }
     const newValue = prefix + entry.template + afterCaret
     emit('update:modelValue', newValue)
     slashOpen.value = false
@@ -314,14 +329,26 @@ function selectSlash(delta: number): void {
 
 // 选中斜杠命令后要携带的 intentHint，随发送一并上抛
 const pendingIntent = ref<string | null>(null)
+/** 当前已选中的「模式」芯片（/plan /spec /goal），仅作视觉标示，不写入输入框。 */
+const selectedMode = ref<{ key: string; label: string; intentHint: string } | null>(null)
 function flushIntent(): string | undefined {
   const v = pendingIntent.value
   pendingIntent.value = null
   return v ?? undefined
 }
+/** 移除已选中的模式芯片：同时清空意图，发送时回落默认 chat。 */
+function clearMode(): void {
+  selectedMode.value = null
+  if (pendingIntent.value?.startsWith('global-assistant-v2:')) pendingIntent.value = null
+}
 
 function sendWithIntent(): void {
-  emit('send', flushIntent())
+  const intent = flushIntent()
+  // 发送后复位已选中的模式芯片，避免下一轮还残留旧模式标示
+  if (selectedMode.value && intent?.startsWith('global-assistant-v2:')) {
+    selectedMode.value = null
+  }
+  emit('send', intent)
 }
 
 /** 通过原生隐藏 input 选择本地文本文件，作为 IPC 文件对话框的可靠回退 */
@@ -523,6 +550,16 @@ watch(
         <button type="button" title="清除回填内容" aria-label="清除回填内容" @click="emit('clear-restored')">
           <X :size="11" />
         </button>
+      </div>
+      <!-- 已选中的模式芯片（/plan /spec /goal）：标示当前模式，不写入输入框 -->
+      <div v-if="selectedMode" class="mode-chip-bar">
+        <span class="mode-chip">
+          <span class="mode-chip-label">{{ selectedMode.label }}</span>
+          <span class="mode-chip-hint">已选中，输入你的任务后发送</span>
+          <button type="button" class="mode-chip-x" title="移除模式" aria-label="移除模式" @click="clearMode">
+            <X :size="11" />
+          </button>
+        </span>
       </div>
       <!-- 待发送的引用附件芯片（章节/分卷/Skill），可单独叉掉 -->
       <div v-if="props.attachments && props.attachments.length > 0" class="attach-chips">
@@ -1068,6 +1105,44 @@ watch(
 }
 .restored-draft button:hover {
   background: color-mix(in srgb, var(--arc-primary) 12%, transparent);
+}
+.mode-chip-bar {
+  display: flex;
+  align-items: center;
+}
+.mode-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 4px 3px 9px;
+  border: 1px solid color-mix(in srgb, var(--arc-primary) 35%, var(--arc-border));
+  border-radius: 999px;
+  background: var(--arc-primary-soft);
+  color: var(--arc-primary);
+  font-size: 12px;
+}
+.mode-chip-label {
+  font-family: var(--v2-mono);
+  font-weight: 700;
+}
+.mode-chip-hint {
+  color: var(--arc-text-secondary);
+  font-size: 11px;
+}
+.mode-chip-x {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.mode-chip-x:hover {
+  background: color-mix(in srgb, var(--arc-primary) 14%, transparent);
 }
 textarea {
   width: 100%;
