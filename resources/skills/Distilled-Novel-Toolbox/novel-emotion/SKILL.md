@@ -2,7 +2,7 @@
 name: novel-emotion
 description: 网文情绪与代入感设计。当用户需要设计情绪曲线、增强代入感、触发共情、管理读者期待、营造沉浸感时触发。覆盖情绪色彩轮盘、20+共情触发器、期待感管理、先抑后扬阶梯式情绪曲线、感官细节沉浸技术。
 license: MIT
-compatibility: opencode
+compatibility: native
 metadata:
   audience: novel-writers
   version: 1.0.0
@@ -28,6 +28,9 @@ manifest:
 ---
 
 # 情绪与代入感设计
+
+> **CharacterArc 适配说明**：本 skill 用于情绪与代入感设计（`chapter-first-draft` / `chapter-assistant` / `chapter-scene-plan` / `chapter-repair`）。结合章节摘要与既有剧情走向，把情绪曲线设计落到具体场景。
+
 
 ## Purpose
 

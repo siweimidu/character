@@ -2,7 +2,7 @@
 name: novel-compliance
 description: 网文敏感词规避与合规。当用户需要了解平台审核规则、规避敏感词、确保内容合规、了解违规判定标准时触发。覆盖各平台审核规则、敏感词库、违规内容判定、章节审核流程、2026年法规要求。
 license: MIT
-compatibility: opencode
+compatibility: native
 metadata:
   audience: novel-writers
   version: 1.0.0

@@ -4,9 +4,21 @@ version: 1.1.1
 description: |
   网文写作工具集基础设施部署。将 hooks/rules/agents/CLAUDE.md 等基础设施部署到用户项目目录。
   触发方式：/story-setup、「准备写书」「帮我搭一下环境」「配置写作项目」
-metadata:
-  openclaw:
-    source: https://github.com/worldwonderer/oh-story-claudecode
+manifest:
+  category: tool
+  tasks: []
+  stages: []
+  triggers:
+    - 准备写书
+    - 搭环境
+    - 初始化
+    - 配置项目
+  priority: 6
+  required: false
+  enabled: false
+  compatibility: native
+  compatibilityNote: 写作基础设施部署，本项目使用 SQLite 数据模型无需文件系统部署，保留为说明文档。
+source: https://github.com/worldwonderer/oh-story-claudecode
 ---
 
 # story-setup：网文写作工具集基础设施部署

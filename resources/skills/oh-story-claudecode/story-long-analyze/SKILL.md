@@ -7,9 +7,28 @@ description: |
   确认后从 Stage 2 续跑逐章摘要、聚合分析、设定关系、汇总报告，全程产物落盘 `拆文库/{书名}/`。
   触发方式：/story-long-analyze、/长篇拆文、「帮我拆这本书」「拆这本书」「分析黄金三章」
   「深度拆解」「完整拆解」「系统拆解」或提供小说文本文件路径——全部进入同一管道。
-metadata:
-  openclaw:
-    source: https://github.com/worldwonderer/oh-story-claudecode
+manifest:
+  category: analysis
+  tasks:
+    - reference-style-chunk
+    - reference-style-analysis
+    - reference-deep-analyze
+    - chapter-analysis
+  stages:
+    - reference
+  triggers:
+    - 拆文
+    - 拆书
+    - 分析
+    - 黄金三章
+    - 对标
+    - 长篇拆解
+  priority: 8
+  required: false
+  enabled: true
+  compatibility: native
+  compatibilityNote: 长篇爆款拆文方法论，已映射到参考拆解/风格分析/章节分析任务。
+source: https://github.com/worldwonderer/oh-story-claudecode
 ---
 
 # story-long-analyze：长篇网文拆文

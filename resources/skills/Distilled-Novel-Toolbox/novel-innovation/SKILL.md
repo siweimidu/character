@@ -2,7 +2,7 @@
 name: novel-innovation
 description: 网文创新、反套路与融合引擎。当用户需要创新写法、设计反套路、融合多种题材、植入热梗、规避AI写作陷阱时触发。覆盖类型融合相容性矩阵、30+反套路设计、2026网文趋势、AI辅助写作常见陷阱。
 license: MIT
-compatibility: opencode
+compatibility: native
 metadata:
   audience: novel-writers
   version: 1.0.0

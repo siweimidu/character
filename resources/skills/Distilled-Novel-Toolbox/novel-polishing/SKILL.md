@@ -2,7 +2,7 @@
 name: novel-polishing
 description: 网文润色与去AI味。当用户需要润色AI生成的文本、去除AIGC痕迹、改写机械句式、增加口语化表达、注入个人风格时触发。覆盖去AI化核心策略、润色指令模板、风格增强技术、前后对比案例。
 license: MIT
-compatibility: opencode
+compatibility: native
 metadata:
   audience: novel-writers
   version: 1.0.0
@@ -26,6 +26,9 @@ manifest:
 ---
 
 # 润色与去AI味
+
+> **CharacterArc 适配说明**：本 skill 用于润色与去AI味（`chapter-assistant` / `chapter-first-draft` / `chapter-repair`）。目标文本经 `chapter_data_*` 读取，改写结果写回章节；与 `story-deslop`、`humanizer-zh`、`ai-humanize` 方法论互补。
+
 
 ## Purpose
 

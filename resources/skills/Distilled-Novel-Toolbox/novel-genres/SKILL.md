@@ -2,7 +2,7 @@
 name: novel-genres
 description: 网文题材与子类融合引擎。当用户需要选择题材、分析流派、设计混合类型、了解某题材的市场表现与写作模板时触发。覆盖玄幻、仙侠、武侠、都市、言情、历史、军事、科幻、悬疑灵异、游戏电竞、奇幻、轻小说、同人、无限流快穿、末日废土、种田基建、灵气复苏、系统流、重生穿越等全部主流与新兴题材。
 license: MIT
-compatibility: opencode
+compatibility: native
 metadata:
   audience: novel-writers
   version: 1.0.0

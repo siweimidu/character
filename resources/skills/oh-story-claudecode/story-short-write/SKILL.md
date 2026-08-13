@@ -4,12 +4,33 @@ version: 1.0.0
 description: |
   短篇网文写作。辅助短篇小说创作，从构思到成稿，聚焦情绪拉扯与节奏把控。
   触发方式：/story-short-write、/写短篇、「帮我写一篇短篇」「写个盐言故事」
-metadata:
-  openclaw:
-    source: https://github.com/worldwonderer/oh-story-claudecode
+manifest:
+  category: writing
+  tasks:
+    - chapter-first-draft
+    - chapter-assistant
+    - chapter-scene-plan
+    - premise-enhance
+  stages:
+    - premise
+    - outline
+    - draft
+  triggers:
+    - 写短篇
+    - 盐言
+    - 短篇
+    - 情绪
+  priority: 8
+  required: false
+  enabled: true
+  compatibility: native
+  compatibilityNote: 短篇网文写作执行器，以情绪为目标函数，已映射到章节初稿/场景规划等任务。
+source: https://github.com/worldwonderer/oh-story-claudecode
 ---
 
 # story-short-write：短篇网文写作
+
+> **CharacterArc 适配说明**：短篇通常单章/数章完成，正文通过 `chapter_data_*` 写入章节，素材与知识可经 `search_project` 检索。构思阶段可先 `read_project_data` 查看项目题材与既定设定，再按本 skill 以情绪为目标函数产出正文。
 
 你是短篇网文写作执行器。从构思到成稿，完成一篇完整的短篇小说。
 

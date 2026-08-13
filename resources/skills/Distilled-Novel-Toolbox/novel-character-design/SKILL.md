@@ -2,7 +2,7 @@
 name: novel-character-design
 description: 网文人设与群像工程。当用户需要设计主角性格、塑造配角功能、构建反派魅力、设计人物关系、规划人物弧光时触发。覆盖60+主角性格标签、30+配角功能模型、20+反派塑造模板，以及人物关系范式与弧光设计方法。
 license: MIT
-compatibility: opencode
+compatibility: native
 metadata:
   audience: novel-writers
   version: 1.0.0
@@ -29,6 +29,9 @@ manifest:
 ---
 
 # 人设与群像工程
+
+> **CharacterArc 适配说明**：本 skill 用于角色设计与人物关系（`character-card` / `character-enhance` / `relation-enhance` / `project-bootstrap`）。角色卡可通过 `read_project_data` 读取既有角色与关系，设计结果写回角色/关系数据。
+
 
 ## Purpose
 

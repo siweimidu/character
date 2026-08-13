@@ -2,7 +2,7 @@
 name: novel-anti-detection
 description: 网文反AI检测与风控。当用户需要了解AIGC检测原理、降低AI文本被识别率、了解平台AI检测政策、设计混合创作模式时触发。覆盖检测技术原理、绕过策略、平台政策、混合创作模式（AI+人工改写双盲测试仅29%识别率）。
 license: MIT
-compatibility: opencode
+compatibility: native
 metadata:
   audience: novel-writers
   version: 1.0.0

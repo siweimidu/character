@@ -33,6 +33,8 @@ manifest:
 
 # 作者风格指纹提取系统
 
+> **CharacterArc 适配说明**：本 skill 用于参考作品风格分析（`reference-style-analysis` / `reference-deep-analyze` / `style-fingerprint-extract`）。分析目标文本来自知识库/拆书资产，结果可沉淀到知识中心作为风格参考；提取出的风格指纹可配合 `style-fusion` 应用到后续创作。
+
 ## 核心任务
 
 你是顶尖文学风格量化分析师。你将接收一部小说的样本文本（通常3-10万字），提取可复现500+章节的"作者风格指纹"。

@@ -2,7 +2,7 @@
 name: novel-worldbuilding
 description: 网文世界观与设定体系。当用户需要构建力量体系、设计地图与势力格局、建立经济体系、维护设定一致性、铺设悬念与谜题时触发。覆盖修仙/玄幻/科幻/都市等各类世界观模板与设定管理方法。
 license: MIT
-compatibility: opencode
+compatibility: native
 metadata:
   audience: novel-writers
   version: 1.0.0
@@ -29,6 +29,9 @@ manifest:
 ---
 
 # 世界观与设定体系
+
+> **CharacterArc 适配说明**：本 skill 用于世界观与设定（`worldview-entry` / `worldview-enhance` / `project-bootstrap` / `outline-item`）。可先 `read_project_data` 查看既有世界观条目，再把势力/力量体系/规则等设定补充到世界观数据。
+
 
 ## Purpose
 

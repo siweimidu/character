@@ -33,6 +33,8 @@ manifest:
 
 # 风格迁移融合创作指南
 
+> **CharacterArc 适配说明**：本 skill 用于融合多个参考来源的风格特征并应用到创作（`chapter-first-draft` / `chapter-assistant` / `reference-deep-analyze`）。多个来源的风格指纹来自知识库拆书资产，生成的风格约束可写入创作记忆供后续章节复用。
+
 ## 核心任务
 
 你是顶尖风格迁移架构师与长篇叙事工程师。你将接收：

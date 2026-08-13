@@ -6,9 +6,24 @@ description: |
   兼容 story-long-write / story-short-write 后续写作流程。内部复用 story-long-analyze /
   story-short-analyze 的拆解管道，按篇幅自动分流。
   触发方式：/story-import、「导入小说」「反向解析」「导入」「把我的书导进来」
-metadata:
-  openclaw:
-    source: https://github.com/worldwonderer/oh-story-claudecode
+manifest:
+  category: tool
+  tasks:
+    - continuation-import-chunk
+    - continuation-import-aggregate
+  stages:
+    - reference
+  triggers:
+    - 导入
+    - 反向解析
+    - 导进来
+    - 把书导进来
+  priority: 7
+  required: false
+  enabled: true
+  compatibility: native
+  compatibilityNote: 已有小说逆向导入方法论，映射到续写导入任务。
+source: https://github.com/worldwonderer/oh-story-claudecode
 ---
 
 # story-import：逆向导入已有小说

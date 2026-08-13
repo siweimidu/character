@@ -9,9 +9,28 @@ description: |
   触发方式：/story-short-analyze、/短篇拆文、「拆短篇」「拆这篇短文」「短篇拆文」
   「精细拆解短篇」「8000 字短篇拆解」「番茄短篇拆文」「故事会拆解」「盐言故事拆解」
   「分析这篇短篇」——均进入同一管道。
-metadata:
-  openclaw:
-    source: https://github.com/worldwonderer/oh-story-claudecode
+manifest:
+  category: analysis
+  tasks:
+    - reference-style-chunk
+    - reference-style-analysis
+    - chapter-analysis
+    - reference-deep-analyze
+  stages:
+    - reference
+  triggers:
+    - 拆短篇
+    - 短篇拆解
+    - 故事核
+    - 反转
+    - 盐选
+    - 共鸣
+  priority: 8
+  required: false
+  enabled: true
+  compatibility: native
+  compatibilityNote: 短篇爆款拆文方法论，聚焦故事核/情感线/反转设计，已映射到参考拆解/风格分析任务。
+source: https://github.com/worldwonderer/oh-story-claudecode
 ---
 
 # story-short-analyze：短篇网文拆文

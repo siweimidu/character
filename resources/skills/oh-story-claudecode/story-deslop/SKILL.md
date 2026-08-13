@@ -4,12 +4,33 @@ version: 1.0.0
 description: |
   网文去AI味。检测并清除文本中的AI写作痕迹，让文字回归自然、非模板化。
   触发方式：/story-deslop、/去AI味、「去AI味」「这篇太AI了」「网文去AI味」
-metadata:
-  openclaw:
-    source: https://github.com/worldwonderer/oh-story-claudecode
+manifest:
+  category: polish
+  tasks:
+    - chapter-humanize
+    - chapter-assistant
+    - chapter-repair
+    - chapter-first-draft
+  stages:
+    - draft
+  triggers:
+    - 去AI味
+    - 太AI
+    - 去味
+    - 润色
+    - AI痕迹
+    - 降AI
+  priority: 9
+  required: false
+  enabled: true
+  compatibility: native
+  compatibilityNote: 网文去AI味方法论，已映射到章节人性化/润色/修复任务。
+source: https://github.com/worldwonderer/oh-story-claudecode
 ---
 
 # story-deslop：网文去AI味
+
+> **CharacterArc 适配说明**：本 skill 用于「去AI味」任务（`chapter-humanize` / `chapter-assistant`）。改写目标文本通过 `chapter_data_*` 读取正文，改写结果写回对应章节。可与 `humanizer-zh`、`ai-humanize` 的方法论互为补充。
 
 你是网文润色专家。你的任务是把 AI 味浓重的网文文本改写自然，降低模板化、书面腔和过度工整感。
 

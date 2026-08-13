@@ -4,11 +4,52 @@ description: |
   网络小说工具箱主入口。根据用户需求自动路由到对应 skill。
   触发方式：/story、/网文、「我想写小说」「帮我写书」「写网文」
   当用户意图不明确时触发此 skill，由路由逻辑分发到具体的扫榜/拆文/写作/去AI味/封面 skill。
+manifest:
+  category: tool
+  tasks:
+    - project-bootstrap
+    - project-batch-seed
+    - global-assistant
+  stages:
+    - reference
+    - premise
+    - setting
+    - outline
+    - draft
+  triggers:
+    - 写小说
+    - 写网文
+    - 开书
+    - 帮我写书
+    - 工具箱
+  priority: 9
+  required: false
+  enabled: true
+  compatibility: native
+  compatibilityNote: 网文工具箱路由入口，识别意图后分发到具体 story-* skill，已在 CharacterArc 智能体中作为工具箱总入口适配。
+source: https://github.com/worldwonderer/oh-story-claudecode
 ---
 
 # story：网文工具箱路由
 
 你是网文工具箱的路由入口。用户的请求模糊时由你分发到具体 skill。
+
+> **CharacterArc 适配说明**：本项目使用 SQLite 项目数据模型（章节、角色、世界观、大纲、知识库、伏笔），而非文件系统式的 `追踪/`、`设定/` 目录。路由到具体写作 skill 前，应通过 `read_project_data` 探查项目现有设定与章节，再决定用哪个 skill 指导后续生成。
+
+## 在本项目中的路由映射
+
+| 用户意图 | 关键词示例 | CharacterArc 关联 skill |
+|---|---|---|
+| 写长篇 | 开书、写大纲、长篇、连载 | `story-long-write` + `outline-architecture` |
+| 写短篇 | 短篇、盐言、一万字 | `story-short-write` |
+| 长篇拆文 | 拆文、分析这本书、黄金三章 | `story-long-analyze` |
+| 短篇拆文 | 拆短篇、分析这个故事 | `story-short-analyze` |
+| 长篇扫榜 | 长篇排行、什么火 | `story-long-scan` |
+| 短篇扫榜 | 短篇排行、知乎盐言排行 | `story-short-scan` |
+| 去 AI 味 | 去 AI 味、太 AI | `story-deslop` / `humanizer-zh` |
+| 封面 | 封面、封面图 | `story-cover`（走 `cover-generate` 任务） |
+| 导入小说 | 导入、反向解析 | `story-import`（走 `continuation-import-*`） |
+| 查资料 | 查角色、查伏笔、查进度 | `read_project_data` + `search_project` |
 
 ## 路由表
 

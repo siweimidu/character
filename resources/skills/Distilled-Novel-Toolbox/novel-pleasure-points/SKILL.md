@@ -2,7 +2,7 @@
 name: novel-pleasure-points
 description: 网文爽点模式大全与疲劳管理。当用户需要设计爽感、打脸桥段、逆袭高潮、金手指设定、装逼场景，或需要分析爽点心理机制、控制爽点密度、防止读者审美疲劳时触发。覆盖60+种爽点模式及其结构模板。
 license: MIT
-compatibility: opencode
+compatibility: native
 metadata:
   audience: novel-writers
   version: 1.0.0
@@ -31,6 +31,9 @@ manifest:
 ---
 
 # 爽点模式大全与疲劳管理
+
+> **CharacterArc 适配说明**：本 skill 用于爽点设计（`outline-item` / `outline-batch` / `chapter-scene-plan` / `chapter-first-draft`）。设计爽点布局时可结合 `read_project_data` 的大纲与伏笔信息，避免爽点疲劳与节奏拖沓。
+
 
 ## Purpose
 

@@ -2,7 +2,7 @@
 name: novel-language-style
 description: 网文语言与文风光谱。当用户需要调整文风、选择叙述视角、运用修辞技法、植入玩梗、增强画面感时触发。覆盖白描/华丽/口语化/文艺/中二/翻译腔/新媒体风等文风类型，以及特写/慢镜头/蒙太奇/空镜头/长镜头等画面感技术。
 license: MIT
-compatibility: opencode
+compatibility: native
 metadata:
   audience: novel-writers
   version: 1.0.0

@@ -2,13 +2,40 @@
 name: novel-tools
 description: 网文创作工具与生产流程。当用户需要使用AI辅助写作工具、设计提示词模板、规划写作工作流、选择码字工具、制定发布与数据分析策略时触发。覆盖DeepSeek/ChatGPT/Claude/豆包等AI工具应用、提示词工程、工作流设计、发布运营。
 license: MIT
-compatibility: opencode
+compatibility: native
 metadata:
   audience: novel-writers
   version: 1.0.0
+manifest:
+  category: tool
+  tasks:
+    - project-bootstrap
+    - project-batch-seed
+    - global-assistant
+    - workflow-documents
+  stages:
+    - premise
+    - setting
+    - outline
+    - draft
+  triggers:
+    - 工具
+    - 提示词
+    - 工作流
+    - 生产流程
+    - 发布
+    - 运营
+  priority: 5
+  required: false
+  enabled: true
+  compatibility: native
+  compatibilityNote: 网文创作工具与生产流程方法论，映射到项目引导/全局助手/工作流文档任务。
 ---
 
 # 创作工具与生产流程
+
+> **CharacterArc 适配说明**：本项目在「设置 → AI 配置」中管理模型接入，「写作备忘 → 初稿 → 审计」工作流由章节初稿流程管理，灵感/拆书知识库沉淀在知识中心。本 skill 提供的方法论可用于指导 `read_project_data` / 章节数据工具 / 知识检索的具体用法。
+
 
 ## Purpose
 

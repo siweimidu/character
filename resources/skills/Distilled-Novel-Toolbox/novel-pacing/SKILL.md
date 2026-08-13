@@ -2,7 +2,7 @@
 name: novel-pacing
 description: 网文节奏与结构工程。当用户需要设计开篇、规划章节结构、编排高潮、设置断章钩子、控制字数节奏时触发。覆盖黄金三章/黄金一章模板、30+种断章钩子技法、多幕式结构、高潮编排与密度控制。
 license: MIT
-compatibility: opencode
+compatibility: native
 metadata:
   audience: novel-writers
   version: 1.0.0
@@ -34,6 +34,9 @@ manifest:
 ---
 
 # 节奏与结构工程
+
+> **CharacterArc 适配说明**：本 skill 用于大纲与章节节奏设计（`outline-item` / `outline-batch` / `chapter-first-draft` / `chapter-assistant`）。设计大纲节奏时可先 `read_project_data` 查看分卷/大纲节点，再把黄金三章/断章/钩子等方法论落到具体章节。
+
 
 ## Purpose
 

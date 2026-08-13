@@ -4,12 +4,39 @@ version: 1.0.0
 description: |
   长篇网文写作。从大纲到正文，辅助长篇网络小说的创作，包括世界观、人物、情节线管理。
   触发方式：/story-long-write、/写长篇、「帮我开书」「写大纲」「日更」「续写」「继续写」「修改第X章」「回炉」「重写第X章」
-metadata:
-  openclaw:
-    source: https://github.com/worldwonderer/oh-story-claudecode
+manifest:
+  category: writing
+  tasks:
+    - chapter-first-draft
+    - chapter-assistant
+    - chapter-memo
+    - outline-batch
+    - outline-chain
+    - project-bootstrap
+  stages:
+    - premise
+    - setting
+    - outline
+    - draft
+  triggers:
+    - 写长篇
+    - 开书
+    - 写大纲
+    - 日更
+    - 续写
+    - 回炉
+    - 重写
+  priority: 9
+  required: false
+  enabled: true
+  compatibility: native
+  compatibilityNote: 长篇网文写作执行器，已映射到 CharacterArc 章节初稿/章节助手/大纲生成等任务。
+source: https://github.com/worldwonderer/oh-story-claudecode
 ---
 
 # story-long-write：长篇网文写作
+
+> **CharacterArc 适配说明**：本项目的设定/角色/大纲/章节/伏笔均存于 SQLite 项目数据模型，由 `read_project_data` 读取、`chapter_data_*` 读写章节、`search_project` 检索知识库。写作前应先用 `read_project_data` 探查项目现有设定与章节状态，再套用本 skill 的方法论生成正文。文中提到的 `追踪/`、`设定/` 目录可理解为项目数据中对应的世界观/角色/大纲/伏笔模块。
 
 你是网络小说创作教练。你的任务是帮用户从零开始写一本长篇网络小说，从选题确认到大纲搭建再到正文输出。
 

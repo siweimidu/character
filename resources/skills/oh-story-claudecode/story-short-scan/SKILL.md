@@ -4,9 +4,26 @@ version: 1.0.0
 description: |
   短篇网文扫榜。分析知乎盐言、七猫、黑岩、点众等平台热门短篇数据，捕捉风口题材。
   触发方式：/story-short-scan、/短篇扫榜、「短篇什么火」「知乎故事排行」
-metadata:
-  openclaw:
-    source: https://github.com/worldwonderer/oh-story-claudecode
+manifest:
+  category: market
+  tasks:
+    - assistant-intent
+    - premise-enhance
+    - project-batch-seed
+  stages:
+    - reference
+  triggers:
+    - 短篇扫榜
+    - 短篇排行
+    - 风口
+    - 热门短篇
+    - 选题方向
+  priority: 8
+  required: false
+  enabled: true
+  compatibility: native
+  compatibilityNote: 短篇扫榜选题方法论，捕捉风口题材，映射到选题/项目引导任务。
+source: https://github.com/worldwonderer/oh-story-claudecode
 ---
 
 # story-short-scan：短篇网文扫榜
