@@ -1186,7 +1186,9 @@ export const useAppStore = defineStore('app', () => {
     activePanel.value = 'overview'
     lastWorkbenchPanel.value = 'overview'
     syncSelectedChapter(projectId)
-    scheduleSettingsPersist({ flushWorkspace: false })
+    // 记录最近一次打开项目的时间，作为首页“最近编辑”展示依据
+    touchProjectEditedAt(projectId)
+    scheduleSettingsPersist()
   }
 
   /** 打开拆书知识库独立页面（全局库，不依赖项目） */
