@@ -135,6 +135,7 @@ const taskLabelMap: Record<string, string> = {
   'catalog-batch:membership': '组织成员批量生成',
   'catalog-batch:worldview': '世界观批量生成',
   'catalog-batch:inspiration': '灵感批量生成',
+  'catalog-batch:plot-thread': '伏笔线索批量生成',
   'cover-generate': '封面生成',
   'ai-novel-from-reference': '按拆书风格生成作品'
 }
@@ -155,7 +156,9 @@ async function handleFetchModels(): Promise<void> {
 }
 
 function formatTaskLabel(task: string, clientKey?: string): string {
-  return (clientKey && taskLabelMap[clientKey]) || taskLabelMap[task] || task
+  // 多批次批量生成时 clientKey 会带 #N 后缀（如 catalog-batch:plot-thread#2），需剥离后匹配
+  const baseClientKey = clientKey?.split('#')[0]
+  return (baseClientKey && taskLabelMap[baseClientKey]) || taskLabelMap[task] || task
 }
 
 function formatTime(value?: string): string {
