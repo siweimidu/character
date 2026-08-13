@@ -3680,6 +3680,33 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     return fetchFanqieTrends(remotePath, force)
   })
 
+  // ── 番茄风向标：导出榜单数据（TXT / Markdown / JSON） ──
+  ipcMain.handle('characterarc:fanqie-trends-export', async (_event, payload: unknown) => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) return { success: false, canceled: true }
+    const req = (payload && typeof payload === 'object' && 'data' in (payload as Record<string, unknown>)
+      ? payload
+      : { data: payload }) as ExportRequest & { format?: 'txt' | 'md' | 'json' }
+    const format = req.format === 'json' ? 'json' : req.format === 'md' ? 'md' : 'txt'
+    const filters = format === 'json'
+      ? [{ name: 'JSON 文件', extensions: ['json'] }]
+      : format === 'md'
+        ? [{ name: 'Markdown 文档', extensions: ['md'] }]
+        : [{ name: '文本文档', extensions: ['txt'] }]
+    const ext = format === 'json' ? 'json' : format === 'md' ? 'md' : 'txt'
+    const result = await dialog.showSaveDialog(window, {
+      title: req.title ?? '导出榜单数据',
+      defaultPath: req.defaultPath ?? `fanqie-export.${ext}`,
+      filters
+    })
+    if (result.canceled || !result.filePath) return { success: false, canceled: true }
+    const content = format === 'json'
+      ? JSON.stringify(req.data, null, 2)
+      : String(req.data ?? '')
+    await writeFile(result.filePath, content, 'utf-8')
+    return { success: true, canceled: false, filePath: result.filePath }
+  })
+
   // ── AI 助手会话持久化 ──
 
   ipcMain.handle('characterarc:session-list', async (_event, projectId: string) => {

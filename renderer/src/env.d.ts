@@ -972,6 +972,17 @@ declare global {
         mirror?: string
         error?: string
       }>
+      exportFanqieTrends: (payload: {
+        data: unknown
+        title?: string
+        defaultPath?: string
+        format?: 'txt' | 'md' | 'json'
+      }) => Promise<{
+        success: boolean
+        canceled: boolean
+        filePath?: string
+        error?: string
+      }>
       /** Assistant Runtime v2 IPC 通道。参数与返回值见 @shared/assistant-runtime。 */
       assistant: {
         sessionList: (payload: {

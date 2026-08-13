@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronLeft, Copy, ExternalLink, Flame, Lightbulb, RefreshCw } from 'lucide-vue-next'
+import { ChevronLeft, Copy, Download, ExternalLink, Flame, Lightbulb, RefreshCw } from 'lucide-vue-next'
 import { computed, onMounted, ref } from 'vue'
 import { NButton, NInput, NModal, NTag, useMessage } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
@@ -344,6 +344,287 @@ async function copySeed(seed: FanqieSeedCandidate): Promise<void> {
     message.error('复制失败')
   }
 }
+
+// ===== 导出当前榜单数据 =====
+export type FanqieExportFormat = 'txt' | 'md' | 'json'
+
+const exportModalVisible = ref(false)
+const exportLoading = ref(false)
+const exportBoard = ref<string>('')
+const exportPeriod = ref('7')
+const exportFormat = ref<FanqieExportFormat>('txt')
+
+const EXPORT_BOARD_OPTIONS = [
+  { slug: 'female-new', name: '女频新书榜' },
+  { slug: 'male-new', name: '男频新书榜' },
+  { slug: 'female-read', name: '女频阅读榜' },
+  { slug: 'male-read', name: '男频阅读榜' }
+]
+const EXPORT_PERIOD_OPTIONS = [
+  { key: '7', label: '近 7 日' },
+  { key: '14', label: '近 14 日' },
+  { key: '30', label: '近 30 日' },
+  { key: 'all', label: '全部样本' }
+]
+const EXPORT_FORMAT_LABEL: Record<FanqieExportFormat, string> = {
+  txt: 'TXT 文本',
+  md: 'Markdown 文档',
+  json: 'JSON 数据'
+}
+
+function openExportDialog(): void {
+  exportBoard.value = curBoard.value || EXPORT_BOARD_OPTIONS[0].slug
+  exportPeriod.value = curPeriod.value
+  exportFormat.value = 'txt'
+  exportModalVisible.value = true
+}
+
+function fmtScoreRaw(n: unknown): string {
+  const v = Number(n) || 0
+  return fmtScore(v)
+}
+
+async function collectExportData(
+  slug: string,
+  period: string
+): Promise<{ summary: AnyRecord; all: AnyRecord; boardName: string; date: string; periodLabel: string; periodData: AnyRecord }> {
+  const board = EXPORT_BOARD_OPTIONS.find((b) => b.slug === slug)
+  const boardName = board?.name ?? slug
+  const periodLabel = EXPORT_PERIOD_OPTIONS.find((p) => p.key === period)?.label ?? period
+  const [summary, all] = await Promise.all([
+    fetchJson(`data/${slug}/market_summary.json`),
+    fetchJson(`api/${slug}/lastest/all.json`)
+  ])
+  const periodData: AnyRecord = summary?.periods?.[period] ?? {}
+  const date = String(all?.date || summary?.date || '')
+  return { summary, all, boardName, date, periodLabel, periodData }
+}
+
+function buildExportText(d: Awaited<ReturnType<typeof collectExportData>>): string {
+  const lines: string[] = []
+  const p = d.periodData
+  lines.push(`【${d.boardName}】${d.periodLabel} 导出报告`)
+  lines.push(`数据日期：${d.date || '—'}`)
+  lines.push('')
+  lines.push('一、AI 风向速评')
+  lines.push(p.summary || p.fallback_summary || '暂无速评')
+  lines.push('')
+  const genres: AnyRecord[] = p.hot_genres || []
+  if (genres.length) {
+    lines.push('二、热门综合赛道（按阅读增长加权）')
+    genres.forEach((g, i) => {
+      const lead = g.lead_category ? ` | 领涨：${g.lead_category}` : ''
+      lines.push(`${i + 1}. ${g.name}${lead}`)
+      lines.push(`   在读增长：${fmtScoreRaw(g.read_growth_total ?? g.score)}`)
+      const metrics: string[] = []
+      if (g.new_count != null) metrics.push(`新书 +${g.new_count}`)
+      if (g.dropped_count != null) metrics.push(`掉榜 −${g.dropped_count}`)
+      if (g.active_days != null) metrics.push(`活跃 ${g.active_days}d`)
+      if (metrics.length) lines.push(`   ${metrics.join('  ')}`)
+      const cats: string[] = g.categories || []
+      if (cats.length) lines.push(`   分类：${cats.join('、')}`)
+      lines.push('')
+    })
+  }
+  const types: AnyRecord[] = p.hot_types || []
+  if (types.length) {
+    lines.push('三、热门具体分类')
+    types.forEach((t) => {
+      lines.push(`  ${t.name}：+${fmtScoreRaw(t.read_growth_total ?? t.score)}`)
+    })
+    lines.push('')
+  }
+  const themes: AnyRecord[] = p.hot_themes || []
+  if (themes.length) {
+    lines.push('四、高频题材标签')
+    themes.forEach((t) => {
+      lines.push(`  ${t.name}：×${t.count}`)
+    })
+    lines.push('')
+  }
+  const cats = (d.all.categories || []) as AnyRecord[]
+  if (cats.length) {
+    lines.push('五、分类榜单 & 趋势')
+    cats.forEach((c) => {
+      const trend = c.trend || {}
+      lines.push(`【${c.name}】`)
+      const summaryHtml = String(trend.summary || '暂无该分类速评').replace(/<[^>]+>/g, '').replace(/\*\*/g, '')
+      lines.push(summaryHtml)
+      lines.push('')
+      const books: AnyRecord[] = (c.books || []).slice(0, 15)
+      if (books.length) {
+        lines.push('排名前十书目：')
+        books.forEach((b, i) => {
+          const newTag = (trend.new_books || []).includes(b.title) ? ' [NEW]' : ''
+          lines.push(`  ${i + 1}. ${b.title}${newTag}（${b.author || ''} · ${b.reads || ''} 在读）`)
+        })
+      }
+      if ((trend.top_risers || []).length) {
+        lines.push('排名上升：')
+        ;(trend.top_risers as AnyRecord[]).forEach((x) => lines.push(`  ${x.title} ${x.change}`))
+      }
+      if ((trend.top_fallers || []).length) {
+        lines.push('排名下降：')
+        ;(trend.top_fallers as AnyRecord[]).forEach((x) => lines.push(`  ${x.title} ${x.change}`))
+      }
+      if ((trend.reads_growth || []).length) {
+        lines.push('阅读增长：')
+        ;(trend.reads_growth as AnyRecord[]).forEach((x) => lines.push(`  ${x.title} ${x.growth}`))
+      }
+      if ((trend.new_books || []).length) {
+        lines.push('新上榜：')
+        ;(trend.new_books as string[]).forEach((t) => lines.push(`  ${t}`))
+      }
+      lines.push('')
+    })
+  }
+  return lines.join('\n')
+}
+
+function buildExportMarkdown(d: Awaited<ReturnType<typeof collectExportData>>): string {
+  const out: string[] = []
+  const p = d.periodData
+  out.push(`# ${d.boardName} · ${d.periodLabel}导出报告`)
+  out.push('')
+  out.push(`> 数据日期：${d.date || '—'}`)
+  out.push('')
+  out.push('## AI 风向速评')
+  out.push(p.summary || p.fallback_summary || '暂无速评')
+  out.push('')
+  const genres: AnyRecord[] = p.hot_genres || []
+  if (genres.length) {
+    out.push('## 热门综合赛道')
+    out.push('')
+    out.push('| 排名 | 赛道 | 领涨 | 在读增长 | 新书 | 掉榜 | 活跃 |')
+    out.push('| --- | --- | --- | --- | --- | --- | --- |')
+    genres.forEach((g, i) => {
+      out.push(`| ${i + 1} | ${g.name} | ${g.lead_category || '—'} | ${fmtScoreRaw(g.read_growth_total ?? g.score)} | ${g.new_count != null ? '+' + g.new_count : '—'} | ${g.dropped_count != null ? '−' + g.dropped_count : '—'} | ${g.active_days != null ? g.active_days + 'd' : '—'} |`)
+    })
+    out.push('')
+  }
+  const types: AnyRecord[] = p.hot_types || []
+  if (types.length) {
+    out.push('## 热门具体分类')
+    out.push('')
+    out.push('| 分类 | 在读增长 |')
+    out.push('| --- | --- |')
+    types.forEach((t) => out.push(`| ${t.name} | +${fmtScoreRaw(t.read_growth_total ?? t.score)} |`))
+    out.push('')
+  }
+  const themes: AnyRecord[] = p.hot_themes || []
+  if (themes.length) {
+    out.push('## 高频题材标签')
+    out.push('')
+    themes.forEach((t) => out.push(`- **${t.name}** ×${t.count}`))
+    out.push('')
+  }
+  const cats = (d.all.categories || []) as AnyRecord[]
+  if (cats.length) {
+    out.push('## 分类榜单 & 趋势')
+    cats.forEach((c) => {
+      const trend = c.trend || {}
+      out.push(`### ${c.name}`)
+      out.push('')
+      const summaryPlain = String(trend.summary || '暂无该分类速评').replace(/<[^>]+>/g, '')
+      out.push(summaryPlain)
+      out.push('')
+      const books: AnyRecord[] = (c.books || []).slice(0, 15)
+      if (books.length) {
+        out.push('**排名靠前书目：**')
+        books.forEach((b, i) => {
+          const newTag = (trend.new_books || []).includes(b.title) ? ' 🆕' : ''
+          out.push(`${i + 1}. ${b.title}${newTag}（${b.author || ''} · ${b.reads || ''} 在读）`)
+        })
+        out.push('')
+      }
+      if ((trend.top_risers || []).length) {
+        out.push('**排名上升：**')
+        ;(trend.top_risers as AnyRecord[]).forEach((x) => out.push(`- ${x.title}（${x.change}）`))
+        out.push('')
+      }
+      if ((trend.top_fallers || []).length) {
+        out.push('**排名下降：**')
+        ;(trend.top_fallers as AnyRecord[]).forEach((x) => out.push(`- ${x.title}（${x.change}）`))
+        out.push('')
+      }
+      if ((trend.reads_growth || []).length) {
+        out.push('**阅读增长：**')
+        ;(trend.reads_growth as AnyRecord[]).forEach((x) => out.push(`- ${x.title}（${x.growth}）`))
+        out.push('')
+      }
+      if ((trend.new_books || []).length) {
+        out.push('**新上榜：**')
+        ;(trend.new_books as string[]).forEach((t) => out.push(`- ${t}`))
+        out.push('')
+      }
+    })
+  }
+  return out.join('\n')
+}
+
+function buildExportJson(d: Awaited<ReturnType<typeof collectExportData>>): unknown {
+  return {
+    board: {
+      slug: exportBoard.value,
+      name: d.boardName
+    },
+    period: exportPeriod.value,
+    period_label: d.periodLabel,
+    date: d.date,
+    summary: d.periodData.summary || d.periodData.fallback_summary || '',
+    summary_source: d.periodData.source || '',
+    hot_genres: d.periodData.hot_genres || [],
+    hot_types: d.periodData.hot_types || [],
+    hot_themes: d.periodData.hot_themes || [],
+    categories: (d.all.categories || []).map((c: AnyRecord) => ({
+      name: c.name,
+      trend: c.trend || {},
+      books: (c.books || []).slice(0, 15)
+    }))
+  }
+}
+
+function buildExportContent(format: FanqieExportFormat, d: Awaited<ReturnType<typeof collectExportData>>): string | unknown {
+  if (format === 'json') return buildExportJson(d)
+  if (format === 'md') return buildExportMarkdown(d)
+  return buildExportText(d)
+}
+
+function sanitizeFileName(name: string): string {
+  return String(name).replace(/[\\/:*?"<>|\s]+/g, '-').replace(/-+/g, '-')
+}
+
+async function handleExport(): Promise<void> {
+  if (exportLoading.value) return
+  const slug = exportBoard.value
+  const boardName = EXPORT_BOARD_OPTIONS.find((b) => b.slug === slug)?.name || slug
+  const format = exportFormat.value
+  exportLoading.value = true
+  try {
+    const d = await collectExportData(slug, exportPeriod.value)
+    const content = buildExportContent(format, d)
+    const datePart = (d.date || new Date().toISOString().slice(0, 10)).replace(/-/g, '')
+    const defaultPath = `${datePart}-${sanitizeFileName(boardName)}.${format === 'json' ? 'json' : format === 'md' ? 'md' : 'txt'}`
+    const res = await window.characterArc.exportFanqieTrends({
+      data: content,
+      title: `导出「${boardName}」数据`,
+      defaultPath,
+      format
+    })
+    exportLoading.value = false
+    if (res.success) {
+      message.success('数据已导出')
+      exportModalVisible.value = false
+    } else if (res.canceled) {
+      // 用户取消，无需提示
+    } else {
+      message.error(res.error || '导出失败')
+    }
+  } catch (e) {
+    exportLoading.value = false
+    message.error(e instanceof Error ? e.message : '导出失败，请重试')
+  }
+}
 </script>
 
 <template>
@@ -362,6 +643,9 @@ async function copySeed(seed: FanqieSeedCandidate): Promise<void> {
         <div class="meta">
           <div class="date num">{{ dataDate }}</div>
           <div v-if="dataPrev" class="prev">{{ dataPrev }}</div>
+          <button class="export-btn" :disabled="loading || exportLoading" @click="openExportDialog">
+            <Download :size="13" /> 导出当前数据
+          </button>
           <button class="seed-btn" :disabled="loading || seedLoading" @click="openSeedGenerator">
             <Lightbulb :size="13" /> {{ seedLoading ? '生成中…' : 'AI 生成新书选题' }}
           </button>
@@ -624,6 +908,66 @@ async function copySeed(seed: FanqieSeedCandidate): Promise<void> {
       <div class="seed-modal-footer">
         <n-button @click="seedOptionsVisible = false">关闭</n-button>
         <n-button type="primary" @click="openSeedGenerator">换一批</n-button>
+      </div>
+    </n-modal>
+
+    <!-- 导出当前榜单数据 -->
+    <n-modal
+      v-model:show="exportModalVisible"
+      preset="card"
+      title="导出榜单数据"
+      style="width: 560px"
+      :mask-closable="false"
+    >
+      <p class="export-hint">
+        选择要导出的榜单、时间范围与文件格式，文件名将自动以数据日期 + 榜单名命名。
+      </p>
+
+      <div class="export-group">
+        <div class="export-label">选择榜单</div>
+        <div class="export-options export-options-grid">
+          <button
+            v-for="b in EXPORT_BOARD_OPTIONS"
+            :key="b.slug"
+            class="export-option"
+            :class="{ active: exportBoard === b.slug }"
+            @click="exportBoard = b.slug"
+          >{{ b.name }}</button>
+        </div>
+      </div>
+
+      <div class="export-group">
+        <div class="export-label">选择时间范围</div>
+        <div class="export-options">
+          <button
+            v-for="p in EXPORT_PERIOD_OPTIONS"
+            :key="p.key"
+            class="export-option"
+            :class="{ active: exportPeriod === p.key }"
+            @click="exportPeriod = p.key"
+          >{{ p.label }}</button>
+        </div>
+      </div>
+
+      <div class="export-group">
+        <div class="export-label">选择导出格式</div>
+        <div class="export-options">
+          <button
+            v-for="(label, key) in EXPORT_FORMAT_LABEL"
+            :key="key"
+            class="export-option export-format"
+            :class="{ active: exportFormat === key }"
+            @click="exportFormat = key as FanqieExportFormat"
+          >{{ label }}</button>
+        </div>
+      </div>
+
+      <div class="seed-modal-footer">
+        <n-button @click="exportModalVisible = false">取消</n-button>
+        <n-button type="primary" :loading="exportLoading" :disabled="exportLoading" @click="handleExport">
+          <template #icon><Download :size="14" /></template>
+          开始导出
+        </n-button>
       </div>
     </n-modal>
   </section>
@@ -1085,6 +1429,25 @@ async function copySeed(seed: FanqieSeedCandidate): Promise<void> {
 @keyframes fanqie-spin { to { transform: rotate(360deg); } }
 .state .err-detail { font-size: 12px; margin-top: 10px; color: var(--arc-danger, #dc2626); }
 
+.export-btn {
+  margin-top: 8px;
+  margin-right: 6px;
+  border: 1px solid var(--arc-border-strong);
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  border-radius: var(--arc-radius-md);
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.18s, color 0.18s, opacity 0.18s;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.export-btn:hover:not(:disabled) { border-color: var(--arc-primary); color: var(--arc-primary); }
+.export-btn:disabled { opacity: 0.5; cursor: default; }
+
 .seed-btn {
   margin-top: 8px;
   margin-right: 6px;
@@ -1117,6 +1480,49 @@ async function copySeed(seed: FanqieSeedCandidate): Promise<void> {
   margin-top: 16px;
 }
 .seed-options-modal { width: min(760px, 92vw); }
+.export-hint {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--arc-text-hint);
+}
+.export-group { margin-bottom: 16px; }
+.export-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--arc-text-secondary);
+  margin-bottom: 8px;
+}
+.export-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.export-options-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.export-option {
+  border: 1px solid var(--arc-border);
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  padding: 7px 12px;
+  border-radius: var(--arc-radius-md);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.16s;
+  text-align: center;
+}
+.export-option:hover { border-color: var(--arc-border-strong); color: var(--arc-text-primary); }
+.export-option.active {
+  background: var(--arc-primary-soft);
+  border-color: var(--arc-primary);
+  color: var(--arc-primary);
+  font-weight: 700;
+}
+.export-format { flex: 1; min-width: 120px; }
 .seed-list {
   display: flex;
   flex-direction: column;

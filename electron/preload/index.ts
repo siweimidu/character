@@ -296,6 +296,9 @@ contextBridge.exposeInMainWorld('characterArc', {
   /** 抓取番茄风向标榜单数据（主进程带本地缓存，force=true 时强制刷新） */
   fetchFanqieTrends: (path: string, force = false) =>
     ipcRenderer.invoke('characterarc:fanqie-trends-fetch', { path, force }),
+  /** 导出番茄风向标榜单数据（TXT / Markdown / JSON） */
+  exportFanqieTrends: (payload: unknown) =>
+    ipcRenderer.invoke('characterarc:fanqie-trends-export', toIpcPayload(payload)),
 
   // ── Assistant Runtime v2 ──
   /**
