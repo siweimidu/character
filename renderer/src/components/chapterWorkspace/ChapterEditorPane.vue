@@ -360,11 +360,17 @@ async function handleCtxAction(id: string): Promise<void> {
   }
 }
 
-// 获取当前章节正文的纯文本，供预览缩略图绘制
+// 获取当前章节正文的纯文本，供预览缩略图绘制。
+// 必须与编辑器渲染的行结构对齐：ProseMirror 的 `doc.textContent` 会在
+// 段落（块级节点）之间直接拼接、不插入换行符，导致长文被压成「一行」，
+// 缩略图比例崩溃、整段文字被裁剪而看起来「一片空白」。
+// 这里用 `textBetween(0, size, '\n')` 强制以换行分隔块级节点，保证
+// 每段一行，与正文实际折行结构一致。
 function getEditorText(): string {
   const editor = tiptapEditor.value
   if (editor) {
-    return editor.state.doc.textContent
+    const doc = editor.state.doc
+    return doc.textBetween(0, doc.content.size, '\n')
   }
   return currentChapter.value?.content
     ? currentChapter.value.content.replace(/<[^>]*>/g, ' ')
@@ -378,7 +384,7 @@ function getEditorSelection(): { from: number; to: number } | null {
   const { from, to } = editor.state.selection
   if (from === to) return null
   const doc = editor.state.doc
-  // textBetween 使用 \n 作为块级分隔符，与 textContent 的换行规则一致，可对齐坐标
+  // 与 getEditorText 保持一致：以 \n 作为块级分隔符，保证选区坐标与正文行结构对齐
   return {
     from: doc.textBetween(0, from, '\n').length,
     to: doc.textBetween(0, to, '\n').length
