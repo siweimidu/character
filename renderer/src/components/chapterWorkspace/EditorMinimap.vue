@@ -11,17 +11,26 @@ import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
  *   - src/vs/editor/browser/viewParts/minimap/minimapCharSheet.ts
  *   - src/vs/base/common/strings.ts（isFullWidthCharacter）
  *
- * 核心思路（与 VSCode 一致）：
- *   1. 不使用 Canvas 极小字号 fillText 直接绘制（小字号下中文字形会糊成一片甚至丢失），
- *      而是像 VSCode 一样「预采样字符位图」：ASCII 直接用内置 5×7 位图字体，
- *      非 ASCII（中文等）先画到可读分辨率的离屏 canvas，再降采样成 2×5 字符单元；
- *   2. 降采样采用 VSCode 的「加权平均 + 亮度增强」算法（_downsampleChar/_downsample），
- *      把采样结果中最亮的像素拉伸到 255，保证极小的字形依然清晰、不会糊成半透明残影；
- *   3. 逐像素写入 ImageData 后一次性 putImageData 上屏，颜色使用「直通 alpha」
- *      （RGB = 前景色，A = 字形强度），避免“颜色×强度 又叠加 alpha”造成的双重变暗；
- *   4. 全角字符（中文等）按 VSCode 规则占 2 个字符单元宽度，Tab/空格只推进不绘制；
- *   5. 每行固定行高，内容总高度 = 行数 × 行高映射到画布高度，保留文档空行结构；
- *   6. 视口框、选区高亮、点击/拖动跳转、滚轮联动、rAF 节流、主题跟随均保留。
+ * 为什么之前的版本「正文文字不显示」？
+ *   旧实现把全部内容行等比压缩进缩略图一屏：
+ *     scale = cssH / (行数 × 行高)
+ *   当正文行数很多时，行间纵向间距被压到远小于字符单元高度（5px），
+ *   所有行互相覆盖、糊成一团，最终整片文字不可辨认（表现为「一片空白/不显示文字」）。
+ *
+ * VSCode 的解决思路（本实现照此重构）：
+ *   1. 每行使用「固定行高」MINIMAP_LINE_HEIGHT，绝不随内容总行数缩放，
+ *      字符单元（2×5）恰好落在行高内，行与行互不重叠，文字始终清晰可读；
+ *   2. 缩略图高度 = 编辑区可视高度，行数超出时可容纳行数时，采用 VSCode 的
+ *      「行采样」：按比例挑选具有代表性的行（_downsample 思路），每行仍占
+ *      固定行高，从而既覆盖整章概览、又不会挤压重叠；
+ *   3. 视口框 / 选区高亮按「采样后行空间」换算，滚动联动、点击拖动跳转保留。
+ *
+ * 字符位图渲染仍沿用 VSCode 思路：
+ *   - 不使用极小字号 fillText 直接绘制，而是把字符先以可读分辨率采样，
+ *     再用 VSCode 的加权平均 + 亮度增强降采样成 2×5 字符单元，逐像素写入
+ *     ImageData 后一次性 putImageData；
+ *   - 全角字符（中文等）占 2 个字符单元宽度；
+ *   - 颜色使用「直通 alpha」（RGB = 前景色，A = 字形强度），避免双重变暗。
  */
 
 /** 选中文本在正文纯文本中的字符区间（含头不含尾） */
@@ -50,13 +59,21 @@ const canvasRef = ref<HTMLCanvasElement | null>(null)
 // ── 尺寸常量（CSS px）──────────────────────────────────────────
 const MINIMAP_WIDTH = 112
 const MINIMAP_PADDING = 8
-/** 每行在缩略图中的固定高度（含字高 + 行间距） */
-const LINE_HEIGHT_PX = 6
-/** 单个字符单元尺寸（CSS px）：2×5，对应 VSCode 的 1×2 基础单元放大 2 倍 */
+/**
+ * 缩略图中每行的固定高度（含字高 + 行间距）。
+ * 与 VSCode `minimapLineHeight` 对应：行高固定、不随内容行数缩放，
+ * 这是避免行重叠、保证文字可读的关键。
+ */
+const MINIMAP_LINE_HEIGHT = 6
+/** 单个字符单元尺寸（CSS px）：2×5 */
 const CHAR_W_CSS = 2
 const CHAR_H_CSS = 5
+/** 字符单元在行内的垂直留白（VSCode `innerLinePadding`） */
+const INNER_LINE_PADDING = Math.floor((MINIMAP_LINE_HEIGHT - CHAR_H_CSS) / 2)
 /** 非 ASCII 字符采样时的可读分辨率，随后降采样为字符单元 */
 const CHAR_SAMPLE_SRC = 16
+/** 每行之间的最小可见间距（CSS px），用于内容总高的兜底下限 */
+const MIN_CONTENT_HEIGHT = MINIMAP_LINE_HEIGHT
 
 let rafId = 0
 let dragging = false
@@ -79,7 +96,7 @@ let sampleCtx: CanvasRenderingContext2D | null = null
  * 每字节代表一列，bit0 为顶部行。
  */
 const ASCII_FONT_HEX =
-  '000000000000005f00000007000700147f147f14242a7f2a12231308646236495620500008070300001c2241000041221c002a1c7f1c2a08083e080800807030000808080808000060600020100804023e5149453e00427f400072494949462141494d331814127f1027454545393c4a49493141211109073649494936464949291e0000140000004034000000081422411414141414004122140802015909063e415d594e7c1211127c7f494949363e414141227f4141413e7f494949417f090909013e414151737f0808087f00417f41002040413f017f081422417f404040407f021c027f7f0408107f3e4141413e7f090909063e4151215e7f09192946264949493203017f01033f4040403f1f2040201f3f4038403f631408146303047804036159494d43007f4141410204081020004141417f04020102044040404040000307080020545478407f284444383844444428384444287f385454541800087e090218a4a49c787f0804047800447d40002040403d007f1028440000417f40007c047804787c080404783844444438fc1824241818242418fc7c08040408485454542404043f44243c4040207c1c2040201c3c4030403c44281028444c9090907c4464544c440008364100000077000000413608000201020402'
+  '000000000000005f00000007000700147f147f14242a7f2a12231308646236495620500008070300001c2241000041221c002a1c7f1c2a08083e080800807030000808080800006060002020100804023e5149453e00427f400072494949462141494d331814127f1027454545393c4a49493141211109073649494936464949291e0000140000004034000000081422411414141414004122140802015909063e415d594e7c1211127c7f494949363e414141227f4141413e7f494949417f090909013e414151737f0808087f00417f41002040413f017f081422417f404040407f021c027f7f0408107f3e4141413e7f090909063e4151215e7f09192946264949493203017f01033f4040403f1f2040201f3f4038403f631408146303047804036159494d43007f4141410204081020004141417f04020102044040404040000307080020545478407f284444383844444428384444287f385454541800087e090218a4a49c787f0804047800447d40002040403d007f1028440000417f40007c047804787c080404783844444438fc1824241818242418fc7c08040408485454542404043f44243c4040207c1c2040201c3c4030403c44281028444c9090907c4464544c440008364100000077000000413608000201020402'
 
 let asciiFontBytes: Uint8Array | null = null
 function getAsciiFontBytes(): Uint8Array | null {
@@ -197,7 +214,7 @@ function downsampleChar(
           value += src[row + Math.floor(sx)] * weight
         }
       }
-      const final = value / samples
+      const final = samples > 0 ? value / samples : 0
       out[y * charW + x] = final
       if (final > brightest) brightest = final
     }
@@ -273,22 +290,73 @@ function getCharBitmap(ch: string, charW: number, charH: number): Uint8ClampedAr
   return out
 }
 
-function getContentLines(): string[] {
+/** 获取正文块数组：按换行拆分为「一行」。空内容给一个占位行。 */
+function getContentBlocks(): string[] {
   const text = (props.getText() || '').replace(/\r\n/g, '\n')
-  // 空内容时给一个占位行，避免 canvas 完全空白
-  if (!text.trim()) return [' ']
+  if (!text.trim()) return ['']
   return text.split('\n')
 }
 
-/** 计算每行在纯文本中的起始字符偏移，便于把选区映射到行列。 */
-function lineStartOffsets(lines: string[]): number[] {
-  const offsets: number[] = []
-  let acc = 0
-  for (let i = 0; i < lines.length; i++) {
-    offsets.push(acc)
-    acc += lines[i].length + 1 // +1 表示换行符
+/**
+ * 把「全部正文块」映射为「缩略图显示行」。
+ * 采用 VSCode 的固定行高 + 行采样模型：
+ *   - 每个显示行占据固定 MINIMAP_LINE_HEIGHT 高度，互不重叠；
+ *   - 当正文块数不超过可容纳行数时，逐块映射（displayBlock[i] = i）；
+ *   - 超过时按比例采样出 fittingLines 个代表性块，保证整章概览完整呈现。
+ */
+function computeSampledLayout(
+  blocks: string[],
+  fittingLines: number
+): { displayBlocks: string[]; sourceToDisplay: Map<number, number> } {
+  const totalBlocks = blocks.length
+  const displayCount = Math.max(1, Math.min(totalBlocks, fittingLines))
+  const displayBlocks: string[] = new Array(displayCount)
+  const sourceToDisplay = new Map<number, number>()
+
+  if (totalBlocks <= displayCount) {
+    for (let i = 0; i < totalBlocks; i++) {
+      displayBlocks[i] = blocks[i]
+      sourceToDisplay.set(i, i)
+    }
+    for (let i = totalBlocks; i < displayCount; i++) {
+      displayBlocks[i] = ''
+    }
+    return { displayBlocks, sourceToDisplay }
   }
-  return offsets
+
+  // 采样：把 totalBlocks 压缩到 displayCount 个代表性块（含首尾）。
+  if (displayCount === 1) {
+    displayBlocks[0] = blocks[0]
+    sourceToDisplay.set(0, 0)
+  } else {
+    for (let d = 0; d < displayCount; d++) {
+      const src = Math.round((d * (totalBlocks - 1)) / (displayCount - 1))
+      displayBlocks[d] = blocks[src]
+      sourceToDisplay.set(src, d)
+    }
+  }
+  return { displayBlocks, sourceToDisplay }
+}
+
+/** 计算编辑器滚动到缩略图显示行的换算。 */
+function computeViewport(
+  el: HTMLDivElement,
+  contentHeight: number
+): { boxTop: number; boxHeight: number; scrollable: boolean } {
+  const vp = el.clientHeight
+  const total = el.scrollHeight
+  if (total <= 0) {
+    return { boxTop: 0, boxHeight: Math.min(contentHeight, vp), scrollable: false }
+  }
+  const visibleFraction = Math.min(1, vp / total)
+  const boxHeight = Math.max(MIN_CONTENT_HEIGHT, Math.min(contentHeight, visibleFraction * contentHeight))
+  let boxTop = 0
+  if (contentHeight > boxHeight) {
+    const range = Math.max(1, total - vp)
+    const frac = Math.min(1, Math.max(0, el.scrollTop / range))
+    boxTop = frac * (contentHeight - boxHeight)
+  }
+  return { boxTop, boxHeight, scrollable: contentHeight > boxHeight }
 }
 
 /** 把某行内字符偏移换算成缩略图 x 坐标（考虑全角字符占 2 格）。 */
@@ -301,40 +369,50 @@ function charOffsetToX(line: string, charOffset: number): number {
   return cells * CHAR_W_CSS
 }
 
-/**
- * 把选区 [from, to)（纯文本字符区间）映射到缩略图坐标系，返回高亮矩形区域。
- */
+/** 把选区 [from, to)（全文本字符区间）映射到显示行坐标。 */
 function computeSelectionRect(
-  lines: string[],
+  blocks: string[],
+  sourceToDisplay: Map<number, number>,
   sel: MinimapSelection | null | undefined,
   cssW: number,
   cssH: number
 ): { x: number; y: number; w: number; h: number } | null {
   if (!sel || sel.to <= sel.from) return null
-  const totalLines = lines.length
-  if (!totalLines) return null
+  if (blocks.length === 0) return null
 
-  const offsets = lineStartOffsets(lines)
-  const contentTotalH = Math.max(1, totalLines) * LINE_HEIGHT_PX
-  const scale = (cssH - 4) / contentTotalH
-  const topPad = 2
-
-  let startLine = totalLines - 1
-  let endLine = 0
-  for (let i = 0; i < totalLines; i++) {
-    const lineStart = offsets[i]
-    const lineEnd = lineStart + lines[i].length
-    if (sel.from >= lineStart && sel.from <= lineEnd) startLine = Math.min(startLine, i)
-    if (sel.to >= lineStart && sel.to <= lineEnd) endLine = Math.max(endLine, i)
+  // 计算每个块的起始字符偏移（与 getEditorText 的 \n 分隔一致）
+  const offsets: number[] = []
+  let acc = 0
+  for (let i = 0; i < blocks.length; i++) {
+    offsets.push(acc)
+    acc += blocks[i].length + 1
   }
 
-  const y0 = topPad + (startLine * LINE_HEIGHT_PX) * scale
-  const y1 = topPad + ((endLine + 1) * LINE_HEIGHT_PX) * scale
-  const y = Math.min(y0, y1)
+  // 找出选区跨越的块范围
+  let startSrc = blocks.length - 1
+  let endSrc = 0
+  for (let i = 0; i < blocks.length; i++) {
+    const lineStart = offsets[i]
+    const lineEnd = lineStart + blocks[i].length
+    if (sel.from <= lineEnd && sel.to >= lineStart) {
+      startSrc = Math.min(startSrc, i)
+      endSrc = Math.max(endSrc, i)
+    }
+  }
+  if (startSrc > endSrc) return null
+
+  // 映射到显示行空间
+  const displayStart = sourceToDisplay.get(startSrc)
+  const displayEnd = sourceToDisplay.get(endSrc)
+  if (displayStart === undefined || displayEnd === undefined) return null
+
+  const y0 = displayStart * MINIMAP_LINE_HEIGHT
+  const y1 = (displayEnd + 1) * MINIMAP_LINE_HEIGHT
+  const y = Math.max(0, Math.min(y0, y1))
   const h = Math.max(3, Math.min(cssH - y, Math.abs(y1 - y0)))
 
-  const x = Math.max(0, charOffsetToX(lines[startLine], sel.from - offsets[startLine]))
-  const endX = charOffsetToX(lines[endLine], sel.to - offsets[endLine])
+  const x = Math.max(0, charOffsetToX(blocks[startSrc], sel.from - offsets[startSrc]))
+  const endX = charOffsetToX(blocks[endSrc], sel.to - offsets[endSrc])
   const w = Math.min(cssW - x, Math.max(4, endX - x))
 
   return { x, y, w, h }
@@ -347,7 +425,7 @@ function draw(): void {
 
   refreshThemeColors()
 
-  const lines = getContentLines()
+  const blocks = getContentBlocks()
 
   const dpr = window.devicePixelRatio || 1
   const cssW = MINIMAP_WIDTH - MINIMAP_PADDING * 2
@@ -364,24 +442,24 @@ function draw(): void {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.clearRect(0, 0, cssW, cssH)
 
-  // 内容总高度（按总行数 × 行高，保留空行结构）
-  const contentTotalH = Math.max(1, lines.length) * LINE_HEIGHT_PX
-  const scale = (cssH - 4) / contentTotalH
+  // ── 固定行高 + 行采样：计算要在缩略图中显示的行（VSCode 模型）──
+  const fittingLines = Math.max(1, Math.floor(cssH / MINIMAP_LINE_HEIGHT))
+  const { displayBlocks, sourceToDisplay } = computeSampledLayout(blocks, fittingLines)
+  // 显示内容总高 = 显示行数 × 固定行高，不会随总行数缩放
+  const contentTotalH = displayBlocks.length * MINIMAP_LINE_HEIGHT
 
   // ── 逐行把字符位图写入 ImageData（VSCode 风格采样渲染）──
   const fg = parseHexColor(cachedColor) ?? { r: 82, g: 82, b: 91 }
   const charW = Math.max(1, Math.round(CHAR_W_CSS * dpr))
   const charH = Math.max(1, Math.round(CHAR_H_CSS * dpr))
   const imageData = ctx.createImageData(pxW, pxH)
-  const topPad = 2
   const fgAlpha = 0.9 // 直通 alpha，避免双重变暗
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
+  // 每行固定位置 dy = displayIndex * 行高（设备像素），行与行绝不重叠
+  for (let di = 0; di < displayBlocks.length; di++) {
+    const line = displayBlocks[di]
     if (!line.trim()) continue
-    const yCss = topPad + (i * LINE_HEIGHT_PX + LINE_HEIGHT_PX / 2) * scale
-    if (yCss > cssH) break
-    const dy = Math.max(0, Math.round((yCss - CHAR_H_CSS / 2) * dpr))
+    const dy = Math.round(di * MINIMAP_LINE_HEIGHT * dpr) + Math.round(INNER_LINE_PADDING * dpr)
     if (dy >= pxH) break
     blitLine(imageData, line, fg, fgAlpha, dy, charW, charH)
   }
@@ -390,7 +468,7 @@ function draw(): void {
   ctx.putImageData(imageData, 0, 0)
 
   // ── 选区高亮（叠在文字上层）──
-  const selRect = computeSelectionRect(lines, props.getSelection?.(), cssW, cssH)
+  const selRect = computeSelectionRect(blocks, sourceToDisplay, props.getSelection?.(), cssW, cssH)
   if (selRect) {
     ctx.fillStyle = cachedSelectionFill
     ctx.fillRect(selRect.x, selRect.y, selRect.w, selRect.h)
@@ -399,7 +477,7 @@ function draw(): void {
     ctx.strokeRect(selRect.x + 0.5, selRect.y + 0.5, selRect.w - 1, selRect.h - 1)
   }
 
-  drawViewport(ctx, cssW, cssH)
+  drawViewport(ctx, cssW, cssH, contentTotalH)
 }
 
 /**
@@ -502,21 +580,22 @@ function blitBlockCell(
   }
 }
 
-function drawViewport(ctx: CanvasRenderingContext2D, cssW: number, cssH: number): void {
+function drawViewport(
+  ctx: CanvasRenderingContext2D,
+  cssW: number,
+  cssH: number,
+  contentTotalH: number
+): void {
   const el = props.scrollContainer
   if (!el) return
-  const vp = el.clientHeight
-  const total = el.scrollHeight
-  if (total <= 0) return
-  const scale = (cssH - 4) / total
-  const top = el.scrollTop
-  const vpH = Math.max(10, vp * scale)
-  const vpY = Math.max(0, top * scale)
+  const { boxTop, boxHeight } = computeViewport(el, contentTotalH)
+  const y = Math.max(0, Math.min(boxTop, cssH - boxHeight))
+  const h = Math.max(3, Math.min(boxHeight, cssH - y))
   ctx.fillStyle = cachedViewportFill
-  ctx.fillRect(0, vpY, cssW, Math.min(vpH, cssH - vpY))
+  ctx.fillRect(0, y, cssW, h)
   ctx.strokeStyle = cachedViewportStroke
   ctx.lineWidth = 1
-  ctx.strokeRect(0.5, vpY + 0.5, cssW - 1, Math.min(vpH, cssH - vpY) - 1)
+  ctx.strokeRect(0.5, y + 0.5, cssW - 1, h - 1)
 }
 
 function scheduleDraw(): void {
