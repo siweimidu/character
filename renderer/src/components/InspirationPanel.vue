@@ -368,7 +368,7 @@ function handleMenuSelect(action: string | number, entry: InspirationEntry): voi
         <h2>灵感模块</h2>
       </div>
       <div class="head-actions">
-        <n-button secondary strong :loading="isGenerating" @click="batchVisible = true">
+        <n-button secondary strong type="info" :loading="isGenerating" @click="batchVisible = true">
           <template #icon><Sparkles :size="16" /></template>
           批量生成
         </n-button>

@@ -476,7 +476,7 @@ watch(
             批量导出
           </n-button>
         </n-dropdown>
-        <n-button secondary strong :loading="isGenerating" @click="batchVisible = true">
+        <n-button secondary strong type="info" :loading="isGenerating" @click="batchVisible = true">
           <template #icon><Sparkles :size="16" /></template>
           批量生成
         </n-button>

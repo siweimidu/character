@@ -851,7 +851,7 @@ watch(
           <template #icon><Network :size="16" /></template>
           关系组织
         </n-button>
-        <n-button secondary strong :loading="isGenerating" @click="batchVisible = true">
+        <n-button secondary strong type="info" :loading="isGenerating" @click="batchVisible = true">
           <template #icon><Sparkles :size="16" /></template>
           批量生成
         </n-button>

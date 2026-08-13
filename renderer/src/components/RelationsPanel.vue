@@ -1276,7 +1276,7 @@ function handleEnhanceMemApply(accepted: Record<string, string | string[]>): voi
           </button>
         </div>
         <n-dropdown trigger="click" :options="aiActionOptions" @select="handleAiAction">
-          <n-button strong secondary>
+          <n-button strong secondary type="info">
             <template #icon><Sparkles :size="16" /></template>
             AI 工具
             <ChevronDown :size="14" class="button-chevron" />
