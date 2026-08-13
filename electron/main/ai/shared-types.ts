@@ -97,6 +97,7 @@ export type AiTaskName =
   | 'project-bootstrap'
   | 'project-batch-seed'
   | 'premise-enhance'
+  | 'premise-generate'
   | 'spiral-seed'
   | 'spiral-expand'
   | 'spiral-characters'
@@ -392,6 +393,11 @@ export type PremiseEnhanceResult = {
   premise: string
 }
 
+/** 根据标题、题材与目标篇幅从零创作的小说简介结果 */
+export type PremiseGenerateResult = {
+  premise: string
+}
+
 /**
  * 创作记忆集合生成结果。
  * 每个 key 对应一种创作记忆（任务计划、发现、进度等）。
@@ -597,6 +603,7 @@ export type AiTaskResult =
   | ProjectBootstrapResult
   | ProjectBatchSeedResult
   | PremiseEnhanceResult
+  | PremiseGenerateResult
   | WorkflowDocumentsResult
   | WorkflowStageDocumentsResult
   | ChapterAnalysisResult

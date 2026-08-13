@@ -25,6 +25,9 @@ const taskObjectSchemas: Partial<Record<AiTaskName, z.ZodTypeAny>> = {
   'premise-enhance': z.object({
     premise: stringField
   }),
+  'premise-generate': z.object({
+    premise: stringField
+  }),
   'assistant-intent': z.object({
     intent: z.enum(['chat', 'proposal']),
     reason: stringField

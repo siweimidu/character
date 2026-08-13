@@ -10,6 +10,7 @@ import outlineChain from './outline-chain'
 import projectBootstrap from './project-bootstrap'
 import projectBatchSeed from './project-batch-seed'
 import premiseEnhance from './premise-enhance'
+import premiseGenerate from './premise-generate'
 import chapterAnalysis from './chapter-analysis'
 import inspirationPack from './inspiration-pack'
 import assistantIntent from './assistant-intent'
@@ -72,6 +73,7 @@ register(outlineChain)
 register(projectBootstrap)
 register(projectBatchSeed)
 register(premiseEnhance)
+register(premiseGenerate)
 register(chapterAnalysis)
 register(inspirationPack)
 register(assistantIntent)

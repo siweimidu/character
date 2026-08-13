@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { BookCopy, Check, ChevronRight, Clock3, FileText, GitMerge, Lightbulb, Network, PenLine, Pencil, Users, X } from 'lucide-vue-next'
+import { BookCopy, Check, ChevronRight, Clock3, FileText, GitMerge, Lightbulb, Loader2, Network, PenLine, Pencil, Sparkles, Users, X } from 'lucide-vue-next'
 import { NButton, NInput, useMessage } from 'naive-ui'
 import { getChapterPreviewText } from '@/features/chapters/editorContent'
 import { formatProjectEditedAt } from '@/features/projects/lastEdited'
 import { resolveNovelLengthLabel } from '@/features/wizard/projectGenres'
+import { toIpcPayload } from '@/utils/ipcPayload'
 import { useAppStore } from '@/stores/app'
 import type { PanelName } from '@/types/app'
 
@@ -170,6 +171,47 @@ function savePremise(): void {
   }
 }
 
+// AI 生成简介：根据标题、所选题材与目标篇幅生成一段作品简介
+const isGeneratingPremise = ref(false)
+
+async function generatePremise(): Promise<void> {
+  const project = currentProject.value
+  if (!project?.id || isGeneratingPremise.value) {
+    return
+  }
+
+  isGeneratingPremise.value = true
+  try {
+    const result = await window.characterArc.generateAi(
+      toIpcPayload({
+        task: 'premise-generate',
+        settings: appStore.appSettings,
+        context: {
+          projectTitle: project.title?.trim() || '未命名作品',
+          projectGenre: project.genre?.trim() || '',
+          projectNovelLengthLabel: resolveNovelLengthLabel(project.novelLength)
+        }
+      })
+    )
+
+    if (!result.success || !result.result) {
+      throw new Error(result.error ?? 'AI 生成简介失败，请检查模型配置')
+    }
+
+    const generatedPremise = (result.result as { premise?: unknown }).premise
+    if (typeof generatedPremise !== 'string' || !generatedPremise.trim()) {
+      throw new Error('AI 未返回有效的小说简介')
+    }
+
+    premiseDraft.value = generatedPremise.trim()
+    message.success('简介已生成，可点击保存写入作品')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : 'AI 生成简介失败，请稍后重试')
+  } finally {
+    isGeneratingPremise.value = false
+  }
+}
+
 // 导航到指定面板
 function goToPanel(panel: PanelName): void {
   appStore.setPanel(panel)
@@ -252,6 +294,13 @@ function openEntry(type: string, title: string): void {
               class="premise-input"
             />
             <div class="premise-actions">
+              <n-button size="small" secondary :loading="isGeneratingPremise" :disabled="isGeneratingPremise" @click="generatePremise">
+                <template #icon>
+                  <Loader2 v-if="isGeneratingPremise" class="spin" :size="14" />
+                  <Sparkles v-else :size="14" />
+                </template>
+                {{ isGeneratingPremise ? '生成中…' : 'AI 生成简介' }}
+              </n-button>
               <n-button size="small" secondary @click="cancelEditPremise">
                 <template #icon><X :size="14" /></template>
                 取消
@@ -470,6 +519,16 @@ function openEntry(type: string, title: string): void {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 8px;
+}
+
+.spin {
+  animation: arc-spin 0.9s linear infinite;
+}
+
+@keyframes arc-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .continue-action {

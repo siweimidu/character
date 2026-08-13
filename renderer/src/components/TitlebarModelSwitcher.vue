@@ -116,6 +116,7 @@ const taskLabelMap: Record<string, string> = {
   'workflow-documents': '设定导出',
   'plot-thread-detect': '伏笔检测',
   'premise-enhance': '小说简介优化',
+  'premise-generate': '小说简介创作',
   'project-bootstrap': '项目初始化',
   'project-batch-seed': '批量生成作品',
   'spiral-seed': '项目核心设计',
