@@ -12,7 +12,7 @@ import { backfillProjectStateFromChapters, getProjectBackfillChapterStatuses } f
 import type { BackfillTaskSnapshot } from './state-backfill'
 import type { BackfillSelection } from './state-backfill'
 import { BackfillTaskPauseController } from './state-backfill-task-controller'
-import { buildStoryStateContext, deleteStoryStateBlock, restoreStoryStateBlock, STORY_STATE_BLOCK_LABEL, type StoryStateBlockType } from '../story-state-store'
+import { buildStoryStateContext, deleteStoryStateBlock, deleteStoryStateItem, restoreStoryStateBlock, STORY_STATE_BLOCK_LABEL, type StoryStateBlockType } from '../story-state-store'
 import { ensureWorkspaceDb } from '../workspace-store'
 import { runSpiralBootstrap } from './spiral'
 import type { SpiralBootstrapInput } from './spiral'
@@ -557,6 +557,28 @@ export function registerAiIpcHandlers(injectedDeps: AiIpcDeps): void {
       return { success: true, result: { block, count: snapshot.length, snapshot } }
     } catch (error) {
       return { success: false, error: formatAiErrorMessage(error, '删除世界状态失败') }
+    }
+  })
+
+  // ── 删除世界状态库中的单条卡片数据（角色状态/伏笔/时间线等），返回被删快照供回收站恢复 ──
+  ipcMain.handle('characterarc:ai-delete-story-state-item', async (_event, payload: unknown) => {
+    try {
+      const req = payload as { projectId?: string; block?: string; itemId?: string | number }
+      const projectId = String(req?.projectId ?? '').trim()
+      const block = String(req?.block ?? '').trim() as StoryStateBlockType
+      const itemId = req?.itemId
+      if (!projectId) throw new Error('缺少 projectId。')
+      if (!STORY_STATE_BLOCK_LABEL[block]) {
+        throw new Error(`无效的世界状态区块：${block}`)
+      }
+      if (itemId === undefined || itemId === null || String(itemId).trim() === '') {
+        throw new Error('缺少要删除的卡片标识。')
+      }
+      const db = await ensureWorkspaceDb()
+      const snapshot = deleteStoryStateItem(db, projectId, block, itemId)
+      return { success: true, result: { block, itemId, count: snapshot.length, snapshot } }
+    } catch (error) {
+      return { success: false, error: formatAiErrorMessage(error, '删除世界状态卡片失败') }
     }
   })
 

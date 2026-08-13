@@ -889,6 +889,108 @@ export function deleteStoryStateBlock(
 }
 
 /**
+ * 删除某个项目下指定区块中的单条卡片数据（角色状态/伏笔/时间线等）。
+ * itemId 为各区块用于唯一定位单张卡片的键：
+ *  - characterStates：character_id（某角色当前状态卡片，删除该角色的全部状态记录）
+ *  - foreshadowing：foreshadowing_id
+ *  - relationships：relationship_id
+ *  - timeline：chapter_index
+ *  - worldRules：rule_id
+ *  - clocks：clock_id
+ * 删除前先把被删数据行返回作为快照（供回收站恢复）。
+ */
+export function deleteStoryStateItem(
+  db: DatabaseSync,
+  projectId: string,
+  block: StoryStateBlockType,
+  itemId: string | number
+): Record<string, unknown>[] {
+  const table = STORY_STATE_BLOCK_TABLE[block]
+  if (!table || itemId === undefined || itemId === null || itemId === '') return []
+
+  let rows: Array<Record<string, unknown>> = []
+  db.exec('BEGIN')
+  try {
+    switch (block) {
+      case 'characterStates': {
+        // 角色状态卡片按角色聚合：删除该角色的全部状态记录，保证卡片消失且一致
+        rows = db.prepare(
+          `SELECT * FROM story_character_state WHERE project_id = ? AND character_id = ?`
+        ).all(projectId, String(itemId)) as Array<Record<string, unknown>>
+        if (rows.length) {
+          db.prepare(
+            `DELETE FROM story_character_state WHERE project_id = ? AND character_id = ?`
+          ).run(projectId, String(itemId))
+        }
+        break
+      }
+      case 'foreshadowing': {
+        rows = db.prepare(
+          `SELECT * FROM story_foreshadowing WHERE project_id = ? AND foreshadowing_id = ?`
+        ).all(projectId, String(itemId)) as Array<Record<string, unknown>>
+        if (rows.length) {
+          db.prepare(
+            `DELETE FROM story_foreshadowing WHERE project_id = ? AND foreshadowing_id = ?`
+          ).run(projectId, String(itemId))
+        }
+        break
+      }
+      case 'relationships': {
+        rows = db.prepare(
+          `SELECT * FROM story_relationships WHERE project_id = ? AND relationship_id = ?`
+        ).all(projectId, String(itemId)) as Array<Record<string, unknown>>
+        if (rows.length) {
+          db.prepare(
+            `DELETE FROM story_relationships WHERE project_id = ? AND relationship_id = ?`
+          ).run(projectId, String(itemId))
+        }
+        break
+      }
+      case 'timeline': {
+        rows = db.prepare(
+          `SELECT * FROM story_timeline WHERE project_id = ? AND chapter_index = ?`
+        ).all(projectId, Number(itemId)) as Array<Record<string, unknown>>
+        if (rows.length) {
+          db.prepare(
+            `DELETE FROM story_timeline WHERE project_id = ? AND chapter_index = ?`
+          ).run(projectId, Number(itemId))
+        }
+        break
+      }
+      case 'worldRules': {
+        rows = db.prepare(
+          `SELECT * FROM story_world_rules WHERE project_id = ? AND rule_id = ?`
+        ).all(projectId, String(itemId)) as Array<Record<string, unknown>>
+        if (rows.length) {
+          db.prepare(
+            `DELETE FROM story_world_rules WHERE project_id = ? AND rule_id = ?`
+          ).run(projectId, String(itemId))
+        }
+        break
+      }
+      case 'clocks': {
+        rows = db.prepare(
+          `SELECT * FROM story_countdown_clocks WHERE project_id = ? AND clock_id = ?`
+        ).all(projectId, String(itemId)) as Array<Record<string, unknown>>
+        if (rows.length) {
+          db.prepare(
+            `DELETE FROM story_countdown_clocks WHERE project_id = ? AND clock_id = ?`
+          ).run(projectId, String(itemId))
+        }
+        break
+      }
+      default:
+        break
+    }
+    db.exec('COMMIT')
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
+  return rows
+}
+
+/**
  * 从回收站快照恢复某个区块的世界状态数据。
  * rows 为删除时返回的完整数据行（含所有字段）。
  */

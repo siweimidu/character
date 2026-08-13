@@ -2147,6 +2147,25 @@ export const useAppStore = defineStore('app', () => {
     return { success: true, count }
   }
 
+  /** 删除世界状态库中的单条卡片数据（角色状态/伏笔/时间线等），删除后进入回收站 */
+  async function deleteStoryStateItem(block: string, itemId: string | number): Promise<{ success: boolean; count?: number; error?: string }> {
+    const project = currentProject.value
+    if (!project) return { success: false, error: '请先选择一个项目。' }
+    const response = await window.characterArc.deleteStoryStateItem({ projectId: project.id, block, itemId })
+    if (!response.success || !response.result) {
+      return { success: false, error: response.error ?? '删除世界状态卡片失败。' }
+    }
+    const { count, snapshot } = response.result
+    if (count > 0) {
+      pushRecycleEntry('story-state', `世界状态库·${block}`, {
+        block,
+        rows: snapshot,
+        projectId: project.id
+      })
+    }
+    return { success: true, count }
+  }
+
   function upsertProjectConstraint(payload: {
     id?: string
     title: string
@@ -5206,6 +5225,7 @@ export const useAppStore = defineStore('app', () => {
     mergeKnowledgeDocuments,
     removeKnowledgeDocuments,
     deleteStoryStateBlock,
+    deleteStoryStateItem,
     projectConstraints,
     upsertProjectConstraint,
     removeProjectConstraint,

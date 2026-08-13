@@ -4,6 +4,7 @@ import test from 'node:test'
 
 import {
   applyStateDelta,
+  deleteStoryStateItem,
   initStoryStateSchema,
   normalizeStateDelta
 } from './story-state-store.ts'
@@ -70,4 +71,52 @@ test('同一章节状态增量重复写入不会重复累积数组字段', () =>
   assert.deepEqual(JSON.parse(character.goals_json), ['找到证人'])
   assert.deepEqual(JSON.parse(relationship.tension_points_json), ['互不信任'])
   assert.deepEqual(JSON.parse(foreshadowing.clues_json), [{ chapter: 3, clue: '火漆印', method: '特写' }])
+})
+
+test('可单独删除单条角色状态/伏笔/时间线卡片并返回快照', () => {
+  const db = new DatabaseSync(':memory:')
+  initStoryStateSchema(db)
+
+  applyStateDelta(db, 'project-1', 3, normalizeStateDelta({
+    characters_updated: [{
+      character_id: '林岚',
+      changes: { mental_state: '警觉', new_knowledge: ['密道'] }
+    }],
+    foreshadowing_delta: {
+      planted: [
+        { id: '伏笔-1', type: '暗线', description: '旧信', method: '道具', payoff_chapter: 20 },
+        { id: '伏笔-2', type: '明线', description: '玉佩', method: '特写' }
+      ],
+      advanced: [],
+      resolved: []
+    },
+    timeline: { current_story_date: '第三日', events: ['离城'] }
+  }))
+  applyStateDelta(db, 'project-1', 4, normalizeStateDelta({
+    characters_updated: [{
+      character_id: '顾川',
+      changes: { mental_state: '焦躁' }
+    }]
+  }))
+
+  // 删除单个伏笔卡片
+  const fsSnapshot = deleteStoryStateItem(db, 'project-1', 'foreshadowing', '伏笔-1')
+  assert.equal(fsSnapshot.length, 1)
+  assert.equal(fsSnapshot[0].foreshadowing_id, '伏笔-1')
+  const fsRemain = db.prepare('SELECT foreshadowing_id FROM story_foreshadowing').all()
+  assert.deepEqual(fsRemain.map((r) => r.foreshadowing_id), ['伏笔-2'])
+
+  // 删除单个角色状态卡片（该角色全部状态记录）
+  const csSnapshot = deleteStoryStateItem(db, 'project-1', 'characterStates', '林岚')
+  assert.equal(csSnapshot.length, 1)
+  assert.equal(csSnapshot[0].character_id, '林岚')
+  const csRemain = db.prepare('SELECT character_id FROM story_character_state').all()
+  assert.deepEqual(csRemain.map((r) => r.character_id), ['顾川'])
+
+  // 删除单条时间线卡片
+  const tlSnapshot = deleteStoryStateItem(db, 'project-1', 'timeline', 3)
+  assert.equal(tlSnapshot.length, 1)
+  assert.equal(tlSnapshot[0].chapter_index, 3)
+  const tlRemain = db.prepare('SELECT chapter_index FROM story_timeline').all()
+  assert.deepEqual(tlRemain.map((r) => r.chapter_index), [])
 })

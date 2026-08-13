@@ -430,6 +430,16 @@ declare global {
         }
         error?: string
       }>
+      deleteStoryStateItem: (payload: { projectId: string; block: string; itemId: string | number }) => Promise<{
+        success: boolean
+        result?: {
+          block: string
+          itemId: string | number
+          count: number
+          snapshot: Array<Record<string, unknown>>
+        }
+        error?: string
+      }>
       restoreStoryState: (payload: { projectId: string; block: string; rows: Array<Record<string, unknown>> }) => Promise<{
         success: boolean
         result?: {

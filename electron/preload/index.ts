@@ -205,6 +205,8 @@ contextBridge.exposeInMainWorld('characterArc', {
   readStoryState: (projectId: string) => ipcRenderer.invoke('characterarc:ai-read-story-state', projectId),
   /** 删除世界状态库中的某个区块，返回被删快照供回收站恢复 */
   deleteStoryState: (payload: { projectId: string; block: string }) => ipcRenderer.invoke('characterarc:ai-delete-story-state', toIpcPayload(payload)),
+  /** 删除世界状态库中的单条卡片数据，返回被删快照供回收站恢复 */
+  deleteStoryStateItem: (payload: { projectId: string; block: string; itemId: string | number }) => ipcRenderer.invoke('characterarc:ai-delete-story-state-item', toIpcPayload(payload)),
   /** 从回收站快照恢复世界状态库中的某个区块 */
   restoreStoryState: (payload: { projectId: string; block: string; rows: Array<Record<string, unknown>> }) => ipcRenderer.invoke('characterarc:ai-restore-story-state', toIpcPayload(payload)),
   /** 螺旋式深度生成（3圈：骨架→展开→校验） */

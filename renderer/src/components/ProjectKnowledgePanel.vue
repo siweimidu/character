@@ -171,6 +171,33 @@ function deleteStoryStateBlock(block: string): void {
   })
 }
 
+/** 删除世界状态库中的单张卡片（角色状态/伏笔/时间线等），删除后进入回收站 */
+function deleteStoryStateCard(block: string, itemId: string | number, itemTitle: string): void {
+  const project = appStore.currentProject
+  if (!project) return
+  const label = STORY_STATE_BLOCK_LABEL[block] ?? block
+  const displayTitle = String(itemTitle ?? '').trim() || '该卡片'
+  dialog.warning({
+    title: `删除${label}`,
+    content: `确认删除「${displayTitle}」吗？删除后可在回收站中恢复。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    async onPositiveClick() {
+      const result = await appStore.deleteStoryStateItem(block, itemId)
+      if (!result.success) {
+        message.error(result.error ?? `删除${label}失败`)
+        return
+      }
+      if ((result.count ?? 0) > 0) {
+        message.success(`已删除该${label}，可到回收站恢复`)
+      } else {
+        message.info(`未找到要删除的${label}`)
+      }
+      await loadStoryState()
+    }
+  })
+}
+
 /** 清空整个世界状态库 */
 function clearStoryState(): void {
   const project = appStore.currentProject
@@ -940,6 +967,7 @@ watch(
                 <div class="pk-state-item-title">
                   <strong>{{ resolveCharacterName(cs.characterId) }}</strong>
                   <n-tag size="tiny" :bordered="false" type="info">{{ formatChapterRef(cs.chapterIndex) }}</n-tag>
+                  <n-button size="tiny" quaternary type="error" class="pk-card-delete" title="删除该角色状态卡片" @click.stop="deleteStoryStateCard('characterStates', cs.characterId, resolveCharacterName(cs.characterId))"><template #icon><Trash2 :size="13" /></template></n-button>
                 </div>
                 <div class="pk-state-fields">
                   <span v-if="cs.location"><MapPin :size="12" /> {{ cs.location }}</span>
@@ -968,6 +996,7 @@ watch(
                   <n-tag size="tiny" :bordered="false" :type="(foreshadowingStatusMeta[fs.status] ?? foreshadowingStatusMeta.active).type">
                     {{ (foreshadowingStatusMeta[fs.status] ?? { label: fs.status }).label }}
                   </n-tag>
+                  <n-button size="tiny" quaternary type="error" class="pk-card-delete" title="删除该伏笔卡片" @click.stop="deleteStoryStateCard('foreshadowing', fs.foreshadowingId, fs.description)"><template #icon><Trash2 :size="13" /></template></n-button>
                 </div>
                 <div class="pk-state-fields">
                   <span v-if="fs.type">类型：{{ fs.type }}</span>
@@ -1015,6 +1044,7 @@ watch(
                 <div class="pk-state-item-title">
                   <strong>{{ formatChapterRef(tl.chapterIndex) }}</strong>
                   <n-tag v-if="tl.storyDate" size="tiny" :bordered="false" type="info">{{ tl.storyDate }}</n-tag>
+                  <n-button size="tiny" quaternary type="error" class="pk-card-delete" title="删除该时间线卡片" @click.stop="deleteStoryStateCard('timeline', tl.chapterIndex, formatChapterRef(tl.chapterIndex))"><template #icon><Trash2 :size="13" /></template></n-button>
                 </div>
                 <div v-if="tl.events.length" class="pk-state-tags">
                   <n-tag v-for="(ev, i) in tl.events" :key="`ev-${i}`" size="tiny" :bordered="false">{{ ev }}</n-tag>
@@ -1727,6 +1757,10 @@ watch(
 .pk-state-item-title strong {
   color: var(--arc-text-primary);
   font-size: 14px;
+}
+
+.pk-state-item-title .pk-card-delete {
+  margin-left: auto;
 }
 
 .pk-state-fields {
