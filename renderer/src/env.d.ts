@@ -20,6 +20,7 @@ declare global {
     | 'characters'
     | 'relations'
     | 'inspiration'
+    | 'prompts'
     | 'outline'
     | 'plotThreads'
     | 'chapters'

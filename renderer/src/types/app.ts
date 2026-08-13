@@ -17,7 +17,7 @@ export type ThemeName =
 export type DarkModeStyle = 'nord'
 
 /** 工作台面板名称 */
-export type PanelName = 'workflow' | 'overview' | 'deconstruction' | 'project-knowledge' | 'world' | 'characters' | 'relations' | 'inspiration' | 'outline' | 'threads' | 'chapters' | 'settings' | 'global-assistant' | 'global-assistant-v2'
+export type PanelName = 'workflow' | 'overview' | 'deconstruction' | 'project-knowledge' | 'prompt-library' | 'world' | 'characters' | 'relations' | 'inspiration' | 'outline' | 'threads' | 'chapters' | 'settings' | 'global-assistant' | 'global-assistant-v2'
 
 /** 小说流程阶段标识 */
 export type NovelWorkflowStageId = 'reference' | 'premise' | 'setting' | 'outline' | 'draft'
@@ -517,6 +517,64 @@ export interface InspirationEntry {
   updatedAt: string
 }
 
+/** 提示词分类 */
+export interface PromptCategory {
+  /** 分类唯一标识 */
+  id: string
+  /** 分类名称，如「写作」「扩写」「润色」 */
+  name: string
+  /** 排序权重（用于拖拽排序） */
+  sortOrder: number
+  /** 是否为内置分类（内置分类不可删除，仅可自定义重命名） */
+  isBuiltin: boolean
+  /** 创建时间 */
+  createdAt: string
+  /** 最后更新时间 */
+  updatedAt: string
+}
+
+/** 提示词条目 */
+export interface PromptEntry {
+  /** 提示词唯一标识 */
+  id: string
+  /** 所属分类 ID */
+  categoryId: string
+  /** 提示词标题 */
+  title: string
+  /** 提示词正文（可包含 {{content}}、{{chapter}}、{{role}} 等模板变量） */
+  content: string
+  /** 标签列表 */
+  tags: string[]
+  /** 备注说明 */
+  remark: string
+  /** 是否收藏 */
+  isFavorite: boolean
+  /** 是否置顶 */
+  isPinned: boolean
+  /** 使用次数（每次一键套用后自增） */
+  usageCount: number
+  /** 是否为内置模板（内置模板不可删除，但可复制为自定义后编辑） */
+  isBuiltin: boolean
+  /** 排序权重 */
+  sortOrder: number
+  /** 创建时间 */
+  createdAt: string
+  /** 最后更新时间 */
+  updatedAt: string
+}
+
+/** 提示词模板变量类型，供编辑器联动与提示 */
+export type PromptTemplateVariableKey = 'content' | 'chapter' | 'role'
+
+export interface PromptTemplateVariable {
+  /** 变量键名，形如 content / chapter / role */
+  key: PromptTemplateVariableKey
+  /** 变量占位符，形如 {{content}} */
+  placeholder: string
+  /** 变量说明 */
+  description: string
+}
+
 /** 大纲分卷，用于将大纲节点和章节按卷分组 */
 export interface OutlineVolume {
   /** 分卷唯一标识 */
@@ -878,6 +936,10 @@ export interface ProjectWorkspaceData {
   organizationMemberships: OrganizationMembership[]
   /** 灵感卡片列表 */
   inspirationEntries: InspirationEntry[]
+  /** 提示词分类列表 */
+  promptCategories: PromptCategory[]
+  /** 提示词条目列表 */
+  promptEntries: PromptEntry[]
   /** 大纲分卷列表 */
   outlineVolumes: OutlineVolume[]
   /** 大纲节点列表 */
@@ -910,6 +972,8 @@ export type RecycleBinCategory =
   | 'relationship'
   | 'membership'
   | 'inspiration'
+  | 'prompt'
+  | 'prompt-category'
   | 'outline'
   | 'outline-volume'
   | 'plot-thread'
@@ -952,7 +1016,7 @@ export interface RecycleBinSettings {
 }
 
 /** 导入/导出的模块类型标识 */
-export type ImportExportModuleType = 'project' | 'characters' | 'outline' | 'inspiration' | 'relations' | 'chapters' | 'threads'
+export type ImportExportModuleType = 'project' | 'characters' | 'outline' | 'inspiration' | 'relations' | 'chapters' | 'threads' | 'prompts'
 
 /** 导入冲突解决模式 */
 export type ImportConflictMode = 'overwrite' | 'copy'
@@ -967,6 +1031,8 @@ export interface ProjectImportPayload {
   characterRelationships?: CharacterRelationship[]
   organizationMemberships?: OrganizationMembership[]
   inspirationEntries?: InspirationEntry[]
+  promptCategories?: PromptCategory[]
+  promptEntries?: PromptEntry[]
   outlineVolumes?: OutlineVolume[]
   outlineItems?: OutlineItem[]
   chapters?: ChapterDraft[]

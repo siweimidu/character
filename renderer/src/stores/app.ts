@@ -82,6 +82,8 @@ import type {
   OutlineVolume,
   PanelName,
   PlotThread,
+  PromptCategory,
+  PromptEntry,
   PlotThreadStatus,
   ProjectImportPayload,
   ProjectSummary,
@@ -123,6 +125,8 @@ interface ProjectWorkspacePayload {
   characterRelationships?: CharacterRelationship[]
   organizationMemberships?: OrganizationMembership[]
   inspirationEntries?: InspirationEntry[]
+  promptCategories?: PromptCategory[]
+  promptEntries?: PromptEntry[]
   outlineVolumes?: OutlineVolume[]
   outlineItems?: OutlineItem[]
   chapters?: ChapterDraft[]
@@ -185,6 +189,49 @@ function reindexInspirationEntries(entries: InspirationEntry[]): InspirationEntr
   return entries.map((entry, index) => ({
     ...entry,
     sortOrder: index
+  }))
+}
+
+/** 重新编排提示词条目的 sortOrder */
+function reindexPromptEntries(entries: PromptEntry[]): PromptEntry[] {
+  return entries.map((entry, index) => ({
+    ...entry,
+    sortOrder: index
+  }))
+}
+
+/** 规范化提示词分类数据（用于导入） */
+function normalizePromptCategoriesData(categories: PromptCategory[]): PromptCategory[] {
+  const now = new Date().toISOString()
+  return categories.map((cat, index) => ({
+    ...cat,
+    id: cat.id || uniqueId('prompt-cat'),
+    name: cat.name?.trim() || '未命名分类',
+    sortOrder: index,
+    isBuiltin: Boolean(cat.isBuiltin),
+    createdAt: cat.createdAt || now,
+    updatedAt: cat.updatedAt || now
+  }))
+}
+
+/** 规范化提示词条目数据（用于导入） */
+function normalizePromptEntriesData(entries: PromptEntry[]): PromptEntry[] {
+  const now = new Date().toISOString()
+  return entries.map((entry, index) => ({
+    ...entry,
+    id: entry.id || uniqueId('prompt'),
+    categoryId: entry.categoryId || '',
+    title: entry.title?.trim() || '未命名提示词',
+    content: entry.content || '',
+    tags: Array.isArray(entry.tags) ? entry.tags.map((t) => String(t).trim()).filter(Boolean) : [],
+    remark: entry.remark || '',
+    isFavorite: Boolean(entry.isFavorite),
+    isPinned: Boolean(entry.isPinned),
+    usageCount: Number.isFinite(entry.usageCount) ? Math.max(0, Math.floor(entry.usageCount)) : 0,
+    isBuiltin: Boolean(entry.isBuiltin),
+    sortOrder: index,
+    createdAt: entry.createdAt || now,
+    updatedAt: entry.updatedAt || now
   }))
 }
 
@@ -295,6 +342,10 @@ export const useAppStore = defineStore('app', () => {
   const inspirationEntries = computed(() => currentWorkspace.value.inspirationEntries)
   /** 当前项目的灵感自定义生成类型列表 */
   const inspirationTypes = computed(() => currentWorkspace.value.inspirationTypes ?? [])
+  /** 当前项目的提示词分类列表 */
+  const promptCategories = computed(() => currentWorkspace.value.promptCategories ?? [])
+  /** 当前项目的提示词条目列表 */
+  const promptEntries = computed(() => currentWorkspace.value.promptEntries ?? [])
   /** 当前项目的大纲节点列表 */
   const outlineItems = computed(() => currentWorkspace.value.outlineItems)
   /** 当前项目的章节列表 */
@@ -775,6 +826,8 @@ export const useAppStore = defineStore('app', () => {
       characterRelationships: payload.characterRelationships,
       organizationMemberships: payload.organizationMemberships,
       inspirationEntries: payload.inspirationEntries,
+      promptCategories: payload.promptCategories,
+      promptEntries: payload.promptEntries,
       outlineVolumes: payload.outlineVolumes,
       outlineItems: payload.outlineItems,
       chapters: payload.chapters,
@@ -828,6 +881,8 @@ export const useAppStore = defineStore('app', () => {
         characterRelationships: payload.characterRelationships,
         organizationMemberships: payload.organizationMemberships,
         inspirationEntries: payload.inspirationEntries,
+        promptCategories: payload.promptCategories,
+        promptEntries: payload.promptEntries,
         outlineVolumes: payload.outlineVolumes,
         outlineItems: payload.outlineItems,
         chapters: payload.chapters,
@@ -1033,6 +1088,44 @@ export const useAppStore = defineStore('app', () => {
         }
       }
 
+      if (moduleType === 'prompts') {
+        const importedCats = normalizedImport.promptCategories
+        const importedEntries = normalizedImport.promptEntries
+
+        if (mode === 'overwrite') {
+          return {
+            ...workspace,
+            promptCategories: importedCats.length ? importedCats : workspace.promptCategories,
+            promptEntries: importedEntries
+          }
+        }
+
+        // copy 模式：追加新分类和条目，避免 ID 冲突
+        const existingCatNames = new Set(workspace.promptCategories.map((c) => c.name))
+        const newCats = importedCats
+          .filter((c) => !existingCatNames.has(c.name))
+          .map((c, index) => ({ ...c, id: buildImportedId('prompt-cat', index) }))
+        const catIdMap = new Map<string, string>()
+        importedCats.forEach((c, index) => {
+          const match = workspace.promptCategories.find((existing) => existing.name === c.name)
+          catIdMap.set(c.id, match?.id ?? newCats[index]?.id ?? workspace.promptCategories[0]?.id ?? '')
+        })
+
+        return {
+          ...workspace,
+          promptCategories: [...workspace.promptCategories, ...newCats],
+          promptEntries: [
+            ...importedEntries.map((e, index) => ({
+              ...e,
+              id: buildImportedId('prompt', index),
+              categoryId: catIdMap.get(e.categoryId) ?? workspace.promptCategories[0]?.id ?? '',
+              isBuiltin: false
+            })),
+            ...workspace.promptEntries
+          ]
+        }
+      }
+
       return workspace
     })
 
@@ -1231,6 +1324,8 @@ export const useAppStore = defineStore('app', () => {
         characterRelationships: payload.characterRelationships,
         organizationMemberships: payload.organizationMemberships,
         inspirationEntries: payload.inspirationEntries,
+        promptCategories: payload.promptCategories,
+        promptEntries: payload.promptEntries,
         outlineVolumes: nextVolumes,
         outlineItems: payload.outlineItems,
         chapters: nextChapters,
@@ -2915,6 +3010,237 @@ export const useAppStore = defineStore('app', () => {
         workspace.inspirationEntries.filter((entry) => !idSet.has(entry.id))
       )
     }))
+    schedulePersist('fast')
+  }
+
+  // ── 提示词库 CRUD ──
+
+  /** 创建提示词分类，返回新分类 ID */
+  function createPromptCategory(name: string): string | null {
+    const trimmed = name.trim()
+    if (!trimmed) return null
+    if (currentWorkspace.value.promptCategories.some((c) => c.name === trimmed)) return null
+    const now = new Date().toISOString()
+    const category: PromptCategory = {
+      id: uniqueId('prompt-cat'),
+      name: trimmed,
+      sortOrder: currentWorkspace.value.promptCategories.length,
+      isBuiltin: false,
+      createdAt: now,
+      updatedAt: now
+    }
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      promptCategories: [...workspace.promptCategories, category]
+    }))
+    schedulePersist('fast')
+    return category.id
+  }
+
+  /** 更新提示词分类 */
+  function updatePromptCategory(categoryId: string, payload: Partial<Pick<PromptCategory, 'name' | 'sortOrder'>>): void {
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      promptCategories: workspace.promptCategories.map((cat) =>
+        cat.id === categoryId
+          ? { ...cat, name: payload.name?.trim() || cat.name, sortOrder: payload.sortOrder ?? cat.sortOrder, updatedAt: new Date().toISOString() }
+          : cat
+      )
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 删除提示词分类：将分类下的提示词移入回收站，分类本身也入回收站 */
+  function deletePromptCategory(categoryId: string): void {
+    const target = currentWorkspace.value.promptCategories.find((c) => c.id === categoryId)
+    if (!target || target.isBuiltin) return
+    const categoryEntries = currentWorkspace.value.promptEntries.filter((e) => e.categoryId === categoryId)
+    categoryEntries.forEach((entry) => pushRecycleEntry('prompt', entry.title, { ...entry }))
+    pushRecycleEntry('prompt-category', target.name, { ...target })
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      promptCategories: workspace.promptCategories.filter((c) => c.id !== categoryId),
+      promptEntries: workspace.promptEntries.filter((e) => e.categoryId !== categoryId)
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 拖拽排序提示词分类 */
+  function reorderPromptCategories(orderedIds: string[]): void {
+    const idIndexMap = new Map(orderedIds.map((id, index) => [id, index]))
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      promptCategories: workspace.promptCategories
+        .map((cat) => ({ ...cat, sortOrder: idIndexMap.get(cat.id) ?? cat.sortOrder }))
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((cat, index) => ({ ...cat, sortOrder: index }))
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 创建提示词条目 */
+  function createPromptEntry(payload: Partial<PromptEntry>): string {
+    const now = new Date().toISOString()
+    const entry: PromptEntry = {
+      id: uniqueId('prompt'),
+      categoryId: payload.categoryId || currentWorkspace.value.promptCategories[0]?.id || '',
+      title: payload.title?.trim() || '未命名提示词',
+      content: payload.content?.trim() || '',
+      tags: payload.tags ?? [],
+      remark: payload.remark ?? '',
+      isFavorite: payload.isFavorite ?? false,
+      isPinned: payload.isPinned ?? false,
+      usageCount: payload.usageCount ?? 0,
+      isBuiltin: payload.isBuiltin ?? false,
+      sortOrder: payload.sortOrder ?? 0,
+      createdAt: now,
+      updatedAt: now
+    }
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      promptEntries: reindexPromptEntries([entry, ...workspace.promptEntries])
+    }))
+    schedulePersist('fast')
+    return entry.id
+  }
+
+  /** 更新提示词条目 */
+  function updatePromptEntry(entryId: string, payload: Partial<PromptEntry>): void {
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      promptEntries: workspace.promptEntries.map((entry) =>
+        entry.id === entryId
+          ? {
+              ...entry,
+              categoryId: payload.categoryId !== undefined ? payload.categoryId : entry.categoryId,
+              title: payload.title?.trim() || entry.title,
+              content: payload.content !== undefined ? payload.content : entry.content,
+              tags: Array.isArray(payload.tags) ? payload.tags : entry.tags,
+              remark: payload.remark !== undefined ? payload.remark : entry.remark,
+              isFavorite: payload.isFavorite !== undefined ? payload.isFavorite : entry.isFavorite,
+              isPinned: payload.isPinned !== undefined ? payload.isPinned : entry.isPinned,
+              usageCount: payload.usageCount !== undefined ? payload.usageCount : entry.usageCount,
+              isBuiltin: payload.isBuiltin !== undefined ? payload.isBuiltin : entry.isBuiltin,
+              updatedAt: new Date().toISOString()
+            }
+          : entry
+      )
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 删除提示词条目 */
+  function deletePromptEntry(entryId: string): void {
+    const target = currentWorkspace.value.promptEntries.find((e) => e.id === entryId)
+    if (target) {
+      pushRecycleEntry('prompt', target.title, { ...target })
+    }
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      promptEntries: workspace.promptEntries.filter((e) => e.id !== entryId)
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 批量删除提示词条目 */
+  function deletePromptEntries(entryIds: string[]): void {
+    if (!entryIds.length) return
+    const idSet = new Set(entryIds)
+    currentWorkspace.value.promptEntries
+      .filter((e) => idSet.has(e.id))
+      .forEach((e) => pushRecycleEntry('prompt', e.title, { ...e }))
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      promptEntries: workspace.promptEntries.filter((e) => !idSet.has(e.id))
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 切换提示词收藏状态 */
+  function togglePromptFavorite(entryId: string): void {
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      promptEntries: workspace.promptEntries.map((e) =>
+        e.id === entryId ? { ...e, isFavorite: !e.isFavorite, updatedAt: new Date().toISOString() } : e
+      )
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 切换提示词置顶状态 */
+  function togglePromptPin(entryId: string): void {
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      promptEntries: workspace.promptEntries.map((e) =>
+        e.id === entryId ? { ...e, isPinned: !e.isPinned, updatedAt: new Date().toISOString() } : e
+      )
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 记录提示词使用次数 +1 */
+  function incrementPromptUsage(entryId: string): void {
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      promptEntries: workspace.promptEntries.map((e) =>
+        e.id === entryId ? { ...e, usageCount: (e.usageCount ?? 0) + 1, updatedAt: new Date().toISOString() } : e
+      )
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 批量移动提示词到指定分类 */
+  function movePromptEntriesToCategory(entryIds: string[], categoryId: string): void {
+    if (!entryIds.length) return
+    const idSet = new Set(entryIds)
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      promptEntries: workspace.promptEntries.map((e) =>
+        idSet.has(e.id) ? { ...e, categoryId, updatedAt: new Date().toISOString() } : e
+      )
+    }))
+    schedulePersist('fast')
+  }
+
+  /** 导入提示词数据（支持覆盖/追加模式） */
+  function importPrompts(payload: { promptCategories?: PromptCategory[]; promptEntries?: PromptEntry[] }, mode: ImportConflictMode): void {
+    updateCurrentWorkspace((workspace) => {
+      const importedCats = payload.promptCategories ?? []
+      const importedEntries = payload.promptEntries ?? []
+
+      if (mode === 'overwrite') {
+        return {
+          ...workspace,
+          promptCategories: normalizePromptCategoriesData(importedCats.length ? importedCats : workspace.promptCategories),
+          promptEntries: normalizePromptEntriesData(importedEntries)
+        }
+      }
+
+      // copy 模式：追加新分类和条目，避免 ID 冲突
+      const existingCatNames = new Set(workspace.promptCategories.map((c) => c.name))
+      const newCats = importedCats
+        .filter((c) => !existingCatNames.has(c.name))
+        .map((c) => ({ ...c, id: uniqueId('prompt-cat') }))
+      const catIdMap = new Map<string, string>()
+      importedCats.forEach((c, index) => {
+        const match = workspace.promptCategories.find((existing) => existing.name === c.name)
+        catIdMap.set(c.id, match?.id ?? newCats[index]?.id ?? workspace.promptCategories[0]?.id ?? '')
+      })
+
+      return {
+        ...workspace,
+        promptCategories: [...workspace.promptCategories, ...newCats],
+        promptEntries: [
+          ...importedEntries.map((e) => ({
+            ...e,
+            id: uniqueId('prompt'),
+            categoryId: catIdMap.get(e.categoryId) ?? workspace.promptCategories[0]?.id ?? '',
+            isBuiltin: false
+          })),
+          ...workspace.promptEntries
+        ]
+      }
+    })
     schedulePersist('fast')
   }
 
@@ -4704,6 +5030,21 @@ export const useAppStore = defineStore('app', () => {
     characters,
     inspirationEntries,
     inspirationTypes,
+    promptCategories,
+    promptEntries,
+    createPromptCategory,
+    updatePromptCategory,
+    deletePromptCategory,
+    reorderPromptCategories,
+    createPromptEntry,
+    updatePromptEntry,
+    deletePromptEntry,
+    deletePromptEntries,
+    togglePromptFavorite,
+    togglePromptPin,
+    incrementPromptUsage,
+    movePromptEntriesToCategory,
+    importPrompts,
     closeWizard,
     createProject,
     createProjectWorkspace,

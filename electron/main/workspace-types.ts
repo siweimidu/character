@@ -260,6 +260,29 @@ export type WorkspacePayload = {
         createdAt: string
         updatedAt: string
       }>
+      promptCategories: Array<{
+        id: string
+        name: string
+        sortOrder: number
+        isBuiltin: boolean
+        createdAt: string
+        updatedAt: string
+      }>
+      promptEntries: Array<{
+        id: string
+        categoryId: string
+        title: string
+        content: string
+        tags: string[]
+        remark: string
+        isFavorite: boolean
+        isPinned: boolean
+        usageCount: number
+        isBuiltin: boolean
+        sortOrder: number
+        createdAt: string
+        updatedAt: string
+      }>
       outlineVolumes: Array<{
         id: string
         title: string
@@ -883,6 +906,8 @@ export function normalizeWorkspacePayload(payload: WorkspacePayload | LegacyWork
                 updatedAt: entry.updatedAt || entry.createdAt || normalizedTimestamp
               }))
             : [],
+        promptCategories: [],
+        promptEntries: [],
         outlineItems:
           project.id === selectedProjectId
             ? (legacyPayload.outlineItems ?? []).map((item, index) => ({

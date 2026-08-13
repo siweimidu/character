@@ -15,12 +15,15 @@ import type {
   OutlineVolume,
   PlotThread,
   ProjectWorkspaceData,
+  PromptCategory,
+  PromptEntry,
   RecycleBinEntry,
   WorkflowDocument,
   WorldviewEntry
 } from '@/types/app'
 import { createDefaultWorkflowDocuments, normalizeWorkflowDocuments } from '@/features/novelWorkflow/documents'
 import { cloneOutlineVolumes, createOutlineVolume, ensureVolumeCollections, normalizeVolumeWorkflowDocuments } from '@/features/workspace/outlineVolumes'
+import { buildBuiltinPromptData } from '@/features/prompts/templates'
 
 // 将日期字符串安全转为 ISO 时间戳，无效值回退到当前时间
 function toIsoTimestamp(value?: string): string {
@@ -118,6 +121,45 @@ function normalizeRecycleBin(entries?: RecycleBinEntry[]): RecycleBinEntry[] {
     data: entry.data && typeof entry.data === 'object' ? entry.data : {},
     deletedAt: toIsoTimestamp(entry.deletedAt),
     expiresAt: toIsoTimestamp(entry.expiresAt || entry.deletedAt)
+  }))
+}
+
+// 校正提示词分类：按 sortOrder 排序并确保字段完整
+function normalizePromptCategories(categories?: PromptCategory[]): PromptCategory[] {
+  const sorted = (categories ?? [])
+    .map((entry, index) => ({ entry, index }))
+    .sort((left, right) => (left.entry.sortOrder ?? left.index) - (right.entry.sortOrder ?? right.index))
+
+  return sorted.map(({ entry }, index) => ({
+    ...entry,
+    name: String(entry.name ?? '').trim() || '未命名分类',
+    sortOrder: index,
+    isBuiltin: Boolean(entry.isBuiltin),
+    createdAt: toIsoTimestamp(entry.createdAt),
+    updatedAt: toIsoTimestamp(entry.updatedAt || entry.createdAt)
+  }))
+}
+
+// 校正提示词条目：排序、清理标签、规范化布尔字段并确保时间戳合法
+function normalizePromptEntries(entries?: PromptEntry[]): PromptEntry[] {
+  const sorted = (entries ?? [])
+    .map((entry, index) => ({ entry, index }))
+    .sort((left, right) => (left.entry.sortOrder ?? left.index) - (right.entry.sortOrder ?? right.index))
+
+  return sorted.map(({ entry }, index) => ({
+    ...entry,
+    categoryId: String(entry.categoryId ?? '').trim(),
+    title: String(entry.title ?? '').trim() || '未命名提示词',
+    content: String(entry.content ?? ''),
+    tags: Array.isArray(entry.tags) ? entry.tags.map((tag) => String(tag).trim()).filter(Boolean).slice(0, 8) : [],
+    remark: String(entry.remark ?? ''),
+    isFavorite: Boolean(entry.isFavorite),
+    isPinned: Boolean(entry.isPinned),
+    usageCount: Number.isFinite(entry.usageCount) ? Math.max(0, Math.floor(entry.usageCount)) : 0,
+    isBuiltin: Boolean(entry.isBuiltin),
+    sortOrder: index,
+    createdAt: toIsoTimestamp(entry.createdAt),
+    updatedAt: toIsoTimestamp(entry.updatedAt || entry.createdAt)
   }))
 }
 
@@ -442,6 +484,20 @@ function cloneAiRuns(aiRuns?: AiRunRecord[]): AiRunRecord[] {
     : []
 }
 
+// 创建默认提示词分类：内置分类 + 空的自定义分类列表
+function createDefaultPromptCategories(): PromptCategory[] {
+  const now = new Date().toISOString()
+  const defaultNames = ['写作辅助', '润色优化', '剧情构思', '角色塑造']
+  return defaultNames.map((name, index) => ({
+    id: `prompt-cat-builtin-${index + 1}`,
+    name,
+    sortOrder: index,
+    isBuiltin: true,
+    createdAt: now,
+    updatedAt: now
+  }))
+}
+
 // 创建空工作区：对所有集合做标准化处理，保证数据结构完整
 // 可通过 overrides 传入部分数据覆盖默认值
 export function createEmptyWorkspace(overrides?: Partial<ProjectWorkspaceData>): ProjectWorkspaceData {
@@ -468,6 +524,12 @@ export function createEmptyWorkspace(overrides?: Partial<ProjectWorkspaceData>):
     characterRelationships: cloneCharacterRelationships(overrides?.characterRelationships),
     organizationMemberships: cloneOrganizationMemberships(overrides?.organizationMemberships),
     inspirationEntries: cloneInspirationEntries(overrides?.inspirationEntries),
+    promptCategories: normalizePromptCategories(
+      overrides?.promptCategories?.length ? overrides.promptCategories : createDefaultPromptCategories()
+    ),
+    promptEntries: normalizePromptEntries(
+      overrides?.promptEntries?.length ? overrides.promptEntries : buildBuiltinPromptData().entries
+    ),
     outlineVolumes: normalizedVolumes,
     outlineItems: cloneOutlineItems(volumeState.outlineItems),
     chapters: cloneChapters(volumeState.chapters),
@@ -528,6 +590,12 @@ export function normalizeWorkspace(
     characterRelationships: cloneCharacterRelationships(workspace.characterRelationships),
     organizationMemberships: cloneOrganizationMemberships(workspace.organizationMemberships),
     inspirationEntries: cloneInspirationEntries(workspace.inspirationEntries),
+    promptCategories: normalizePromptCategories(
+      workspace.promptCategories?.length ? workspace.promptCategories : createDefaultPromptCategories()
+    ),
+    promptEntries: normalizePromptEntries(
+      workspace.promptEntries?.length ? workspace.promptEntries : buildBuiltinPromptData().entries
+    ),
     outlineVolumes: normalizedVolumes,
     outlineItems: cloneOutlineItems(volumeState.outlineItems),
     chapters: cloneChapters(volumeState.chapters),

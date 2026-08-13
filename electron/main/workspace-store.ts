@@ -1471,6 +1471,8 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
           .map(({ projectId: _projectId, ...entry }) => entry),
         inspirationEntries: (inspirationByProject.get(project.id) ?? [])
           .map(({ projectId: _projectId, ...entry }) => entry),
+        promptCategories: [],
+        promptEntries: [],
         outlineVolumes: (volumesByProject.get(project.id) ?? [])
           .map(({ projectId: _projectId, ...volume }) => ({
             ...volume,

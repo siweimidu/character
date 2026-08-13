@@ -34,6 +34,7 @@ export type ProjectArchiveModule =
   | 'characters'
   | 'relations'
   | 'inspiration'
+  | 'prompts'
   | 'outline'
   | 'plotThreads'
   | 'chapters'
@@ -174,6 +175,7 @@ const ALL_ARCHIVE_MODULES: ProjectArchiveModule[] = [
   'characters',
   'relations',
   'inspiration',
+  'prompts',
   'outline',
   'plotThreads',
   'chapters',
@@ -194,6 +196,8 @@ function createEmptyWorkspace(): ProjectWorkspace {
     characterRelationships: [],
     organizationMemberships: [],
     inspirationEntries: [],
+    promptCategories: [],
+    promptEntries: [],
     outlineVolumes: [],
     outlineItems: [],
     chapters: [],
@@ -554,6 +558,8 @@ export async function exportProjectArchive(options: ExportProjectArchiveOptions)
     organizationMemberships: workspace.organizationMemberships
   })
   addJson(zip, 'workspace/inspiration.json', workspace.inspirationEntries)
+  addJson(zip, 'workspace/promptCategories.json', workspace.promptCategories ?? [])
+  addJson(zip, 'workspace/promptEntries.json', workspace.promptEntries ?? [])
   addJson(zip, 'workspace/outline.json', {
     outlineVolumes: workspace.outlineVolumes,
     outlineItems: workspace.outlineItems
@@ -627,6 +633,8 @@ async function readArchiveContent(filePath: string): Promise<ProjectArchiveConte
     characterRelationships: relationPayload.characterRelationships ?? [],
     organizationMemberships: relationPayload.organizationMemberships ?? [],
     inspirationEntries: await readZipJson(zip, 'workspace/inspiration.json', []),
+    promptCategories: await readZipJson(zip, 'workspace/promptCategories.json', []),
+    promptEntries: await readZipJson(zip, 'workspace/promptEntries.json', []),
     outlineVolumes: outlinePayload.outlineVolumes ?? [],
     outlineItems: outlinePayload.outlineItems ?? [],
     chapters: await readZipJson(zip, 'workspace/chapters.json', []),
@@ -794,6 +802,12 @@ function remapArchiveContent(
     inspirationEntries: modules.has('inspiration')
       ? content.workspace.inspirationEntries.map((entry) => ({ ...entry, id: mapId(idMap, entry.id) }))
       : [],
+    promptCategories: modules.has('prompts')
+      ? content.workspace.promptCategories.map((cat) => ({ ...cat, id: mapId(idMap, cat.id) }))
+      : [],
+    promptEntries: modules.has('prompts')
+      ? content.workspace.promptEntries.map((entry) => ({ ...entry, id: mapId(idMap, entry.id), categoryId: mapId(idMap, entry.categoryId) }))
+      : [],
     outlineVolumes: modules.has('outline')
       ? content.workspace.outlineVolumes.map((volume) => ({
           ...volume,
@@ -917,6 +931,12 @@ function mergeWorkspace(
     inspirationEntries: modules.has('inspiration')
       ? overwrite ? incoming.inspirationEntries : [...current.inspirationEntries, ...incoming.inspirationEntries]
       : current.inspirationEntries,
+    promptCategories: modules.has('prompts')
+      ? overwrite ? incoming.promptCategories : [...current.promptCategories, ...incoming.promptCategories]
+      : current.promptCategories,
+    promptEntries: modules.has('prompts')
+      ? overwrite ? incoming.promptEntries : [...current.promptEntries, ...incoming.promptEntries]
+      : current.promptEntries,
     outlineVolumes: modules.has('outline')
       ? overwrite ? incoming.outlineVolumes : [...current.outlineVolumes, ...incoming.outlineVolumes]
       : current.outlineVolumes,

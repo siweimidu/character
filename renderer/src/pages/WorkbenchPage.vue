@@ -9,6 +9,7 @@ import {
   Globe2,
   LayoutDashboard,
   Lightbulb,
+  MessageSquareText,
   Network,
   PanelLeftClose,
   PanelLeftOpen,
@@ -28,6 +29,7 @@ import GlobalAssistantPage from '@/components/GlobalAssistantPage.vue'
 import GlobalAssistantV2Panel from '@/components/assistantV2/GlobalAssistantV2Panel.vue'
 import GlobalAssistantV2Page from '@/components/assistantV2/GlobalAssistantV2Page.vue'
 import ProjectKnowledgePanel from '@/components/ProjectKnowledgePanel.vue'
+import PromptLibraryPanel from '@/components/PromptLibraryPanel.vue'
 import WorldviewPanel from '@/components/WorldviewPanel.vue'
 import CharactersPanel from '@/components/CharactersPanel.vue'
 import RelationsPanel from '@/components/RelationsPanel.vue'
@@ -59,6 +61,7 @@ const panelSearch = reactive<Record<string, string>>({
   overview: '',
   deconstruction: '',
   'project-knowledge': '',
+  'prompt-library': '',
   world: '',
   characters: '',
   relations: '',
@@ -83,6 +86,7 @@ const sidebarItems = [
   { id: 'threads', label: '伏笔线索', description: '追踪伏笔埋设、回收与废弃状态', icon: BookMarked, color: '#6366f1' },
   { id: 'inspiration', label: '灵感模块', description: '收集标题、桥段、转折与人物动机', icon: Lightbulb, color: '#f59e0b' },
   { id: 'project-knowledge', label: '项目知识库', description: '一致性审计与从已有章节补录状态', icon: FileCheck2, color: '#14b8a6' },
+  { id: 'prompt-library', label: '提示词库', description: '管理写作提示词模板与一键套用', icon: MessageSquareText, color: '#f97316' },
   { id: 'global-assistant-v2', label: '智能体', description: '多角色创作助手 + 暂存变更审阅', icon: Sparkles, color: '#0d7d5a' }
 ] as const
 
@@ -135,6 +139,7 @@ const sidebarBadgeMap = computed<Record<string, string | null>>(() => ({
   characters: String(appStore.characters.length),
   relations: String(appStore.organizations.length + appStore.characterRelationships.length),
   inspiration: String(appStore.inspirationEntries.length),
+  'prompt-library': String(appStore.promptEntries.length),
   outline: String(appStore.outlineItems.length),
   chapters: String(appStore.chapters.length),
   threads: String(appStore.plotThreads.length),
@@ -429,6 +434,7 @@ watch(searchKeyword, (value) => {
             <NovelWorkflowPanel v-else-if="appStore.activePanel === 'workflow'" key="workflow" />
             <OverviewPanel v-else-if="appStore.activePanel === 'overview'" key="overview" :search-query="normalizedSearch" />
             <ProjectKnowledgePanel v-else-if="appStore.activePanel === 'project-knowledge'" key="project-knowledge" />
+            <PromptLibraryPanel v-else-if="appStore.activePanel === 'prompt-library'" key="prompt-library" />
             <WorldviewPanel v-else-if="appStore.activePanel === 'world'" key="world" :search-query="normalizedSearch" />
             <CharactersPanel v-else-if="appStore.activePanel === 'characters'" key="characters" :search-query="normalizedSearch" />
             <RelationsPanel v-else-if="appStore.activePanel === 'relations'" key="relations" :search-query="normalizedSearch" />

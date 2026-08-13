@@ -62,6 +62,8 @@ export interface LegacyStoredState {
   characterRelationships?: CharacterRelationship[]
   organizationMemberships?: OrganizationMembership[]
   inspirationEntries?: InspirationEntry[]
+  promptCategories?: import('@/types/app').PromptCategory[]
+  promptEntries?: import('@/types/app').PromptEntry[]
   outlineVolumes?: OutlineVolume[]
   outlineItems?: OutlineItem[]
   chapters?: ChapterDraft[]
@@ -567,6 +569,8 @@ export function normalizeProjectWorkspaceData(
     characterRelationships: normalized.characterRelationships,
     organizationMemberships: normalized.organizationMemberships,
     inspirationEntries: normalized.inspirationEntries,
+    promptCategories: normalized.promptCategories,
+    promptEntries: normalized.promptEntries,
     outlineVolumes: normalized.outlineVolumes,
     outlineItems: normalized.outlineItems,
     chapters: normalized.chapters.map(normalizeChapterDraft),
@@ -646,6 +650,8 @@ export function buildWorkspaceMapFromLegacy(
             characterRelationships: payload.characterRelationships,
             organizationMemberships: payload.organizationMemberships,
             inspirationEntries: payload.inspirationEntries,
+            promptCategories: payload.promptCategories,
+            promptEntries: payload.promptEntries,
             outlineVolumes: payload.outlineVolumes,
             outlineItems: payload.outlineItems,
             chapters: payload.chapters,
