@@ -779,7 +779,6 @@ export const useAppStore = defineStore('app', () => {
       novelWorkflowStages: payload.project?.novelWorkflowStages ?? createDefaultNovelWorkflowStages(),
       projectSkills: payload.project?.projectSkills ?? [],
       targetPlatform: payload.project?.targetPlatform?.trim() || '',
-
       selectedReferenceWorkIds: payload.project?.selectedReferenceWorkIds ?? [],
       coverHistory: payload.project?.coverHistory ?? []
     }
@@ -1191,7 +1190,6 @@ export const useAppStore = defineStore('app', () => {
       novelWorkflowStages: payload.project.novelWorkflowStages ?? createDefaultNovelWorkflowStages(),
       projectSkills: payload.project.projectSkills ?? [],
       targetPlatform: payload.project.targetPlatform?.trim() || '',
-
       selectedReferenceWorkIds: payload.project.selectedReferenceWorkIds ?? [],
       coverHistory: payload.project.coverHistory ?? []
     }))
@@ -1264,7 +1262,6 @@ export const useAppStore = defineStore('app', () => {
         novelWorkflowStages: payload.project.novelWorkflowStages ?? createDefaultNovelWorkflowStages(),
         projectSkills: payload.project.projectSkills ?? [],
         targetPlatform: payload.project.targetPlatform?.trim() || '',
-
         selectedReferenceWorkIds: payload.project.selectedReferenceWorkIds ?? [],
         coverHistory: payload.project.coverHistory ?? []
       }))

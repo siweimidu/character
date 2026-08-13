@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { Activity, Copy, Cpu, Download, ExternalLink, FileInput, Image, MonitorCog, Moon, Network, Palette, PlugZap, Plus, RefreshCw, ScanEye, Trash2 } from 'lucide-vue-next'
-import { NButton, NFormItem, NInput, NInputNumber, NModal, NSelect, NSlider, NSwitch, NTag, useMessage } from 'naive-ui'
+import { NButton, NFormItem, NInput, NInputNumber, NModal, NSelect, NSlider, NSwitch, useMessage } from 'naive-ui'
 import { autoSaveOptions } from '@/features/settings/autoSave'
 import { getProviderPreset, providerOptions, resolveProviderDefaults } from '@/features/settings/providerPresets'
 import { AI_PROVIDER_CATALOG } from '@shared/ai-provider-catalog'
@@ -33,19 +33,10 @@ function applyDarkModeImmediately(value: boolean): void {
   appStore.updateAppSetting('darkMode', value, { flushWorkspace: false })
 }
 
-/** 当前选中主题的主色深浅（0.3-1.2，1 为默认），作用于主色与背景的叠加浓度，即时生效 */
-const themeColorStrength = ref(1)
-
-/** 调节当前主题颜色深浅（即时生效），替换旧的“纸质纹理强度”滑动条 */
-function setThemeColorStrength(value: number): void {
-  const safe = Number.isFinite(value) ? Math.min(1.2, Math.max(0.3, value)) : 1
-  themeColorStrength.value = safe
-  appStore.updateAppSetting('themeColorStrength', safe, { flushWorkspace: false })
-}
-
-/** 返回当前主题色卡对应的 CSS 主色（用于色块展示） */
-function activeThemePreset() {
-  return themePresets.find((p) => p.name === draftTheme.value) ?? themePresets[0]
+/** 调节主题主色深浅（即时生效），替换旧的纸质纹理强度滑动条 */
+function setThemeColorIntensity(value: number): void {
+  const safe = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0.5
+  appStore.updateAppSetting('themeColorIntensity', safe, { flushWorkspace: false })
 }
 
 function themeTextColor(color: string): string {
@@ -141,19 +132,19 @@ const draftSettings = reactive<AppSettings>({
   topP: undefined,
   aiProfiles: [],
   activeAiProfileId: '',
-  imageProfiles: [],
-  activeImageProfileId: '',
   imageProvider: '',
   imageModel: '',
   imageApiKey: '',
   imageBaseUrl: '',
-  visionProfiles: [],
-  activeVisionProfileId: '',
+  imageProfiles: [],
+  activeImageProfileId: '',
   visionProfileName: '',
   visionProvider: '',
   visionModel: '',
   visionApiKey: '',
   visionBaseUrl: '',
+  visionProfiles: [],
+  activeVisionProfileId: '',
   visionSavedModels: [],
   autoSaveInterval: '5m',
   editorFont: 'clear-mono',
@@ -162,7 +153,7 @@ const draftSettings = reactive<AppSettings>({
   darkMode: false,
   darkModeStyle: 'nord',
   aiTimeoutSeconds: 180,
-  themeColorStrength: 1
+  themeColorIntensity: 0.5
 })
 const draftTheme = ref<ThemeName>('ocean')
 const editingProfileId = ref<string>('')
@@ -172,19 +163,17 @@ const editingVisionProfileId = ref<string>('')
 const editingProfile = computed<AiProfile | undefined>(() =>
   draftSettings.aiProfiles.find((p) => p.id === editingProfileId.value)
 )
-const isEditingActiveProfile = computed(
-  () => editingProfileId.value === draftSettings.activeAiProfileId
-)
-
 const editingImageProfile = computed<ImageProfile | undefined>(() =>
   draftSettings.imageProfiles.find((p) => p.id === editingImageProfileId.value)
 )
-const isEditingActiveImageProfile = computed(
-  () => editingImageProfileId.value === draftSettings.activeImageProfileId
-)
-
 const editingVisionProfile = computed<VisionProfile | undefined>(() =>
   draftSettings.visionProfiles.find((p) => p.id === editingVisionProfileId.value)
+)
+const isEditingActiveProfile = computed(
+  () => editingProfileId.value === draftSettings.activeAiProfileId
+)
+const isEditingActiveImageProfile = computed(
+  () => editingImageProfileId.value === draftSettings.activeImageProfileId
 )
 const isEditingActiveVisionProfile = computed(
   () => editingVisionProfileId.value === draftSettings.activeVisionProfileId
@@ -280,19 +269,19 @@ function syncDraftFromStore(): void {
   draftSettings.topP = appStore.appSettings.topP
   draftSettings.aiProfiles = appStore.appSettings.aiProfiles.map((profile) => ({ ...profile }))
   draftSettings.activeAiProfileId = appStore.appSettings.activeAiProfileId
-  draftSettings.imageProfiles = appStore.appSettings.imageProfiles.map((profile) => ({ ...profile, models: [...(profile.models ?? [])] }))
-  draftSettings.activeImageProfileId = appStore.appSettings.activeImageProfileId
   draftSettings.imageProvider = appStore.appSettings.imageProvider
   draftSettings.imageModel = appStore.appSettings.imageModel
   draftSettings.imageApiKey = appStore.appSettings.imageApiKey
   draftSettings.imageBaseUrl = appStore.appSettings.imageBaseUrl
-  draftSettings.visionProfiles = appStore.appSettings.visionProfiles.map((profile) => ({ ...profile, models: [...(profile.models ?? [])] }))
-  draftSettings.activeVisionProfileId = appStore.appSettings.activeVisionProfileId
+  draftSettings.imageProfiles = appStore.appSettings.imageProfiles.map((p) => ({ ...p }))
+  draftSettings.activeImageProfileId = appStore.appSettings.activeImageProfileId
   draftSettings.visionProfileName = appStore.appSettings.visionProfileName
   draftSettings.visionProvider = appStore.appSettings.visionProvider
   draftSettings.visionModel = appStore.appSettings.visionModel
   draftSettings.visionApiKey = appStore.appSettings.visionApiKey
   draftSettings.visionBaseUrl = appStore.appSettings.visionBaseUrl
+  draftSettings.visionProfiles = appStore.appSettings.visionProfiles.map((p) => ({ ...p }))
+  draftSettings.activeVisionProfileId = appStore.appSettings.activeVisionProfileId
   draftSettings.visionSavedModels = [...(appStore.appSettings.visionSavedModels ?? [])]
   draftSettings.autoSaveInterval = appStore.appSettings.autoSaveInterval
   draftSettings.editorFont = appStore.appSettings.editorFont
@@ -300,7 +289,7 @@ function syncDraftFromStore(): void {
   draftSettings.darkMode = appStore.appSettings.darkMode
   draftSettings.darkModeStyle = appStore.appSettings.darkModeStyle
   draftSettings.aiTimeoutSeconds = appStore.appSettings.aiTimeoutSeconds
-  themeColorStrength.value = appStore.appSettings.themeColorStrength ?? 1
+  draftSettings.themeColorIntensity = appStore.appSettings.themeColorIntensity ?? 0.5
   draftTheme.value = appStore.theme
 }
 
@@ -424,39 +413,17 @@ function handleDeleteProfile(): void {
   fetchedModels.value = []
 }
 
-function updateEditingProfile(updates: Partial<AiProfile>): void {
-  const profile = editingProfile.value
-  if (!profile) return
-  Object.assign(profile, updates)
-  if (isEditingActiveProfile.value) {
-    if (updates.provider !== undefined) draftSettings.provider = updates.provider
-    if (updates.model !== undefined) draftSettings.model = updates.model
-    if (updates.apiKey !== undefined) draftSettings.apiKey = updates.apiKey
-    if (updates.baseUrl !== undefined) draftSettings.baseUrl = updates.baseUrl
-    if (updates.apiProtocol !== undefined) draftSettings.apiProtocol = updates.apiProtocol
-    if ('temperature' in updates) draftSettings.temperature = updates.temperature
-    if ('topP' in updates) draftSettings.topP = updates.topP
+// ── 图片生成接口配置（新建 / 复制 / 删除，与 AI 接口配置一致） ──
+function selectImageProfile(profileId: string): void {
+  editingImageProfileId.value = profileId
+  const profile = editingImageProfile.value
+  if (profile) {
+    draftSettings.imageProvider = profile.provider
+    draftSettings.imageModel = profile.model
+    draftSettings.imageApiKey = profile.apiKey
+    draftSettings.imageBaseUrl = profile.baseUrl
   }
-}
-
-function handleProviderChange(provider: string): void {
-  const defaults = resolveProviderDefaults(provider)
-  updateEditingProfile({
-    provider,
-    model: defaults.model,
-    baseUrl: defaults.baseUrl,
-    apiProtocol: 'auto'
-  })
-  fetchedModels.value = []
-}
-
-// ── 图片生成接口配置：新建 / 复制 / 删除（与 AI 接口配置一致） ──
-function generateImageProfileId(): string {
-  return `image-profile-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-function generateVisionProfileId(): string {
-  return `vision-profile-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  fetchedImageModels.value = []
 }
 
 function generateUniqueImageName(base: string): string {
@@ -467,36 +434,27 @@ function generateUniqueImageName(base: string): string {
   return `${base} ${i}`
 }
 
-function generateUniqueVisionName(base: string): string {
-  const existing = new Set(draftSettings.visionProfiles.map((p) => p.name))
-  if (!existing.has(base)) return base
-  let i = 2
-  while (existing.has(`${base} ${i}`)) i++
-  return `${base} ${i}`
-}
-
 function handleAddImageProfile(): void {
-  const id = generateImageProfileId()
-  const defaults = resolveImageProviderDefaults('gpt-image-openai')
+  const id = generateProfileId()
+  const defaults = resolveImageProviderDefaults('custom-openai-compatible')
   const newProfile: ImageProfile = {
     id,
-    name: generateUniqueImageName('GPT-Image'),
-    provider: 'gpt-image-openai',
+    name: generateUniqueImageName('图片生成配置'),
+    provider: 'custom-openai-compatible',
     baseUrl: defaults.baseUrl,
     apiKey: '',
     model: defaults.model,
     models: defaults.model ? [defaults.model] : []
   }
   draftSettings.imageProfiles.push(newProfile)
-  editingImageProfileId.value = id
-  fetchedImageModels.value = []
+  selectImageProfile(id)
 }
 
 function handleCopyImageProfile(): void {
+  if (!editingImageProfile.value) return
   const source = editingImageProfile.value
-  if (!source) return
-  const id = generateImageProfileId()
-  draftSettings.imageProfiles.push({
+  const id = generateProfileId()
+  const copy: ImageProfile = {
     id,
     name: generateUniqueImageName(`${source.name} 副本`),
     provider: source.provider,
@@ -504,14 +462,13 @@ function handleCopyImageProfile(): void {
     apiKey: source.apiKey,
     model: source.model,
     models: Array.isArray(source.models) ? [...source.models] : (source.model ? [source.model] : [])
-  })
-  editingImageProfileId.value = id
-  fetchedImageModels.value = []
+  }
+  draftSettings.imageProfiles.push(copy)
+  selectImageProfile(id)
 }
 
 function handleDeleteImageProfile(): void {
-  const profile = editingImageProfile.value
-  if (!profile) return
+  if (!editingImageProfile.value) return
   if (isEditingActiveImageProfile.value) {
     message.warning('当前激活的图片生成接口不能删除，请先切换到其他配置')
     return
@@ -523,12 +480,7 @@ function handleDeleteImageProfile(): void {
   const removingId = editingImageProfileId.value
   draftSettings.imageProfiles = draftSettings.imageProfiles.filter((p) => p.id !== removingId)
   editingImageProfileId.value = draftSettings.activeImageProfileId || draftSettings.imageProfiles[0]?.id || ''
-  fetchedImageModels.value = []
-}
-
-function selectImageProfile(profileId: string): void {
-  editingImageProfileId.value = profileId
-  fetchedImageModels.value = []
+  selectImageProfile(editingImageProfileId.value)
 }
 
 function updateEditingImageProfile(updates: Partial<ImageProfile>): void {
@@ -559,9 +511,9 @@ function handleSaveImageProfileModel(): void {
   if (!models.includes(model)) {
     models.push(model)
     updateEditingImageProfile({ models: models.slice(0, 50) })
-    message.success(`已保存模型：${model}`)
+    message.success(`已保存图片模型：${model}`)
   } else {
-    message.info(`模型 ${model} 已在列表中。`)
+    message.info(`图片模型 ${model} 已在列表中。`)
   }
 }
 
@@ -574,32 +526,52 @@ function handleRemoveImageProfileModel(model: string): void {
 
 function handleApplyImageProfileModel(model: string): void {
   updateEditingImageProfile({ model })
-  message.success(`已切换模型：${model}`)
+  message.success(`已切换图片模型：${model}`)
 }
 
-// ── 图片识别接口配置：新建 / 复制 / 删除（与 AI 接口配置一致） ──
+// ── 图片识别接口配置（新建 / 复制 / 删除，与 AI 接口配置一致） ──
+function selectVisionProfile(profileId: string): void {
+  editingVisionProfileId.value = profileId
+  const profile = editingVisionProfile.value
+  if (profile) {
+    draftSettings.visionProfileName = profile.name
+    draftSettings.visionProvider = profile.provider
+    draftSettings.visionModel = profile.model
+    draftSettings.visionApiKey = profile.apiKey
+    draftSettings.visionBaseUrl = profile.baseUrl
+  }
+  fetchedVisionModels.value = []
+}
+
+function generateUniqueVisionName(base: string): string {
+  const existing = new Set(draftSettings.visionProfiles.map((p) => p.name))
+  if (!existing.has(base)) return base
+  let i = 2
+  while (existing.has(`${base} ${i}`)) i++
+  return `${base} ${i}`
+}
+
 function handleAddVisionProfile(): void {
-  const id = generateVisionProfileId()
-  const defaults = resolveVisionProviderDefaults('vision-openai')
+  const id = generateProfileId()
+  const defaults = resolveVisionProviderDefaults('vision-custom')
   const newProfile: VisionProfile = {
     id,
-    name: generateUniqueVisionName('GPT-4o 识别'),
-    provider: 'vision-openai',
+    name: generateUniqueVisionName('图片识别配置'),
+    provider: 'vision-custom',
     baseUrl: defaults.baseUrl,
     apiKey: '',
     model: defaults.model,
     models: defaults.model ? [defaults.model] : []
   }
   draftSettings.visionProfiles.push(newProfile)
-  editingVisionProfileId.value = id
-  fetchedVisionModels.value = []
+  selectVisionProfile(id)
 }
 
 function handleCopyVisionProfile(): void {
+  if (!editingVisionProfile.value) return
   const source = editingVisionProfile.value
-  if (!source) return
-  const id = generateVisionProfileId()
-  draftSettings.visionProfiles.push({
+  const id = generateProfileId()
+  const copy: VisionProfile = {
     id,
     name: generateUniqueVisionName(`${source.name} 副本`),
     provider: source.provider,
@@ -607,14 +579,13 @@ function handleCopyVisionProfile(): void {
     apiKey: source.apiKey,
     model: source.model,
     models: Array.isArray(source.models) ? [...source.models] : (source.model ? [source.model] : [])
-  })
-  editingVisionProfileId.value = id
-  fetchedVisionModels.value = []
+  }
+  draftSettings.visionProfiles.push(copy)
+  selectVisionProfile(id)
 }
 
 function handleDeleteVisionProfile(): void {
-  const profile = editingVisionProfile.value
-  if (!profile) return
+  if (!editingVisionProfile.value) return
   if (isEditingActiveVisionProfile.value) {
     message.warning('当前激活的图片识别接口不能删除，请先切换到其他配置')
     return
@@ -626,12 +597,7 @@ function handleDeleteVisionProfile(): void {
   const removingId = editingVisionProfileId.value
   draftSettings.visionProfiles = draftSettings.visionProfiles.filter((p) => p.id !== removingId)
   editingVisionProfileId.value = draftSettings.activeVisionProfileId || draftSettings.visionProfiles[0]?.id || ''
-  fetchedVisionModels.value = []
-}
-
-function selectVisionProfile(profileId: string): void {
-  editingVisionProfileId.value = profileId
-  fetchedVisionModels.value = []
+  selectVisionProfile(editingVisionProfileId.value)
 }
 
 function updateEditingVisionProfile(updates: Partial<VisionProfile>): void {
@@ -639,6 +605,7 @@ function updateEditingVisionProfile(updates: Partial<VisionProfile>): void {
   if (!profile) return
   Object.assign(profile, updates)
   if (isEditingActiveVisionProfile.value) {
+    if (updates.name !== undefined) draftSettings.visionProfileName = updates.name
     if (updates.provider !== undefined) draftSettings.visionProvider = updates.provider
     if (updates.model !== undefined) draftSettings.visionModel = updates.model
     if (updates.apiKey !== undefined) draftSettings.visionApiKey = updates.apiKey
@@ -662,9 +629,9 @@ function handleSaveVisionProfileModel(): void {
   if (!models.includes(model)) {
     models.push(model)
     updateEditingVisionProfile({ models: models.slice(0, 50) })
-    message.success(`已保存模型：${model}`)
+    message.success(`已保存图片识别模型：${model}`)
   } else {
-    message.info(`模型 ${model} 已在列表中。`)
+    message.info(`图片识别模型 ${model} 已在列表中。`)
   }
 }
 
@@ -677,13 +644,49 @@ function handleRemoveVisionProfileModel(model: string): void {
 
 function handleApplyVisionProfileModel(model: string): void {
   updateEditingVisionProfile({ model })
-  message.success(`已切换模型：${model}`)
+  message.success(`已切换图片识别模型：${model}`)
+}
+
+function updateEditingProfile(updates: Partial<AiProfile>): void {
+  const profile = editingProfile.value
+  if (!profile) return
+  Object.assign(profile, updates)
+  if (isEditingActiveProfile.value) {
+    if (updates.provider !== undefined) draftSettings.provider = updates.provider
+    if (updates.model !== undefined) draftSettings.model = updates.model
+    if (updates.apiKey !== undefined) draftSettings.apiKey = updates.apiKey
+    if (updates.baseUrl !== undefined) draftSettings.baseUrl = updates.baseUrl
+    if (updates.apiProtocol !== undefined) draftSettings.apiProtocol = updates.apiProtocol
+    if ('temperature' in updates) draftSettings.temperature = updates.temperature
+    if ('topP' in updates) draftSettings.topP = updates.topP
+  }
+}
+
+function handleProviderChange(provider: string): void {
+  const defaults = resolveProviderDefaults(provider)
+  updateEditingProfile({
+    provider,
+    model: defaults.model,
+    baseUrl: defaults.baseUrl,
+    apiProtocol: 'auto'
+  })
+  fetchedModels.value = []
 }
 
 function handleImageProviderChange(value: string): void {
-  draftSettings.imageProvider = value
   const defaults = resolveImageProviderDefaults(value)
-  updateEditingImageProfile({ provider: value, model: defaults.model, baseUrl: defaults.baseUrl })
+  const updates: Partial<ImageProfile> = {
+    provider: value,
+    model: defaults.model,
+    baseUrl: defaults.baseUrl
+  }
+  if (editingImageProfile.value) {
+    updateEditingImageProfile(updates)
+  } else {
+    draftSettings.imageProvider = value
+    draftSettings.imageModel = defaults.model
+    draftSettings.imageBaseUrl = defaults.baseUrl
+  }
   fetchedImageModels.value = []
 }
 
@@ -708,9 +711,19 @@ async function handleFetchImageModels(): Promise<void> {
 }
 
 function handleVisionProviderChange(value: string): void {
-  draftSettings.visionProvider = value
   const defaults = resolveVisionProviderDefaults(value)
-  updateEditingVisionProfile({ provider: value, model: defaults.model, baseUrl: defaults.baseUrl })
+  const updates: Partial<VisionProfile> = {
+    provider: value,
+    model: defaults.model,
+    baseUrl: defaults.baseUrl
+  }
+  if (editingVisionProfile.value) {
+    updateEditingVisionProfile(updates)
+  } else {
+    draftSettings.visionProvider = value
+    draftSettings.visionModel = defaults.model
+    draftSettings.visionBaseUrl = defaults.baseUrl
+  }
   fetchedVisionModels.value = []
 }
 
@@ -738,12 +751,13 @@ async function handleTestImageConnection(): Promise<void> {
   if (isTestingImageConnection.value) return
   isTestingImageConnection.value = true
   try {
+    const profile = editingImageProfile.value
     const payload: AppSettings = {
       ...draftSettings,
       provider: 'openai',
-      model: draftSettings.imageModel.trim() || draftSettings.model,
-      apiKey: draftSettings.imageApiKey.trim(),
-      baseUrl: draftSettings.imageBaseUrl.trim(),
+      model: (profile?.model ?? draftSettings.imageModel).trim() || draftSettings.model,
+      apiKey: (profile?.apiKey ?? draftSettings.imageApiKey).trim(),
+      baseUrl: (profile?.baseUrl ?? draftSettings.imageBaseUrl).trim(),
       apiProtocol: 'auto'
     }
     const result = await window.characterArc.testAiConnection(toIpcPayload(payload))
@@ -764,7 +778,8 @@ async function handleTestVisionConnection(): Promise<void> {
     const result = await window.characterArc.testVisionConnection(toIpcPayload({ ...draftSettings }))
     if (!result.success) throw new Error(result.error ?? '图片识别连接测试失败')
     const res = result.result as { provider?: string; model?: string; protocol?: string } | undefined
-    message.success(`图片识别连接测试成功：${res?.model ?? draftSettings.visionModel} / ${res?.protocol ?? 'auto'}`)
+    const profile = editingVisionProfile.value
+    message.success(`图片识别连接测试成功：${res?.model ?? (profile?.model ?? draftSettings.visionModel)} / ${res?.protocol ?? 'auto'}`)
   } catch (error) {
     message.error(error instanceof Error ? error.message : '图片识别连接测试失败')
   } finally {
@@ -788,26 +803,13 @@ async function handleBenchmarkVisionModel(): Promise<void> {
   }
 }
 
-function handleSaveVisionModel(): void {
-  handleSaveVisionProfileModel()
-}
-
-function handleApplyVisionModel(model: string): void {
-  handleApplyVisionProfileModel(model)
-}
-
-function handleRemoveVisionModel(model: string): void {
-  handleRemoveVisionProfileModel(model)
-}
-
-
 function openVisionProviderWebsite(): void {
-  const url = resolveVisionProviderWebsite(editingVisionProfile.value?.provider ?? draftSettings.visionProvider)
+  const url = resolveVisionProviderWebsite(draftSettings.visionProvider)
   window.open(url, '_blank')
 }
 
 function openImageProviderWebsite(): void {
-  const url = resolveImageProviderWebsite(editingImageProfile.value?.provider ?? draftSettings.imageProvider)
+  const url = resolveImageProviderWebsite(draftSettings.imageProvider)
   window.open(url, '_blank')
 }
 
@@ -1015,14 +1017,15 @@ async function saveSettings(): Promise<void> {
     apiProtocol: activeProfile?.apiProtocol ?? draftSettings.apiProtocol ?? 'auto',
     temperature: activeProfile?.temperature ?? draftSettings.temperature,
     topP: activeProfile?.topP ?? draftSettings.topP,
-    imageProfiles: draftSettings.imageProfiles.map((profile) => ({ ...profile, models: [...(profile.models ?? [])] })),
+    imageProfiles: draftSettings.imageProfiles.map((profile) => ({ ...profile })),
     activeImageProfileId: draftSettings.activeImageProfileId,
     imageProvider: activeImageProfile?.provider ?? draftSettings.imageProvider,
     imageModel: activeImageProfile?.model ?? draftSettings.imageModel,
     imageApiKey: activeImageProfile?.apiKey ?? draftSettings.imageApiKey,
     imageBaseUrl: activeImageProfile?.baseUrl ?? draftSettings.imageBaseUrl,
-    visionProfiles: draftSettings.visionProfiles.map((profile) => ({ ...profile, models: [...(profile.models ?? [])] })),
+    visionProfiles: draftSettings.visionProfiles.map((profile) => ({ ...profile })),
     activeVisionProfileId: draftSettings.activeVisionProfileId,
+    visionProfileName: activeVisionProfile?.name ?? draftSettings.visionProfileName,
     visionProvider: activeVisionProfile?.provider ?? draftSettings.visionProvider,
     visionModel: activeVisionProfile?.model ?? draftSettings.visionModel,
     visionApiKey: activeVisionProfile?.apiKey ?? draftSettings.visionApiKey,
@@ -1388,18 +1391,18 @@ async function saveSettings(): Promise<void> {
             <Image :size="18" />
             <div class="section-title-copy">
               <strong>图片生成配置</strong>
-              <p>封面工作台使用专用的图片生成接口，支持多套配置的新建、复制与删除。修改后需点击右下角「保存设置」按钮才生效。</p>
+              <p>封面工作台使用专用的图片生成接口，支持多套配置新建、复制与删除。</p>
             </div>
             <div class="profile-tab-actions">
-              <button class="profile-action-btn" title="新建图片生成配置" @click="handleAddImageProfile">
+              <button class="profile-action-btn" title="新建配置" @click="handleAddImageProfile">
                 <Plus :size="14" />
               </button>
-              <button class="profile-action-btn" title="复制当前图片生成配置" :disabled="!editingImageProfile" @click="handleCopyImageProfile">
+              <button class="profile-action-btn" title="复制当前配置" :disabled="!editingImageProfile" @click="handleCopyImageProfile">
                 <Copy :size="14" />
               </button>
               <button
                 class="profile-action-btn profile-action-btn--danger"
-                title="删除当前图片生成配置"
+                title="删除当前配置"
                 :disabled="!editingImageProfile || isEditingActiveImageProfile || draftSettings.imageProfiles.length <= 1"
                 @click="handleDeleteImageProfile"
               >
@@ -1431,7 +1434,7 @@ async function saveSettings(): Promise<void> {
               <n-form-item label="配置名称">
                 <n-input
                   :value="editingImageProfile.name"
-                  placeholder="为这个图片生成配置起个名字"
+                  placeholder="为这个图片生成接口配置起个名字"
                   @update:value="(value) => updateEditingImageProfile({ name: value })"
                 />
               </n-form-item>
@@ -1442,7 +1445,6 @@ async function saveSettings(): Promise<void> {
                   :options="imageProviderOptions"
                   :value="editingImageProfile.provider"
                   placeholder="选择预设快速填充模型和地址"
-                  filterable
                   clearable
                   @update:value="(value) => handleImageProviderChange(value ?? '')"
                 />
@@ -1504,7 +1506,6 @@ async function saveSettings(): Promise<void> {
                 <button
                   class="saved-models-add"
                   type="button"
-                  title="把当前模型保存到列表"
                   :disabled="!editingImageProfile.model.trim()"
                   @click="handleSaveImageProfileModel"
                 >
@@ -1513,7 +1514,7 @@ async function saveSettings(): Promise<void> {
                 </button>
               </div>
               <div v-if="imageProfileModels().length === 0" class="saved-models-empty">
-                暂无已保存的模型。输入模型名称后点击「保存当前模型」，即可在同一接口下维护多个模型 ID 并快速切换。
+                暂无已保存的图片模型，输入模型名称后点击「保存当前模型」即可维护多个模型 ID。
               </div>
               <div v-else class="saved-models-list">
                 <button
@@ -1522,15 +1523,10 @@ async function saveSettings(): Promise<void> {
                   class="saved-model-chip"
                   :class="{ 'is-current': model === editingImageProfile.model }"
                   type="button"
-                  :title="`切换到 ${model}`"
                   @click="handleApplyImageProfileModel(model)"
                 >
                   <span class="saved-model-name">{{ model }}</span>
-                  <span
-                    class="saved-model-remove"
-                    title="移除该模型"
-                    @click.stop="handleRemoveImageProfileModel(model)"
-                  >
+                  <span class="saved-model-remove" title="移除该模型" @click.stop="handleRemoveImageProfileModel(model)">
                     <Trash2 :size="12" />
                   </span>
                 </button>
@@ -1559,18 +1555,18 @@ async function saveSettings(): Promise<void> {
             <ScanEye :size="18" />
             <div class="section-title-copy">
               <strong>图片识别配置</strong>
-              <p>识别人物图片并反推为人物卡片（名称、定位、外貌、性格、标签等），支持多套配置的新建、复制与删除。修改后需点击右下角「保存设置」按钮才生效。</p>
+              <p>识别人物图片并反推为人物卡片，支持多套视觉模型配置新建、复制与删除。</p>
             </div>
             <div class="profile-tab-actions">
-              <button class="profile-action-btn" title="新建图片识别配置" @click="handleAddVisionProfile">
+              <button class="profile-action-btn" title="新建配置" @click="handleAddVisionProfile">
                 <Plus :size="14" />
               </button>
-              <button class="profile-action-btn" title="复制当前图片识别配置" :disabled="!editingVisionProfile" @click="handleCopyVisionProfile">
+              <button class="profile-action-btn" title="复制当前配置" :disabled="!editingVisionProfile" @click="handleCopyVisionProfile">
                 <Copy :size="14" />
               </button>
               <button
                 class="profile-action-btn profile-action-btn--danger"
-                title="删除当前图片识别配置"
+                title="删除当前配置"
                 :disabled="!editingVisionProfile || isEditingActiveVisionProfile || draftSettings.visionProfiles.length <= 1"
                 @click="handleDeleteVisionProfile"
               >
@@ -1598,26 +1594,26 @@ async function saveSettings(): Promise<void> {
           </div>
 
           <template v-if="editingVisionProfile">
-            <div class="profile-name-row">
+            <div class="settings-grid">
               <n-form-item label="配置名称">
                 <n-input
                   :value="editingVisionProfile.name"
-                  placeholder="为这个图片识别配置起个名字"
+                  placeholder="例如：我的视觉识别接口"
                   @update:value="(value) => updateEditingVisionProfile({ name: value })"
                 />
               </n-form-item>
-            </div>
-            <div class="settings-grid">
               <n-form-item label="模型厂商">
                 <n-select
                   :options="visionProviderOptions"
                   :value="editingVisionProfile.provider"
                   placeholder="选择预设快速填充模型和地址"
-                  filterable
                   clearable
                   @update:value="(value) => handleVisionProviderChange(value ?? '')"
                 />
               </n-form-item>
+            </div>
+            <p class="settings-grid-hint">切换预设仅更新模型名和 Base URL，API Key 不会被覆盖。</p>
+            <div class="settings-grid">
               <n-form-item label="模型名称">
                 <div class="model-input-row">
                   <n-select
@@ -1648,9 +1644,6 @@ async function saveSettings(): Promise<void> {
                   </n-button>
                 </div>
               </n-form-item>
-            </div>
-            <p class="settings-grid-hint">切换预设仅更新模型名和 Base URL，API Key 不会被覆盖。</p>
-            <div class="settings-grid">
               <n-form-item label="API Key">
                 <n-input
                   type="password"
@@ -1660,6 +1653,8 @@ async function saveSettings(): Promise<void> {
                   @update:value="(value) => updateEditingVisionProfile({ apiKey: value })"
                 />
               </n-form-item>
+            </div>
+            <div class="settings-grid">
               <n-form-item label="Base URL">
                 <n-input
                   :value="editingVisionProfile.baseUrl"
@@ -1676,7 +1671,6 @@ async function saveSettings(): Promise<void> {
                 <button
                   class="saved-models-add"
                   type="button"
-                  title="把当前模型保存到列表"
                   :disabled="!editingVisionProfile.model.trim()"
                   @click="handleSaveVisionProfileModel"
                 >
@@ -1685,7 +1679,7 @@ async function saveSettings(): Promise<void> {
                 </button>
               </div>
               <div v-if="visionProfileModels().length === 0" class="saved-models-empty">
-                暂无已保存的模型。输入模型名称后点击「保存当前模型」，即可在同一接口下维护多个模型 ID 并快速切换。
+                暂无已保存的图片识别模型，输入模型名称后点击「保存当前模型」即可维护多个模型 ID。
               </div>
               <div v-else class="saved-models-list">
                 <button
@@ -1694,15 +1688,10 @@ async function saveSettings(): Promise<void> {
                   class="saved-model-chip"
                   :class="{ 'is-current': model === editingVisionProfile.model }"
                   type="button"
-                  :title="`切换到 ${model}`"
                   @click="handleApplyVisionProfileModel(model)"
                 >
                   <span class="saved-model-name">{{ model }}</span>
-                  <span
-                    class="saved-model-remove"
-                    title="移除该模型"
-                    @click.stop="handleRemoveVisionProfileModel(model)"
-                  >
+                  <span class="saved-model-remove" title="移除该模型" @click.stop="handleRemoveVisionProfileModel(model)">
                     <Trash2 :size="12" />
                   </span>
                 </button>
@@ -1756,25 +1745,25 @@ async function saveSettings(): Promise<void> {
             </button>
           </div>
 
-          <div class="paper-texture-card theme-color-strength-card">
+          <div v-if="draftTheme" class="paper-texture-card theme-color-intensity-card">
             <div class="paper-texture-card__head">
               <div>
                 <strong>颜色深浅</strong>
-                <p>调节当前选中主题（{{ activeThemePreset().label }}）的主色深浅，向左更浅、向右更深，即刻生效。</p>
+                <p>调节当前选中主题的主色深浅，向左更浅淡、向右更浓重，即刻生效。</p>
               </div>
             </div>
             <div class="paper-texture-card__control">
               <span class="paper-texture-card__label">颜色深浅</span>
               <div class="paper-texture-card__slider">
                 <n-slider
-                  :value="themeColorStrength"
-                  :min="0.3"
-                  :max="1.2"
+                  :value="appStore.appSettings.themeColorIntensity ?? 0.5"
+                  :min="0"
+                  :max="1"
                   :step="0.05"
-                  @update:value="setThemeColorStrength"
+                  @update:value="setThemeColorIntensity"
                 />
                 <span class="paper-texture-card__value">
-                  {{ Math.round(themeColorStrength * 100) }}%
+                  {{ Math.round((appStore.appSettings.themeColorIntensity ?? 0.5) * 100) }}%
                 </span>
               </div>
             </div>
@@ -2527,14 +2516,16 @@ async function saveSettings(): Promise<void> {
   box-shadow: 0 0 0 2px var(--arc-bg-surface), 0 0 0 4px color-mix(in srgb, var(--arc-primary) 34%, transparent);
 }
 
-/* 主题颜色深浅卡片（替换旧的纸质纹理强度卡片） */
-.paper-texture-card {
+/* 主题主色深浅卡片（选中任意主题后显示） */
+.theme-color-intensity-card {
   margin-top: 18px;
   border: 1px solid color-mix(in srgb, var(--arc-primary) 28%, var(--arc-border));
   border-radius: 10px;
   padding: 14px 16px;
-  background: var(--arc-bg-surface);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  background:
+    radial-gradient(ellipse at 90% 0%, color-mix(in srgb, var(--arc-primary) 8%, transparent), transparent 60%),
+    var(--arc-bg-surface);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--arc-primary) 10%, transparent);
 }
 
 .paper-texture-card__head strong {

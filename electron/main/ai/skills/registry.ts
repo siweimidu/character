@@ -86,6 +86,7 @@ export function toScanEntries(projectId?: string): SkillScanEntry[] {
     version: s.version,
     path: s.path,
     scope: s.scope,
+    rootDir: s.rootDir,
     description: s.description,
     category: s.manifest.category,
     compatibility: s.compatibility,

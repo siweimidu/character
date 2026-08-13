@@ -27,8 +27,6 @@ import type {
 const appStore = useAppStore()
 const message = useMessage()
 
-/** 项目自定义背景与背景不透明度功能已彻底移除。 */
-
 /** 本地 SQLite 数据库文件完整路径（如 …/data/workspace.db） */
 const localSqlPath = ref('')
 /** 复制本地 SQL 文件地址 */

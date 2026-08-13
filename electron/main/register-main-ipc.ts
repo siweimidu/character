@@ -1460,32 +1460,6 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     return { success: true, canceled: false, dataUrl: `data:${mime};base64,${buffer.toString('base64')}`, fileName: basename(result.filePaths[0]) }
   })
 
-  ipcMain.handle('characterarc:pick-background-image', async () => {
-    const window = deps.windowManager.getActiveWindow()
-    if (!window) return { success: false, canceled: true, dataUrl: '' }
-    const result = await dialog.showOpenDialog(window, {
-      title: '选择背景图片',
-      properties: ['openFile'],
-      filters: [
-        { name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] },
-        { name: '全部文件', extensions: ['*'] }
-      ]
-    })
-    if (result.canceled || result.filePaths.length === 0) {
-      return { success: false, canceled: true, dataUrl: '' }
-    }
-    const buffer = await readFile(result.filePaths[0])
-    const lower = result.filePaths[0].toLowerCase()
-    const mime = lower.endsWith('.png')
-      ? 'image/png'
-      : lower.endsWith('.webp')
-        ? 'image/webp'
-        : lower.endsWith('.gif')
-          ? 'image/gif'
-          : 'image/jpeg'
-    return { success: true, canceled: false, dataUrl: `data:${mime};base64,${buffer.toString('base64')}`, fileName: basename(result.filePaths[0]) }
-  })
-
   // ── 本地 SQL 文件路径与目录（存储与备份） ──
   ipcMain.handle('characterarc:get-local-sql-path', async () => {
     try {
@@ -3109,30 +3083,32 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
   ipcMain.handle('characterarc:project-skills-delete', async (_event, projectId: unknown, paths: unknown) => {
     try {
       const resolvedProjectId = String(projectId ?? '').trim()
-      const skillsRoot = getSkillsDirPath(resolvedProjectId || undefined)
-      const builtinRoot = getBuiltinSkillsDirPath()
       const targets = Array.isArray(paths) ? paths.map((p) => String(p ?? '').trim()).filter(Boolean) : []
       if (!targets.length) {
         return { success: false, error: '未选择要删除的 skills' }
       }
 
+      // 以注册表为准定位 skill 的真实磁盘目录，避免“导入到共享/未分组目录但删除时用项目目录重建”导致路径不匹配。
+      const registrySkills = skillScanEntries(resolvedProjectId || undefined)
+      const byPath = new Map<string, { id: string; scope: string; rootDir: string }>()
+      for (const skill of registrySkills) {
+        byPath.set(skill.path, { id: skill.id, scope: skill.scope, rootDir: (skill as { rootDir?: string }).rootDir ?? '' })
+      }
+
+      // 兼容仅传 skill id 的旧调用：用 id 再建一份索引。
+      const byId = new Map<string, { id: string; scope: string; rootDir: string }>()
+      for (const skill of registrySkills) {
+        byId.set(skill.id, { id: skill.id, scope: skill.scope, rootDir: (skill as { rootDir?: string }).rootDir ?? '' })
+      }
+
       const deleted: string[] = []
       for (const skillPath of targets) {
-        const candidate = skillPath.replace(/\\/g, '/')
-        // 内置 skills/ 前缀一律拒绝删除
-        if (candidate.startsWith('skills/')) continue
-
-        // 剥离 project-skills/ 前缀；旧版本或无前缀时直接用原路径作为相对路径
-        const rel = candidate.startsWith('project-skills/')
-          ? candidate.slice('project-skills/'.length)
-          : candidate.replace(/^\.?\//, '')
-        if (!rel || rel === '.' || rel.split('/').some((seg) => seg === '..')) continue
-
-        const targetDir = join(skillsRoot, rel)
-        // 安全校验：必须位于项目 skills 根目录之内，且不是内置根目录，且确实是 SKILL.md 目录
-        if (!targetDir.startsWith(skillsRoot)) continue
-        if (skillsRoot === builtinRoot || targetDir.startsWith(builtinRoot)) continue
-        if (!existsSync(join(targetDir, 'SKILL.md'))) continue
+        const matched = byPath.get(skillPath) ?? byId.get(skillPath)
+        if (!matched) continue
+        // 只允许删除项目导入（project scope）的 skills，内置不可删。
+        if (matched.scope !== 'project') continue
+        const targetDir = matched.rootDir
+        if (!targetDir || !existsSync(join(targetDir, 'SKILL.md'))) continue
         await rm(targetDir, { recursive: true, force: true })
         deleted.push(skillPath)
       }

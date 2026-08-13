@@ -1004,7 +1004,7 @@ export interface AiProfile {
   topP?: number
 }
 
-/** 图片生成接口配置（与 AI 接口配置一致，支持新建/复制/删除） */
+/** 图片生成接口配置（与 AI 接口配置一样支持新建/复制/删除） */
 export interface ImageProfile {
   id: string
   name: string
@@ -1012,11 +1012,10 @@ export interface ImageProfile {
   baseUrl: string
   apiKey: string
   model: string
-  /** 该图片配置下保存的多个模型 ID */
   models?: string[]
 }
 
-/** 图片识别接口配置（与 AI 接口配置一致，支持新建/复制/删除） */
+/** 图片识别接口配置（与 AI 接口配置一样支持新建/复制/删除） */
 export interface VisionProfile {
   id: string
   name: string
@@ -1024,7 +1023,6 @@ export interface VisionProfile {
   baseUrl: string
   apiKey: string
   model: string
-  /** 该图片识别配置下保存的多个模型 ID */
   models?: string[]
 }
 
@@ -1051,11 +1049,11 @@ export interface AppSettings {
   aiProfiles: AiProfile[]
   /** 当前激活的 AI 接口配置 ID */
   activeAiProfileId: string
-  /** 图片生成接口配置列表（支持新建/复制/删除） */
+  /** 已保存的图片生成接口配置列表 */
   imageProfiles: ImageProfile[]
   /** 当前激活的图片生成接口配置 ID */
   activeImageProfileId: string
-  /** 图片服务预设标识（兼容旧字段，指向当前激活图片配置） */
+  /** 图片服务预设标识 */
   imageProvider: string
   /** 图片生成模型名称 */
   imageModel: string
@@ -1063,12 +1061,12 @@ export interface AppSettings {
   imageApiKey: string
   /** 图片生成接口基础地址 */
   imageBaseUrl: string
-  /** 图片识别接口配置列表（支持新建/复制/删除） */
+  /** 图片识别配置名称（用于识别模型转人物提示词的接口配置） */
+  visionProfileName: string
+  /** 已保存的图片识别接口配置列表 */
   visionProfiles: VisionProfile[]
   /** 当前激活的图片识别接口配置 ID */
   activeVisionProfileId: string
-  /** 图片识别配置名称（兼容旧字段，用于识别模型转人物提示词的接口配置） */
-  visionProfileName: string
   /** 图片识别服务预设标识 */
   visionProvider: string
   /** 图片识别模型名称 */
@@ -1091,8 +1089,8 @@ export interface AppSettings {
   darkMode: boolean
   /** 深色模式风格预设 */
   darkModeStyle: DarkModeStyle
-  /** 主题主色深浅（0.3-1.2，1 为默认），作用于当前主题主色与背景叠加浓度 */
-  themeColorStrength: number
+  /** 主题主色深浅 0-1（0 最浅，1 最深），选中主题后可用滑动条调节 */
+  themeColorIntensity: number
   /** 旧数据兼容字段；AI 请求不再按时长自动取消。 */
   aiTimeoutSeconds: number
   /** 回收站全局配置：内容保留天数 */

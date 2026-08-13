@@ -9,8 +9,6 @@ import type {
   AiProfile,
   AiRunRecord,
   AppSettings,
-  ImageProfile,
-  VisionProfile,
   ChapterAssistantPromptTemplate,
   ChapterDraft,
   ChapterVersion,
@@ -18,6 +16,7 @@ import type {
   CharacterRelationship,
   CharacterCard,
   CoverGenerationHistoryItem,
+  ImageProfile,
   InspirationEntry,
   KnowledgeDocument,
   NovelLength,
@@ -33,6 +32,7 @@ import type {
   ReferenceStyleMetric,
   ProjectWorkspaceData,
   ThemeName,
+  VisionProfile,
   WorldviewEntry
 } from '@/types/app'
 
@@ -250,9 +250,9 @@ export const defaultAppSettings: AppSettings = {
   imageModel: '',
   imageApiKey: '',
   imageBaseUrl: '',
+  visionProfileName: '',
   visionProfiles: [],
   activeVisionProfileId: '',
-  visionProfileName: '',
   visionProvider: '',
   visionModel: '',
   visionApiKey: '',
@@ -264,8 +264,8 @@ export const defaultAppSettings: AppSettings = {
   uiScale: 1,
   darkMode: false,
   darkModeStyle: 'nord',
-  themeColorStrength: 1,
-  aiTimeoutSeconds: 180
+  aiTimeoutSeconds: 180,
+  themeColorIntensity: 0.5
 }
 
 // 合并用户设置与默认设置，uiScale 限制在 0.75-1.75 的合理范围内
@@ -365,7 +365,6 @@ function normalizeAiProfile(profile: AiProfile): AiProfile {
   }
 }
 
-/** 规范化图片生成 / 图片识别接口配置（与 AI 接口配置保持一致的模型列表处理） */
 function normalizeImageProfile(profile: ImageProfile): ImageProfile {
   return {
     id: String(profile.id ?? '').trim(),
@@ -453,6 +452,24 @@ export function normalizeAppSettings(settings?: Partial<AppSettings> | null): Ap
     activeAiProfileId = aiProfiles[0]?.id ?? ''
   }
 
+  const imageProfiles = Array.isArray(source.imageProfiles)
+    ? source.imageProfiles.map(normalizeImageProfile).filter((profile) => profile.id)
+    : []
+  let activeImageProfileId = sanitizeSettingString(source.activeImageProfileId, '')
+  if (!activeImageProfileId && imageProfiles.length > 0) activeImageProfileId = imageProfiles[0].id
+  if (activeImageProfileId && !imageProfiles.find((p) => p.id === activeImageProfileId)) {
+    activeImageProfileId = imageProfiles[0]?.id ?? ''
+  }
+
+  const visionProfiles = Array.isArray(source.visionProfiles)
+    ? source.visionProfiles.map(normalizeVisionProfile).filter((profile) => profile.id)
+    : []
+  let activeVisionProfileId = sanitizeSettingString(source.activeVisionProfileId, '')
+  if (!activeVisionProfileId && visionProfiles.length > 0) activeVisionProfileId = visionProfiles[0].id
+  if (activeVisionProfileId && !visionProfiles.find((p) => p.id === activeVisionProfileId)) {
+    activeVisionProfileId = visionProfiles[0]?.id ?? ''
+  }
+
   return {
     provider,
     model,
@@ -464,19 +481,15 @@ export function normalizeAppSettings(settings?: Partial<AppSettings> | null): Ap
     topP,
     aiProfiles,
     activeAiProfileId,
-    imageProfiles: Array.isArray(source.imageProfiles)
-      ? source.imageProfiles.map(normalizeImageProfile).filter((profile) => profile.id)
-      : [],
-    activeImageProfileId: sanitizeSettingString(source.activeImageProfileId, ''),
+    imageProfiles,
+    activeImageProfileId,
     imageProvider: sanitizeSettingString(source.imageProvider, defaultAppSettings.imageProvider),
     imageModel: sanitizeSettingString(source.imageModel, defaultAppSettings.imageModel),
     imageApiKey: sanitizeSettingString(source.imageApiKey, defaultAppSettings.imageApiKey),
     imageBaseUrl: sanitizeSettingString(source.imageBaseUrl, defaultAppSettings.imageBaseUrl),
-    visionProfiles: Array.isArray(source.visionProfiles)
-      ? source.visionProfiles.map(normalizeVisionProfile).filter((profile) => profile.id)
-      : [],
-    activeVisionProfileId: sanitizeSettingString(source.activeVisionProfileId, ''),
     visionProfileName: sanitizeSettingString(source.visionProfileName, defaultAppSettings.visionProfileName),
+    visionProfiles,
+    activeVisionProfileId,
     visionProvider: sanitizeSettingString(source.visionProvider, defaultAppSettings.visionProvider),
     visionModel: sanitizeSettingString(source.visionModel, defaultAppSettings.visionModel),
     visionApiKey: sanitizeSettingString(source.visionApiKey, defaultAppSettings.visionApiKey),
@@ -493,14 +506,14 @@ export function normalizeAppSettings(settings?: Partial<AppSettings> | null): Ap
         : defaultAppSettings.uiScale,
     darkMode: typeof source.darkMode === 'boolean' ? source.darkMode : defaultAppSettings.darkMode,
     darkModeStyle: source.darkModeStyle === 'nord' ? 'nord' : defaultAppSettings.darkModeStyle,
-    themeColorStrength:
-      typeof source.themeColorStrength === 'number' && Number.isFinite(source.themeColorStrength)
-        ? Math.min(1.2, Math.max(0.3, source.themeColorStrength))
-        : defaultAppSettings.themeColorStrength,
     aiTimeoutSeconds:
       typeof source.aiTimeoutSeconds === 'number' && Number.isFinite(source.aiTimeoutSeconds)
         ? Math.min(600, Math.max(30, source.aiTimeoutSeconds))
-        : defaultAppSettings.aiTimeoutSeconds
+        : defaultAppSettings.aiTimeoutSeconds,
+    themeColorIntensity:
+      typeof source.themeColorIntensity === 'number' && Number.isFinite(source.themeColorIntensity)
+        ? Math.min(1, Math.max(0, source.themeColorIntensity))
+        : defaultAppSettings.themeColorIntensity
   }
 }
 

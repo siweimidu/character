@@ -79,6 +79,8 @@ export type SkillScanEntry = {
   version: string
   path: string
   scope: 'builtin' | 'project'
+  /** skill 磁盘根目录（用于安全定位与删除），前端展示不需要此字段 */
+  rootDir?: string
   description: string
   category: SkillCategory
   compatibility: SkillCompatibility

@@ -44,8 +44,16 @@ export type AppSettings = {
   imageApiKey: string
   /** 可选：图片生成独立 Base URL */
   imageBaseUrl: string
+  /** 可选：图片生成接口配置列表 */
+  imageProfiles?: Array<{ id: string; name: string; provider: string; baseUrl: string; apiKey: string; model: string; models?: string[] }>
+  /** 可选：当前激活的图片生成接口配置 ID */
+  activeImageProfileId?: string
   /** 可选：图片识别配置名称 */
   visionProfileName?: string
+  /** 可选：图片识别接口配置列表 */
+  visionProfiles?: Array<{ id: string; name: string; provider: string; baseUrl: string; apiKey: string; model: string; models?: string[] }>
+  /** 可选：当前激活的图片识别接口配置 ID */
+  activeVisionProfileId?: string
   /** 可选：图片识别服务预设标识 */
   visionProvider?: string
   /** 可选：图片识别模型 */

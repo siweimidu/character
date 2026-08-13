@@ -393,6 +393,7 @@ export type WorkspacePayload = {
     imageModel: string
     imageApiKey: string
     imageBaseUrl: string
+    visionProfileName: string
     visionProfiles: Array<{
       id: string
       name: string
@@ -403,7 +404,6 @@ export type WorkspacePayload = {
       models?: string[]
     }>
     activeVisionProfileId: string
-    visionProfileName: string
     visionProvider: string
     visionModel: string
     visionApiKey: string
@@ -418,8 +418,7 @@ export type WorkspacePayload = {
     darkModeStyle: string
     /** AI 请求超时秒数 */
     aiTimeoutSeconds: number
-    /** 主题主色深浅（0.3-1.2，1 为默认） */
-    themeColorStrength: number
+    themeColorIntensity: number
   }
   coverWorkbenchHistory: Array<{
     id: string
@@ -607,6 +606,7 @@ export function normalizeAppSettings(
     activeAiProfileId: typeof settings?.activeAiProfileId === 'string' ? settings.activeAiProfileId : '',
     imageProfiles: Array.isArray(settings?.imageProfiles)
       ? settings.imageProfiles
+          .filter((item): item is NonNullable<typeof settings.imageProfiles>[number] => !!item && typeof item === 'object')
           .map((item) => ({
             id: String(item.id ?? '').trim(),
             name: String(item.name ?? '').trim(),
@@ -625,8 +625,10 @@ export function normalizeAppSettings(
     imageModel: settings?.imageModel || '',
     imageApiKey: settings?.imageApiKey || '',
     imageBaseUrl: settings?.imageBaseUrl || '',
+    visionProfileName: settings?.visionProfileName || '',
     visionProfiles: Array.isArray(settings?.visionProfiles)
       ? settings.visionProfiles
+          .filter((item): item is NonNullable<typeof settings.visionProfiles>[number] => !!item && typeof item === 'object')
           .map((item) => ({
             id: String(item.id ?? '').trim(),
             name: String(item.name ?? '').trim(),
@@ -641,7 +643,6 @@ export function normalizeAppSettings(
           .filter((item) => item.id)
       : [],
     activeVisionProfileId: typeof settings?.activeVisionProfileId === 'string' ? settings.activeVisionProfileId : '',
-    visionProfileName: settings?.visionProfileName || '',
     visionProvider: settings?.visionProvider || '',
     visionModel: settings?.visionModel || '',
     visionApiKey: settings?.visionApiKey || '',
@@ -666,10 +667,10 @@ export function normalizeAppSettings(
       typeof settings?.aiTimeoutSeconds === 'number' && Number.isFinite(settings.aiTimeoutSeconds)
         ? Math.min(600, Math.max(30, settings.aiTimeoutSeconds))
         : 180,
-    themeColorStrength:
-      typeof settings?.themeColorStrength === 'number' && Number.isFinite(settings.themeColorStrength)
-        ? Math.min(1.2, Math.max(0.3, settings.themeColorStrength))
-        : 1
+    themeColorIntensity:
+      typeof settings?.themeColorIntensity === 'number' && Number.isFinite(settings.themeColorIntensity)
+        ? Math.min(1, Math.max(0, settings.themeColorIntensity))
+        : 0.5
   }
 }
 

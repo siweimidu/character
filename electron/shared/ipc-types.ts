@@ -21,11 +21,15 @@ export interface AppSettingsPayload {
   topP?: number
   aiProfiles: Array<{ id: string; name: string; provider: string; baseUrl: string; apiKey: string; model: string; models?: string[]; apiProtocol?: 'auto' | 'openai-responses' | 'openai-chat' | 'openai-completions' | 'anthropic' | 'anthropic-complete' | 'gemini' | 'kobold' | 'novelai' | 'dashscope-native' | 'volcengine-native'; temperature?: number; topP?: number }>
   activeAiProfileId: string
+  imageProfiles: Array<{ id: string; name: string; provider: string; baseUrl: string; apiKey: string; model: string; models?: string[] }>
+  activeImageProfileId: string
   imageProvider: string
   imageModel: string
   imageApiKey: string
   imageBaseUrl: string
   visionProfileName?: string
+  visionProfiles?: Array<{ id: string; name: string; provider: string; baseUrl: string; apiKey: string; model: string; models?: string[] }>
+  activeVisionProfileId?: string
   visionProvider?: string
   visionModel?: string
   visionApiKey?: string
@@ -34,6 +38,7 @@ export interface AppSettingsPayload {
   uiScale: number
   darkMode: boolean
   darkModeStyle: string
+  themeColorIntensity: number
 }
 
 export interface SaveAppSettingsRequest {

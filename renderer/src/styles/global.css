@@ -97,8 +97,6 @@ input {
   overflow: hidden;
 }
 
-/* 自定义背景层与纸质主题纹理层已移除（用户要求彻底删除）。 */
-
 .app-titlebar {
   position: relative;
   z-index: 1;

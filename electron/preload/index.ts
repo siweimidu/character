@@ -81,8 +81,6 @@ contextBridge.exposeInMainWorld('characterArc', {
   batchExportCharacterCards: (payload: unknown) => ipcRenderer.invoke('characterarc:character-card-batch-export', toIpcPayload(payload)),
   /** 选择人物头像图片并返回 dataUrl */
   pickCharacterAvatar: () => ipcRenderer.invoke('characterarc:pick-character-avatar'),
-  /** 选择背景图片并返回 dataUrl（用于全局/项目自定义背景） */
-  pickBackgroundImage: () => ipcRenderer.invoke('characterarc:pick-background-image'),
   /** 获取本地 SQLite 数据库文件（workspace.db）的完整路径 */
   getLocalSqlPath: () => ipcRenderer.invoke('characterarc:get-local-sql-path'),
   /** 在系统文件资源管理器中打开本地 SQLite 数据库所在目录 */

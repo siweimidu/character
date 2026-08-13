@@ -816,13 +816,6 @@ declare global {
         fileName?: string
         error?: string
       }>
-      pickBackgroundImage: () => Promise<{
-        success: boolean
-        canceled: boolean
-        dataUrl?: string
-        fileName?: string
-        error?: string
-      }>
       getProjectSkillsPaths: (projectId: string) => Promise<{
         success: boolean
         builtinDir?: string

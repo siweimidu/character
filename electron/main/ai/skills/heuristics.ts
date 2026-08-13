@@ -21,6 +21,35 @@ export function inferSkillMeta(skillId: string, description: string): HeuristicR
   const lowerDesc = description.toLowerCase()
   const lowerSkillId = skillId.toLowerCase()
 
+  // ── oh-story-claudecode 系列：按具体能力深度适配 ──
+  if (lowerSkillId === 'story' || lowerSkillId === 'story-router') {
+    return buildHeuristic('tool', ['reference', 'premise', 'setting', 'outline', 'draft'], [], ['写小说', '写网文', '开书', '扫榜', '拆文', '封面', '去AI味'], true, 'native', '网文工具箱路由入口：识别意图后分发到具体 story-* skill。', 9)
+  }
+  if (lowerSkillId === 'story-long-write' || lowerSkillId === 'story-short-write') {
+    return buildHeuristic('writing', ['premise', 'setting', 'outline', 'draft'], WRITING_TASKS, ['写正文', '开书', '续写', '写章节', '大纲', '回炉', '重写'], true, 'native', '网文正文写作执行器：从情绪出发产出正文。', 9)
+  }
+  if (lowerSkillId === 'story-long-analyze' || lowerSkillId === 'story-short-analyze') {
+    return buildHeuristic('analysis', ['reference'], ['reference-style-chunk', 'reference-style-analysis', 'chapter-analysis'], ['拆文', '拆书', '分析', '黄金三章', '对标'], true, 'native', '爆款拆文：拆解结构、爽点、节奏与人设。', 8)
+  }
+  if (lowerSkillId === 'story-long-scan' || lowerSkillId === 'story-short-scan') {
+    return buildHeuristic('market', ['reference'], [], ['扫榜', '排行', '什么火', '市场', '趋势'], true, 'native', '扫榜选题：识别市场趋势与风口题材。', 8)
+  }
+  if (lowerSkillId === 'story-review') {
+    return buildHeuristic('analysis', ['draft'], ['chapter-analysis', 'story-deep-audit', 'chapter-repair'], ['审查', '审一下', '找问题', 'review'], true, 'native', '多视角对抗式审查：找出结构、角色、文字与设定问题。', 8)
+  }
+  if (lowerSkillId === 'story-import') {
+    return buildHeuristic('tool', ['reference'], ['continuation-import-chunk', 'continuation-import-aggregate'], ['导入', '反向解析', '导入小说'], true, 'native', '把已有小说反向解析为标准项目结构。', 7)
+  }
+  if (lowerSkillId === 'story-setup') {
+    return buildHeuristic('tool', [], [], ['准备写书', '搭环境', '初始化', '配置写作项目'], true, 'native', '写作基础设施部署：合并而非覆盖用户已有配置。', 7)
+  }
+  if (lowerSkillId === 'browser-cdp') {
+    return buildHeuristic('tool', [], [], ['浏览器', 'CDP', '抓取', '登录态'], false, 'external-only', '依赖外部 agent-browser 工具，当前项目无 CDP 执行环境，仅作资料保留。')
+  }
+  if (lowerSkillId === 'story-cover' || lowerSkillId.includes('cover')) {
+    return buildHeuristic('cover', [], ['cover-generate'], ['封面', '封面图'], true, 'native', '封面生成：根据书名/作者名分析题材并生成封面。')
+  }
+
   if (lowerSkillId.includes('scan') || lowerDesc.includes('市场') || lowerDesc.includes('排行'))
     return buildHeuristic('market', ['reference'], [], ['排行', '市场', '趋势'], true)
 
@@ -32,9 +61,6 @@ export function inferSkillMeta(skillId: string, description: string): HeuristicR
 
   if (lowerSkillId.includes('deslop') || lowerSkillId.includes('polish') || lowerDesc.includes('润色') || lowerDesc.includes('ai味'))
     return buildHeuristic('polish', ['draft'], ['chapter-assistant', 'chapter-first-draft'], ['润色', '去AI味', '降低AI感'], true)
-
-  if (lowerSkillId.includes('cover'))
-    return buildHeuristic('cover', [], [], [], false, 'external-only', '当前项目还没有封面生成工作台，此 skill 会作为资料保留。')
 
   if (lowerSkillId.includes('cdp') || lowerSkillId.includes('browser'))
     return buildHeuristic('tool', [], [], [], false, 'external-only', '当前项目没有浏览器 CDP 执行能力，此 skill 会作为外部工具说明保留。')

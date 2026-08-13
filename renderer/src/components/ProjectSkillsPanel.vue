@@ -437,7 +437,7 @@ function canDeleteGroup(group: {
   scope?: 'builtin' | 'project'
   skills: unknown[]
 }): boolean {
-  return group.scope === 'project' && group.name !== '_ungrouped'
+  return group.scope === 'project'
 }
 
 // 删除一个分组（连同分组内所有 skills 一起删除）
@@ -447,27 +447,38 @@ function deleteGroup(group: {
   skills: unknown[]
 }): void {
   if (!currentProject.value?.id) return
-  if (group.name === '_ungrouped') return
+  const isUngrouped = group.name === '_ungrouped'
   const count = group.skills.length
   dialog.warning({
     title: '删除 Skills 分组',
-    content: `确定要删除分组「${group.label}」吗？${count > 0 ? `分组内共 ${count} 个 skills 会一并删除。` : '该分组当前为空。'}该操作不可恢复。`,
+    content: isUngrouped
+      ? `确定要删除「${group.label}」中的全部 ${count} 个 skills 吗？删除后这些项目扩展 skill 将不可恢复。`
+      : `确定要删除分组「${group.label}」吗？${count > 0 ? `分组内共 ${count} 个 skills 会一并删除。` : '该分组当前为空。'}该操作不可恢复。`,
     positiveText: '确认删除',
     negativeText: '取消',
     onPositiveClick: async () => {
       isDeletingSkills.value = true
       try {
-        const result = await window.characterArc.deleteProjectSkillGroup(currentProject.value!.id, group.name)
+        let result: { success: boolean; deleted?: string[]; error?: string }
+        if (isUngrouped) {
+          // 未分组：删除所有项目级 skills（路径形如 project-skills/<skill>）
+          const ungroupedPaths = resolvedProjectSkills.value
+            .filter((skill) => skill.scope === 'project' && skill.path.split('/').length <= 2)
+            .map((skill) => skill.path)
+          result = await window.characterArc.deleteProjectSkills(currentProject.value!.id, ungroupedPaths)
+        } else {
+          result = await window.characterArc.deleteProjectSkillGroup(currentProject.value!.id, group.name)
+        }
         if (!result.success) {
-          throw new Error(result.error ?? '分组删除失败')
+          throw new Error((result as { error?: string }).error ?? '分组删除失败')
         }
         // 清除该分组下已选中的 skill 路径
         selectedSkillPaths.value = selectedSkillPaths.value.filter(
-          (p) => !p.startsWith(`project-skills/${group.name}/`)
+          (p) => !p.startsWith(`project-skills/${group.name}/`) && !(isUngrouped && p.startsWith('project-skills/'))
         )
         await scanProjectSkills()
         await refreshSkillGroups()
-        message.success(`已删除分组「${result.deletedGroup ?? group.label}」`)
+        message.success(isUngrouped ? `已删除未分组中的 ${result.deleted?.length ?? 0} 个 skills` : `已删除分组「${(result as { deletedGroup?: string }).deletedGroup ?? group.label}」`)
       } catch (error) {
         message.error(error instanceof Error ? error.message : '分组删除失败')
       } finally {
