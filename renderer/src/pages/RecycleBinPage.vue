@@ -173,11 +173,12 @@ function saveRetention(): void {
 }
 
 function backToProjectCenter(): void {
-  // 全局视图回到项目中心；项目视图回到对应项目工作台
-  if (appStore.recycleBinScope === 'global') {
-    appStore.backToProjects()
-  } else {
+  // 返回进入回收站前的页面：从主页进入则回项目中心，从工作台进入则回项目工作台
+  const returnView = appStore.recycleBinReturnView
+  if (returnView === 'workbench' || returnView === 'chapter-studio') {
     appStore.backToWorkbench()
+  } else {
+    appStore.backToProjects()
   }
 }
 </script>

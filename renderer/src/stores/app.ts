@@ -336,6 +336,8 @@ export const useAppStore = defineStore('app', () => {
   const projectRecycleBin = computed(() => currentWorkspace.value.recycleBin)
   /** 回收站当前查看范围：'global' 显示全局回收站，'all' 显示当前项目 + 全局，其余为指定项目 ID */
   const recycleBinScope = ref<string>('all')
+  /** 进入回收站前的来源视图，用于回收站“返回”按钮回到上一个页面（如从主页进入则回主页，从工作台进入则回工作台） */
+  const recycleBinReturnView = ref(currentView.value)
   /** 指定项目 ID 的回收站条目 */
   const projectRecycleBinOf = (projectId: string) =>
     (projectWorkspaces.value[projectId] ?? createEmptyWorkspace()).recycleBin ?? []
@@ -1127,6 +1129,10 @@ export const useAppStore = defineStore('app', () => {
    *  - 传 'all'：全局视图（兼容）
    */
   function openRecycleBin(scope?: string): void {
+    // 记录进入回收站前的来源视图，用于回收站“返回”按钮回到上一个页面
+    if (currentView.value !== 'recycle-bin') {
+      recycleBinReturnView.value = currentView.value
+    }
     if (scope === 'global' || scope === 'all' || !scope) {
       recycleBinScope.value = 'global'
     } else {
@@ -4664,6 +4670,7 @@ export const useAppStore = defineStore('app', () => {
     recycleBinEntries,
     recycleBinScope,
     recycleBinScopeLabel,
+    recycleBinReturnView,
     globalRecycleBinEntries,
     emptyRecycleBin,
     permanentlyDeleteRecycleEntry,
