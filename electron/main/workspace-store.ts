@@ -15,7 +15,7 @@ import {
 } from './workspace-types'
 import { initStoryStateSchema } from './story-state-store'
 import { initAssistantRuntimeSchema } from './ai/runtime-v2/conversation-manager'
-import { initAgentProfilesSchema, seedBuiltinAgents } from './ai/runtime-v2/agent-profile-store'
+import { initAgentProfilesSchema, seedBuiltinAgents, seedBuiltinAgentsForProject } from './ai/runtime-v2/agent-profile-store'
 import { initAgentMemoriesSchema } from './ai/runtime-v2/agent-memory-store'
 import { initChapterProcessingSchema } from './ai/runtime/chapter-processing-store'
 import { initStateBackfillSchema } from './ai/state-backfill-store'
@@ -1633,6 +1633,8 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
         JSON.stringify(project.projectSkills ?? []),
         JSON.stringify(project.chapterAssistantTemplates ?? [])
       )
+      // 为每个小说项目 seed 本小说内置智能体（本小说智能体）。
+      seedBuiltinAgentsForProject(db, project.id)
     }
 
     const insertWorldview = db.prepare(`

@@ -372,19 +372,33 @@ export function isBuiltinDeleted(id: string): boolean {
 }
 
 /**
- * 确保内置智能体已插入（幂等）。
+ * 生成某个内置智能体在指定项目下的唯一 id。
+ * 内置智能体按项目隔离（本小说智能体），同一内置智能体在不同项目各有一份，
+ * 因此用 `内置id:项目id` 作为主键，保证不同项目之间互不覆盖。
+ */
+function builtinProjectId(builtinId: string, projectId: string): string {
+  return `${builtinId}:${projectId}`
+}
+
+/**
+ * 为指定项目 seed 内置智能体（本小说智能体）。幂等。
+ *
+ * 内置智能体原本以 scope='global' 存在（全局共享）。按需求调整为：
+ * 内置智能体只作为「本小说智能体」存在（scope='local'，绑定 project_id），
+ * 每个项目独立一份，数据在本小说内互通；全局智能体不再包含内置智能体。
+ *
  * 被用户手动删除的内置智能体不会重新插入（尊重用户删除意愿）。
  */
-export function seedBuiltinAgents(db: DatabaseSync): void {
+export function seedBuiltinAgentsForProject(db: DatabaseSync, projectId: string): void {
   // 从数据库加载已删除的内置智能体 ID（跨重启持久化）
   loadDeletedBuiltinIds(db).forEach((id) => deletedBuiltinIds.add(id))
 
   const insert = db.prepare(`
     INSERT OR IGNORE INTO agent_profiles
-      (id, name, description, system_prompt, avatar, avatar_type, is_builtin, preset_index, scope, skill_ids, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, name, description, system_prompt, avatar, avatar_type, is_builtin, preset_index, scope, project_id, skill_ids, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
-  // 已存在的内置智能体：同步最新 system_prompt / description / skill_ids / preset_index，
+  // 已存在的项目内置智能体：同步最新 system_prompt / description / skill_ids / preset_index，
   // 确保新版本提示词与 skill 绑定在已有安装上也生效。
   const upsert = db.prepare(`
     UPDATE agent_profiles SET
@@ -392,7 +406,8 @@ export function seedBuiltinAgents(db: DatabaseSync): void {
       description = ?,
       system_prompt = ?,
       preset_index = ?,
-      scope = 'global',
+      scope = 'local',
+      project_id = ?,
       skill_ids = ?,
       updated_at = ?
     WHERE id = ? AND is_builtin = 1
@@ -400,9 +415,10 @@ export function seedBuiltinAgents(db: DatabaseSync): void {
   const now = new Date().toISOString()
 
   for (const agent of BUILTIN_AGENTS) {
-    if (deletedBuiltinIds.has(agent.id)) continue
+    const pid = builtinProjectId(agent.id, projectId)
+    if (deletedBuiltinIds.has(pid)) continue
     insert.run(
-      agent.id,
+      pid,
       agent.name,
       agent.description,
       agent.systemPrompt,
@@ -410,7 +426,8 @@ export function seedBuiltinAgents(db: DatabaseSync): void {
       'svg',
       1,
       agent.presetIndex,
-      'global',
+      'local',
+      projectId,
       JSON.stringify(agent.skillIds ?? []),
       now,
       now
@@ -420,10 +437,50 @@ export function seedBuiltinAgents(db: DatabaseSync): void {
       agent.description,
       agent.systemPrompt,
       agent.presetIndex,
+      projectId,
       JSON.stringify(agent.skillIds ?? []),
       now,
-      agent.id
+      pid
     )
+  }
+}
+
+/**
+ * 全局迁移入口（workspace 初始化时调用）。
+ *
+ * 内置智能体现在只以「本小说智能体」（scope='local'）形式存在，不再 seed 为全局。
+ * 为兼容旧版本：将历史遗留的全局内置智能体（scope='global' AND is_builtin=1）迁移到
+ * 各现有项目下作为 local 内置，并从全局移除，保证「全局智能体不显示内置智能体」。
+ */
+export function seedBuiltinAgents(db: DatabaseSync): void {
+  // 从数据库加载已删除的内置智能体 ID（跨重启持久化）
+  loadDeletedBuiltinIds(db).forEach((id) => deletedBuiltinIds.add(id))
+
+  // 1. 收集历史遗留的全局内置智能体（旧版本 seed 的 scope='global' 内置）。
+  const legacyGlobal = db
+    .prepare(`SELECT id, name, description, system_prompt, preset_index, skill_ids FROM agent_profiles WHERE scope = 'global' AND is_builtin = 1`)
+    .all() as unknown as Array<{
+      id: string
+      name: string
+      description: string
+      system_prompt: string
+      preset_index: number
+      skill_ids: string
+    }>
+
+  // 2. 为每个现有项目补 seed 本小说内置智能体。
+  const projects = db.prepare(`SELECT id FROM projects`).all() as Array<{ id: string }>
+  for (const project of projects) {
+    seedBuiltinAgentsForProject(db, project.id)
+  }
+
+  // 3. 删除历史遗留的全局内置智能体，确保它们不再显示在「全局智能体」中。
+  //    仅当该全局内置确实属于内置预设时才删除；用户自定义的全局智能体不受影响。
+  const builtinPresetIds = new Set(BUILTIN_AGENTS.map((a) => a.id))
+  for (const row of legacyGlobal) {
+    if (builtinPresetIds.has(row.id)) {
+      db.prepare(`DELETE FROM agent_profiles WHERE id = ? AND scope = 'global' AND is_builtin = 1`).run(row.id)
+    }
   }
 }
 
@@ -605,9 +662,15 @@ export class AgentProfileStore {
   getDefaultAgent(scope?: AgentScope, projectId?: string): AgentProfile {
     if (scope === 'local' && projectId) {
       const local = this.list({ scope: 'local', projectId })
-      if (local.length) return local[0]
+      if (!local.length) {
+        // 项目无本小说智能体时回落到全局
+        return this.list({ scope: 'global' })[0] ?? local[0]
+      }
+      // 默认选择本小说智能体中的「创作大师」（若存在）
+      const novelist = local.find((a) => a.id === builtinProjectId('builtin-novelist', projectId))
+      return novelist ?? local[0]
     }
-    const builtin = this.list({ builtinOnly: true, scope: 'global' })
-    return builtin[0] ?? this.list({ scope: 'global' })[0]
+    // 全局作用域不再包含内置智能体（内置已按项目隔离）
+    return this.list({ scope: 'global' })[0]
   }
 }

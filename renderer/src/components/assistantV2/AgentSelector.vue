@@ -24,7 +24,8 @@ const isLoaded = ref(false)
 const showManager = ref(false)
 const editingAgent = ref<AgentProfile | null>(null)
 /** 当前查看的作用范围：'local' 只显示本项目局部智能体，'global' 只显示全局智能体。 */
-const activeScope = ref<'local' | 'global'>('global')
+// 默认展示「本小说智能体」（内置智能体已迁移到本小说智能体，全局不再包含内置）。
+const activeScope = ref<'local' | 'global'>('local')
 
 async function loadAgents(scope?: 'local' | 'global'): Promise<void> {
   try {
