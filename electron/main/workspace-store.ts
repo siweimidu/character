@@ -2101,7 +2101,7 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
 
     db.prepare(`
     INSERT INTO app_settings (id, theme, selected_project_id, provider, model, api_key, base_url, proxy_url, temperature, top_p, ai_profiles_json, active_ai_profile_id, image_profiles_json, active_image_profile_id, image_provider, image_model, image_api_key, image_base_url, vision_profile_name, vision_profiles_json, active_vision_profile_id, vision_provider, vision_model, vision_api_key, vision_base_url, vision_saved_models_json, auto_save_interval, editor_font, editor_minimap, ui_scale, dark_mode, dark_mode_style, ai_timeout_seconds, theme_color_intensity, deleted_builtin_agent_ids_json)
-    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT deleted_builtin_agent_ids_json FROM app_settings WHERE id = 1), '[]'))
+    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT deleted_builtin_agent_ids_json FROM app_settings WHERE id = 1), '[]'))
     ON CONFLICT(id) DO UPDATE SET
       theme = excluded.theme,
       selected_project_id = excluded.selected_project_id,
@@ -2226,7 +2226,7 @@ export function writeAppSettingsRow(
   const normalized = normalizeAppSettings(settings)
   db.prepare(`
     INSERT INTO app_settings (id, theme, selected_project_id, provider, model, api_key, base_url, proxy_url, temperature, top_p, ai_profiles_json, active_ai_profile_id, image_profiles_json, active_image_profile_id, image_provider, image_model, image_api_key, image_base_url, vision_profile_name, vision_profiles_json, active_vision_profile_id, vision_provider, vision_model, vision_api_key, vision_base_url, vision_saved_models_json, auto_save_interval, editor_font, editor_minimap, ui_scale, dark_mode, dark_mode_style, ai_timeout_seconds, theme_color_intensity)
-    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       theme = excluded.theme,
       selected_project_id = excluded.selected_project_id,
