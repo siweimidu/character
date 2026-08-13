@@ -1,48 +1,55 @@
 <script setup lang="ts">
+/**
+ * GlobalAgentPage · 全局智能体（模块化中心）
+ *
+ * 全新模块化全局智能体界面。借鉴 DeepSeek Harness「everything is a plugin」
+ * 与 deepwrite 的子智能体工作流思想，把能力拆成可独立启停的模块。
+ *
+ * 布局：
+ *   左侧（三栏标签）：
+ *     会话历史 | 能力模块 | 系统文件 | MCP 市场
+ *   中间：智能体对话（对话流节点自动折叠）
+ *   右侧：暂存变更审阅
+ */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import {
   ArrowLeft,
-  BookMarked,
-  BookPlus,
   Bot,
   Brain,
-  Globe2,
-  LayoutGrid,
-  Lightbulb,
-  Network,
-  Trash2,
-  Users
+  FolderTree,
+  MessagesSquare,
+  Plug,
+  Puzzle
 } from 'lucide-vue-next'
 import type { SurfaceDefinition, TurnTruncateResult } from '@shared/assistant-runtime'
 import { useAppStore } from '@/stores/app'
 import { useAssistant } from '@/composables/useAssistant'
-import { toIpcPayload } from '@/utils/ipcPayload'
-import { createProjectBatchSeedPayloads, type BatchSeedProject } from '@/features/wizard/projectSeed'
-import { NOVEL_LENGTH_OPTIONS, PROJECT_GENRE_OPTIONS } from '@/features/wizard/projectGenres'
 import AssistantSessionList from '@/components/assistantV2/AssistantSessionList.vue'
-import AssistantMessages from '@/components/assistantV2/AssistantMessages.vue'
 import AssistantComposer from '@/components/assistantV2/AssistantComposer.vue'
 import StagedChangesView from '@/components/assistantV2/StagedChangesView.vue'
 import AgentSelector from '@/components/assistantV2/AgentSelector.vue'
 import AgentMemoryDialog from '@/components/assistantV2/AgentMemoryDialog.vue'
 import ReferencePickerDialog from '@/components/assistantV2/ReferencePickerDialog.vue'
 import PromptLibrary from '@/components/assistantV2/PromptLibrary.vue'
-import BatchCreateProjectsModal from '@/components/home/BatchCreateProjectsModal.vue'
+import FlowNodeView from '@/components/assistantV2/FlowNodeView.vue'
+import AgentModuleManager from '@/components/assistantV2/AgentModuleManager.vue'
+import AgentFileExplorer from '@/components/assistantV2/AgentFileExplorer.vue'
+import AgentMcpMarket from '@/components/assistantV2/AgentMcpMarket.vue'
 
 const appStore = useAppStore()
 const { projects, selectedProjectId } = storeToRefs(appStore)
 const message = useMessage()
 
 // ============================================================================
-// 全局智能体会话：作用于当前在左侧选中的项目（可跨项目切换）
+// 全局智能体会话：作用于当前在左侧选中的项目
 // ============================================================================
 const SURFACE: SurfaceDefinition = {
   id: 'global-page',
   scope: 'project',
   autoCommit: false,
-  maxSteps: 8
+  maxSteps: 12
 }
 
 const assistant = useAssistant({
@@ -77,6 +84,19 @@ function restoreAgentSelection(): void {
   }
 }
 
+// ============================================================================
+// 左侧面板：会话 / 能力模块 / 系统文件 / MCP
+// ============================================================================
+type LeftTab = 'sessions' | 'modules' | 'files' | 'mcp'
+const leftTab = ref<LeftTab>('sessions')
+
+const LEFT_TABS: Array<{ key: LeftTab; label: string; icon: unknown }> = [
+  { key: 'sessions', label: '会话', icon: MessagesSquare },
+  { key: 'modules', label: '模块', icon: Puzzle },
+  { key: 'files', label: '文件', icon: FolderTree },
+  { key: 'mcp', label: 'MCP', icon: Plug }
+]
+
 // 创作记忆对话框
 const memoryDialogVisible = ref(false)
 
@@ -102,98 +122,11 @@ function handleReferenceConfirm(refs: PickedReference[]): void {
 }
 
 // ============================================================================
-// 批量生成作品
-// ============================================================================
-const batchCreateModalVisible = ref(false)
-
-// ============================================================================
-// 批量生成设定（作用于当前选中项目）
-// ============================================================================
-type BatchAction = {
-  key: string
-  label: string
-  prompt: string
-  icon: typeof Globe2
-  desc: string
-}
-
-const BATCH_ACTIONS: BatchAction[] = [
-  {
-    key: 'worldview',
-    label: '批量生成世界观',
-    icon: Globe2,
-    desc: '为当前小说规划世界观设定体系',
-    prompt: '请为当前小说《{{title}}》规划一套完整的开局世界观：先梳理需要覆盖的设定维度（地理、势力、规则、种族/体系等），再调用 propose_worldview 逐条批量写入。'
-  },
-  {
-    key: 'characters',
-    label: '批量生成角色卡片',
-    icon: Users,
-    desc: '为主角团与重要配角生成人物卡片',
-    prompt: '请为当前小说《{{title}}》生成一批核心角色卡片（主角、关键配角、反派），为每个角色调用 propose_character 批量写入姓名、定位与设定描述。'
-  },
-  {
-    key: 'relations',
-    label: '批量生成人物关系',
-    icon: Network,
-    desc: '梳理角色之间的关联',
-    prompt: '请为当前小说《{{title}}》梳理主要人物之间的相互关系（恩怨、合作、血缘、对立等）。先调用 read_project_data 读取现有角色与关系，再结合 propose_character 确保关系两端角色存在，最后以清晰的结构化清单列出每条关系（两端角色、关系类型、说明），等待我确认后由我记录到“人物关系”。'
-  },
-  {
-    key: 'outline',
-    label: '批量生成剧情大纲',
-    icon: BookMarked,
-    desc: '规划卷级与节点级剧情大纲',
-    prompt: '请为当前小说《{{title}}》批量生成剧情大纲：先规划分卷结构，再为每个分卷生成节点级大纲条目，调用 propose_outline 写入（新分卷可结合 read_project_data 查看现有分卷索引）。'
-  },
-  {
-    key: 'volumes',
-    label: '批量生成章节分卷',
-    icon: LayoutGrid,
-    desc: '搭建卷 / 章层级结构',
-    prompt: '请为当前小说《{{title}}》批量生成章节分卷：先调用 read_project_data 查看现有分卷，再为新增分卷规划卷级标题、目标字数与章节布局，并以结构化清单列出建议写入的分卷结构，等待我确认。'
-  },
-  {
-    key: 'inspiration',
-    label: '批量生成灵感',
-    icon: Lightbulb,
-    desc: '沉淀可复用的创意素材',
-    prompt: '请为当前小说《{{title}}》批量生成一批灵感素材（情节火花、名场面、反转点、细节），以结构化清单逐条列出（分类、标题、内容），等待我确认后由我记录到“灵感”模块。'
-  }
-]
-
-function fillBatchPrompt(action: BatchAction): void {
-  const title = currentProject.value?.title || '当前小说'
-  composerValue.value = action.prompt.replace('{{title}}', title)
-}
-
-// ============================================================================
-// 当前项目 & 项目资源树
+// 当前项目 & 项目操作
 // ============================================================================
 const currentProject = computed(() =>
   projects.value.find((item) => item.id === selectedProjectId.value) ?? projects.value[0] ?? null
 )
-
-function selectProject(id: string): void {
-  appStore.selectProject(id)
-}
-
-function handleDeleteProject(): void {
-  if (!selectedProjectId.value) {
-    message.warning('请先选择一个小说项目')
-    return
-  }
-  const target = projects.value.find((item) => item.id === selectedProjectId.value)
-  if (!target) return
-  if (window.confirm(`确定删除小说《${target.title}》吗？删除后可通过全局回收站找回。`)) {
-    appStore.deleteProject(selectedProjectId.value)
-    message.success(`已删除《${target.title}》`)
-    // 删除后若无项目，提示可先批量生成作品
-    if (projects.value.length === 0) {
-      message.info('暂无小说项目，可在左侧“批量生成作品”创建。')
-    }
-  }
-}
 
 // 快速入口
 function sendWithMode(intentHint?: string): void {
@@ -219,15 +152,7 @@ const availableSkills = computed(() =>
     .map((s) => ({ id: s.id, name: s.name, description: s.description }))
 )
 
-// 打开知识文档
-function openKnowledgeDocument(documentId?: string): void {
-  appStore.setPanel('project-knowledge')
-  if (documentId) {
-    appStore.setAssistantFocusTarget('project-knowledge', documentId)
-  }
-}
-
-/** 打开文件选择对话框，上传本地 txt/md 文件到对话 */
+// 上传本地 txt/md 文件到对话
 async function handleUploadFile(): Promise<void> {
   try {
     const result = await window.characterArc.pickAssistantTextFile()
@@ -238,7 +163,7 @@ async function handleUploadFile(): Promise<void> {
     const name = result.name ?? '本地文件'
     const content = result.content ?? ''
     if (content.length > 60000) {
-      message.warning('文件内容过长，已截断前 6 万字，如需完整内容请精简后重试')
+      message.warning('文件内容过长，已截断前 6 万字')
     }
     composerValue.value = `【已上传本地文件：${name}】\n${content.slice(0, 60000)}\n${composerValue.value}`
   } catch (e) {
@@ -246,7 +171,6 @@ async function handleUploadFile(): Promise<void> {
   }
 }
 
-/** 拖拽本地文本文件到对话（前端直接读取 File 对象内容） */
 function handleUploadFiles(files: File[]): void {
   const readers = files.map(
     (file) =>
@@ -281,10 +205,10 @@ const stageBadgeCount = computed(() =>
 const sessionCollapsed = ref(false)
 const SESSION_WIDTH_KEY = 'global-agent-session-width'
 const STAGE_WIDTH_KEY = 'global-agent-stage-width'
-const SESSION_DEFAULT_WIDTH = 230
-const SESSION_MIN_WIDTH = 176
-const SESSION_MAX_WIDTH = 360
-const SESSION_HIDE_THRESHOLD = 150
+const SESSION_DEFAULT_WIDTH = 250
+const SESSION_MIN_WIDTH = 200
+const SESSION_MAX_WIDTH = 380
+const SESSION_HIDE_THRESHOLD = 180
 const STAGE_DEFAULT_WIDTH = 400
 const STAGE_MIN_WIDTH = 300
 const STAGE_MAX_WIDTH = 700
@@ -460,6 +384,15 @@ async function handleResendTurn(): Promise<void> {
   })
   if (result) notifyTruncate(result, '重新分叉')
 }
+
+async function copyMessage(text: string): Promise<void> {
+  try {
+    await navigator.clipboard?.writeText(text)
+    message.success('已复制')
+  } catch {
+    // ignore
+  }
+}
 </script>
 
 <template>
@@ -473,7 +406,7 @@ async function handleResendTurn(): Promise<void> {
     }"
     :style="pageStyle"
   >
-    <!-- ======== 左侧：项目资源树 + 项目操作（deepwrite 风格） ======== -->
+    <!-- ======== 左侧：会话 / 模块 / 文件 / MCP ======== -->
     <div class="ga-left">
       <div class="ga-left-head">
         <button type="button" class="ga-back" title="返回主页" @click="appStore.backToProjects()">
@@ -485,47 +418,49 @@ async function handleResendTurn(): Promise<void> {
         </div>
       </div>
 
-      <div class="ga-project-ops">
+      <!-- 左侧标签切换 -->
+      <div class="ga-left-tabs">
         <button
+          v-for="tab in LEFT_TABS"
+          :key="tab.key"
           type="button"
-          class="ga-op-btn primary"
-          @click="batchCreateModalVisible = true"
-          title="批量生成作品"
+          class="ga-tab"
+          :class="{ active: leftTab === tab.key }"
+          :title="tab.label"
+          @click="leftTab = tab.key"
         >
-          <BookPlus :size="14" />
-          <span>批量生成作品</span>
-        </button>
-        <button
-          type="button"
-          class="ga-op-btn danger"
-          @click="handleDeleteProject"
-          title="删除当前小说"
-        >
-          <Trash2 :size="14" />
-          <span>删除当前小说</span>
+          <component :is="tab.icon" :size="14" />
+          <span>{{ tab.label }}</span>
         </button>
       </div>
 
-      <div class="ga-tree-title">
-        <span>小说项目</span>
-        <em v-if="projects.length">{{ projects.length }}</em>
+      <!-- 会话历史 -->
+      <div v-if="leftTab === 'sessions'" class="ga-tab-pane">
+        <AssistantSessionList
+          :sessions="assistant.sessions.value"
+          :active-session-id="assistant.activeSessionId.value"
+          @switch="(id) => assistant.switchSession(id)"
+          @create="() => assistant.createSession()"
+          @delete="(id) => assistant.deleteSession(id)"
+          @delete-batch="(ids) => assistant.deleteSessions(ids)"
+          @rename="(id, title) => assistant.renameSession(id, title)"
+          @collapse="reopenSessionPanel"
+        />
       </div>
-      <div class="ga-tree arc-scrollbar">
-        <button
-          v-for="project in projects"
-          :key="project.id"
-          type="button"
-          class="ga-tree-item"
-          :class="{ active: project.id === selectedProjectId }"
-          @click="selectProject(project.id)"
-        >
-          <span class="ga-tree-icon"><BookMarked :size="14" /></span>
-          <span class="ga-tree-name">{{ project.title || '未命名小说' }}</span>
-        </button>
-        <div v-if="projects.length === 0" class="ga-tree-empty">
-          <p>暂无小说项目</p>
-          <p class="sub">点击上方“批量生成作品”创建</p>
-        </div>
+
+      <!-- 能力模块 -->
+      <div v-else-if="leftTab === 'modules'" class="ga-tab-pane">
+        <AgentModuleManager />
+      </div>
+
+      <!-- 系统文件 -->
+      <div v-else-if="leftTab === 'files'" class="ga-tab-pane">
+        <AgentFileExplorer />
+      </div>
+
+      <!-- MCP 市场 -->
+      <div v-else-if="leftTab === 'mcp'" class="ga-tab-pane">
+        <AgentMcpMarket />
       </div>
 
       <div class="ga-left-foot">
@@ -548,7 +483,7 @@ async function handleResendTurn(): Promise<void> {
       class="col-resizer ga-session-resizer"
       role="separator"
       aria-orientation="vertical"
-      aria-label="调整左侧项目栏宽度"
+      aria-label="调整左侧栏宽度"
       tabindex="0"
       @mousedown="startSessionResize"
       @keydown.left.prevent="resizeSessionBy(-24)"
@@ -583,53 +518,32 @@ async function handleResendTurn(): Promise<void> {
         @confirm="handleReferenceConfirm"
       />
 
-      <AssistantMessages
+      <!-- 对话流节点（自动折叠） -->
+      <div
         v-if="assistant.messages.value.length > 0 || assistant.isStreaming.value"
-        :messages="assistant.messages.value"
-        :is-streaming="assistant.isStreaming.value"
-        assistant-name="智能体"
-        :editing-turn-id="assistant.editingTurnId.value"
-        :editing-draft="assistant.editingDraft.value"
-        :is-mutating="assistant.isTruncating.value"
-        :staged-changes="assistant.stagedChanges.value"
-        @open-knowledge="openKnowledgeDocument"
-        @continue="assistant.continueWithPrompt"
-        @open-staged="reopenStagePanel"
-        @rollback="assistant.rollbackTurn"
-        @edit-start="assistant.startEditingTurn"
-        @edit-cancel="assistant.cancelEditing"
-        @edit-draft="assistant.updateEditingDraft"
-        @resend="handleResendTurn"
-        @undo="handleUndoTurn"
-        @regenerate="assistant.regenerateTurn"
-        @delete-turns="(ids) => assistant.deleteTurns(ids)"
-      />
+        class="ga-flow arc-scrollbar"
+      >
+        <FlowNodeView
+          v-for="msg in assistant.messages.value"
+          :key="msg.turnId"
+          :message="msg"
+          :auto-collapse="true"
+          @edit-start="() => assistant.startEditingTurn(msg.turnId)"
+          @undo="() => handleUndoTurn(msg.turnId)"
+          @resend="() => handleResendTurn()"
+          @copy="() => copyMessage(msg.assistantMessage)"
+        />
+      </div>
 
       <div v-else class="ga-starter">
         <div class="ga-starter-inner">
           <div class="ga-starter-head">
-            <div class="ga-starter-kicker">全局智能体</div>
+            <div class="ga-starter-kicker">全局智能体 · 模块化</div>
             <h2>需要我为你的创作做点什么？</h2>
             <p class="ga-starter-sub">
-              在左侧选择要操作的小说，即可批量生成世界观、角色卡片、人物关系、剧情大纲、章节分卷与灵感，
-              所有改动都先进入右侧暂存区审阅，确认后才写回。
+              我能读写任意文件、写代码、调用 MCP 工具、操作浏览器与桌面应用。
+              所有能力都可在左侧「模块」面板独立启停。
             </p>
-          </div>
-
-          <div class="ga-batch-grid">
-            <button
-              v-for="action in BATCH_ACTIONS"
-              :key="action.key"
-              type="button"
-              class="ga-batch-card"
-              @click="fillBatchPrompt(action)"
-            >
-              <component :is="action.icon" :size="16" class="ga-batch-icon" />
-              <div class="ga-batch-text">
-                <strong>{{ action.label }}</strong>
-                <span>{{ action.desc }}</span>
-              </div>
-            </button>
           </div>
 
           <div class="ga-quick-title">常用快捷操作</div>
@@ -664,6 +578,7 @@ async function handleResendTurn(): Promise<void> {
         :restored-label="assistant.restoredDraftLabel.value"
         :attachments="assistant.pendingAttachments.value"
         :skills="availableSkills"
+        :project-id="selectedProjectId"
         @send="sendWithMode"
         @attach="referencePickerVisible = true"
         @apply-skill="(skill) => assistant.addPendingAttachment({ kind: 'skill', ref: `skill:${skill.id}`, label: skill.label })"
@@ -725,8 +640,6 @@ async function handleResendTurn(): Promise<void> {
         @clear-finished="() => assistant.clearFinishedStaged()"
       />
     </div>
-
-    <BatchCreateProjectsModal v-model:show="batchCreateModalVisible" />
   </div>
 </template>
 
@@ -736,7 +649,7 @@ async function handleResendTurn(): Promise<void> {
   --ga-danger: #b91c1c;
   --ga-add: #047857;
   --ga-mono: 'JetBrains Mono', 'Consolas', 'SF Mono', ui-monospace, Menlo, monospace;
-  --session-col-width: 230px;
+  --session-col-width: 250px;
   --stage-col-width: 400px;
   display: grid;
   grid-template-columns: var(--session-col-width) minmax(0, 1fr) var(--stage-col-width);
@@ -796,112 +709,43 @@ async function handleResendTurn(): Promise<void> {
 .ga-logo-icon {
   color: var(--arc-primary);
 }
-.ga-project-ops {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 6px 14px 12px;
-}
-.ga-op-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 9px;
-  border: 1px solid var(--arc-border);
-  background: var(--arc-bg-weak);
-  color: var(--arc-text-primary);
-  font-size: 12.5px;
-  font-weight: 650;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.ga-op-btn.primary {
-  border-color: color-mix(in srgb, var(--arc-primary) 40%, transparent);
-  color: var(--arc-primary);
-  background: color-mix(in srgb, var(--arc-primary) 10%, var(--arc-bg-surface));
-}
-.ga-op-btn.primary:hover {
-  background: color-mix(in srgb, var(--arc-primary) 18%, var(--arc-bg-surface));
-}
-.ga-op-btn.danger {
-  color: var(--ga-danger);
-}
-.ga-op-btn.danger:hover {
-  background: rgba(185, 28, 28, 0.08);
-  border-color: rgba(185, 28, 28, 0.3);
-}
-.ga-tree-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 16px 6px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--arc-text-hint);
-}
-.ga-tree-title em {
-  font-style: normal;
-  font-family: var(--ga-mono);
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--arc-bg-weak);
-  color: var(--arc-text-secondary);
-}
-.ga-tree {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 0 10px 10px;
-  display: flex;
-  flex-direction: column;
+.ga-left-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
   gap: 4px;
+  padding: 0 10px 8px;
+  border-bottom: 1px solid var(--arc-border);
 }
-.ga-tree-item {
+.ga-tab {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 9px;
-  padding: 8px 10px;
-  border-radius: 8px;
+  gap: 3px;
+  padding: 7px 4px;
   border: 1px solid transparent;
+  border-radius: 8px;
   background: transparent;
   color: var(--arc-text-secondary);
+  font-size: 10px;
+  font-weight: 600;
   cursor: pointer;
-  text-align: left;
   transition: all 0.15s ease;
-  width: 100%;
 }
-.ga-tree-item:hover {
+.ga-tab:hover {
   background: var(--arc-bg-weak);
   color: var(--arc-text-primary);
 }
-.ga-tree-item.active {
-  background: color-mix(in srgb, var(--arc-primary) 14%, transparent);
-  border-color: color-mix(in srgb, var(--arc-primary) 32%, transparent);
+.ga-tab.active {
+  border-color: color-mix(in srgb, var(--arc-primary) 35%, transparent);
+  background: color-mix(in srgb, var(--arc-primary) 12%, transparent);
   color: var(--arc-primary);
 }
-.ga-tree-icon {
-  display: inline-flex;
-  flex-shrink: 0;
-}
-.ga-tree-name {
+.ga-tab-pane {
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12.5px;
-}
-.ga-tree-empty {
-  padding: 20px 10px;
-  text-align: center;
-  color: var(--arc-text-hint);
-  font-size: 12.5px;
-}
-.ga-tree-empty .sub {
-  margin-top: 4px;
-  font-size: 11.5px;
+  display: flex;
+  flex-direction: column;
 }
 .ga-left-foot {
   padding: 10px 14px;
@@ -1089,6 +933,15 @@ async function handleResendTurn(): Promise<void> {
 .ga-memory-toggle:hover {
   background: rgba(127, 127, 127, 0.1);
 }
+.ga-flow {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
 
 .ga-starter {
   flex: 1;
@@ -1100,7 +953,7 @@ async function handleResendTurn(): Promise<void> {
   padding: 24px 32px;
 }
 .ga-starter-inner {
-  width: min(760px, 100%);
+  width: min(720px, 100%);
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -1129,50 +982,6 @@ async function handleResendTurn(): Promise<void> {
   color: var(--arc-text-secondary);
   font-size: 13px;
   line-height: 1.6;
-}
-.ga-batch-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-.ga-batch-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  min-height: 74px;
-  border: 1px solid var(--arc-border);
-  border-radius: 12px;
-  background: var(--arc-bg-surface);
-  color: var(--arc-text-primary);
-  text-align: left;
-  padding: 12px 13px;
-  cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
-}
-.ga-batch-card:hover {
-  border-color: var(--arc-primary);
-  background: color-mix(in srgb, var(--arc-primary) 8%, var(--arc-bg-surface));
-  transform: translateY(-1px);
-}
-.ga-batch-icon {
-  color: var(--arc-primary);
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-.ga-batch-text {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-.ga-batch-text strong {
-  font-size: 13px;
-  font-weight: 700;
-}
-.ga-batch-text span {
-  font-size: 11.5px;
-  color: var(--arc-text-secondary);
-  line-height: 1.4;
 }
 .ga-quick-title {
   font-size: 11px;
@@ -1214,7 +1023,6 @@ async function handleResendTurn(): Promise<void> {
 }
 
 /* ===== 右侧暂存区 ===== */
-.ga-stage-col-head,
 .ga-stage-head {
   display: flex;
   align-items: center;
@@ -1269,7 +1077,6 @@ async function handleResendTurn(): Promise<void> {
   .ga-session-resizer {
     display: none;
   }
-  .ga-batch-grid,
   .ga-quick-row {
     grid-template-columns: 1fr;
   }

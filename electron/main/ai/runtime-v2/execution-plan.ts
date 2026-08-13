@@ -41,6 +41,7 @@ import { getProjectView, type SnapshotAccessor } from './providers/shared'
 import { getSharedMemoryStore } from './state'
 import { saveRuntimeKnowledgeDocument } from './knowledge-writer'
 import { getWorkspaceDirPath } from '../../workspace-store'
+import { getAgentModuleRegistry } from '../agent-modules'
 import { createEvidenceLedger, wrapToolsWithRuntimeBudget } from './evidence-ledger'
 import { createRuntimePlan, type AssistantRuntimePlan } from './planner'
 
@@ -292,6 +293,17 @@ export function createExecutionPlanner(
         ...stageEntityTools,
         ...stageProjectEntityTools
       ]
+      // 模块化能力：仅当 global 页面且模块已启用时，注入模块贡献的工具
+      // （系统全目录文件访问、代码执行、MCP 等）。借鉴 DeepSeek Harness 插件化设计。
+      if (surface.id === 'global-page') {
+        const moduleTools = getAgentModuleRegistry().assembleTools({
+          projectId: ctx.projectId,
+          sessionId: ctx.sessionId,
+          turnId: ctx.turnId,
+          config: {}
+        }) as Tool[]
+        combined.push(...moduleTools)
+      }
       return wrapToolsWithRuntimeBudget(
         filterToolsBySurface(combined, surface),
         runtimePlan,

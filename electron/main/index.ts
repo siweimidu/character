@@ -14,6 +14,7 @@ import { registerAiIpcHandlers } from './ai/ipc'
 import { type ReferenceNovelLocalContext } from './referenceAnalysis'
 import { registerMainIpcHandlers } from './register-main-ipc'
 import { bootstrapAssistantRuntime } from './ai/runtime-v2/bootstrap'
+import { initAgentModuleRegistry, registerAgentModuleIpcHandlers } from './ai/agent-modules'
 import { initRegistry as initSkillRegistry } from './ai/skills'
 import { createWindowManager } from './window-manager'
 import {
@@ -620,6 +621,12 @@ bootstrapAssistantRuntime({
     windowManager.broadcastWindowEvent('characterarc:workspace-sync-event', snapshot)
   }
 })
+
+// ── 全局智能体 · 模块化能力系统 ──
+// 注册全局智能体的模块注册中心与模块相关 IPC（系统文件访问、代码执行、MCP 市场等）。
+// 所有能力以「模块」形式可独立启停，借鉴 DeepSeek Harness「everything is a plugin」。
+initAgentModuleRegistry()
+registerAgentModuleIpcHandlers()
 
 // ── 应用生命周期 ──
 // macOS 上关闭所有窗口后点击 dock 图标时重新创建主窗口

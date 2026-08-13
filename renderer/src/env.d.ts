@@ -1097,6 +1097,21 @@ declare global {
         onEvent: (
           callback: (payload: import('@shared/assistant-runtime').AssistantEventPush) => void
         ) => () => void
+      },
+      agentModules: {
+        list: (payload?: unknown) => Promise<import('@shared/agent-modules').AgentModuleRuntime[]>,
+        setEnabled: (payload: { id: string; enabled: boolean }) => Promise<{ ok: boolean; id: string; enabled: boolean }>,
+        getConfig: (payload: { id: string }) => Promise<{ id: string; config: Record<string, unknown> }>,
+        setConfig: (payload: { id: string; config: Record<string, unknown> }) => Promise<{ ok: boolean; id: string }>,
+        fsList: (payload: { path: string }) => Promise<import('@shared/agent-modules').AgentFsListResult>,
+        fsRead: (payload: { path: string; maxChars?: number }) => Promise<import('@shared/agent-modules').AgentFsReadResult>,
+        fsWrite: (payload: { path: string; content: string }) => Promise<import('@shared/agent-modules').AgentFsWriteResult>,
+        fsDelete: (payload: { path: string; recursive: boolean }) => Promise<import('@shared/agent-modules').AgentFsDeleteResult>,
+        fsMkdir: (payload: { path: string }) => Promise<import('@shared/agent-modules').AgentFsMkdirResult>,
+        fsInfo: (payload: { path: string }) => Promise<import('@shared/agent-modules').AgentFsInfoResult>,
+        mcpListMarkets: () => Promise<import('@shared/agent-modules').McpMarketDefinition[]>,
+        mcpListTools: (payload: { marketId?: string }) => Promise<import('@shared/agent-modules').McpToolListing[]>,
+        mcpImport: (payload: { marketId: string; toolId: string }) => Promise<import('@shared/agent-modules').McpImportResult>
       }
     }
   }

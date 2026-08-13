@@ -406,5 +406,37 @@ contextBridge.exposeInMainWorld('characterArc', {
         ipcRenderer.removeListener('characterarc:assistant:event:stream', listener)
       }
     }
+  },
+
+  // ── 全局智能体 · 模块化能力系统 ──
+  // 全局智能体的能力模块（文件系统、代码执行、MCP 等）管理与全目录文件访问。
+  agentModules: {
+    list: (payload?: unknown) =>
+      ipcRenderer.invoke('characterarc:agent-module:list', toIpcPayload(payload ?? {})),
+    setEnabled: (payload: { id: string; enabled: boolean }) =>
+      ipcRenderer.invoke('characterarc:agent-module:set-enabled', toIpcPayload(payload)),
+    getConfig: (payload: { id: string }) =>
+      ipcRenderer.invoke('characterarc:agent-module:get-config', toIpcPayload(payload)),
+    setConfig: (payload: { id: string; config: Record<string, unknown> }) =>
+      ipcRenderer.invoke('characterarc:agent-module:set-config', toIpcPayload(payload)),
+    // 系统全目录文件访问
+    fsList: (payload: { path: string }) =>
+      ipcRenderer.invoke('characterarc:agent-module:fs:list', toIpcPayload(payload)),
+    fsRead: (payload: { path: string; maxChars?: number }) =>
+      ipcRenderer.invoke('characterarc:agent-module:fs:read', toIpcPayload(payload)),
+    fsWrite: (payload: { path: string; content: string }) =>
+      ipcRenderer.invoke('characterarc:agent-module:fs:write', toIpcPayload(payload)),
+    fsDelete: (payload: { path: string; recursive: boolean }) =>
+      ipcRenderer.invoke('characterarc:agent-module:fs:delete', toIpcPayload(payload)),
+    fsMkdir: (payload: { path: string }) =>
+      ipcRenderer.invoke('characterarc:agent-module:fs:mkdir', toIpcPayload(payload)),
+    fsInfo: (payload: { path: string }) =>
+      ipcRenderer.invoke('characterarc:agent-module:fs:info', toIpcPayload(payload)),
+    // MCP 市场
+    mcpListMarkets: () => ipcRenderer.invoke('characterarc:agent-module:mcp:list-markets'),
+    mcpListTools: (payload: { marketId?: string }) =>
+      ipcRenderer.invoke('characterarc:agent-module:mcp:list-tools', toIpcPayload(payload)),
+    mcpImport: (payload: { marketId: string; toolId: string }) =>
+      ipcRenderer.invoke('characterarc:agent-module:mcp:import', toIpcPayload(payload))
   }
 })
