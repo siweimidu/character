@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ChevronLeft, Copy, Download, ExternalLink, Flame, Lightbulb, RefreshCw } from 'lucide-vue-next'
 import { computed, onMounted, ref } from 'vue'
-import { NButton, NInput, NModal, NTag, useMessage } from 'naive-ui'
+import { NButton, NCheckbox, NInput, NInputNumber, NModal, NTag, useMessage } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import { toIpcPayload } from '@/utils/ipcPayload'
 
@@ -256,7 +256,24 @@ const seedLoading = computed(() => appStore.isAiTaskRunning(SEED_TASK_KEY))
 const seedModalVisible = ref(false)
 const seedOptionsVisible = ref(false)
 const targetGenre = ref('')
+const seedCount = ref(3)
 const seedCandidates = ref<FanqieSeedCandidate[]>([])
+const selectedSeeds = ref<boolean[]>([])
+
+function toggleSeed(index: number): void {
+  if (index >= 0 && index < selectedSeeds.value.length) {
+    selectedSeeds.value[index] = !selectedSeeds.value[index]
+  }
+}
+
+function isAllSeedsSelected(): boolean {
+  return selectedSeeds.value.length > 0 && selectedSeeds.value.every(Boolean)
+}
+
+function toggleAllSeeds(): void {
+  const all = isAllSeedsSelected()
+  selectedSeeds.value = selectedSeeds.value.map(() => !all)
+}
 
 function buildSeedContext(): Record<string, unknown> {
   const hotGenres = (curPeriodData.value?.hot_genres || []).slice(0, 8).map((g: AnyRecord) => ({
@@ -274,6 +291,7 @@ function buildSeedContext(): Record<string, unknown> {
   return {
     platform: curBoardItem.value?.name || '番茄小说',
     targetGenre: targetGenre.value.trim(),
+    count: seedCount.value,
     summary: summaryText.value,
     hotGenres: JSON.stringify(hotGenres),
     hotThemes: JSON.stringify(hotThemes),
@@ -320,6 +338,7 @@ async function handleSeedGenerate(): Promise<void> {
       first3Hooks: Array.isArray(e.first3Hooks) ? (e.first3Hooks as string[]).map(String) : [],
       outline: String(e.outline ?? '')
     }))
+    selectedSeeds.value = seedCandidates.value.map(() => true)
     seedOptionsVisible.value = true
   } catch (error) {
     message.error(error instanceof Error ? error.message : 'AI 生成新书选题失败，请检查模型配置')
@@ -330,6 +349,26 @@ function openSeedGenerator(): void {
   targetGenre.value = ''
   seedOptionsVisible.value = false
   seedModalVisible.value = true
+}
+
+function handleGenerateWorks(): void {
+  const picked = seedCandidates.value
+    .map((seed, index) => ({ seed, index }))
+    .filter(({ index }) => selectedSeeds.value[index])
+  if (picked.length === 0) {
+    message.warning('请先勾选要生成的新书选题')
+    return
+  }
+  for (const { seed } of picked) {
+    appStore.createProject({
+      title: seed.title,
+      genre: seed.genre || '都市',
+      novelLength: 'long'
+    })
+  }
+  seedOptionsVisible.value = false
+  message.success(`已生成 ${picked.length} 个新书项目`)
+  appStore.backToProjects()
 }
 
 function formatSeedCandidate(seed: FanqieSeedCandidate): string {
@@ -858,8 +897,20 @@ async function handleExport(): Promise<void> {
       :mask-closable="false"
     >
       <p class="seed-modal-hint">
-        将基于当前榜单的热门赛道、题材标签和标杆书目，生成 2~3 个可落地的新书选题（含书名、主角、金手指与前 3 章钩子）。可选填目标赛道偏好。
+        将基于当前榜单的热门赛道、题材标签和标杆书目，生成 1~10 个可落地的新书选题（含书名、主角、金手指与前 3 章钩子）。可选填目标赛道偏好。
       </p>
+      <div class="seed-count-row">
+        <span class="seed-count-label">生成数量</span>
+        <n-input-number
+          v-model:value="seedCount"
+          :min="1"
+          :max="10"
+          :step="1"
+          size="small"
+          class="seed-count-input"
+        />
+        <span class="seed-count-range">1 ~ 10</span>
+      </div>
       <n-input
         v-model:value="targetGenre"
         type="textarea"
@@ -882,9 +933,27 @@ async function handleExport(): Promise<void> {
       class="seed-options-modal"
       :mask-closable="false"
     >
+      <div class="seed-toolbar">
+        <n-checkbox :checked="isAllSeedsSelected()" @update:checked="toggleAllSeeds" class="seed-check-all">
+          全选
+        </n-checkbox>
+        <span class="seed-selected-count">已选 {{ selectedSeeds.filter(Boolean).length }} / {{ seedCandidates.length }}</span>
+      </div>
       <div class="seed-list">
-        <div v-for="(seed, index) in seedCandidates" :key="index" class="seed-card">
+        <div
+          v-for="(seed, index) in seedCandidates"
+          :key="index"
+          class="seed-card"
+          :class="{ 'seed-card-checked': selectedSeeds[index] }"
+          @click="toggleSeed(index)"
+        >
           <div class="seed-card-head">
+            <n-checkbox
+              :checked="selectedSeeds[index]"
+              class="seed-check"
+              @update:checked="toggleSeed(index)"
+              @click.stop
+            />
             <span class="seed-rank num">#{{ index + 1 }}</span>
             <span class="seed-title">{{ seed.title }}</span>
             <n-tag v-if="seed.genre" size="small" :bordered="false" class="seed-genre">{{ seed.genre }}</n-tag>
@@ -901,13 +970,14 @@ async function handleExport(): Promise<void> {
           </div>
           <div class="seed-row"><span class="seed-k">主线</span>{{ seed.outline }}</div>
           <div class="seed-actions">
-            <button type="button" class="seed-action-btn" @click="copySeed(seed)"><Copy :size="12" /> 复制方案</button>
+            <button type="button" class="seed-action-btn" @click.stop="copySeed(seed)"><Copy :size="12" /> 复制方案</button>
           </div>
         </div>
       </div>
       <div class="seed-modal-footer">
         <n-button @click="seedOptionsVisible = false">关闭</n-button>
-        <n-button type="primary" @click="openSeedGenerator">换一批</n-button>
+        <n-button @click="openSeedGenerator">换一批</n-button>
+        <n-button type="primary" @click="handleGenerateWorks">生成作品</n-button>
       </div>
     </n-modal>
 
@@ -1473,6 +1543,15 @@ async function handleExport(): Promise<void> {
   line-height: 1.6;
   color: var(--arc-text-hint);
 }
+.seed-count-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.seed-count-label { font-size: 13px; color: var(--arc-text-secondary); font-weight: 600; }
+.seed-count-input { width: 90px; }
+.seed-count-range { font-size: 12px; color: var(--arc-text-hint); }
 .seed-modal-footer {
   display: flex;
   justify-content: flex-end;
@@ -1582,5 +1661,18 @@ async function handleExport(): Promise<void> {
   transition: color 0.18s, border-color 0.18s;
 }
 .seed-action-btn:hover { border-color: var(--arc-primary); color: var(--arc-primary); }
+.seed-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.seed-check-all { font-size: 13px; }
+.seed-selected-count { font-size: 12px; color: var(--arc-text-hint); }
+.seed-card-checked {
+  border-color: var(--arc-primary);
+  box-shadow: 0 0 0 1px var(--arc-primary);
+}
+.seed-check { margin-right: 2px; }
 </style>
 
