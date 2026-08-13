@@ -121,6 +121,7 @@ export type AiTaskName =
   | 'cover-generate'
   | 'continuation-import-chunk'
   | 'continuation-import-aggregate'
+  | 'ai-novel-from-reference'
 
 /**
  * AI 运行时注入 prompt 的知识条目。
@@ -537,6 +538,25 @@ export type FanqieSeedResult = {
   entries: FanqieSeedEntry[]
 }
 
+/** 单条基于参考拆书风格生成的新作品候选 */
+export type AiNovelFromReferenceEntry = {
+  /** 参考来源（拆过的书）标题 */
+  sourceTitle: string
+  title: string
+  concept: string
+  genre: string
+  hook: string
+  protagonist: string
+  goldFinger: string
+  first3Hooks: string[]
+  outline: string
+}
+
+/** 基于参考拆书风格生成作品结果 */
+export type AiNovelFromReferenceResult = {
+  entries: AiNovelFromReferenceEntry[]
+}
+
 export type ContinuationImportChapterAnalysis = {
   chapterId: string
   title: string
@@ -621,6 +641,7 @@ export type AiTaskResult =
   | SpiralValidateResult
   | ContinuationImportChunkResult
   | ContinuationImportAggregateResult
+  | AiNovelFromReferenceResult
 
 /** AI 任务的完整响应：结果 + 运行元数据 */
 export type AiTaskResponse = {

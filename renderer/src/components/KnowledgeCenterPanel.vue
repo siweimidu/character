@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Download, Search, Sparkles, Trash2, Upload } from 'lucide-vue-next'
+import { Download, Search, Sparkles, Trash2, Upload, Wand2 } from 'lucide-vue-next'
 import {
   NAlert,
   NButton,
   NCard,
+  NCheckbox,
+  NCheckboxGroup,
   NCollapse,
   NCollapseItem,
   NDescriptions,
@@ -15,6 +17,8 @@ import {
   NList,
   NListItem,
   NModal,
+  NRadio,
+  NRadioGroup,
   NScrollbar,
   NStatistic,
   NTag,
@@ -407,6 +411,184 @@ async function handleExportAsset(asset: ReferenceAssetLibrary, format: 'txt' | '
 function handleExportAssetSelect(asset: ReferenceAssetLibrary, key: string | number): void {
   void handleExportAsset(asset, key as 'txt' | 'md' | 'json' | 'docx')
 }
+
+// ── AI 按拆书风格生成作品 ──
+const AI_NOVEL_TASK_KEY = 'ai-novel-from-reference'
+const AI_NOVEL_MAX_SELECT = 10
+const aiNovelLoading = computed(() => appStore.isAiTaskRunning(AI_NOVEL_TASK_KEY))
+
+interface AiNovelCandidate {
+  sourceTitle: string
+  title: string
+  concept: string
+  genre: string
+  hook: string
+  protagonist: string
+  goldFinger: string
+  first3Hooks: string[]
+  outline: string
+}
+
+// 选择参考书弹窗
+const aiNovelPickerVisible = ref(false)
+const aiNovelMode = ref<'fuse' | 'separate'>('fuse')
+const aiNovelTargetGenre = ref('')
+const aiNovelSelectedIds = ref<string[]>([])
+
+// 结果弹窗
+const aiNovelResultsVisible = ref(false)
+const aiNovelCandidates = ref<AiNovelCandidate[]>([])
+const aiNovelSelectedSeedIds = ref<string[]>([])
+
+const aiNovelSelectedSeedCount = computed(() => aiNovelSelectedSeedIds.value.length)
+const aiNovelHasSelectedSeed = computed(() => aiNovelSelectedSeedIds.value.length > 0)
+
+function openAiNovelPicker(): void {
+  aiNovelMode.value = 'fuse'
+  aiNovelTargetGenre.value = ''
+  aiNovelSelectedIds.value = []
+  aiNovelPickerVisible.value = true
+}
+
+function toggleAiNovelAll(): void {
+  const allSelected = referenceAssets.value.length > 0
+    && referenceAssets.value.every((asset) => aiNovelSelectedIds.value.includes(asset.id))
+  aiNovelSelectedIds.value = allSelected ? [] : referenceAssets.value.map((asset) => asset.id).slice(0, AI_NOVEL_MAX_SELECT)
+}
+
+function isAiNovelAllSelected(): boolean {
+  return referenceAssets.value.length > 0
+    && referenceAssets.value.every((asset) => aiNovelSelectedIds.value.includes(asset.id))
+}
+
+function buildAiNovelReferenceContext(assets: ReferenceAssetLibrary[]): Array<Record<string, unknown>> {
+  return assets.map((asset) => {
+    const docs = resolveAssetDocuments(asset)
+    // 拼接拆书总纲 + 分块的内容要点，控制输入规模
+    const docText = docs
+      .map((item) => {
+        const head = `【${item.document.title}】`
+        const summary = (item.document.summary || '').trim()
+        const content = (item.document.content || '').trim()
+        const body = (content || summary).replace(/\s+/g, ' ').slice(0, 1200)
+        return `${head} ${body}`
+      })
+      .join('\n')
+      .slice(0, 6000)
+
+    return {
+      title: asset.title,
+      source: asset.source,
+      genre: asset.topKeywords.slice(0, 3).join('、') || asset.source,
+      summary: asset.summary,
+      styleRules: asset.styleRules,
+      topKeywords: asset.topKeywords,
+      documentText: docText
+    }
+  })
+}
+
+async function handleAiNovelGenerate(): Promise<void> {
+  const pickedAssets = referenceAssets.value.filter((asset) => aiNovelSelectedIds.value.includes(asset.id))
+  if (!pickedAssets.length) {
+    message.warning('请先勾选至少一本已拆解的书')
+    return
+  }
+  if (pickedAssets.length > AI_NOVEL_MAX_SELECT) {
+    message.warning(`最多选择 ${AI_NOVEL_MAX_SELECT} 本参考书`)
+    return
+  }
+
+  aiNovelPickerVisible.value = false
+  const mode = aiNovelMode.value
+  try {
+    const result = await appStore.runTrackedAiTask(
+      {
+        key: AI_NOVEL_TASK_KEY,
+        kind: 'inspiration',
+        label: '按拆书风格生成作品',
+        description: mode === 'fuse'
+          ? '正在融合所选书籍的风格生成一部新作品'
+          : `正在为 ${pickedAssets.length} 本参考书各生成一部新作品`,
+        panel: 'knowledge'
+      },
+      () =>
+        window.characterArc.generateAi(toIpcPayload({
+          task: 'ai-novel-from-reference',
+          settings: appStore.appSettings,
+          context: {
+            mode,
+            targetGenre: aiNovelTargetGenre.value.trim(),
+            references: buildAiNovelReferenceContext(pickedAssets)
+          }
+        }))
+    )
+
+    if (!result.success || !result.result) {
+      throw new Error(result.error ?? 'AI 生成作品失败')
+    }
+    const entries = Array.isArray((result.result as Record<string, unknown>)?.entries)
+      ? ((result.result as Record<string, unknown>).entries as Array<Record<string, unknown>>)
+      : []
+    if (entries.length === 0) {
+      message.warning('AI 未返回有效的作品方案，请重试')
+      return
+    }
+    aiNovelCandidates.value = entries.map((e) => ({
+      sourceTitle: String(e.sourceTitle ?? ''),
+      title: String(e.title ?? '未命名作品'),
+      concept: String(e.concept ?? ''),
+      genre: String(e.genre ?? ''),
+      hook: String(e.hook ?? ''),
+      protagonist: String(e.protagonist ?? ''),
+      goldFinger: String(e.goldFinger ?? ''),
+      first3Hooks: Array.isArray(e.first3Hooks) ? (e.first3Hooks as string[]).map(String) : [],
+      outline: String(e.outline ?? '')
+    }))
+    aiNovelSelectedSeedIds.value = aiNovelCandidates.value.map((_, index) => String(index))
+    aiNovelResultsVisible.value = true
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : 'AI 生成作品失败，请检查模型配置')
+  }
+}
+
+function handleAiNovelCreateWorks(): void {
+  const selectedSet = new Set(aiNovelSelectedSeedIds.value)
+  const picked = aiNovelCandidates.value
+    .map((candidate, index) => ({ candidate, index }))
+    .filter(({ index }) => selectedSet.has(String(index)))
+  if (picked.length === 0) {
+    message.warning('请先勾选要创建的新作品')
+    return
+  }
+
+  for (const { candidate } of picked) {
+    appStore.createProjectWorkspace({
+      project: {
+        title: candidate.title,
+        genre: candidate.genre || '都市',
+        novelLength: 'long',
+        premise: [candidate.concept, candidate.hook, candidate.outline].filter(Boolean).join('\n')
+      }
+    })
+  }
+  aiNovelResultsVisible.value = false
+  message.success(`已创建 ${picked.length} 个新作品项目`)
+  appStore.backToProjects()
+}
+
+function formatAiNovelCandidate(candidate: AiNovelCandidate): string {
+  return `【书名】${candidate.title}\n【来源】${candidate.sourceTitle || '多书融合'}\n【核心卖点】${candidate.concept}\n【题材】${candidate.genre}\n【钩子】${candidate.hook}\n【主角】${candidate.protagonist}\n【金手指】${candidate.goldFinger}\n【前3章钩子】\n${candidate.first3Hooks.map((h, i) => `  ${i + 1}. ${h}`).join('\n')}\n【主线】${candidate.outline}`
+}
+
+async function copyAiNovelCandidate(candidate: AiNovelCandidate): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(formatAiNovelCandidate(candidate))
+    message.success('作品方案已复制')
+  } catch {
+    message.error('复制失败')
+  }
+}
 </script>
 
 <template>
@@ -423,6 +605,16 @@ function handleExportAssetSelect(asset: ReferenceAssetLibrary, key: string | num
         <n-button secondary class="knowledge-header-btn" @click="openModal">
           <template #icon><Upload :size="16" /></template>
           导入小说并拆书
+        </n-button>
+        <n-button
+          type="primary"
+          secondary
+          class="knowledge-header-btn"
+          :disabled="!referenceAssets.length"
+          @click="openAiNovelPicker"
+        >
+          <template #icon><Wand2 :size="16" /></template>
+          AI 生成作品
         </n-button>
         <n-dropdown :options="exportMenuOptions" placement="bottom-end" @select="handleExportLibrarySelect">
           <n-button secondary class="knowledge-header-btn" :loading="exportLoading">
@@ -606,6 +798,142 @@ function handleExportAssetSelect(asset: ReferenceAssetLibrary, key: string | num
             <pre class="detail-content">{{ selectedDocument.document.content || '暂无正文内容。' }}</pre>
           </n-scrollbar>
         </div>
+      </n-card>
+    </n-modal>
+
+    <!-- AI 生成作品：选择参考书与模式 -->
+    <n-modal v-model:show="aiNovelPickerVisible">
+      <n-card style="width: min(720px, 92vw)" :bordered="false" role="dialog" aria-modal="true">
+        <template #header>
+          <div class="detail-header">
+            <strong>AI 按拆书风格生成作品</strong>
+            <span>勾选已拆解的书作为风格参考，最多 {{ AI_NOVEL_MAX_SELECT }} 本</span>
+          </div>
+        </template>
+
+        <div class="ai-novel-body">
+          <div class="ai-novel-mode-row">
+            <span class="ai-novel-field-label">生成模式</span>
+            <n-radio-group v-model:value="aiNovelMode" size="small">
+              <n-radio value="fuse">融合生成（多书风格合成一本书）</n-radio>
+              <n-radio value="separate">分开生成（每本书各生成一本）</n-radio>
+            </n-radio-group>
+          </div>
+
+          <div class="ai-novel-mode-row">
+            <span class="ai-novel-field-label">目标题材</span>
+            <n-input
+              v-model:value="aiNovelTargetGenre"
+              size="small"
+              clearable
+              class="ai-novel-genre-input"
+              placeholder="可选，如都市 / 玄幻 / 悬疑…"
+            />
+          </div>
+
+          <div class="ai-novel-select-head">
+            <strong>选择参考书（{{ aiNovelSelectedIds.length }}/{{ AI_NOVEL_MAX_SELECT }}）</strong>
+            <n-button text size="small" @click="toggleAiNovelAll">
+              {{ isAiNovelAllSelected() ? '取消全选' : '全选' }}
+            </n-button>
+          </div>
+
+          <n-scrollbar style="max-height: 46vh">
+            <n-checkbox-group
+              v-model:value="aiNovelSelectedIds"
+              :max="AI_NOVEL_MAX_SELECT"
+              class="ai-novel-ref-list"
+            >
+              <n-checkbox
+                v-for="asset in referenceAssets"
+                :key="asset.id"
+                :value="asset.id"
+                class="ai-novel-ref-item"
+              >
+                <span class="ai-novel-ref-title">{{ asset.title }}</span>
+                <span class="ai-novel-ref-meta">
+                  {{ asset.source }}
+                  <template v-if="asset.styleRules.length">· {{ asset.styleRules.slice(0, 3).join('、') }}</template>
+                </span>
+              </n-checkbox>
+            </n-checkbox-group>
+          </n-scrollbar>
+        </div>
+
+        <template #footer>
+          <div class="ai-novel-footer">
+            <n-button @click="aiNovelPickerVisible = false">取消</n-button>
+            <n-button
+              type="primary"
+              :loading="aiNovelLoading"
+              :disabled="!aiNovelSelectedIds.length"
+              @click="handleAiNovelGenerate"
+            >
+              <template #icon><Wand2 :size="16" /></template>
+              开始生成
+            </n-button>
+          </div>
+        </template>
+      </n-card>
+    </n-modal>
+
+    <!-- AI 生成作品：结果确认 -->
+    <n-modal v-model:show="aiNovelResultsVisible">
+      <n-card style="width: min(860px, 92vw)" :bordered="false" role="dialog" aria-modal="true">
+        <template #header>
+          <div class="detail-header">
+            <strong>AI 生成的新作品方案</strong>
+            <span>勾选要创建为项目的作品，将自动建为新项目</span>
+          </div>
+        </template>
+
+        <n-scrollbar style="max-height: 52vh">
+          <n-checkbox-group
+            v-model:value="aiNovelSelectedSeedIds"
+            class="ai-novel-result-group"
+          >
+            <n-checkbox
+              v-for="(candidate, index) in aiNovelCandidates"
+              :key="index"
+              :value="String(index)"
+              class="ai-novel-result-card"
+            >
+              <div class="ai-novel-result-head">
+                <strong>{{ candidate.title }}</strong>
+                <n-tag size="tiny" :bordered="false" type="info">{{ candidate.genre || '未分类' }}</n-tag>
+                <n-tag v-if="candidate.sourceTitle" size="tiny" :bordered="false" type="warning">
+                  源自《{{ candidate.sourceTitle }}》
+                </n-tag>
+              </div>
+              <p class="ai-novel-result-concept">{{ candidate.concept }}</p>
+              <p class="ai-novel-result-line"><b>钩子：</b>{{ candidate.hook }}</p>
+              <p class="ai-novel-result-line"><b>主角：</b>{{ candidate.protagonist }}</p>
+              <p class="ai-novel-result-line"><b>金手指：</b>{{ candidate.goldFinger }}</p>
+              <div v-if="candidate.first3Hooks.length" class="ai-novel-result-hooks">
+                <span class="ai-novel-result-hook" v-for="(hook, hi) in candidate.first3Hooks" :key="hi">
+                  第{{ hi + 1 }}章：{{ hook }}
+                </span>
+              </div>
+              <p class="ai-novel-result-outline"><b>主线：</b>{{ candidate.outline }}</p>
+              <div class="ai-novel-result-actions">
+                <n-button text size="tiny" @click.stop="copyAiNovelCandidate(candidate)">复制方案</n-button>
+              </div>
+            </n-checkbox>
+          </n-checkbox-group>
+        </n-scrollbar>
+
+        <template #footer>
+          <div class="ai-novel-footer">
+            <n-button @click="aiNovelResultsVisible = false">关闭</n-button>
+            <n-button
+              type="primary"
+              :disabled="!aiNovelHasSelectedSeed"
+              @click="handleAiNovelCreateWorks"
+            >
+              创建选中作品（{{ aiNovelSelectedSeedCount }}）
+            </n-button>
+          </div>
+        </template>
       </n-card>
     </n-modal>
   </section>
@@ -885,6 +1213,173 @@ function handleExportAssetSelect(asset: ReferenceAssetLibrary, key: string | num
   word-break: break-word;
 }
 
+.ai-novel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ai-novel-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ai-novel-field-label {
+  color: var(--arc-text-secondary);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.ai-novel-genre-input {
+  width: 220px;
+}
+
+.ai-novel-select-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--arc-border);
+}
+
+.ai-novel-select-head strong {
+  color: var(--arc-text-primary);
+  font-size: 13px;
+}
+
+.ai-novel-ref-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0;
+}
+
+.ai-novel-ref-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: var(--arc-radius-md);
+  transition: background 0.2s ease;
+}
+
+.ai-novel-ref-item:hover {
+  background: color-mix(in srgb, var(--arc-primary) 6%, transparent);
+}
+
+.ai-novel-ref-item :deep(.n-checkbox__label) {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ai-novel-ref-title {
+  color: var(--arc-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-novel-ref-meta {
+  color: var(--arc-text-hint);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-novel-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.ai-novel-result-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.ai-novel-result-card {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--arc-border);
+  border-radius: var(--arc-radius-lg);
+  background: var(--arc-bg-weak);
+}
+
+.ai-novel-result-card :deep(.n-checkbox__label) {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+}
+
+.ai-novel-result-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ai-novel-result-head strong {
+  color: var(--arc-text-primary);
+  font-size: 15px;
+}
+
+.ai-novel-result-concept {
+  margin: 0;
+  color: var(--arc-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ai-novel-result-line {
+  margin: 0;
+  color: var(--arc-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.ai-novel-result-hooks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ai-novel-result-hook {
+  color: var(--arc-text-secondary);
+  font-size: 12px;
+}
+
+.ai-novel-result-outline {
+  margin: 0;
+  color: var(--arc-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.ai-novel-result-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 @media (max-width: 640px) {
   .skill-grid {
     grid-template-columns: 1fr;
@@ -893,6 +1388,10 @@ function handleExportAssetSelect(asset: ReferenceAssetLibrary, key: string | num
   .doc-item-top {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .ai-novel-genre-input {
+    width: 100%;
   }
 }
 </style>

@@ -135,7 +135,8 @@ const taskLabelMap: Record<string, string> = {
   'catalog-batch:membership': '组织成员批量生成',
   'catalog-batch:worldview': '世界观批量生成',
   'catalog-batch:inspiration': '灵感批量生成',
-  'cover-generate': '封面生成'
+  'cover-generate': '封面生成',
+  'ai-novel-from-reference': '按拆书风格生成作品'
 }
 
 async function handleFetchModels(): Promise<void> {
