@@ -41,6 +41,10 @@ const projectMenuOptions = computed(() => [
     label: '编辑项目信息'
   },
   {
+    key: 'recycle',
+    label: '项目回收站'
+  },
+  {
     key: 'divider',
     type: 'divider'
   },
@@ -72,6 +76,15 @@ function openCoverWorkbenchPage(): void {
   appStore.openCoverWorkbenchPage(targetProject?.id)
 }
 
+function openRecycleBin(): void {
+  appStore.openRecycleBin('global')
+}
+
+/** 项目卡片菜单新增回收站入口，进入该项目回收站 */
+function openProjectRecycleBin(projectId: string): void {
+  appStore.openRecycleBin(projectId)
+}
+
 function openProjectEditor(project?: ProjectSummary): void {
   editingProject.value = project ?? null
   editorVisible.value = true
@@ -88,6 +101,11 @@ function handleMenuSelect(action: string | number, projectId: string): void {
     if (project) {
       openProjectEditor(project)
     }
+    return
+  }
+
+  if (action === 'recycle') {
+    openProjectRecycleBin(projectId)
     return
   }
 
@@ -142,7 +160,7 @@ function requestDeleteProject(projectId: string): void {
 
   dialog.warning({
     title: '确认删除项目',
-    content: `确定要删除"${project.title}"吗？删除后当前本地项目数据将无法恢复。`,
+    content: `确定要删除"${project.title}"吗？删除后整个项目会移入回收站，可在回收站中恢复。`,
     positiveText: '确认删除',
     negativeText: '取消',
     autoFocus: false,
@@ -165,7 +183,7 @@ function requestBatchDeleteProjects(projectIds: string[]): void {
 
   dialog.warning({
     title: '确认批量删除',
-    content: `确定要删除以下 ${projectIds.length} 个项目吗？\n${projectTitles}\n\n删除后当前本地项目数据将无法恢复。`,
+    content: `确定要删除以下 ${projectIds.length} 个项目吗？\n${projectTitles}\n\n删除后这些项目会移入回收站，可在回收站中恢复。`,
     positiveText: '确认删除',
     negativeText: '取消',
     autoFocus: false,
@@ -193,6 +211,7 @@ function requestBatchDeleteProjects(projectIds: string[]): void {
         @open-fanqie-trends="appStore.openFanqieTrends()"
         @open-cover-workbench="openCoverWorkbenchPage"
         @open-skills="openSkillsPage"
+        @open-recycle-bin="openRecycleBin"
         @open-settings="settingsVisible = true"
         @open-announcement="announcementVisible = true"
         @open-tutorial="tutorialVisible = true"

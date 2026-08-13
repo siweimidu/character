@@ -14,7 +14,7 @@ import {
   Users,
   X
 } from 'lucide-vue-next'
-import { NButton, NEmpty, NInputNumber, NPopconfirm, NTag, useMessage } from 'naive-ui'
+import { NButton, NEmpty, NInputNumber, NPopconfirm, NSelect, NTag, useMessage } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import type { RecycleBinCategory } from '@/types/app'
 
@@ -37,6 +37,9 @@ const CATEGORY_META: Record<RecycleBinCategory, { label: string; color: string }
   'knowledge-document': { label: '项目知识库', color: '#14b8a6' },
   'story-state': { label: '世界状态库', color: '#0ea5e9' },
   'assistant-session': { label: '智能体对话', color: '#0d7d5a' },
+  'chapter-version': { label: '章节历史版本', color: '#0891b2' },
+  'character-version': { label: '角色版本快照', color: '#d946ef' },
+  'project': { label: '项目', color: '#f43f5e' },
   'ai-profile': { label: 'AI 接口配置', color: '#8b5cf6' },
   'reference-work': { label: '参考作品', color: '#06b6d4' }
 }
@@ -56,6 +59,9 @@ const CATEGORY_ICON: Record<RecycleBinCategory, unknown> = {
   'knowledge-document': FileCheck2,
   'story-state': FileCheck2,
   'assistant-session': FileText,
+  'chapter-version': FileText,
+  'character-version': Users,
+  'project': BookMarked,
   'ai-profile': Settings2,
   'reference-work': FileCheck2
 }
@@ -67,8 +73,23 @@ const activeCategory = ref<'all' | RecycleBinCategory>('all')
 const editingRetention = ref(false)
 const retentionDraft = ref<number>(appStore.recycleBinRetentionDays)
 
-/** 全部回收站条目（项目级 + 全局） */
-const entries = computed(() => appStore.allRecycleBinEntries)
+/** 当前回收站视图下的条目（随 appStore.recycleBinScope 联动） */
+const entries = computed(() => appStore.recycleBinEntries)
+
+/** 项目选择器选项：全局回收站 + 各项目回收站 */
+const scopeOptions = computed(() => [
+  { label: '全局回收站', value: 'global' },
+  ...appStore.projects.map((project) => ({ label: project.title, value: project.id }))
+])
+
+/** 当前查看范围（双向绑定到 store） */
+const scopeValue = computed({
+  get: () => appStore.recycleBinScope,
+  set: (value: string) => appStore.setRecycleBinScope(value)
+})
+
+/** 是否处于全局视图（用于展示“所有项目”提示） */
+const isGlobalScope = computed(() => appStore.recycleBinScope === 'global')
 
 /** 按类别筛选后的条目 */
 const filteredEntries = computed(() =>
@@ -149,7 +170,12 @@ function saveRetention(): void {
 }
 
 function backToProjectCenter(): void {
-  appStore.backToWorkbench()
+  // 全局视图回到项目中心；项目视图回到对应项目工作台
+  if (appStore.recycleBinScope === 'global') {
+    appStore.backToProjects()
+  } else {
+    appStore.backToWorkbench()
+  }
 }
 </script>
 
@@ -173,16 +199,33 @@ function backToProjectCenter(): void {
               清空回收站
             </n-button>
           </template>
-          确定要永久删除回收站中全部内容吗？此操作不可撤销。
+          确定要永久删除{{ isGlobalScope ? '全局回收站中全部内容' : '当前回收站中的全部内容' }}吗？此操作不可撤销。
         </n-popconfirm>
       </div>
     </header>
 
     <main class="recycle-main arc-scrollbar">
+      <!-- 范围选择：全局回收站 / 各项目回收站 -->
+      <div class="recycle-scope-bar">
+        <n-select
+          v-model:value="scopeValue"
+          :options="scopeOptions"
+          size="small"
+          placeholder="选择回收站范围"
+          style="width: 220px"
+        />
+        <span v-if="isGlobalScope" class="recycle-scope-hint">
+          显示所有项目删除的内容，以及 AI 接口配置、参考作品等全局数据。
+        </span>
+        <span v-else class="recycle-scope-hint">
+          显示当前项目删除的内容，以及 AI 接口配置、参考作品等所有项目共有的全局数据。
+        </span>
+      </div>
+
       <div class="recycle-heading">
         <div class="recycle-heading-copy">
           <span class="recycle-heading-kicker"><Trash2 :size="14" /> 回收站</span>
-          <strong>删除的内容在这里暂存 {{ appStore.recycleBinRetentionDays }} 天</strong>
+          <strong>{{ appStore.recycleBinScopeLabel }}</strong>
           <p>恢复后可回到原模块；到期将自动永久删除。所有模块删除的内容都会自动进入回收站。</p>
         </div>
         <div class="recycle-retention">
@@ -328,6 +371,22 @@ function backToProjectCenter(): void {
   min-width: 0;
   align-items: center;
   gap: 12px;
+}
+
+.recycle-scope-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 10px 12px;
+  border: 1px solid var(--arc-border);
+  border-radius: var(--arc-radius-lg);
+  background: var(--arc-bg-surface);
+}
+
+.recycle-scope-hint {
+  color: var(--arc-text-hint);
+  font-size: 12px;
 }
 
 .recycle-main {

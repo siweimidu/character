@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Bell, BookOpen, BookUp2, Flame, ImagePlus, LibraryBig, Plus, RefreshCw, Settings2, Upload, Wrench } from 'lucide-vue-next'
+import { Bell, BookOpen, BookUp2, Flame, ImagePlus, LibraryBig, Plus, RefreshCw, Settings2, Trash2, Upload, Wrench } from 'lucide-vue-next'
 import { NButton } from 'naive-ui'
 import type { StatusIndicator } from '@/composables/useStartupCheck'
 
@@ -16,6 +16,7 @@ const emit = defineEmits<{
   (e: 'openFanqieTrends'): void
   (e: 'openCoverWorkbench'): void
   (e: 'openSkills'): void
+  (e: 'openRecycleBin'): void
   (e: 'openSettings'): void
   (e: 'openAnnouncement'): void
   (e: 'openTutorial'): void
@@ -55,6 +56,9 @@ const emit = defineEmits<{
         </n-button>
         <n-button quaternary circle size="large" title="封面工作台" @click="emit('openCoverWorkbench')">
           <template #icon><ImagePlus :size="20" /></template>
+        </n-button>
+        <n-button quaternary circle size="large" title="回收站" @click="emit('openRecycleBin')">
+          <template #icon><Trash2 :size="20" /></template>
         </n-button>
         <n-button quaternary circle size="large" title="设置" @click="emit('openSettings')">
           <template #icon><Settings2 :size="20" /></template>

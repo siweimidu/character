@@ -922,6 +922,9 @@ export type RecycleBinCategory =
   | 'knowledge-document'
   | 'story-state'
   | 'assistant-session'
+  | 'chapter-version'
+  | 'character-version'
+  | 'project'
   | 'ai-profile'
   | 'reference-work'
 

@@ -336,12 +336,42 @@ export const useAppStore = defineStore('app', () => {
   const globalRecycleBin = ref<import('@/types/app').RecycleBinEntry[]>(stored.globalRecycleBin ?? [])
   /** 当前项目的回收站条目（项目级删除内容） */
   const projectRecycleBin = computed(() => currentWorkspace.value.recycleBin)
-  /** 汇总全部回收站条目：项目级 + 全局级，按删除时间倒序 */
-  const allRecycleBinEntries = computed<import('@/types/app').RecycleBinEntry[]>(() =>
-    [...(projectRecycleBin.value ?? []), ...globalRecycleBin.value].sort((a, b) =>
+  /** 回收站当前查看范围：'global' 显示全局回收站，'all' 显示当前项目 + 全局，其余为指定项目 ID */
+  const recycleBinScope = ref<string>('all')
+  /** 指定项目 ID 的回收站条目 */
+  const projectRecycleBinOf = (projectId: string) =>
+    (projectWorkspaces.value[projectId] ?? createEmptyWorkspace()).recycleBin ?? []
+  /** 全局回收站条目（AI 接口、参考作品等跨项目共享数据的删除快照） */
+  const globalRecycleBinEntries = computed(() => globalRecycleBin.value)
+  /** 当前回收站视图下展示的条目，按删除时间倒序。
+   *  - 'global'：全局回收站，展示所有项目的删除内容 + 全局数据删除快照
+   *  - 项目 ID：该项目回收站，展示该项目删除内容 + 全局数据（AI 接口等所有项目共有）
+   */
+  const recycleBinEntries = computed<import('@/types/app').RecycleBinEntry[]>(() => {
+    const scope = recycleBinScope.value
+    const projectEntries =
+      scope === 'global' || scope === 'all'
+        ? Object.values(projectWorkspaces.value).flatMap((workspace) => workspace.recycleBin ?? [])
+        : projectRecycleBinOf(String(scope))
+    return [...projectEntries, ...globalRecycleBin.value].sort((a, b) =>
       (b.deletedAt || '').localeCompare(a.deletedAt || '')
     )
+  })
+  /** 汇总全部回收站条目（项目级 + 全局），供全局入口/角标统计使用 */
+  const allRecycleBinEntries = computed<import('@/types/app').RecycleBinEntry[]>(() =>
+    [
+      ...Object.values(projectWorkspaces.value).flatMap((workspace) => workspace.recycleBin ?? []),
+      ...globalRecycleBin.value
+    ].sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || ''))
   )
+  /** 当前查看范围的人类可读标题 */
+  const recycleBinScopeLabel = computed<string>(() => {
+    const scope = recycleBinScope.value
+    if (scope === 'global') return '全局回收站'
+    if (scope === 'all') return '回收站'
+    const project = projects.value.find((item) => item.id === scope)
+    return project ? `${project.title} · 回收站` : '回收站'
+  })
   /** 回收站配置：内容保留天数，默认 5 天 */
   const recycleBinRetentionDays = computed<number>(() => {
     const configured = appSettings.value.recycleBinSettings?.retentionDays
@@ -1088,10 +1118,36 @@ export const useAppStore = defineStore('app', () => {
     schedulePersist('fast')
   }
 
-  /** 返回项目列表页 */
-  function openRecycleBin(): void {
+  /** 打开回收站。可指定范围：
+   *  - 不传：全局回收站视图（主页 / 标题栏入口默认进入全局，展示所有项目 + 全局数据）
+   *  - 传 projectId：进入指定项目的回收站
+   *  - 传 'all'：全局视图（兼容）
+   */
+  function openRecycleBin(scope?: string): void {
+    if (scope === 'global' || scope === 'all' || !scope) {
+      recycleBinScope.value = 'global'
+    } else {
+      ensureProjectWorkspace(scope)
+      selectedProjectId.value = scope
+      recycleBinScope.value = scope
+    }
     currentView.value = 'recycle-bin'
   }
+
+  /** 从项目工作台打开当前项目回收站（若未选项目则进入全局视图） */
+  function openCurrentProjectRecycleBin(): void {
+    openRecycleBin(selectedProjectId.value || 'global')
+  }
+
+  /** 在回收站内切换查看范围（不离开回收站页面） */
+  function setRecycleBinScope(scope: 'global' | 'all' | string): void {
+    if (scope && scope !== 'global' && scope !== 'all') {
+      ensureProjectWorkspace(scope)
+      selectedProjectId.value = scope
+    }
+    recycleBinScope.value = scope
+  }
+
 
   function backToProjects(): void {
     currentView.value = 'projects'
@@ -1339,7 +1395,7 @@ export const useAppStore = defineStore('app', () => {
     return removed
   }
 
-  /** 从回收站永久删除一条记录 */
+  /** 从回收站永久删除一条记录（按当前查看范围定位，兼容任意项目） */
   function permanentlyDeleteRecycleEntry(entryId: string): void {
     const cleanedGlobal = globalRecycleBin.value.filter((entry) => entry.id !== entryId)
     if (cleanedGlobal.length !== globalRecycleBin.value.length) {
@@ -1348,25 +1404,39 @@ export const useAppStore = defineStore('app', () => {
       return
     }
 
-    updateCurrentWorkspace((workspace) => ({
-      ...workspace,
-      recycleBin: (workspace.recycleBin ?? []).filter((entry) => entry.id !== entryId)
-    }))
-    schedulePersist('fast')
+    // 逐项目清理（避免只清理当前项目，导致在其它项目回收站视图下删不掉）
+    for (const [projectId, workspace] of Object.entries(projectWorkspaces.value)) {
+      const next = (workspace.recycleBin ?? []).filter((entry) => entry.id !== entryId)
+      if (next.length !== (workspace.recycleBin ?? []).length) {
+        projectWorkspaces.value = {
+          ...projectWorkspaces.value,
+          [projectId]: { ...workspace, recycleBin: next }
+        }
+        schedulePersist('fast')
+        return
+      }
+    }
   }
 
-  /** 清空回收站（永久删除全部条目） */
+  /** 清空当前回收站视图（仅清空当前查看范围：全局 / 指定项目 / 全部） */
   function emptyRecycleBin(): void {
-    const hasGlobal = globalRecycleBin.value.length > 0
-    const hasProject = (currentWorkspace.value.recycleBin ?? []).length > 0
-    if (hasGlobal) {
+    const scope = recycleBinScope.value
+    // 全局视图展示“所有项目 + 全局数据”，清空时应一并清空
+    if (scope === 'global' || scope === 'all') {
       globalRecycleBin.value = []
+      projectWorkspaces.value = Object.fromEntries(
+        Object.entries(projectWorkspaces.value).map(([projectId, workspace]) => [
+          projectId,
+          { ...workspace, recycleBin: [] }
+        ])
+      )
       schedulePersist('fast')
+      return
     }
-    if (hasProject) {
-      updateCurrentWorkspace((workspace) => ({ ...workspace, recycleBin: [] }))
-      schedulePersist('fast')
-    }
+
+    // 指定项目：只清空该项目的回收站；全局数据（AI 接口等所有项目共有）保留在全局回收站
+    updateProjectWorkspace(scope, (workspace) => ({ ...workspace, recycleBin: [] }))
+    schedulePersist('fast')
   }
 
   /** 从回收站恢复一个 Runtime v2 智能体会话（调用后端重建完整会话） */
@@ -1416,13 +1486,28 @@ export const useAppStore = defineStore('app', () => {
 
   /** 从回收站恢复一条记录：根据类别将快照写回对应集合 */
   async function restoreRecycleEntry(entryId: string): Promise<boolean> {
-    // 查找条目（全局或当前项目）
+    // 查找条目（全局或任一项目回收站）
     let entry = globalRecycleBin.value.find((item) => item.id === entryId)
     let isGlobal = Boolean(entry)
     if (!entry) {
-      entry = currentWorkspace.value.recycleBin?.find((item) => item.id === entryId)
+      for (const workspace of Object.values(projectWorkspaces.value)) {
+        const found = workspace.recycleBin?.find((item) => item.id === entryId)
+        if (found) {
+          entry = found
+          break
+        }
+      }
     }
     if (!entry) return false
+    // 恢复目标是项目级数据时，把选中项目切到条目所属项目，保证写回正确工作区
+    if (entry.category !== 'ai-profile' && entry.category !== 'reference-work') {
+      const targetProjectId = String(entry.projectId ?? '').trim()
+      if (targetProjectId && projects.value.some((project) => project.id === targetProjectId)) {
+        ensureProjectWorkspace(targetProjectId)
+        selectedProjectId.value = targetProjectId
+        syncSelectedChapter(targetProjectId)
+      }
+    }
 
     const data = entry.data ?? {}
     switch (entry.category) {
@@ -1551,6 +1636,38 @@ export const useAppStore = defineStore('app', () => {
         }
         break
       }
+      case 'chapter-version': {
+        const version = data as unknown as import('@/types/app').ChapterVersion
+        const chapterId = String((data as Record<string, unknown>)?.chapterId ?? version.chapterId ?? '').trim()
+        updateCurrentWorkspace((workspace) => ({
+          ...workspace,
+          chapterVersions: [
+            ...workspace.chapterVersions.filter((item) => item.id !== version.id),
+            normalizeChapterVersion({ ...version, chapterId: chapterId || version.chapterId })
+          ]
+        }))
+        break
+      }
+      case 'character-version': {
+        const characterId = String((data as Record<string, unknown>)?.characterId ?? '').trim()
+        const version = data as unknown as import('@/types/app').CharacterCardVersion
+        if (!characterId) return false
+        updateCurrentWorkspace((workspace) => ({
+          ...workspace,
+          characters: workspace.characters.map((character) =>
+            character.id === characterId
+              ? {
+                  ...character,
+                  versions: [
+                    ...(character.versions ?? []).filter((item) => item.id !== version.id),
+                    version
+                  ]
+                }
+              : character
+          )
+        }))
+        break
+      }
       case 'ai-profile': {
         const profile = data as unknown as import('@/types/app').AiProfile
         if (!appSettings.value.aiProfiles.some((p) => p.id === profile.id)) {
@@ -1567,6 +1684,25 @@ export const useAppStore = defineStore('app', () => {
         schedulePersist('fast')
         break
       }
+      case 'project': {
+        const project = (data as Record<string, unknown>)?.project as
+          | import('@/types/app').ProjectSummary
+          | undefined
+        const workspace = (data as Record<string, unknown>)?.workspace as
+          | import('@/types/app').ProjectWorkspaceData
+          | undefined
+        if (!project || !workspace) return false
+        if (projects.value.some((item) => item.id === project.id)) return false
+        projects.value = [normalizeProjectSummary(project), ...projects.value]
+        projectWorkspaces.value = {
+          ...projectWorkspaces.value,
+          [project.id]: normalizeProjectWorkspaceData(workspace)
+        }
+        selectedProjectId.value = project.id
+        syncSelectedChapter(project.id)
+        schedulePersist('fast')
+        break
+      }
       default:
         return false
     }
@@ -1575,10 +1711,23 @@ export const useAppStore = defineStore('app', () => {
     if (isGlobal) {
       globalRecycleBin.value = globalRecycleBin.value.filter((item) => item.id !== entryId)
     } else {
-      updateCurrentWorkspace((workspace) => ({
-        ...workspace,
-        recycleBin: (workspace.recycleBin ?? []).filter((item) => item.id !== entryId)
-      }))
+      const targetProjectId = String(entry.projectId ?? selectedProjectId.value ?? '').trim()
+      const removeIn = (projectId: string) => {
+        const workspace = projectWorkspaces.value[projectId]
+        if (!workspace) return false
+        const next = (workspace.recycleBin ?? []).filter((item) => item.id !== entryId)
+        if (next.length === (workspace.recycleBin ?? []).length) return false
+        projectWorkspaces.value = {
+          ...projectWorkspaces.value,
+          [projectId]: { ...workspace, recycleBin: next }
+        }
+        return true
+      }
+      if (!removeIn(targetProjectId)) {
+        for (const projectId of Object.keys(projectWorkspaces.value)) {
+          if (removeIn(projectId)) break
+        }
+      }
     }
     schedulePersist('fast')
     return true
@@ -1613,8 +1762,30 @@ export const useAppStore = defineStore('app', () => {
 
   /** 删除项目；若删除的是当前项目，自动切到剩余首个项目，删空时停留在项目中心空状态 */
   function deleteProject(projectId: string): void {
-    if (!projects.value.some((project) => project.id === projectId)) {
+    const targetProject = projects.value.find((project) => project.id === projectId)
+    if (!targetProject) {
       return
+    }
+
+    // 删除前将整个项目工作区快照写入全局回收站，支持“一个不放过”地找回
+    const workspaceSnapshot = projectWorkspaces.value[projectId]
+    if (workspaceSnapshot) {
+      globalRecycleBin.value = [
+        {
+          id: `recycle-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          category: 'project',
+          projectId: projectId,
+          title: targetProject.title || '未命名项目',
+          summary: `项目《${targetProject.title}》及其全部工作区数据（世界观/角色/大纲/章节/伏笔等）`,
+          data: {
+            project: { ...targetProject },
+            workspace: toSerializable(workspaceSnapshot)
+          } as Record<string, unknown>,
+          deletedAt: new Date().toISOString(),
+          expiresAt: resolveRecycleExpiry()
+        },
+        ...globalRecycleBin.value
+      ]
     }
 
     projects.value = projects.value.filter((project) => project.id !== projectId)
@@ -2230,6 +2401,14 @@ export const useAppStore = defineStore('app', () => {
 
   /** 删除角色卡版本快照 */
   function deleteCharacterVersion(characterId: string, versionId: string): void {
+    const targetCharacter = currentWorkspace.value.characters.find((character) => character.id === characterId)
+    const targetVersion = targetCharacter?.versions?.find((version) => version.id === versionId)
+    if (targetCharacter && targetVersion) {
+      pushRecycleEntry('character-version', `版本快照：${targetVersion.note || targetCharacter.name}`, {
+        characterId,
+        ...targetVersion
+      })
+    }
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
       characters: workspace.characters.map((character) =>
@@ -3672,9 +3851,22 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function saveAppSettingsDraft(nextSettings: AppSettings, nextTheme: ThemeName = theme.value): Promise<boolean> {
+    // 捕获本次设置保存中被删除的 AI 接口配置：设置弹窗通过草稿直接覆盖 aiProfiles，
+    // 不会经过 deleteAiProfile，这里需要主动 diff 并把被删接口写入全局回收站。
+    const nextProfiles = normalizeAppSettings(nextSettings).aiProfiles
+    const nextProfileIds = new Set(nextProfiles.map((profile) => profile.id))
+    for (const previous of appSettings.value.aiProfiles) {
+      if (!nextProfileIds.has(previous.id)) {
+        pushRecycleEntry('ai-profile', previous.name || previous.model || '未命名接口', { ...previous })
+      }
+    }
+
     theme.value = nextTheme
     appSettings.value = normalizeAppSettings(nextSettings)
     await persistAppSettings()
+    // 设置持久化结束后再落一次完整快照，确保 AI 接口等全局回收站记录
+    //（globalRecycleBin 随 workspace 快照持久化）不会因写入时序丢失。
+    await persistWorkspace()
     return !persistenceError.value
   }
 
@@ -3747,7 +3939,9 @@ export const useAppStore = defineStore('app', () => {
     if (target) {
       pushRecycleEntry('ai-profile', target.name || target.model || '未命名接口', { ...target })
     }
-    scheduleSettingsPersist()
+    // 全局回收站（globalRecycleBin）随 workspace 快照持久化；这里不触发 schedulePersist，
+    // 避免后续 persistAppSettings 把内存中尚未落盘的全局回收站覆盖掉。
+    scheduleSettingsPersist({ flushWorkspace: false })
   }
 
   function updateAiProfile(profileId: string, updates: Partial<import('@/types/app').AiProfile>): void {
@@ -4388,6 +4582,10 @@ export const useAppStore = defineStore('app', () => {
     aiRuns,
     allAiRuns,
     allRecycleBinEntries,
+    recycleBinEntries,
+    recycleBinScope,
+    recycleBinScopeLabel,
+    globalRecycleBinEntries,
     emptyRecycleBin,
     permanentlyDeleteRecycleEntry,
     purgeExpiredRecycleBin,
@@ -4395,6 +4593,8 @@ export const useAppStore = defineStore('app', () => {
     restoreRecycleEntry,
     recordDeletedAssistantSessionV2,
     setRecycleBinRetentionDays,
+    setRecycleBinScope,
+    openCurrentProjectRecycleBin,
     projectRecycleBin,
     appSettings,
     activeGlobalAssistantSessionId,

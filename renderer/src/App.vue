@@ -273,7 +273,7 @@ onBeforeUnmount(() => {
                 class="app-titlebar__nav-btn"
                 title="回收站"
                 aria-label="回收站"
-                @click="appStore.openRecycleBin()"
+                @click="appStore.openRecycleBin('global')"
               >
                 <Trash2 :size="16" />
               </button>

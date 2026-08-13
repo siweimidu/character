@@ -15,6 +15,7 @@ import {
   Search,
   Settings,
   Sparkles,
+  Trash2,
   Users,
   GitMerge
 } from 'lucide-vue-next'
@@ -362,6 +363,20 @@ watch(searchKeyword, (value) => {
           <span v-if="shouldRenderSidebarLabels" class="sidebar-copy">
             <span class="sidebar-label">项目设置</span>
             <span class="sidebar-hint">自动保存、导入导出与创作偏好</span>
+          </span>
+        </button>
+        <button
+          type="button"
+          class="sidebar-item"
+          title="回收站"
+          @click="appStore.openCurrentProjectRecycleBin()"
+        >
+          <span class="sidebar-icon-shell">
+            <Trash2 :size="18" class="sidebar-icon" />
+          </span>
+          <span v-if="shouldRenderSidebarLabels" class="sidebar-copy">
+            <span class="sidebar-label">回收站</span>
+            <span class="sidebar-hint">找回本项目删除的内容</span>
           </span>
         </button>
       </div>
