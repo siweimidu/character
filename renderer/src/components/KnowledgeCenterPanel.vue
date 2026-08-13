@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Download, Search, Sparkles } from 'lucide-vue-next'
+import { Download, Search, Sparkles, Upload } from 'lucide-vue-next'
 import {
   NAlert,
   NButton,
@@ -420,6 +420,7 @@ function handleExportAssetSelect(asset: ReferenceAssetLibrary, key: string | num
       </div>
       <div class="knowledge-header-actions">
         <n-button secondary class="knowledge-header-btn" @click="openModal">
+          <template #icon><Upload :size="16" /></template>
           导入小说并拆书
         </n-button>
         <n-dropdown :options="exportMenuOptions" placement="bottom-end" @select="handleExportLibrarySelect">
