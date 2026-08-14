@@ -25,9 +25,6 @@ import { resolveNovelLengthLabel } from '@/features/wizard/projectGenres'
 import { useAppStore } from '@/stores/app'
 import NovelWorkflowPanel from '@/components/NovelWorkflowPanel.vue'
 import OverviewPanel from '@/components/OverviewPanel.vue'
-import GlobalAssistantPage from '@/components/GlobalAssistantPage.vue'
-import GlobalAssistantV2Panel from '@/components/assistantV2/GlobalAssistantV2Panel.vue'
-import GlobalAssistantV2Page from '@/components/assistantV2/GlobalAssistantV2Page.vue'
 import ProjectKnowledgePanel from '@/components/ProjectKnowledgePanel.vue'
 import PromptLibraryPanel from '@/components/PromptLibraryPanel.vue'
 import WorldviewPanel from '@/components/WorldviewPanel.vue'
@@ -46,14 +43,6 @@ const appStore = useAppStore()
 const isSidebarOpen = ref(true)
 // 当前视口宽度，用于响应式判断侧边栏模式
 const viewportWidth = ref(typeof window === 'undefined' ? 1440 : window.innerWidth)
-const isGlobalAssistantOpen = ref(false)
-const GLOBAL_ASSISTANT_WIDTH_STORAGE_KEY = 'arc-global-assistant-width'
-const GLOBAL_ASSISTANT_OPEN_STORAGE_KEY = 'arc-global-assistant-open'
-const GLOBAL_ASSISTANT_DEFAULT_WIDTH = 420
-const GLOBAL_ASSISTANT_MIN_WIDTH = 320
-const GLOBAL_ASSISTANT_MAX_WIDTH = 760
-const globalAssistantWidth = ref(GLOBAL_ASSISTANT_DEFAULT_WIDTH)
-const isDraggingGlobalAssistant = ref(false)
 
 // 各面板独立的搜索关键词缓存，切换面板时保留搜索状态
 const panelSearch = reactive<Record<string, string>>({
@@ -104,6 +93,18 @@ const isSearchMode = computed(() => normalizedSearch.value.length > 0)
 const isGlobalAssistantPanel = computed(() =>
   appStore.activePanel === 'global-assistant' || appStore.activePanel === 'global-assistant-v2'
 )
+
+/**
+ * 侧边栏导航点击：
+ * - 「智能体」不再进入旧的项目智能体面板，而是打开整页的 DeepSeek Harness 移植界面（全局智能体）。
+ */
+function onSidebarItemClick(panel: string): void {
+  if (panel === 'global-assistant-v2' || panel === 'global-assistant') {
+    appStore.openGlobalAgent()
+    return
+  }
+  appStore.setPanel(panel as never)
+}
 
 // 顶部面包屑中显示的当前视图标签
 const activeViewLabel = computed(() => {
@@ -156,26 +157,6 @@ const sidebarSummary = computed(
 const isCompactSidebar = computed(() => viewportWidth.value <= 1280)
 // 是否渲染侧边栏中的文字标签（非紧凑模式且侧边栏展开时显示）
 const shouldRenderSidebarLabels = computed(() => isSidebarOpen.value && !isCompactSidebar.value)
-const shouldOverlayAssistant = computed(() => viewportWidth.value <= 1320)
-const maxGlobalAssistantWidth = computed(() => {
-  const reservedWidth = shouldOverlayAssistant.value
-    ? 28
-    : (isCompactSidebar.value ? 180 : 320)
-  const viewportLimit = viewportWidth.value - reservedWidth
-  return Math.max(GLOBAL_ASSISTANT_MIN_WIDTH, Math.min(GLOBAL_ASSISTANT_MAX_WIDTH, viewportLimit))
-})
-const effectiveGlobalAssistantWidth = computed(() =>
-  Math.max(GLOBAL_ASSISTANT_MIN_WIDTH, Math.min(maxGlobalAssistantWidth.value, globalAssistantWidth.value))
-)
-const globalAssistantDockStyle = computed(() => ({
-  width: `${effectiveGlobalAssistantWidth.value}px`,
-  maxWidth: shouldOverlayAssistant.value ? 'calc(100vw - 20px)' : '100%'
-}))
-
-function clampGlobalAssistantWidth(width: number): number {
-  return Math.max(GLOBAL_ASSISTANT_MIN_WIDTH, Math.min(maxGlobalAssistantWidth.value, width))
-}
-
 /** 切换侧边栏展开/收起，紧凑模式下不允许切换 */
 function toggleSidebar(): void {
   if (isCompactSidebar.value) {
@@ -183,51 +164,6 @@ function toggleSidebar(): void {
   }
 
   isSidebarOpen.value = !isSidebarOpen.value
-}
-
-function toggleGlobalAssistant(): void {
-  isGlobalAssistantOpen.value = !isGlobalAssistantOpen.value
-  localStorage.setItem(GLOBAL_ASSISTANT_OPEN_STORAGE_KEY, isGlobalAssistantOpen.value ? '1' : '0')
-}
-
-function closeGlobalAssistant(): void {
-  isGlobalAssistantOpen.value = false
-  localStorage.setItem(GLOBAL_ASSISTANT_OPEN_STORAGE_KEY, '0')
-}
-
-/**
- * 清除指定面板的搜索缓存
- * @param panel - 面板名称
- */
-function startGlobalAssistantResize(event: MouseEvent): void {
-  event.preventDefault()
-  isDraggingGlobalAssistant.value = true
-  const startX = event.clientX
-  const startWidth = effectiveGlobalAssistantWidth.value
-  document.body.style.userSelect = 'none'
-  document.body.style.cursor = 'col-resize'
-
-  function onMove(moveEvent: MouseEvent): void {
-    const delta = startX - moveEvent.clientX
-    globalAssistantWidth.value = clampGlobalAssistantWidth(startWidth + delta)
-  }
-
-  function onEnd(): void {
-    isDraggingGlobalAssistant.value = false
-    document.body.style.userSelect = ''
-    document.body.style.cursor = ''
-    localStorage.setItem(GLOBAL_ASSISTANT_WIDTH_STORAGE_KEY, String(globalAssistantWidth.value))
-    document.removeEventListener('mousemove', onMove)
-    document.removeEventListener('mouseup', onEnd)
-  }
-
-  document.addEventListener('mousemove', onMove)
-  document.addEventListener('mouseup', onEnd)
-}
-
-function resetGlobalAssistantWidth(): void {
-  globalAssistantWidth.value = clampGlobalAssistantWidth(GLOBAL_ASSISTANT_DEFAULT_WIDTH)
-  localStorage.setItem(GLOBAL_ASSISTANT_WIDTH_STORAGE_KEY, String(globalAssistantWidth.value))
 }
 
 function clearSearchForPanel(panel: PanelName): void {
@@ -269,14 +205,6 @@ function syncViewportState(): void {
 
 onMounted(() => {
   syncViewportState()
-  const savedWidth = Number(localStorage.getItem(GLOBAL_ASSISTANT_WIDTH_STORAGE_KEY))
-  if (Number.isFinite(savedWidth) && savedWidth >= GLOBAL_ASSISTANT_MIN_WIDTH && savedWidth <= GLOBAL_ASSISTANT_MAX_WIDTH) {
-    globalAssistantWidth.value = savedWidth
-  }
-  const savedOpen = localStorage.getItem(GLOBAL_ASSISTANT_OPEN_STORAGE_KEY)
-  if (savedOpen === '1') {
-    isGlobalAssistantOpen.value = true
-  }
   window.addEventListener('resize', syncViewportState)
 })
 
@@ -288,9 +216,6 @@ onBeforeUnmount(() => {
 watch(
   () => appStore.activePanel,
   (panel) => {
-    if (panel === 'global-assistant' || panel === 'global-assistant-v2') {
-      closeGlobalAssistant()
-    }
     searchKeyword.value = panelSearch[panel] ?? ''
   },
   { immediate: true }
@@ -337,7 +262,7 @@ watch(searchKeyword, (value) => {
             class="sidebar-item"
             :class="{ active: appStore.activePanel === item.id }"
             :title="item.label"
-            @click="appStore.setPanel(item.id)"
+            @click="onSidebarItemClick(item.id)"
           >
             <span class="sidebar-icon-shell" :style="{ color: appStore.activePanel === item.id ? undefined : item.color }">
               <component :is="item.icon" :size="18" class="sidebar-icon" />
@@ -409,10 +334,9 @@ watch(searchKeyword, (value) => {
           <n-button
             size="small"
             round
-            :type="isGlobalAssistantOpen ? 'primary' : 'default'"
             class="assistant-toggle"
-            title="打开智能体"
-            @click="toggleGlobalAssistant"
+            title="打开智能体（DeepSeek Harness 移植界面）"
+            @click="appStore.openGlobalAgent()"
           >
             智能体
           </n-button>
@@ -440,42 +364,8 @@ watch(searchKeyword, (value) => {
             <InspirationPanel v-else-if="appStore.activePanel === 'inspiration'" key="inspiration" :search-query="normalizedSearch" />
             <OutlinePanel v-else-if="appStore.activePanel === 'outline'" key="outline" :search-query="normalizedSearch" />
             <PlotThreadsPanel v-else-if="appStore.activePanel === 'threads'" key="threads" :search-query="normalizedSearch" />
-            <GlobalAssistantPage v-else-if="appStore.activePanel === 'global-assistant'" key="global-assistant" />
-            <GlobalAssistantV2Page v-else-if="appStore.activePanel === 'global-assistant-v2'" key="global-assistant-v2" />
             <SettingsPanel v-else key="settings" />
           </div>
-
-          <Transition name="assistant-backdrop">
-            <button
-              v-if="isGlobalAssistantOpen && shouldOverlayAssistant"
-              type="button"
-              class="assistant-backdrop"
-              aria-label="关闭智能体"
-              @click="closeGlobalAssistant"
-            />
-          </Transition>
-
-          <Transition name="assistant-dock">
-            <div
-              v-if="isGlobalAssistantOpen"
-              class="workspace-assistant-shell"
-              :class="{ overlay: shouldOverlayAssistant }"
-              :style="globalAssistantDockStyle"
-            >
-              <div
-                class="assistant-resize-handle"
-                :class="{ dragging: isDraggingGlobalAssistant }"
-                title="拖拽调整宽度，双击恢复默认"
-                @mousedown="startGlobalAssistantResize"
-                @dblclick="resetGlobalAssistantWidth"
-              />
-              <GlobalAssistantV2Panel
-                class="workspace-assistant-dock"
-                :active-view-label="activeViewLabel"
-                @close="closeGlobalAssistant"
-              />
-            </div>
-          </Transition>
         </div>
       </div>
     </main>
