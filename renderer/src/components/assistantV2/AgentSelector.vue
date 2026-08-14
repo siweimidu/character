@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { ChevronDown, Pencil, Plus, Settings2, Trash2 } from 'lucide-vue-next'
 import { useMessage } from 'naive-ui'
 import type { AgentProfile } from '@shared/assistant-runtime'
-import { PRESET_AGENT_AVATARS } from '@shared/agent-avatars'
+import { PRESET_AGENT_AVATARS, defaultRobotAvatarSvg } from '@shared/agent-avatars'
 import AgentManagerDialog from './AgentManagerDialog.vue'
 
 const props = defineProps<{
@@ -57,10 +57,12 @@ const currentAgent = computed(() =>
 
 function avatarUrl(agent: AgentProfile): string {
   if (agent.avatarType === 'svg' && agent.avatar) {
-    // 已经是完整 SVG 字符串
-    if (agent.avatar.startsWith('data:') || agent.avatar.startsWith('<svg')) {
+    // data: URI 可直接作为 <img> 地址
+    if (agent.avatar.startsWith('data:')) {
       return agent.avatar
     }
+    // 裸 SVG 字符串（如随机机器人默认头像）需编码为 data URI，
+    // 否则 <img :src> 加载失败会显示“未加载出来”的破碎头像。
     return `data:image/svg+xml,${encodeURIComponent(agent.avatar)}`
   }
   if (agent.avatarType === 'image' && agent.avatar) {
@@ -75,7 +77,10 @@ function avatarUrl(agent: AgentProfile): string {
       )}`
     }
   }
-  return ''
+  // 没有任何头像（未选择预设、未上传图片）时兜底使用默认机器人头像，
+  // 避免显示空白/加载失败的占位，保证每个智能体都有头像可展示。
+  // 注意：需编码为 data URI，避免 <img> 加载裸 SVG 失败。
+  return `data:image/svg+xml,${encodeURIComponent(defaultRobotAvatarSvg())}`
 }
 
 function handleSelect(agent: AgentProfile): void {

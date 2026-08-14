@@ -189,11 +189,27 @@ export function randomRobotAvatarTheme(): RobotAvatarTheme {
 }
 
 /**
+ * 默认机器人配色主题（确定性的固定主题）。
+ * 用于智能体没有自定义头像时的兜底显示，保证始终能看到默认机器人头像。
+ */
+export function defaultRobotAvatarTheme(): RobotAvatarTheme {
+  return ROBOT_AVATAR_THEMES[0]
+}
+
+/**
  * 生成随机颜色的机器人 SVG 头像（完整 SVG 字符串）。
  * 用于新智能体默认头像，颜色每次随机，保证每个智能体都不同。
  */
 export function randomRobotAvatarSvg(): string {
   return robotAvatarSvg(randomRobotAvatarTheme())
+}
+
+/**
+ * 生成确定性的默认机器人 SVG 头像（完整 SVG 字符串）。
+ * 用于智能体没有自定义头像时的兜底展示，保证始终显示默认机器人头像。
+ */
+export function defaultRobotAvatarSvg(): string {
+  return robotAvatarSvg(defaultRobotAvatarTheme())
 }
 
 /**

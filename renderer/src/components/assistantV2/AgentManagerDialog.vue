@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { Upload, X } from 'lucide-vue-next'
 import { NButton, NDrawer, NDrawerContent, NInput, NForm, NFormItem, NCheckboxGroup, NCheckbox } from 'naive-ui'
 import type { AgentProfile } from '@shared/assistant-runtime'
-import { PRESET_AGENT_AVATARS, randomRobotAvatarSvg } from '@shared/agent-avatars'
+import { PRESET_AGENT_AVATARS, defaultRobotAvatarSvg, randomRobotAvatarSvg } from '@shared/agent-avatars'
 import type { ProjectSkillItem } from '@/types/app'
 import { useMessage } from 'naive-ui'
 
@@ -234,7 +234,8 @@ function fillForm(agent: AgentProfile | null): void {
         robotSvgAvatar.value = ''
         presetIndex.value = agent.presetIndex
       } else {
-        robotSvgAvatar.value = agent.avatar || ''
+        // avatar 为空（如旧数据缺失头像）时回填默认机器人头像，避免预览空白
+        robotSvgAvatar.value = agent.avatar || defaultRobotAvatarSvg()
         presetIndex.value = -1
       }
     } else if (agent.avatarType === 'image') {
@@ -242,9 +243,12 @@ function fillForm(agent: AgentProfile | null): void {
       avatarDataUri.value = agent.avatar
       robotSvgAvatar.value = ''
     } else {
-      avatarType.value = 'none'
+      // 智能体没有任何自定义头像（未选择预设、未上传图片）时，
+      // 自动回填一个默认机器人头像，保证编辑预览始终有头像、保存也不会丢失头像。
+      avatarType.value = 'svg'
       avatarDataUri.value = ''
-      robotSvgAvatar.value = ''
+      robotSvgAvatar.value = defaultRobotAvatarSvg()
+      presetIndex.value = -1
     }
   } else {
     // 新建模式：自动分配一个随机颜色的机器人默认头像
