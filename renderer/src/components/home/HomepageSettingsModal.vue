@@ -2134,7 +2134,7 @@ async function saveSettings(): Promise<void> {
               </n-button>
               <n-button strong secondary @click="openSpeechProviderWebsite">
                 <template #icon><ExternalLink :size="16" /></template>
-                打开模型厂商官网
+                打开厂商官网
               </n-button>
             </div>
           </template>
