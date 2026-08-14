@@ -94,17 +94,39 @@ function parseOrdinalRef(value: string): number | null {
   }
   const chinese = normalized.match(/^第?([零一二两三四五六七八九十百]+)章?$/)
   if (!chinese) return null
-  const raw = chinese[1]
-  if (raw === '十') return 10
-  const tenIndex = raw.indexOf('十')
-  if (tenIndex >= 0) {
-    const before = raw.slice(0, tenIndex)
-    const after = raw.slice(tenIndex + 1)
-    const tens = before ? digits[before] ?? 0 : 1
-    const ones = after ? digits[after] ?? 0 : 0
-    return tens * 10 + ones
+  return parseChineseOrdinal(chinese[1], digits)
+}
+
+/** 解析中文数字序数，支持 1-999（如 十、二十三、一百零三、二百三十三）。 */
+function parseChineseOrdinal(value: string, digits: Record<string, number>): number | null {
+  if (!value) return null
+  // 百位：一百、二百三十三、一百零三、五百
+  if (value.includes('百')) {
+    const [before, after] = splitOrdinalOnChar(value, '百')
+    const hundreds = before ? digits[before] ?? 1 : 1
+    if (!after) return hundreds * 100
+    if (after.startsWith('零')) {
+      const rest = after.slice(1)
+      return hundreds * 100 + (rest ? (parseChineseOrdinal(rest, digits) ?? 0) : 0)
+    }
+    return hundreds * 100 + (parseChineseOrdinal(after, digits) ?? 0)
   }
-  return digits[raw] ?? null
+  // 十位：十、十一、二十三、三十
+  if (value.includes('十')) {
+    const [before, after] = splitOrdinalOnChar(value, '十')
+    const tens = before ? digits[before] ?? 0 : 1
+    if (!after) return tens * 10
+    return tens * 10 + (parseChineseOrdinal(after, digits) ?? 0)
+  }
+  // 单个数字
+  return digits[value] ?? null
+}
+
+/** 在字符串中按指定字符分割为前后两部分（不包含该字符本身）。 */
+function splitOrdinalOnChar(value: string, char: string): [string, string] {
+  const index = value.indexOf(char)
+  if (index < 0) return [value, '']
+  return [value.slice(0, index), value.slice(index + 1)]
 }
 
 function readPublicReferenceWorkRows(db: Awaited<ReturnType<typeof ensureWorkspaceDb>>): Record<string, unknown>[] {

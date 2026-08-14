@@ -121,8 +121,16 @@ function formatOutlineStatusLabel(status: unknown): string {
 }
 
 function compareVersions(a: string, b: string): number {
-  const pa = a.split('.').map(Number)
-  const pb = b.split('.').map(Number)
+  // 清理版本号后缀（如 -beta、-rc.1），避免 Number() 产生 NaN 导致比较结果错误
+  const stripSuffix = (v: string): string => v.replace(/[-+].*$/, '')
+  const pa = stripSuffix(a).split('.').map((part) => {
+    const num = Number.parseInt(part, 10)
+    return Number.isFinite(num) ? num : 0
+  })
+  const pb = stripSuffix(b).split('.').map((part) => {
+    const num = Number.parseInt(part, 10)
+    return Number.isFinite(num) ? num : 0
+  })
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
     const diff = (pa[i] ?? 0) - (pb[i] ?? 0)
     if (diff !== 0) return diff

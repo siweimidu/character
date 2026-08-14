@@ -18,10 +18,13 @@ export function stripHtmlTags(html: string): string {
 }
 
 export function textToHtmlParagraphs(text: string): string {
-  return text
-    .split(/\n{2,}|\n/)
-    .filter(Boolean)
-    .map((paragraph) => `<p>${escapeHtml(paragraph.trim())}</p>`)
+  // 与 renderer 端 serializePlainTextToHtml 保持一致：
+  // 按双换行分段，段内单换行转为 <br />，避免单换行被错误分割为多个段落。
+  const normalized = text.replace(/\r\n/g, '\n').trim()
+  if (!normalized) return '<p></p>'
+  return normalized
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${escapeHtml(paragraph.trim()).replace(/\n/g, '<br />')}</p>`)
     .join('')
 }
 

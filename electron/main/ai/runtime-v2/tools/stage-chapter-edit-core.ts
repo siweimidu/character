@@ -51,19 +51,42 @@ function normalizeChapterRef(ref: string): string {
 function parseChapterOrdinal(ref: string): number | null {
   const digits = ref.match(/^第?\s*(\d+)\s*章?$/)
   if (digits) return Number.parseInt(digits[1], 10)
-  const chinese = ref.match(/^第?\s*([零一二两三四五六七八九十]+)\s*章?$/)
+  const chinese = ref.match(/^第?\s*([零一二两三四五六七八九十百]+)\s*章?$/)
   if (!chinese) return null
-  const value = chinese[1]
-  if (value === '十') return 10
-  const tenIndex = value.indexOf('十')
-  if (tenIndex >= 0) {
-    const before = value.slice(0, tenIndex)
-    const after = value.slice(tenIndex + 1)
-    const tens = before ? CHINESE_DIGITS[before] ?? 0 : 1
-    const ones = after ? CHINESE_DIGITS[after] ?? 0 : 0
-    return tens * 10 + ones
+  return parseChineseNumber(chinese[1])
+}
+
+/** 解析中文数字，支持 1-999（如 十、二十三、一百零三、二百三十三）。 */
+function parseChineseNumber(value: string): number | null {
+  if (!value) return null
+  // 百位：一百、二百三十三、一百零三、五百
+  if (value.includes('百')) {
+    const [before, after] = splitOnChar(value, '百')
+    const hundreds = before ? CHINESE_DIGITS[before] ?? 1 : 1
+    if (!after) return hundreds * 100
+    // 零开头：一百零三 → 一百 + 零三
+    if (after.startsWith('零')) {
+      const rest = after.slice(1)
+      return hundreds * 100 + (rest ? (parseChineseNumber(rest) ?? 0) : 0)
+    }
+    return hundreds * 100 + (parseChineseNumber(after) ?? 0)
   }
+  // 十位：十、十一、二十三、三十
+  if (value.includes('十')) {
+    const [before, after] = splitOnChar(value, '十')
+    const tens = before ? CHINESE_DIGITS[before] ?? 0 : 1
+    if (!after) return tens * 10
+    return tens * 10 + (parseChineseNumber(after) ?? 0)
+  }
+  // 单个数字
   return CHINESE_DIGITS[value] ?? null
+}
+
+/** 在字符串中按指定字符分割为前后两部分（不包含该字符本身）。 */
+function splitOnChar(value: string, char: string): [string, string] {
+  const index = value.indexOf(char)
+  if (index < 0) return [value, '']
+  return [value.slice(0, index), value.slice(index + 1)]
 }
 
 async function resolveChapterId(
