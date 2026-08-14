@@ -70,6 +70,33 @@ test('getChapterCharacterCount 返回去除首尾空白后的字数（含段落�
   assert.equal(getChapterCharacterCount('<p>你 好&nbsp;世 界</p>'), 7)
 })
 
+test('单条目缓存：相同内容重复读取返回一致结果', () => {
+  const html = '<p>第一段</p><p>第二段</p>'
+  const first = getPlainTextFromEditorContent(html)
+  const second = getPlainTextFromEditorContent(html)
+  assert.equal(second, first)
+  assert.equal(getChapterCharacterCount(html), getChapterCharacterCount(html))
+})
+
+test('单条目缓存：内容变化后返回新结果（缓存不串味）', () => {
+  const a = getPlainTextFromEditorContent('<p>甲</p>')
+  const b = getPlainTextFromEditorContent('<p>乙</p>')
+  const aAgain = getPlainTextFromEditorContent('<p>甲</p>')
+  assert.equal(a, '甲')
+  assert.equal(b, '乙')
+  assert.equal(aAgain, '甲')
+})
+
+test('超大内容解析结果与预期一致（32万字规模）', () => {
+  const paragraph = '<p>' + '测'.repeat(500) + '</p>'
+  const html = paragraph.repeat(640) // 约 32 万字正文
+  const count = getChapterCharacterCount(html)
+  // 每段 500 字 + 段落间 1 个换行（640 段共 639 个换行）
+  assert.equal(count, 500 * 640 + 639)
+  // 同一大段内容重复统计命中缓存，结果一致
+  assert.equal(getChapterCharacterCount(html), count)
+})
+
 test('getChapterPreviewText 压缩空白并支持兜底文案', () => {
   assert.equal(getChapterPreviewText(''), '章节尚未写入正文内容。')
   assert.equal(getChapterPreviewText('', '自定义兜底'), '自定义兜底')

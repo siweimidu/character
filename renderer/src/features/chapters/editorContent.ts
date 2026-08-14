@@ -104,16 +104,7 @@ export function ensureEditorHtmlContent(content: string): string {
 // 从 HTML 内容中提取纯文本：
 // 将 <br>、块级标签转为换行，列表项转为 "- " 前缀，去除所有标签后解码实体
 // 最终压缩连续空行，返回干净的纯文本
-export function getPlainTextFromEditorContent(content: string): string {
-  const normalized = content.trim()
-  if (!normalized) {
-    return ''
-  }
-
-  if (!isRichTextDocument(normalized)) {
-    return normalized
-  }
-
+function extractPlainText(normalized: string): string {
   return decodeHtmlEntities(
     normalized
       .replace(/<br\s*\/?>/gi, '\n')
@@ -127,9 +118,39 @@ export function getPlainTextFromEditorContent(content: string): string {
     .trim()
 }
 
+// 单条目缓存：同一内容在单次渲染内会被多处读取（字数、进度、预览、AI 上下文等），
+// 避免对超大章节（如数十万字）反复做整段正则解析。仅缓存最近一次结果，
+// 防止长字符串长期驻留内存，同时覆盖“同一内容被高频重复读取”的热路径。
+let cachedPlainTextKey: string | null = null
+let cachedPlainTextValue = ''
+
+// 从 HTML 内容中提取纯文本：
+// 将 <br>、块级标签转为换行，列表项转为 "- " 前缀，去除所有标签后解码实体
+// 最终压缩连续空行，返回干净的纯文本
+export function getPlainTextFromEditorContent(content: string): string {
+  const normalized = content.trim()
+  if (!normalized) {
+    return ''
+  }
+
+  // 命中单条目缓存则直接复用，避免对同一大段内容重复解析。
+  if (cachedPlainTextKey === normalized) {
+    return cachedPlainTextValue
+  }
+
+  const result = isRichTextDocument(normalized)
+    ? extractPlainText(normalized)
+    : normalized
+
+  cachedPlainTextKey = normalized
+  cachedPlainTextValue = result
+  return result
+}
+
 // 获取章节正文的字符数（去除空白后的纯文本长度）
+// 复用 getPlainTextFromEditorContent 的单条目缓存，减少大章节下的重复解析开销。
 export function getChapterCharacterCount(content: string): number {
-  return getPlainTextFromEditorContent(content).trim().length
+  return getPlainTextFromEditorContent(content).length
 }
 
 // 获取章节正文的预览文本：将纯文本中连续空白压缩为单个空格

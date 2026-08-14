@@ -4249,7 +4249,10 @@ export const useAppStore = defineStore('app', () => {
     }
 
     updateChapter(chapterId, { content: value })
-    schedulePersist('autosave')
+    // 内容编辑是高频热路径：正文更新时不触发 120ms 的工作区全量序列化 + IPC 同步
+    // （单窗口下该同步主要是回写主进程快照，而持久化的 saveWorkspace 已负责更新快照），
+    // 避免大章节（数十万字）每次按键都序列化整个工作区导致卡顿。
+    schedulePersist('autosave', { syncWorkspace: false })
   }
 
   async function reloadChapterFromDb(chapterId: string): Promise<void> {
