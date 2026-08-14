@@ -1,15 +1,16 @@
 <script setup lang="ts">
 /**
- * GlobalAgentPage · 全局智能体（模块化中心）
+ * GlobalAgentPage · 全局智能体（DeepSeek Harness 移植版）
  *
- * 全新模块化全局智能体界面。借鉴 DeepSeek Harness「everything is a plugin」
- * 与 deepwrite 的子智能体工作流思想，把能力拆成可独立启停的模块。
+ * 完整移植 DeepSeek Harness 的 Web UI 布局（three-column shell：
+ * 侧栏 | 对话 | 详情），并深度适配本开源小说编辑器：
+ *   - 侧栏：品牌词标「全局智能体」、新建会话、会话浏览、底部项目上下文与设置入口
+ *   - 中间：对话流（Hero 空状态 + 输入 + 节点自动折叠）
+ *   - 右侧详情：暂存变更审阅
+ *   - 设置抽屉：能力模块（everything is a plugin）/ 系统文件 / MCP 市场 /
+ *     dsh-plugin 插件市场（可从 github.com/topics/dsh-plugin 导入插件）
  *
- * 布局：
- *   左侧（三栏标签）：
- *     会话历史 | 能力模块 | 系统文件 | MCP 市场
- *   中间：智能体对话（对话流节点自动折叠）
- *   右侧：暂存变更审阅
+ * 设计原则：Everything is a plugin —— 所有能力都以可独立启停的模块承载。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
@@ -21,7 +22,9 @@ import {
   FolderTree,
   MessagesSquare,
   Plug,
-  Puzzle
+  Puzzle,
+  Settings,
+  Package
 } from 'lucide-vue-next'
 import type { SurfaceDefinition, TurnTruncateResult } from '@shared/assistant-runtime'
 import { useAppStore } from '@/stores/app'
@@ -37,6 +40,7 @@ import FlowNodeView from '@/components/assistantV2/FlowNodeView.vue'
 import AgentModuleManager from '@/components/assistantV2/AgentModuleManager.vue'
 import AgentFileExplorer from '@/components/assistantV2/AgentFileExplorer.vue'
 import AgentMcpMarket from '@/components/assistantV2/AgentMcpMarket.vue'
+import AgentPluginMarket from '@/components/assistantV2/AgentPluginMarket.vue'
 
 const appStore = useAppStore()
 const { projects, selectedProjectId } = storeToRefs(appStore)
@@ -65,36 +69,29 @@ const composerValue = computed({
 // 当前选中的智能体
 const selectedAgentId = ref<string>('')
 const AGENT_SELECT_KEY = 'arc-global-agent-active-agent'
-
 function persistAgentSelection(id: string): void {
   selectedAgentId.value = id
-  try {
-    window.localStorage.setItem(AGENT_SELECT_KEY, id)
-  } catch {
-    // ignore
-  }
+  try { window.localStorage.setItem(AGENT_SELECT_KEY, id) } catch { /* ignore */ }
 }
-
 function restoreAgentSelection(): void {
   try {
     const saved = window.localStorage.getItem(AGENT_SELECT_KEY)
     if (saved) selectedAgentId.value = saved
-  } catch {
-    // ignore
-  }
+  } catch { /* ignore */ }
 }
 
 // ============================================================================
-// 左侧面板：会话 / 能力模块 / 系统文件 / MCP
+// 设置抽屉（模块 / 文件 / MCP / 插件市场）—— DeepSeek Harness 的 settings 入口
 // ============================================================================
-type LeftTab = 'sessions' | 'modules' | 'files' | 'mcp'
-const leftTab = ref<LeftTab>('sessions')
+type SettingsTab = 'modules' | 'files' | 'mcp' | 'plugins'
+const settingsOpen = ref(false)
+const settingsTab = ref<SettingsTab>('modules')
 
-const LEFT_TABS: Array<{ key: LeftTab; label: string; icon: unknown }> = [
-  { key: 'sessions', label: '会话', icon: MessagesSquare },
-  { key: 'modules', label: '模块', icon: Puzzle },
-  { key: 'files', label: '文件', icon: FolderTree },
-  { key: 'mcp', label: 'MCP', icon: Plug }
+const SETTINGS_TABS: Array<{ key: SettingsTab; label: string; icon: unknown }> = [
+  { key: 'modules', label: '能力模块', icon: Puzzle },
+  { key: 'files', label: '系统文件', icon: FolderTree },
+  { key: 'mcp', label: 'MCP 市场', icon: Plug },
+  { key: 'plugins', label: '插件市场', icon: Package }
 ]
 
 // 创作记忆对话框
@@ -106,17 +103,9 @@ type PickedReference = { kind: 'chapter' | 'volume'; id: string; label: string }
 function handleReferenceConfirm(refs: PickedReference[]): void {
   for (const ref of refs) {
     if (ref.kind === 'volume') {
-      assistant.addPendingAttachment({
-        kind: 'chapter',
-        ref: `volume:${ref.id}`,
-        label: `分卷《${ref.label}》`
-      })
+      assistant.addPendingAttachment({ kind: 'chapter', ref: `volume:${ref.id}`, label: `分卷《${ref.label}》` })
     } else {
-      assistant.addPendingAttachment({
-        kind: 'chapter',
-        ref: `chapter:${ref.id}`,
-        label: `章节《${ref.label}》`
-      })
+      assistant.addPendingAttachment({ kind: 'chapter', ref: `chapter:${ref.id}`, label: `章节《${ref.label}》` })
     }
   }
 }
@@ -128,7 +117,6 @@ const currentProject = computed(() =>
   projects.value.find((item) => item.id === selectedProjectId.value) ?? projects.value[0] ?? null
 )
 
-// 快速入口
 function sendWithMode(intentHint?: string): void {
   void assistant.send({
     intentHint: intentHint || 'global-assistant-v2:chat',
@@ -162,9 +150,7 @@ async function handleUploadFile(): Promise<void> {
     }
     const name = result.name ?? '本地文件'
     const content = result.content ?? ''
-    if (content.length > 60000) {
-      message.warning('文件内容过长，已截断前 6 万字')
-    }
+    if (content.length > 60000) message.warning('文件内容过长，已截断前 6 万字')
     composerValue.value = `【已上传本地文件：${name}】\n${content.slice(0, 60000)}\n${composerValue.value}`
   } catch (e) {
     message.error(e instanceof Error ? e.message : '上传文件失败')
@@ -193,7 +179,7 @@ function handleUploadFiles(files: File[]): void {
 }
 
 // ============================================================================
-// 暂存区 / 会话栏折叠控制
+// 暂存区 / 侧栏折叠控制（DeepSeek Harness 三栏可拖拽）
 // ============================================================================
 const stageCollapsed = ref(false)
 const stageBadgeCount = computed(() =>
@@ -205,10 +191,10 @@ const stageBadgeCount = computed(() =>
 const sessionCollapsed = ref(false)
 const SESSION_WIDTH_KEY = 'global-agent-session-width'
 const STAGE_WIDTH_KEY = 'global-agent-stage-width'
-const SESSION_DEFAULT_WIDTH = 250
-const SESSION_MIN_WIDTH = 200
+const SESSION_DEFAULT_WIDTH = 260
+const SESSION_MIN_WIDTH = 210
 const SESSION_MAX_WIDTH = 380
-const SESSION_HIDE_THRESHOLD = 180
+const SESSION_HIDE_THRESHOLD = 190
 const STAGE_DEFAULT_WIDTH = 400
 const STAGE_MIN_WIDTH = 300
 const STAGE_MAX_WIDTH = 700
@@ -220,7 +206,7 @@ const isSessionResizing = ref(false)
 const isStageResizing = ref(false)
 
 const pageStyle = computed<Record<string, string>>(() => ({
-  '--session-col-width': sessionCollapsed.value ? '44px' : `${sessionWidth.value}px`,
+  '--session-col-width': sessionCollapsed.value ? '48px' : `${sessionWidth.value}px`,
   '--stage-col-width': stageCollapsed.value ? '44px' : `${stageWidth.value}px`
 }))
 
@@ -229,86 +215,58 @@ let activeResizeCleanup: (() => void) | null = null
 function clampWidth(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.round(value)))
 }
-
 function readStoredWidth(key: string, fallback: number, min: number, max: number): number {
   try {
     const stored = window.localStorage.getItem(key)
     const parsed = stored == null ? Number.NaN : Number.parseInt(stored, 10)
     return Number.isFinite(parsed) ? clampWidth(parsed, min, max) : fallback
-  } catch {
-    return fallback
-  }
+  } catch { return fallback }
 }
-
 function saveStoredWidth(key: string, value: number): void {
-  try {
-    window.localStorage.setItem(key, String(Math.round(value)))
-  } catch {
-    // ignore
-  }
+  try { window.localStorage.setItem(key, String(Math.round(value))) } catch { /* ignore */ }
 }
-
 function resizeSessionTo(rawWidth: number): void {
-  if (rawWidth <= SESSION_HIDE_THRESHOLD) {
-    sessionCollapsed.value = true
-    return
-  }
+  if (rawWidth <= SESSION_HIDE_THRESHOLD) { sessionCollapsed.value = true; return }
   sessionCollapsed.value = false
   sessionWidth.value = clampWidth(rawWidth, SESSION_MIN_WIDTH, SESSION_MAX_WIDTH)
 }
-
 function resizeStageTo(rawWidth: number): void {
-  if (rawWidth <= STAGE_HIDE_THRESHOLD) {
-    stageCollapsed.value = true
-    return
-  }
+  if (rawWidth <= STAGE_HIDE_THRESHOLD) { stageCollapsed.value = true; return }
   stageCollapsed.value = false
   stageWidth.value = clampWidth(rawWidth, STAGE_MIN_WIDTH, STAGE_MAX_WIDTH)
 }
-
 function resizeSessionBy(delta: number): void {
   resizeSessionTo(sessionWidth.value + delta)
   saveStoredWidth(SESSION_WIDTH_KEY, sessionWidth.value)
 }
-
 function resizeStageBy(delta: number): void {
   resizeStageTo(stageWidth.value + delta)
   saveStoredWidth(STAGE_WIDTH_KEY, stageWidth.value)
 }
-
 function reopenSessionPanel(): void {
   sessionCollapsed.value = false
   sessionWidth.value = clampWidth(sessionWidth.value, SESSION_MIN_WIDTH, SESSION_MAX_WIDTH)
 }
-
 function reopenStagePanel(): void {
   stageCollapsed.value = false
   stageWidth.value = clampWidth(stageWidth.value, STAGE_MIN_WIDTH, STAGE_MAX_WIDTH)
 }
-
 function startColumnResize(side: 'session' | 'stage', event: MouseEvent): void {
   event.preventDefault()
   activeResizeCleanup?.()
-
   const startX = event.clientX
   const startWidth = side === 'session' ? sessionWidth.value : stageWidth.value
   const previousCursor = document.body.style.cursor
   const previousUserSelect = document.body.style.userSelect
-
   isSessionResizing.value = side === 'session'
   isStageResizing.value = side === 'stage'
   document.body.style.cursor = 'col-resize'
   document.body.style.userSelect = 'none'
-
   const handleMove = (moveEvent: MouseEvent): void => {
     const delta = moveEvent.clientX - startX
-    if (side === 'session') {
-      resizeSessionTo(startWidth + delta)
-    } else {
-      resizeStageTo(startWidth - delta)
-    }
+    if (side === 'session') resizeSessionTo(startWidth + delta)
+    else resizeStageTo(startWidth - delta)
   }
-
   const finishResize = (): void => {
     document.removeEventListener('mousemove', handleMove)
     document.removeEventListener('mouseup', finishResize)
@@ -320,29 +278,19 @@ function startColumnResize(side: 'session' | 'stage', event: MouseEvent): void {
     isStageResizing.value = false
     activeResizeCleanup = null
   }
-
   document.addEventListener('mousemove', handleMove)
   document.addEventListener('mouseup', finishResize)
   activeResizeCleanup = finishResize
 }
-
-function startSessionResize(event: MouseEvent): void {
-  startColumnResize('session', event)
-}
-
-function startStageResize(event: MouseEvent): void {
-  startColumnResize('stage', event)
-}
+function startSessionResize(event: MouseEvent): void { startColumnResize('session', event) }
+function startStageResize(event: MouseEvent): void { startColumnResize('stage', event) }
 
 onMounted(() => {
   restoreAgentSelection()
   sessionWidth.value = readStoredWidth(SESSION_WIDTH_KEY, SESSION_DEFAULT_WIDTH, SESSION_MIN_WIDTH, SESSION_MAX_WIDTH)
   stageWidth.value = readStoredWidth(STAGE_WIDTH_KEY, STAGE_DEFAULT_WIDTH, STAGE_MIN_WIDTH, STAGE_MAX_WIDTH)
 })
-
-onBeforeUnmount(() => {
-  activeResizeCleanup?.()
-})
+onBeforeUnmount(() => { activeResizeCleanup?.() })
 
 // 写回暂存变更
 const isCommitting = ref(false)
@@ -351,48 +299,32 @@ async function handleCommit(ids?: string[]): Promise<void> {
   isCommitting.value = true
   try {
     const { committed, failed } = await assistant.commitAccepted(ids)
-    if (failed > 0 && committed > 0) {
-      message.warning(`已写回 ${committed} 项，${failed} 项失败`)
-    } else if (failed > 0) {
-      message.error(`写回失败：${failed} 项未能提交`)
-    } else if (committed > 0) {
-      message.success(`已成功写回 ${committed} 项变更`)
-    }
-  } finally {
-    isCommitting.value = false
-  }
+    if (failed > 0 && committed > 0) message.warning(`已写回 ${committed} 项，${failed} 项失败`)
+    else if (failed > 0) message.error(`写回失败：${failed} 项未能提交`)
+    else if (committed > 0) message.success(`已成功写回 ${committed} 项变更`)
+  } finally { isCommitting.value = false }
 }
 
 function notifyTruncate(result: TurnTruncateResult, action: '撤回' | '重新分叉'): void {
-  if (result.keptCommitted > 0) {
-    message.warning(`${action}完成，但 ${result.keptCommitted} 项已写回项目的改动未回滚`)
-  } else if (result.discardedStaged > 0) {
-    message.success(`${action}完成，已丢弃 ${result.discardedStaged} 项暂存变更`)
-  } else {
-    message.success(`${action}完成`)
-  }
+  if (result.keptCommitted > 0) message.warning(`${action}完成，但 ${result.keptCommitted} 项已写回项目的改动未回滚`)
+  else if (result.discardedStaged > 0) message.success(`${action}完成，已丢弃 ${result.discardedStaged} 项暂存变更`)
+  else message.success(`${action}完成`)
 }
-
 async function handleUndoTurn(turnId: string): Promise<void> {
   const result = await assistant.undoTurn(turnId)
   if (result) notifyTruncate(result, '撤回')
 }
-
 async function handleResendTurn(): Promise<void> {
-  const result = await assistant.resendEditedTurn({
-    intentHint: 'global-assistant-v2:chat'
-  })
+  const result = await assistant.resendEditedTurn({ intentHint: 'global-assistant-v2:chat' })
   if (result) notifyTruncate(result, '重新分叉')
 }
-
 async function copyMessage(text: string): Promise<void> {
-  try {
-    await navigator.clipboard?.writeText(text)
-    message.success('已复制')
-  } catch {
-    // ignore
-  }
+  try { await navigator.clipboard?.writeText(text); message.success('已复制') } catch { /* ignore */ }
 }
+
+// ============================================================================
+// 会话栏（DeepSeek Harness 侧栏）
+// ============================================================================
 </script>
 
 <template>
@@ -406,36 +338,31 @@ async function copyMessage(text: string): Promise<void> {
     }"
     :style="pageStyle"
   >
-    <!-- ======== 左侧：会话 / 模块 / 文件 / MCP ======== -->
-    <div class="ga-left">
-      <div class="ga-left-head">
+    <!-- ======== 左侧：DeepSeek Harness 风格侧栏 ======== -->
+    <div class="ga-sidebar">
+      <div class="ga-brand-row">
         <button type="button" class="ga-back" title="返回主页" @click="appStore.backToProjects()">
           <ArrowLeft :size="16" />
         </button>
-        <div class="ga-logo">
-          <Bot :size="17" class="ga-logo-icon" />
+        <div class="ga-brand">
+          <Bot :size="17" class="ga-brand-icon" />
           <span>全局智能体</span>
         </div>
       </div>
 
-      <!-- 左侧标签切换 -->
-      <div class="ga-left-tabs">
-        <button
-          v-for="tab in LEFT_TABS"
-          :key="tab.key"
-          type="button"
-          class="ga-tab"
-          :class="{ active: leftTab === tab.key }"
-          :title="tab.label"
-          @click="leftTab = tab.key"
-        >
-          <component :is="tab.icon" :size="14" />
-          <span>{{ tab.label }}</span>
-        </button>
-      </div>
+      <!-- 新建会话（DeepSeek Harness New Session） -->
+      <button
+        type="button"
+        class="ga-new-session"
+        title="新建会话"
+        @click="assistant.createSession()"
+      >
+        <MessagesSquare :size="14" />
+        <span>新建会话</span>
+      </button>
 
-      <!-- 会话历史 -->
-      <div v-if="leftTab === 'sessions'" class="ga-tab-pane">
+      <!-- 会话历史（侧栏浏览区） -->
+      <div class="ga-session-region">
         <AssistantSessionList
           :sessions="assistant.sessions.value"
           :active-session-id="assistant.activeSessionId.value"
@@ -448,22 +375,36 @@ async function copyMessage(text: string): Promise<void> {
         />
       </div>
 
-      <!-- 能力模块 -->
-      <div v-else-if="leftTab === 'modules'" class="ga-tab-pane">
-        <AgentModuleManager />
-      </div>
+      <!-- 侧栏底部：项目上下文 + 设置入口（模块/文件/MCP/插件） -->
+      <div class="ga-sidebar-foot">
+        <button type="button" class="ga-settings-toggle" @click="settingsOpen = !settingsOpen">
+          <Settings :size="15" />
+          <span>能力与市场</span>
+        </button>
 
-      <!-- 系统文件 -->
-      <div v-else-if="leftTab === 'files'" class="ga-tab-pane">
-        <AgentFileExplorer />
-      </div>
+        <div v-if="settingsOpen" class="ga-settings-drawer">
+          <div class="ga-settings-tabs">
+            <button
+              v-for="tab in SETTINGS_TABS"
+              :key="tab.key"
+              type="button"
+              class="ga-stab"
+              :class="{ active: settingsTab === tab.key }"
+              :title="tab.label"
+              @click="settingsTab = tab.key"
+            >
+              <component :is="tab.icon" :size="14" />
+              <span>{{ tab.label }}</span>
+            </button>
+          </div>
+          <div class="ga-settings-pane">
+            <AgentModuleManager v-if="settingsTab === 'modules'" />
+            <AgentFileExplorer v-else-if="settingsTab === 'files'" />
+            <AgentMcpMarket v-else-if="settingsTab === 'mcp'" />
+            <AgentPluginMarket v-else-if="settingsTab === 'plugins'" />
+          </div>
+        </div>
 
-      <!-- MCP 市场 -->
-      <div v-else-if="leftTab === 'mcp'" class="ga-tab-pane">
-        <AgentMcpMarket />
-      </div>
-
-      <div class="ga-left-foot">
         <div v-if="currentProject" class="ga-ctx-card">
           <div class="ga-ctx-label">当前上下文</div>
           <div class="ga-ctx-title">{{ currentProject.title || '未命名小说' }}</div>
@@ -538,11 +479,12 @@ async function copyMessage(text: string): Promise<void> {
       <div v-else class="ga-starter">
         <div class="ga-starter-inner">
           <div class="ga-starter-head">
-            <div class="ga-starter-kicker">全局智能体 · 模块化</div>
+            <div class="ga-starter-kicker">全局智能体 · everything is a plugin</div>
             <h2>需要我为你的创作做点什么？</h2>
             <p class="ga-starter-sub">
               我能读写任意文件、写代码、调用 MCP 工具、操作浏览器与桌面应用。
-              所有能力都可在左侧「模块」面板独立启停。
+              所有能力都可在左侧「能力与市场」面板中按插件独立启停，也可从
+              GitHub dsh-plugin 话题导入新插件。
             </p>
           </div>
 
@@ -649,7 +591,7 @@ async function copyMessage(text: string): Promise<void> {
   --ga-danger: #b91c1c;
   --ga-add: #047857;
   --ga-mono: 'JetBrains Mono', 'Consolas', 'SF Mono', ui-monospace, Menlo, monospace;
-  --session-col-width: 250px;
+  --session-col-width: 260px;
   --stage-col-width: 400px;
   display: grid;
   grid-template-columns: var(--session-col-width) minmax(0, 1fr) var(--stage-col-width);
@@ -665,16 +607,16 @@ async function copyMessage(text: string): Promise<void> {
   letter-spacing: -0.005em;
 }
 
-/* ===== 左侧项目栏 ===== */
-.ga-left {
+/* ===== 左侧侧栏（DeepSeek Harness 风格） ===== */
+.ga-sidebar {
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
   border-right: 1px solid var(--arc-border);
-  background: var(--arc-bg-surface);
+  background: var(--arc-bg-sidebar);
 }
-.ga-left-head {
+.ga-brand-row {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -698,7 +640,7 @@ async function copyMessage(text: string): Promise<void> {
   border-color: var(--arc-primary);
   color: var(--arc-primary);
 }
-.ga-logo {
+.ga-brand {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -706,53 +648,108 @@ async function copyMessage(text: string): Promise<void> {
   font-weight: 700;
   color: var(--arc-text-primary);
 }
-.ga-logo-icon {
+.ga-brand-icon {
   color: var(--arc-primary);
 }
-.ga-left-tabs {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 4px;
-  padding: 0 10px 8px;
-  border-bottom: 1px solid var(--arc-border);
+.ga-new-session {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 2px 12px 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--arc-border);
+  border-radius: 9px;
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-primary);
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
-.ga-tab {
+.ga-new-session:hover {
+  border-color: var(--arc-primary);
+  color: var(--arc-primary);
+}
+.ga-session-region {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.ga-sidebar-foot {
+  border-top: 1px solid var(--arc-border);
+  padding: 8px 12px 12px;
   display: flex;
   flex-direction: column;
+  gap: 8px;
+}
+.ga-settings-toggle {
+  display: flex;
   align-items: center;
-  gap: 3px;
-  padding: 7px 4px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
+  gap: 7px;
+  padding: 8px 10px;
+  border: 1px solid var(--arc-border);
+  border-radius: 9px;
+  background: var(--arc-bg-surface);
   color: var(--arc-text-secondary);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
 }
-.ga-tab:hover {
+.ga-settings-toggle:hover {
+  border-color: var(--arc-primary);
+  color: var(--arc-primary);
+}
+.ga-settings-drawer {
+  border: 1px solid var(--arc-border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--arc-bg-surface);
+  max-height: 340px;
+  display: flex;
+  flex-direction: column;
+}
+.ga-settings-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  padding: 6px;
+  border-bottom: 1px solid var(--arc-border);
+}
+.ga-stab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 2px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--arc-text-secondary);
+  font-size: 9.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.ga-stab:hover {
   background: var(--arc-bg-weak);
   color: var(--arc-text-primary);
 }
-.ga-tab.active {
+.ga-stab.active {
   border-color: color-mix(in srgb, var(--arc-primary) 35%, transparent);
   background: color-mix(in srgb, var(--arc-primary) 12%, transparent);
   color: var(--arc-primary);
 }
-.ga-tab-pane {
-  flex: 1;
+.ga-settings-pane {
   min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-}
-.ga-left-foot {
-  padding: 10px 14px;
-  border-top: 1px solid var(--arc-border);
+  height: 240px;
 }
 .ga-ctx-card {
-  padding: 10px 12px;
+  padding: 9px 11px;
   border-radius: 10px;
   background: var(--arc-bg-weak);
   border: 1px solid var(--arc-border);
@@ -784,9 +781,9 @@ async function copyMessage(text: string): Promise<void> {
 
 /* ===== 折叠窄条 ===== */
 .ga-session-mini {
-  width: 44px;
+  width: 48px;
   border-right: 1px solid var(--arc-border);
-  background: var(--arc-bg-surface);
+  background: var(--arc-bg-sidebar);
 }
 .ga-stage-mini {
   border: none;
@@ -899,9 +896,7 @@ async function copyMessage(text: string): Promise<void> {
   animation: ga-pulse 1.4s ease-in-out infinite;
 }
 @keyframes ga-pulse {
-  50% {
-    opacity: 0.35;
-  }
+  50% { opacity: 0.35; }
 }
 .ga-agent-toolbar {
   padding: 10px 32px 0;
@@ -1072,7 +1067,7 @@ async function copyMessage(text: string): Promise<void> {
   .ga-page {
     grid-template-columns: minmax(0, 1fr);
   }
-  .ga-left,
+  .ga-sidebar,
   .ga-session-mini,
   .ga-session-resizer {
     display: none;

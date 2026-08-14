@@ -25,6 +25,7 @@ export type AgentModuleKind =
   | 'knowledge'    // 知识库 / 记忆 / 检索
   | 'delegate'     // 子智能体委派
   | 'network'      // 网络请求 / 爬虫
+  | 'plugin'       // dsh-plugin 插件（everything is a plugin）
 
 /** 模块启用范围：全局启用对所有会话生效；项目级仅对指定项目生效。 */
 export type AgentModuleScope = 'global' | 'project'
@@ -104,7 +105,12 @@ export const AGENT_MODULE_IPC_CHANNELS = {
   // MCP 市场
   MCP_LIST_MARKETS: 'characterarc:agent-module:mcp:list-markets',
   MCP_LIST_TOOLS: 'characterarc:agent-module:mcp:list-tools',
-  MCP_IMPORT: 'characterarc:agent-module:mcp:import'
+  MCP_IMPORT: 'characterarc:agent-module:mcp:import',
+  // dsh-plugin 插件市场
+  PLUGIN_LIST: 'characterarc:agent-module:plugin:list',
+  PLUGIN_IMPORT: 'characterarc:agent-module:plugin:import',
+  PLUGIN_UNINSTALL: 'characterarc:agent-module:plugin:uninstall',
+  PLUGIN_LIST_INSTALLED: 'characterarc:agent-module:plugin:list-installed'
 } as const
 
 export type AgentModuleIpcChannel =
@@ -237,6 +243,52 @@ export interface McpImportRequest {
 }
 
 export interface McpImportResult {
+  ok: boolean
+  moduleId?: string
+  message: string
+}
+
+// --- dsh-plugin 插件市场 ---
+
+/** dsh-plugin GitHub 仓库条目（来源于 github.com/topics/dsh-plugin）。 */
+export interface DshPluginListing {
+  /** 仓库完整名，如 owner/name。 */
+  repo: string
+  name: string
+  description?: string
+  /** GitHub 仓库地址。 */
+  url: string
+  /** 是否已导入。 */
+  installed: boolean
+  /** stars 数（仅 UI 展示）。 */
+  stars?: number
+  language?: string
+  /** 最近更新时间。 */
+  updatedAt?: string
+}
+
+/** 已导入的插件模块。 */
+export interface InstalledPlugin {
+  id: string
+  repo: string
+  name: string
+  description: string
+  version: string
+  author: string
+  installedAt: string
+}
+
+export interface PluginListRequest {
+  query?: string
+}
+
+export interface PluginImportRequest {
+  repo: string
+  name: string
+  description: string
+}
+
+export interface PluginImportResult {
   ok: boolean
   moduleId?: string
   message: string

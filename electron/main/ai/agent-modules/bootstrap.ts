@@ -78,6 +78,24 @@ export function initAgentModuleRegistry(): AgentModuleRegistry {
     createTools: () => createMcpTools()
   })
 
+  registry.register({
+    definition: {
+      id: 'plugin.market',
+      name: '插件市场（dsh-plugin）',
+      description: '从 GitHub dsh-plugin 话题导入插件，everything is a plugin。',
+      kind: 'plugin',
+      source: 'builtin',
+      scope: 'global',
+      enabledByDefault: true,
+      risk: 'low',
+      toolNames: ['plugin_list', 'plugin_import'],
+      icon: 'Puzzle',
+      version: '1.0.0',
+      author: 'CharacterArc'
+    },
+    createTools: () => []
+  })
+
   return registry
 }
 

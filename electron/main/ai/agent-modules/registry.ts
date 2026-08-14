@@ -217,6 +217,8 @@ function defaultIconForKind(kind: AgentModuleKind): string {
       return 'Users'
     case 'network':
       return 'Network'
+    case 'plugin':
+      return 'Puzzle'
     default:
       return 'Box'
   }

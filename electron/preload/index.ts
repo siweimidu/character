@@ -439,6 +439,15 @@ contextBridge.exposeInMainWorld('characterArc', {
     mcpListTools: (payload: { marketId?: string }) =>
       ipcRenderer.invoke('characterarc:agent-module:mcp:list-tools', toIpcPayload(payload)),
     mcpImport: (payload: { marketId: string; toolId: string }) =>
-      ipcRenderer.invoke('characterarc:agent-module:mcp:import', toIpcPayload(payload))
+      ipcRenderer.invoke('characterarc:agent-module:mcp:import', toIpcPayload(payload)),
+    // dsh-plugin 插件市场
+    pluginList: (payload?: { query?: string }) =>
+      ipcRenderer.invoke('characterarc:agent-module:plugin:list', toIpcPayload(payload ?? {})),
+    pluginImport: (payload: { repo: string; name: string; description: string }) =>
+      ipcRenderer.invoke('characterarc:agent-module:plugin:import', toIpcPayload(payload)),
+    pluginUninstall: (payload: { moduleId: string }) =>
+      ipcRenderer.invoke('characterarc:agent-module:plugin:uninstall', toIpcPayload(payload)),
+    pluginListInstalled: () =>
+      ipcRenderer.invoke('characterarc:agent-module:plugin:list-installed')
   }
 })

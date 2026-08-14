@@ -24,10 +24,18 @@ import {
   type AgentModuleSetConfigRequest,
   type AgentModuleSetEnabledRequest,
   type McpImportRequest,
-  type McpToolListing
+  type McpToolListing,
+  type PluginImportRequest,
+  type PluginListRequest
 } from '@shared/agent-modules'
 import { getAgentModuleRegistry } from './bootstrap'
 import { KNOWN_MCP_MARKETS } from './tools/mcp'
+import {
+  listDshPlugins,
+  importDshPlugin,
+  uninstallDshPlugin,
+  listInstalledPlugins
+} from './tools/plugin'
 
 /** 单次目录列举上限。 */
 const MAX_LIST_ENTRIES = 500
@@ -205,6 +213,26 @@ export function registerAgentModuleIpcHandlers(): void {
       moduleId: 'mcp.market',
       message: `已从 ${payload.marketId} 导入 ${payload.toolId}，MCP 市场模块已启用。`
     }
+  })
+
+  // ==================== dsh-plugin 插件市场 ====================
+  ipcMain.handle(CH.PLUGIN_LIST, async (_evt, payload: PluginListRequest) => {
+    return listDshPlugins(payload?.query)
+  })
+
+  ipcMain.handle(CH.PLUGIN_IMPORT, async (_evt, payload: PluginImportRequest) => {
+    const registry = getAgentModuleRegistry()
+    return importDshPlugin(payload, (def) => registry.register({ definition: def }))
+  })
+
+  ipcMain.handle(CH.PLUGIN_UNINSTALL, async (_evt, payload: { moduleId?: string }) => {
+    if (!payload?.moduleId) fail('缺少 moduleId。')
+    const registry = getAgentModuleRegistry()
+    return uninstallDshPlugin(payload.moduleId, (id) => registry.unregister(id))
+  })
+
+  ipcMain.handle(CH.PLUGIN_LIST_INSTALLED, async () => {
+    return listInstalledPlugins()
   })
 }
 

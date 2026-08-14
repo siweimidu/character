@@ -1124,7 +1124,11 @@ declare global {
         fsInfo: (payload: { path: string }) => Promise<import('@shared/agent-modules').AgentFsInfoResult>,
         mcpListMarkets: () => Promise<import('@shared/agent-modules').McpMarketDefinition[]>,
         mcpListTools: (payload: { marketId?: string }) => Promise<import('@shared/agent-modules').McpToolListing[]>,
-        mcpImport: (payload: { marketId: string; toolId: string }) => Promise<import('@shared/agent-modules').McpImportResult>
+        mcpImport: (payload: { marketId: string; toolId: string }) => Promise<import('@shared/agent-modules').McpImportResult>,
+        pluginList: (payload?: { query?: string }) => Promise<import('@shared/agent-modules').DshPluginListing[]>,
+        pluginImport: (payload: { repo: string; name: string; description: string }) => Promise<import('@shared/agent-modules').PluginImportResult>,
+        pluginUninstall: (payload: { moduleId: string }) => Promise<import('@shared/agent-modules').PluginImportResult>,
+        pluginListInstalled: () => Promise<import('@shared/agent-modules').InstalledPlugin[]>
       }
     }
   }

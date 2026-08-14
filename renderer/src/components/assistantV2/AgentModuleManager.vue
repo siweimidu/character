@@ -17,6 +17,7 @@ import {
   Mic,
   Network,
   Plug,
+  Puzzle,
   Terminal,
   Users
 } from 'lucide-vue-next'
@@ -38,6 +39,7 @@ const iconMap: Record<string, unknown> = {
   BookOpen,
   Users,
   Network,
+  Puzzle,
   Box
 }
 

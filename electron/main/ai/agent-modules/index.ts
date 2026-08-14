@@ -22,3 +22,9 @@ export { registerAgentModuleIpcHandlers } from './ipc'
 export { createSystemFileTools } from './tools/system-filesystem'
 export { createExecTools } from './tools/exec'
 export { createMcpTools, KNOWN_MCP_MARKETS } from './tools/mcp'
+export {
+  listDshPlugins,
+  importDshPlugin,
+  uninstallDshPlugin,
+  listInstalledPlugins
+} from './tools/plugin'
