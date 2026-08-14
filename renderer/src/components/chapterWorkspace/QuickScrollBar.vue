@@ -31,6 +31,9 @@ const thumbHeight = ref(0)
 let dragging = false
 let dragOffset = 0
 
+// 滑块最小高度，保证长文中也能看到一个足够大、可拖拽的滑块。
+const MIN_THUMB_HEIGHT = 36
+
 // ── 计算滑块位置 ──────────────────────────────────────────────
 
 /** 根据正文滚动状态刷新滑块位置与高度。 */
@@ -55,7 +58,7 @@ function redraw(): void {
 
   // 可视区域占比 → 滑块高度。
   const visibleFrac = Math.min(1, el.clientHeight / el.scrollHeight)
-  const h = Math.max(24, visibleFrac * trackH)
+  const h = Math.max(MIN_THUMB_HEIGHT, visibleFrac * trackH)
   thumbHeight.value = h
 
   // 滚动进度 → 滑块位置（保证滑到底时滑块贴底）。
@@ -76,7 +79,7 @@ function jumpToClientY(clientY: number): void {
 
   const trackH = rect.height
   const visibleFrac = Math.min(1, el.clientHeight / el.scrollHeight)
-  const h = Math.max(24, visibleFrac * trackH)
+  const h = Math.max(MIN_THUMB_HEIGHT, visibleFrac * trackH)
   const localY = Math.max(0, Math.min(clientY - rect.top, trackH))
   const scrollable = el.scrollHeight - el.clientHeight
   // 将滑块中心对齐到点击位置（拖拽时用按下点的偏移量）。
@@ -94,7 +97,7 @@ function onTrackPointerDown(e: PointerEvent): void {
   const rect = track.getBoundingClientRect()
   const trackH = rect.height
   const visibleFrac = Math.min(1, el.clientHeight / el.scrollHeight)
-  const h = Math.max(24, visibleFrac * trackH)
+  const h = Math.max(MIN_THUMB_HEIGHT, visibleFrac * trackH)
   // 记录按下点相对滑块顶部的偏移，拖拽时保持手感连续。
   const localY = e.clientY - rect.top
   dragOffset = localY - thumbTop.value
@@ -172,13 +175,12 @@ defineExpose({ redraw })
 .arc-qsb {
   position: relative;
   flex-shrink: 0;
-  width: 18px;
+  width: 26px;
   height: 100%;
   z-index: 20;
   display: flex;
   align-items: stretch;
   justify-content: center;
-  padding: 16px 0;
   cursor: pointer;
   user-select: none;
   background: color-mix(in srgb, var(--arc-bg-body) 92%, transparent);
@@ -186,33 +188,48 @@ defineExpose({ redraw })
   overflow: hidden;
 }
 
+/* 一条淡淡的滑轨底槽，便于用户感知可拖拽范围。 */
+.arc-qsb::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 4px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--arc-text-hint) 18%, transparent);
+  pointer-events: none;
+}
+
 .arc-qsb-thumb {
   position: absolute;
   left: 50%;
-  width: 6px;
+  width: 12px;
   transform: translateX(-50%);
-  border-radius: 3px;
+  border-radius: 6px;
   background: color-mix(in srgb, var(--arc-text-hint) 55%, transparent);
   transition: background 0.12s, width 0.12s;
 }
 
 .arc-qsb:hover .arc-qsb-thumb,
 .arc-qsb:active .arc-qsb-thumb {
-  width: 8px;
-  background: color-mix(in srgb, var(--arc-text-secondary) 70%, transparent);
+  width: 14px;
+  background: color-mix(in srgb, var(--arc-text-secondary) 75%, transparent);
 }
 
 .arc-qsb-close {
   position: absolute;
-  top: 4px;
-  right: 1px;
+  top: 2px;
+  right: 2px;
   width: 14px;
   height: 14px;
   line-height: 12px;
   text-align: center;
   padding: 0;
   border: none;
-  background: transparent;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--arc-bg-body) 85%, transparent);
   color: var(--arc-text-hint);
   font-size: 12px;
   cursor: pointer;
