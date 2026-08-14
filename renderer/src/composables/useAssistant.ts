@@ -440,25 +440,23 @@ export function useAssistant(options: UseAssistantOptions) {
       isInitializing.value = false
       return
     }
-    const scopeRef = sessionScopeRef()
-    if (options.scopeRef && !scopeRef) {
-      // 章节级 Surface 共享项目级会话，不再因章节切换而清空；此处仅对真正需要章节作用域的场景生效。
-      if (!isChapterSurface) {
-        sessions.value = []
-        activeSessionId.value = null
-        turns.value = []
-        eventsByTurn.value = new Map()
-        stagedChanges.value = []
-        streamingTurnId.value = null
-        cancelEditing()
-        restoredDraftLabel.value = ''
-        isInitializing.value = false
-        return
-      }
+    // 章节级 Surface 共享项目级会话，不再因章节切换而清空；
+    // 仅对「声明了 scopeRef 但当前无作用域」的非章节 Surface 清空状态。
+    if (!isChapterSurface && options.scopeRef && !sessionScopeRef()) {
+      sessions.value = []
+      activeSessionId.value = null
+      turns.value = []
+      eventsByTurn.value = new Map()
+      stagedChanges.value = []
+      streamingTurnId.value = null
+      cancelEditing()
+      restoredDraftLabel.value = ''
+      isInitializing.value = false
+      return
     }
     isInitializing.value = true
     try {
-      const list = await A.sessionList({ projectId: pid, surfaceId: sessionSurfaceId, scopeRef })
+      const list = await A.sessionList({ projectId: pid, surfaceId: sessionSurfaceId, scopeRef: sessionScopeRef() })
       sessions.value = list
       if (!activeSessionId.value && list.length > 0) {
         await switchSession(list[0].id)

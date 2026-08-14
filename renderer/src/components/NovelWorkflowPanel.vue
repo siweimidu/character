@@ -220,8 +220,6 @@ const dataSources = computed(() => {
   if (chs > 0) items.push(`${chs} 个章节`)
   if (userPrompt.value.trim()) items.push('你的补充说明')
 
-  console.log(items)
-
   return items
 })
 
