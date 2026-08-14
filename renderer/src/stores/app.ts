@@ -641,6 +641,27 @@ export const useAppStore = defineStore('app', () => {
     chapterPostGenerationIssues.value = next
   }
 
+  /**
+   * 批量清理已删除章节遗留的运行时状态（轻检告警与后处理问题）。
+   * 章节删除后这些 Map 中的条目不再有 UI 消费方，若不清理会形成内存残留。
+   * @param chapterIds - 被删除的章节 ID 集合
+   */
+  function clearChapterRuntimeState(chapterIds: Iterable<string>): void {
+    const ids = new Set(chapterIds)
+    if (!ids.size) return
+
+    if ([...ids].some((id) => chapterStateWarnings.value.has(id))) {
+      const next = new Map(chapterStateWarnings.value)
+      for (const id of ids) next.delete(id)
+      chapterStateWarnings.value = next
+    }
+    if ([...ids].some((id) => chapterPostGenerationIssues.value.has(id))) {
+      const next = new Map(chapterPostGenerationIssues.value)
+      for (const id of ids) next.delete(id)
+      chapterPostGenerationIssues.value = next
+    }
+  }
+
   /** 同步选中章节 ID：确保当前选中的章节仍属于指定项目，否则回退到第一章 */
   function syncSelectedChapter(projectId = selectedProjectId.value): void {
     const chapterList = projectWorkspaces.value[projectId]?.chapters ?? []
@@ -2026,6 +2047,14 @@ export const useAppStore = defineStore('app', () => {
     allKnowledgeDocuments.value = allKnowledgeDocuments.value.filter((document) => (
       !isProjectKnowledgeSource(document.sourceType) || document.projectId !== projectId
     ))
+
+    // 清理被删除项目内所有章节遗留的运行时状态（轻检告警、后处理问题提示）
+    const removedChapterIds = workspaceSnapshot
+      ? workspaceSnapshot.chapters.map((chapter) => chapter.id)
+      : []
+    if (removedChapterIds.length) {
+      clearChapterRuntimeState(removedChapterIds)
+    }
 
     if (selectedProjectId.value === projectId) {
       selectedProjectId.value = projects.value[0]?.id ?? ''
@@ -3581,15 +3610,15 @@ export const useAppStore = defineStore('app', () => {
     currentWorkspace.value.outlineItems
       .filter((item) => item.volumeId === volumeId)
       .forEach((item) => pushRecycleEntry('outline', item.title, { ...item }))
+    const removedChapterIds = currentWorkspace.value.chapters
+      .filter((chapter) => chapter.volumeId === volumeId)
+      .map((chapter) => chapter.id)
     currentWorkspace.value.chapters
       .filter((chapter) => chapter.volumeId === volumeId)
       .forEach((chapter) => pushRecycleEntry('chapter', chapter.title, { ...chapter }))
 
     updateCurrentWorkspace((workspace) => {
-      const removedChapterIds = new Set(
-        workspace.chapters.filter((chapter) => chapter.volumeId === volumeId).map((chapter) => chapter.id)
-      )
-
+      const removedIds = new Set(removedChapterIds)
       return {
         ...workspace,
         outlineVolumes: workspace.outlineVolumes.filter((volume) => volume.id !== volumeId),
@@ -3597,9 +3626,11 @@ export const useAppStore = defineStore('app', () => {
           workspace.outlineItems.filter((item) => item.volumeId !== volumeId)
         ),
         chapters: workspace.chapters.filter((chapter) => chapter.volumeId !== volumeId),
-        chapterVersions: workspace.chapterVersions.filter((version) => !removedChapterIds.has(version.chapterId))
+        chapterVersions: workspace.chapterVersions.filter((version) => !removedIds.has(version.chapterId))
       }
     })
+    // 清理该分卷下被级联删除章节的运行时状态（轻检告警、后处理问题提示）
+    clearChapterRuntimeState(removedChapterIds)
 
     if (activeWorkflowVolumeId.value === volumeId) {
       activeWorkflowVolumeId.value = outlineVolumes.value[0]?.id ?? ''
@@ -4051,20 +4082,39 @@ export const useAppStore = defineStore('app', () => {
     schedulePersist('fast')
   }
 
-  /** 批量删除大纲条目（同时清理对应章节） */
+  /** 批量删除大纲条目（同时清理对应章节及其历史版本、运行时状态） */
   function deleteOutlineItems(outlineIds: string[]): void {
     if (!outlineIds.length) return
     const idSet = new Set(outlineIds)
     currentWorkspace.value.outlineItems
       .filter((item) => idSet.has(item.id))
       .forEach((item) => pushRecycleEntry('outline', item.title, { ...item }))
-    updateCurrentWorkspace((workspace) => ({
-      ...workspace,
-      outlineItems: reindexOutlineItems(
-        workspace.outlineItems.filter((item) => !idSet.has(item.id))
-      ),
-      chapters: workspace.chapters.filter((chapter) => !idSet.has(chapter.outlineItemId))
-    }))
+
+    // 收集被级联删除的章节 ID，用于清理其历史版本与运行时状态
+    const removedChapterIds = currentWorkspace.value.chapters
+      .filter((chapter) => idSet.has(chapter.outlineItemId))
+      .map((chapter) => chapter.id)
+
+    updateCurrentWorkspace((workspace) => {
+      const removedIds = new Set(
+        workspace.chapters.filter((chapter) => idSet.has(chapter.outlineItemId)).map((chapter) => chapter.id)
+      )
+      return {
+        ...workspace,
+        outlineItems: reindexOutlineItems(
+          workspace.outlineItems.filter((item) => !idSet.has(item.id))
+        ),
+        chapters: workspace.chapters.filter((chapter) => !removedIds.has(chapter.id)),
+        chapterVersions: workspace.chapterVersions.filter((version) => !removedIds.has(version.chapterId))
+      }
+    })
+    clearChapterRuntimeState(removedChapterIds)
+
+    // 若被选中的章节因大纲项删除而被级联删除，回退到剩余章节
+    if (selectedChapterId.value && !currentWorkspace.value.chapters.some((chapter) => chapter.id === selectedChapterId.value)) {
+      selectedChapterId.value = currentWorkspace.value.chapters[0]?.id ?? ''
+      pendingChapterInsertion.value = null
+    }
     schedulePersist('fast')
   }
 
@@ -4147,6 +4197,8 @@ export const useAppStore = defineStore('app', () => {
       chapters: workspace.chapters.filter((chapter) => chapter.id !== chapterId),
       chapterVersions: workspace.chapterVersions.filter((version) => version.chapterId !== chapterId)
     }))
+    // 清理该章节遗留的运行时状态（轻检告警、后处理问题提示）
+    clearChapterRuntimeState([chapterId])
 
     if (selectedChapterId.value === chapterId) {
       const fallback = chapters.value[Math.max(0, targetIndex - 1)] ?? chapters.value[0]
