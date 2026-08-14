@@ -354,7 +354,6 @@ watch(searchKeyword, (value) => {
       </div>
 
       <div class="sidebar-bottom">
-        <div v-if="shouldRenderSidebarLabels" class="sidebar-group-label">偏好</div>
         <button
           type="button"
           class="sidebar-item"
