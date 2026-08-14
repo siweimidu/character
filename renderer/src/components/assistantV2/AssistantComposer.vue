@@ -36,9 +36,12 @@ const props = withDefaults(defineProps<{
   projectId?: string | null | undefined
   /** 已启用的能力模块列表（用于展示能力快捷按钮） */
   enabledModules?: AgentModuleRuntime[]
+  /** 是否正在录音（语音转文字），用于按钮跳动动画 */
+  speechListening?: boolean
 }>(), {
   projectId: undefined,
-  enabledModules: () => []
+  enabledModules: () => [],
+  speechListening: false
 })
 
 const emit = defineEmits<{
@@ -779,12 +782,19 @@ watch(
           <NButton
             v-if="hasSpeech && !props.isStreaming"
             size="small"
-            title="语音转文字（已启用）"
-            type="info"
-            secondary
+            :title="props.speechListening ? '正在录音…（再次点击停止）' : '语音转文字（已启用）'"
+            :type="props.speechListening ? 'error' : 'info'"
+            :secondary="!props.speechListening"
+            class="voice-btn"
+            :class="{ 'is-recording': props.speechListening }"
             @click="emit('voice-input')"
           >
-            <template #icon><Mic :size="13" /></template>
+            <template #icon>
+              <span v-if="props.speechListening" class="voice-wave" aria-hidden="true">
+                <i /><i /><i /><i />
+              </span>
+              <Mic v-else :size="13" />
+            </template>
           </NButton>
           <NButton
             size="small"
@@ -869,6 +879,37 @@ watch(
 </template>
 
 <style scoped>
+/* ── 语音转文字录音按钮动画 ── */
+.voice-btn.is-recording {
+  animation: voice-pulse 1.2s ease-in-out infinite;
+}
+.voice-wave {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 13px;
+  padding: 0 1px;
+}
+.voice-wave i {
+  display: inline-block;
+  width: 2.5px;
+  height: 5px;
+  border-radius: 1px;
+  background: currentColor;
+  animation: voice-wave-bounce 1s ease-in-out infinite;
+}
+.voice-wave i:nth-child(1) { animation-delay: 0s; }
+.voice-wave i:nth-child(2) { animation-delay: 0.18s; }
+.voice-wave i:nth-child(3) { animation-delay: 0.36s; }
+.voice-wave i:nth-child(4) { animation-delay: 0.54s; }
+@keyframes voice-wave-bounce {
+  0%, 100% { height: 4px; opacity: 0.7; }
+  50% { height: 13px; opacity: 1; }
+}
+@keyframes voice-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--arc-error, #d03050) 40%, transparent); }
+  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--arc-error, #d03050) 0%, transparent); }
+}
 /* ── 斜杠命令菜单 ── */
 .composer {
   position: relative;

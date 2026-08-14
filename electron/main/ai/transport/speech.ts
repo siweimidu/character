@@ -54,25 +54,20 @@ export async function transcribeSpeech(
   const base = normalized.baseUrl.replace(/\/$/, '')
   const url = `${base}/audio/transcriptions`
 
-  // OpenAI 兼容音频转写为 multipart/form-data：file + model
-  const boundary = `----arc-${Date.now().toString(36)}`
-  const encoder = new TextEncoder()
-  const header = encoder.encode(
-    `--${boundary}\r\n` +
-    `Content-Disposition: form-data; name="file"; filename="audio.webm"\r\n` +
-    `Content-Type: ${audioType || 'audio/webm'}\r\n\r\n`
+  // OpenAI 兼容音频转写为 multipart/form-data：file + model。
+  // 使用标准 FormData 构建，避免手动拼接 multipart 边界可能导致的格式问题。
+  const form = new FormData()
+  // 复制音频字节为精确长度的 ArrayBuffer，确保 multipart 传输内容完整
+  const audioBuffer = new ArrayBuffer(audioData.byteLength)
+  new Uint8Array(audioBuffer).set(audioData)
+  form.append(
+    'file',
+    new Blob([audioBuffer], {
+      type: audioType || 'audio/webm'
+    }),
+    'audio.webm'
   )
-  const footer = encoder.encode(
-    `\r\n--${boundary}\r\n` +
-    `Content-Disposition: form-data; name="model"\r\n\r\n` +
-    `${normalized.model}\r\n` +
-    `--${boundary}--\r\n`
-  )
-
-  const body = new Uint8Array(header.length + audioData.length + footer.length)
-  body.set(header, 0)
-  body.set(audioData, header.length)
-  body.set(footer, header.length + audioData.length)
+  form.append('model', normalized.model)
 
   const requestFetch = createProxyFetch(settings.proxyUrl)
 
@@ -82,10 +77,9 @@ export async function transcribeSpeech(
     const response = await requestFetch(url, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${normalized.apiKey}`,
-        'Content-Type': `multipart/form-data; boundary=${boundary}`
+        Authorization: `Bearer ${normalized.apiKey}`
       },
-      body: body.buffer as ArrayBuffer,
+      body: form,
       signal: controller.signal
     })
 

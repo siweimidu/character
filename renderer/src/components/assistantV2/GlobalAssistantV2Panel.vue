@@ -85,6 +85,16 @@ function hasSpeechProviderConfig(): boolean {
   return Boolean(s.speechBaseUrl?.trim() && s.speechApiKey?.trim() && s.speechModel?.trim())
 }
 
+/** 返回语音识别配置中缺失的字段提示（全部齐全返回空字符串）。 */
+function speechConfigMissingHint(): string {
+  const s = appStore.appSettings
+  const missing: string[] = []
+  if (!s.speechBaseUrl?.trim()) missing.push('Base URL')
+  if (!s.speechApiKey?.trim()) missing.push('API Key')
+  if (!s.speechModel?.trim()) missing.push('模型名称')
+  return missing.length ? `「设置 → 语音识别配置」中尚未填写：${missing.join('、')}` : ''
+}
+
 /** 使用配置的语音识别厂商进行识别（OpenAI 兼容 /audio/transcriptions）。 */
 function startProviderSpeechRecognition(): void {
   const settings = appStore.appSettings
@@ -142,7 +152,12 @@ function handleVoiceInput(): void {
     speechListening.value = false
   })
   if (!browser.supported) {
-    message.warning('未配置语音识别厂商且当前环境不支持浏览器语音输入，请使用 Chrome/Edge，或在「设置 → 语音识别配置」中填写厂商信息。')
+    const missing = speechConfigMissingHint()
+    message.warning(
+      missing
+        ? `当前环境不支持浏览器语音输入，且${missing}。请补齐后重试，或在「设置 → 语音识别配置」中填写厂商信息。`
+        : '未配置语音识别厂商且当前环境不支持浏览器语音输入，请使用 Chrome/Edge，或在「设置 → 语音识别配置」中填写厂商信息。'
+    )
     return
   }
   speechRecognition = browser as unknown as typeof speechRecognition
@@ -501,6 +516,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
         :attachments="assistant.pendingAttachments.value"
         :skills="availableSkills"
         :enabled-modules="enabledModules"
+        :speech-listening="speechListening"
         @send="sendWithMode"
         @attach="handleAttachFile"
         @apply-skill="(skill) => assistant.addPendingAttachment({ kind: 'skill', ref: `skill:${skill.id}`, label: skill.label })"
