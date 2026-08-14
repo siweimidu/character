@@ -33,7 +33,7 @@ function applyDarkModeImmediately(value: boolean): void {
   appStore.updateAppSetting('darkMode', value, { flushWorkspace: false })
 }
 
-/** 代码缩略小地图开关即时生效并持久化，无需再点保存设置 */
+/** 正文右侧快速滑动按钮开关即时生效并持久化，无需再点保存设置 */
 function applyMinimapImmediately(value: boolean): void {
   draftSettings.editorMinimap = value
   appStore.updateAppSetting('editorMinimap', value, { flushWorkspace: false })
@@ -1834,8 +1834,8 @@ async function saveSettings(): Promise<void> {
             <div class="dark-mode-label">
               <FileCode2 :size="15" />
               <div>
-                <span class="dark-mode-text">代码缩略小地图</span>
-                <span class="dark-mode-hint">在章节正文右侧显示 VSCode 风格代码缩略预览，开关即刻生效</span>
+                <span class="dark-mode-text">正文快速滑动按钮</span>
+                <span class="dark-mode-hint">在章节正文右侧显示一个可拖动的快速滑动按钮，方便在长文中上下浏览，开关即刻生效</span>
               </div>
             </div>
             <n-switch

@@ -1148,7 +1148,7 @@ export interface AppSettings {
   autoSaveInterval: string
   /** 写作区正文字体 */
   editorFont: EditorFont
-  /** 是否启用正文右侧的预览缩略图（类似 VSCode minimap） */
+  /** 是否启用正文右侧的快速滑动按钮（拖动滑块可快速在长文中上下滑动） */
   editorMinimap: boolean
   /** UI 缩放比例，范围 0.75-1.75 */
   uiScale: number

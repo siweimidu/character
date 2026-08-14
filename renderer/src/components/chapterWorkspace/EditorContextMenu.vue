@@ -36,7 +36,7 @@ const items = computed<EditorContextMenuItem[]>(() => [
   { id: 'find', label: '查找…', icon: 'find', separatorBefore: true },
   {
     id: 'minimap',
-    label: props.minimapActive ? '关闭预览缩略图' : '启用预览缩略图',
+    label: props.minimapActive ? '关闭快速滑动按钮' : '启用快速滑动按钮',
     icon: 'minimap',
     separatorBefore: true,
   },
