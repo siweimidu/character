@@ -19,30 +19,103 @@ const projectSkillsDir = ref('')
 
 // ── 搜索：在内置 skills 与项目扩展中按关键词过滤所有 skills ──
 const searchQuery = ref('')
+/** 搜索模式：默认模糊搜索 */
+type SkillSearchMode = 'fuzzy' | 'keyword' | 'exact'
+const searchMode = ref<SkillSearchMode>('fuzzy')
 
-/** 关键词匹配单个 skill：命中名称、描述、分类、来源、ID 或路径即视为匹配 */
-function matchesSearch(skill: ProjectSkillItem, keyword: string): boolean {
-  if (!keyword) return true
-  const text = [
+/** 把 skill 的各类文本字段聚合成可搜索的 haystack（含分类中文标签） */
+function buildSkillHaystack(skill: ProjectSkillItem): string {
+  return [
     skill.name,
     skill.description,
     skill.category,
+    resolveSkillCategoryLabel(skill.category),
     skill.source,
     skill.id,
     skill.path,
-    skill.version
+    skill.version,
+    skill.compatibility,
+    skill.compatibilityNote
   ]
     .filter(Boolean)
     .join(' ')
     .toLowerCase()
-  return keyword.split(/\s+/).every((part) => text.includes(part))
 }
 
-/** 过滤后的 skills 列表：搜索为空时返回全部，否则仅返回命中的 skills */
+/**
+ * 模糊匹配：query 中的每个字符按顺序出现在 haystack 中（允许不连续），
+ * 同时每个完整关键词也尝试作为子串匹配，双通道保证命中率高。
+ */
+function fuzzyMatch(haystack: string, keyword: string): boolean {
+  // 先尝试完整子串匹配（更精确）
+  if (haystack.includes(keyword)) return true
+  // 再尝试字符序列匹配：query 的每个字符按序出现即命中
+  const chars = Array.from(keyword)
+  let pos = -1
+  for (const ch of chars) {
+    pos = haystack.indexOf(ch, pos + 1)
+    if (pos < 0) return false
+  }
+  return true
+}
+
+/** 关键词匹配单个 skill，根据搜索模式执行不同策略 */
+function matchesSearch(skill: ProjectSkillItem, keyword: string): boolean {
+  if (!keyword) return true
+  const haystack = buildSkillHaystack(skill)
+
+  if (searchMode.value === 'exact') {
+    return skill.name.toLowerCase() === keyword || skill.id.toLowerCase() === keyword
+  }
+
+  const parts = keyword.split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return true
+
+  if (searchMode.value === 'keyword') {
+    // 关键字模式：每个词都要作为子串出现在 haystack 中
+    return parts.every((part) => haystack.includes(part))
+  }
+
+  // fuzzy 模式（默认）：整体关键词用模糊匹配，多词时每个词都需模糊命中
+  return parts.every((part) => fuzzyMatch(haystack, part))
+}
+
+/** 计算 skill 与关键词的相关性分数，用于搜索结果排序（分数越高越靠前） */
+function relevanceScore(skill: ProjectSkillItem, keyword: string): number {
+  if (!keyword) return 0
+  const name = skill.name?.toLowerCase() ?? ''
+  const id = skill.id?.toLowerCase() ?? ''
+  const desc = skill.description?.toLowerCase() ?? ''
+  const q = keyword.toLowerCase()
+
+  let score = 0
+  // 名称精确命中权重最高
+  if (name === q || id === q) score += 100
+  // 名称以关键词开头
+  if (name.startsWith(q) || id.startsWith(q)) score += 80
+  // 名称包含关键词
+  if (name.includes(q) || id.includes(q)) score += 60
+  // 描述包含关键词
+  if (desc.includes(q)) score += 20
+  // 路径包含关键词
+  if (skill.path?.toLowerCase().includes(q)) score += 10
+  // 分类命中
+  const categoryLabel = resolveSkillCategoryLabel(skill.category)
+  if (categoryLabel.toLowerCase().includes(q)) score += 15
+
+  return score
+}
+
+/** 过滤并排序后的 skills 列表 */
 const filteredResolvedSkills = computed(() => {
   const keyword = searchQuery.value.trim().toLowerCase()
   if (!keyword) return resolvedProjectSkills.value
-  return resolvedProjectSkills.value.filter((skill) => matchesSearch(skill, keyword))
+
+  const matched = resolvedProjectSkills.value.filter((skill) => matchesSearch(skill, keyword))
+  // 按相关性分数降序排序，名称命中的排最前
+  return matched.sort((a, b) =>
+    relevanceScore(b, keyword) - relevanceScore(a, keyword)
+  )
 })
 
 /** 命中关键词的 skill 数量（用于搜索无结果时的提示与计数展示） */
@@ -729,6 +802,15 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
             <Search :size="15" class="project-skill-search-icon" />
           </template>
         </n-input>
+        <div class="project-skill-search-mode">
+          <button
+            v-for="mode in (['fuzzy', 'keyword', 'exact'] as const)"
+            :key="mode"
+            class="project-skill-mode-btn"
+            :class="{ active: searchMode === mode }"
+            @click="searchMode = mode"
+          >{{ mode === 'fuzzy' ? '模糊' : mode === 'keyword' ? '关键字' : '完整匹配' }}</button>
+        </div>
         <span v-if="searchQuery.trim()" class="project-skill-search-count">
           {{ searchResultCount > 0 ? `命中 ${searchResultCount} 个 skills` : '无匹配结果' }}
         </span>
@@ -754,7 +836,7 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
         <div v-if="searchQuery.trim() && groupedSkills.length === 0" class="project-skill-search-empty">
           <Search :size="18" />
           <strong>未找到匹配的 skills</strong>
-          <p>没有与「{{ searchQuery.trim() }}」匹配的内置或项目扩展 skill，请尝试更换关键词。</p>
+          <p>没有与「{{ searchQuery.trim() }}」匹配的内置或项目扩展 skill（{{ searchMode === 'fuzzy' ? '模糊匹配' : searchMode === 'keyword' ? '关键字匹配' : '完整匹配' }}），请尝试更换关键词或切换搜索模式。</p>
         </div>
         <div v-for="group in groupedSkills" :key="group.name" class="skill-group">
           <div class="skill-group-header">
@@ -1039,6 +1121,36 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
 
 .project-skill-search-icon {
   color: var(--arc-text-hint);
+}
+
+/* 搜索模式切换按钮：模糊 / 关键字 / 完整匹配 */
+.project-skill-search-mode {
+  display: inline-flex;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.project-skill-mode-btn {
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--arc-text-hint);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.project-skill-mode-btn:hover {
+  color: var(--arc-text-secondary);
+}
+
+.project-skill-mode-btn.active {
+  background: color-mix(in srgb, var(--arc-primary) 12%, var(--arc-bg-surface));
+  color: var(--arc-primary);
 }
 
 .project-skill-search-count {
