@@ -4,6 +4,14 @@ import { computed, onMounted, ref } from 'vue'
 import { NButton, NCheckbox, NInput, NInputNumber, NModal, NTag, useMessage } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import { toIpcPayload } from '@/utils/ipcPayload'
+import {
+  createProjectWorkspaceSeed,
+  createProjectWorkspaceSeedFromSpiral,
+  type ProjectBootstrapResult,
+  type ProjectWorkspaceSeed,
+  type SpiralBootstrapResult
+} from '@/features/wizard/projectSeed'
+import type { NovelLength } from '@/types/app'
 
 const appStore = useAppStore()
 const message = useMessage()
@@ -305,6 +313,7 @@ function toggleAllGenres(): void {
 // ===== 生成作品时的初始化方式弹窗 =====
 const initModalVisible = ref(false)
 const initMethod = ref<'deep' | 'quick' | 'off'>('deep')
+const initNovelLength = ref<NovelLength>('long')
 const pendingBuildSeeds = ref<FanqieSeedCandidate[]>([])
 const buildLoading = ref(false)
 
@@ -443,7 +452,64 @@ function handleGenerateWorks(): void {
   initModalVisible.value = true
 }
 
-/** 用户选定初始化方式后，携带选题数据进入“新建作品”向导，走完新建作品流程再开始构建 */
+/** 构建单个选题的 ProjectWorkspaceSeed（深度/快速/空白） */
+async function buildSeedWorkspace(
+  seed: FanqieSeedCandidate,
+  method: 'deep' | 'quick' | 'off',
+  novelLength: NovelLength
+): Promise<ProjectWorkspaceSeed> {
+  const premise = [seed.concept, seed.hook, seed.outline].filter(Boolean).join('\n')
+  const wizardValues = {
+    title: seed.title,
+    genre: seed.genre || '都市',
+    novelLength,
+    premise,
+    shouldGenerate: method !== 'off'
+  }
+
+  if (method === 'deep') {
+    const result = await window.characterArc.spiralBootstrap(
+      toIpcPayload({
+        settings: appStore.appSettings,
+        projectTitle: seed.title,
+        projectGenre: seed.genre || '都市',
+        projectNovelLength: novelLength,
+        projectPremise: premise
+      })
+    )
+    if (!result.success || !result.result) {
+      throw new Error(result.error ?? `「${seed.title}」深度生成失败`)
+    }
+    return createProjectWorkspaceSeedFromSpiral(wizardValues, result.result as SpiralBootstrapResult)
+  }
+
+  if (method === 'quick') {
+    const result = await window.characterArc.generateAi(
+      toIpcPayload({
+        task: 'project-bootstrap',
+        settings: appStore.appSettings,
+        context: {
+          projectTitle: seed.title,
+          projectGenre: seed.genre || '都市',
+          projectNovelLength: novelLength,
+          projectPremise: premise
+        }
+      })
+    )
+    if (!result.success || !result.result) {
+      throw new Error(result.error ?? `「${seed.title}」快速生成失败`)
+    }
+    return createProjectWorkspaceSeed(wizardValues, result.result as ProjectBootstrapResult)
+  }
+
+  // 空白项目：直接创建骨架
+  return createProjectWorkspaceSeed(wizardValues)
+}
+
+/**
+ * 用户选定初始化方式后，在后台自动为所有勾选的选题创建项目。
+ * 不再跳转“新建作品”向导，全部在后台执行。
+ */
 async function confirmInitAndBuild(): Promise<void> {
   if (buildLoading.value) return
   const seeds = pendingBuildSeeds.value
@@ -452,17 +518,42 @@ async function confirmInitAndBuild(): Promise<void> {
   initModalVisible.value = false
   seedOptionsVisible.value = false
 
+  const method = initMethod.value
+  const novelLength = initNovelLength.value
+  const methodLabel = method === 'deep' ? '深度生成' : method === 'quick' ? '快速生成' : '空白项目'
+
   try {
-    // 多个选题：逐个打开向导并预填；用户完成一个后回到向导入口（由向导处理返回）。
-    // 这里依次携带第一个选题进入向导，向导完成后用户可再次触发后续选题。
-    const first = seeds[0]
-    appStore.openWizardWithPrefill({
-      title: first.title,
-      genre: first.genre || '都市',
-      novelLength: 'long',
-      premise: first.concept || first.outline || '',
-      generationMode: initMethod.value
-    })
+    await appStore.runTrackedAiTask(
+      {
+        key: 'fanqie-build-works',
+        kind: 'workflow',
+        label: `创建 ${seeds.length} 个作品`,
+        description: `${methodLabel} · 后台自动创建 ${seeds.length} 个新书项目`,
+        panel: 'fanqie',
+        onCancel: () => {
+          // 深度生成支持通过 IPC 取消
+          void window.characterArc.cancelSpiralBootstrap()
+        }
+      },
+      async () => {
+        const workspaceSeeds: ProjectWorkspaceSeed[] = []
+        // 逐个生成，每个完成后立即反馈进度
+        for (let i = 0; i < seeds.length; i++) {
+          const seed = seeds[i]
+          const ws = await buildSeedWorkspace(seed, method, novelLength)
+          workspaceSeeds.push(ws)
+          appStore.updateAiTaskProgress('fanqie-build-works', Math.round(((i + 1) / seeds.length) * 100))
+        }
+        // 全部生成完成后批量创建项目
+        appStore.batchCreateProjects(workspaceSeeds)
+        message.success(`已在后台创建 ${workspaceSeeds.length} 个作品`)
+      }
+    )
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : '创建作品失败，请检查模型配置'
+    if (!msg.includes('已取消')) {
+      message.error(msg)
+    }
   } finally {
     buildLoading.value = false
   }
@@ -1173,8 +1264,31 @@ async function handleExport(): Promise<void> {
       :mask-closable="false"
     >
       <p class="init-modal-hint">
-        将为勾选的 {{ pendingBuildSeeds.length }} 个新书选题创建项目。选择初始化方式后，将进入“新建作品”流程完善作品名、题材、篇幅与小说简介，再开始构建。
+        将为勾选的 {{ pendingBuildSeeds.length }} 个新书选题创建项目。选择篇幅与初始化方式后，点击“开始构建”，系统会在后台自动为所有勾选的选题创建作品，无需跳转“新建作品”向导。
       </p>
+      <!-- 篇幅选择：长篇 / 短篇 -->
+      <div class="init-length-row">
+        <span class="init-length-label">作品篇幅</span>
+        <div class="init-length-options">
+          <button
+            type="button"
+            class="init-length-btn"
+            :class="{ active: initNovelLength === 'long' }"
+            @click="initNovelLength = 'long'"
+          >
+            长篇
+          </button>
+          <button
+            type="button"
+            class="init-length-btn"
+            :class="{ active: initNovelLength === 'short' }"
+            @click="initNovelLength = 'short'"
+          >
+            短篇
+          </button>
+        </div>
+      </div>
+      <!-- 初始化方式：深度生成 / 快速生成 / 空白项目 -->
       <div class="init-mode-list">
         <button
           type="button"
@@ -2032,6 +2146,43 @@ async function handleExport(): Promise<void> {
   font-size: 13px;
   line-height: 1.6;
   color: var(--arc-text-hint);
+}
+.init-length-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.init-length-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--arc-text-secondary);
+  flex-shrink: 0;
+}
+.init-length-options {
+  display: inline-flex;
+  gap: 6px;
+}
+.init-length-btn {
+  border: 1px solid var(--arc-border);
+  background: var(--arc-bg-weak);
+  color: var(--arc-text-secondary);
+  padding: 6px 18px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.16s;
+}
+.init-length-btn:hover {
+  border-color: var(--arc-border-strong);
+  color: var(--arc-text-primary);
+}
+.init-length-btn.active {
+  background: var(--arc-primary-soft);
+  border-color: var(--arc-primary);
+  color: var(--arc-primary);
+  font-weight: 700;
 }
 .init-mode-list {
   display: flex;

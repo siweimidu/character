@@ -11,8 +11,8 @@
  *   - 运行中 tick 每秒刷新一次耗时；空闲时 interval 会被清掉，不白跑。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { Bot, BookOpen, Brush, ChevronDown, Feather, FileText, Image as ImageIcon, Library, Minus, Pause, Play, Sparkles, X } from 'lucide-vue-next'
-import { NButton, NProgress } from 'naive-ui'
+import { Bot, BookOpen, Brush, ChevronDown, Feather, FileText, Image as ImageIcon, Library, Pause, Play, Sparkles, Square, X } from 'lucide-vue-next'
+import { NProgress } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import type { AiTaskKind, AiTaskRun } from '@/features/ai/taskRegistry'
 
@@ -152,10 +152,14 @@ function handleDismiss(run: AiTaskRun): void {
 }
 
 function handlePause(run: AiTaskRun): void {
+  // 真正中断底层任务：中止当前 LLM 请求
+  appStore.cancelAiTask(run.key)
+  // 同时标记暂停状态，冻结展示
   appStore.pauseAiTask(run.key)
 }
 
 function handleResume(run: AiTaskRun): void {
+  // 底层请求已中止无法恢复，仅取消暂停展示态
   appStore.resumeAiTask(run.key)
 }
 
@@ -265,7 +269,7 @@ const runningCount = computed(() => appStore.runningAiTasks.length)
             />
           </div>
           <div class="task-actions">
-            <!-- 运行中：暂停/继续 + 减号（后台执行/收起）+ 停止 -->
+            <!-- 运行中：暂停/继续 + 退出 -->
             <template v-if="run.stage === 'running'">
               <button
                 class="task-icon-btn"
@@ -279,23 +283,14 @@ const runningCount = computed(() => appStore.runningAiTasks.length)
                 <Pause v-else :size="14" />
               </button>
               <button
-                class="task-icon-btn"
+                class="task-icon-btn task-exit-btn"
                 type="button"
-                title="收起此任务到后台继续执行"
-                aria-label="收起任务到后台"
-                @click="handleMinimize(run)"
-              >
-                <Minus :size="14" />
-              </button>
-              <n-button
-                v-if="run.onCancel"
-                size="tiny"
-                secondary
-                round
+                title="退出该任务"
+                aria-label="退出该任务"
                 @click="handleCancel(run)"
               >
-                停止
-              </n-button>
+                <Square :size="14" />
+              </button>
             </template>
             <button
               v-else
@@ -559,6 +554,13 @@ const runningCount = computed(() => appStore.runningAiTasks.length)
   background: color-mix(in srgb, var(--arc-primary) 10%, transparent);
   color: var(--arc-primary);
   border-color: color-mix(in srgb, var(--arc-primary) 30%, transparent);
+}
+
+/* 退出按钮：红色 hover，表示退出任务 */
+.task-exit-btn:hover {
+  background: color-mix(in srgb, #dc2626 12%, transparent);
+  color: #dc2626;
+  border-color: color-mix(in srgb, #dc2626 30%, transparent);
 }
 
 /* ── 缩成右下角闪烁小点 ── */

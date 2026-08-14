@@ -4994,8 +4994,10 @@ export const useAppStore = defineStore('app', () => {
   }
 
   /**
-   * 暂停某条正在运行的任务（前端展示层暂停）：冻结进度与耗时计时，按钮图标切换为播放。
-   * 注：底层 LLM 请求无法真正中断后恢复，暂停的是悬浮窗对任务的进度/耗时展示。
+   * 暂停某条正在运行的任务：
+   * - 展示层：冻结进度与耗时计时，按钮图标切换为播放。
+   * - 底层：真正中断当前 LLM 请求（若任务提供 onCancel 回调，则执行中止）。
+   * 注：底层 LLM 请求被中断后无法真正恢复，暂停实质为停止执行。
    */
   function pauseAiTask(key: string): void {
     const run = aiTaskRuns.value.get(key)
@@ -5003,9 +5005,11 @@ export const useAppStore = defineStore('app', () => {
     replaceTaskRuns((next) => {
       next.set(key, { ...run, paused: true, pausedAt: Date.now() })
     })
+    // 真正中断底层任务：中止当前 LLM 请求
+    cancelAiTask(key)
   }
 
-  /** 继续一条被暂停的任务，恢复进度与耗时计时（暂停期间的耗时不计入）。 */
+  /** 继续一条被暂停的任务（底层请求已中止无法真正恢复，仅恢复进度/耗时展示）。 */
   function resumeAiTask(key: string): void {
     const run = aiTaskRuns.value.get(key)
     if (!run || !run.paused) return
