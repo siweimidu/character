@@ -490,7 +490,6 @@ const BATCH_TASK_KEYS = [
   'catalog-batch:plot-thread:low'
 ]
 const batchLoading = computed(() => BATCH_TASK_KEYS.some((key) => appStore.isAiTaskRunning(key)))
-const batchModalVisible = ref(false)
 const batchFocusModalVisible = ref(false)
 const batchFocus = ref('')
 const batchHighCount = ref(3)
@@ -498,7 +497,6 @@ const batchMediumCount = ref(3)
 const batchLowCount = ref(4)
 const batchTotal = computed(() => batchHighCount.value + batchMediumCount.value + batchLowCount.value)
 const batchProgress = ref(0)
-const generatedThreads = ref<Array<{ title: string; description: string; tags: string[]; selected: boolean; priority: PlotThreadPriority }>>([])
 const { generateCatalogBatch } = useCatalogBatch()
 
 function compactForAi(value: unknown, maxLength: number): string {
@@ -606,7 +604,6 @@ async function handleAiBatchGenerate(): Promise<void> {
       addedCount += 1
     })
     message.success(`已生成并添加 ${addedCount} 条伏笔线索（高 ${batchHighCount.value} / 中 ${batchMediumCount.value} / 低 ${batchLowCount.value}）`)
-    batchModalVisible.value = false
   } catch (error) {
     if (!(error instanceof Error) || (!error.message.includes('任务已中断') && !error.message.includes('任务已被取消'))) {
       message.error(error instanceof Error ? error.message : 'AI 批量生成伏笔失败，请检查模型配置')
@@ -619,42 +616,21 @@ function openBatchGenerate(): void {
   batchHighCount.value = 3
   batchMediumCount.value = 3
   batchLowCount.value = 4
-  generatedThreads.value = []
   batchFocusModalVisible.value = true
 }
 
 // 输入框被清空(值为 null/undefined/NaN)时,按回车/失焦自动回填为 1,
 // 避免出现空值导致合计计算异常;值为 0 时保留(表示跳过该优先级)。
-function ensurePriorityCount(value: number | null, current: typeof batchHighCount): void {
+// 说明:模板中 ref 会被自动解包为原始值,因此这里传入优先级 key 来定位对应 ref,
+// 避免把 ref 作为参数传递导致类型不匹配。
+function ensurePriorityCount(value: number | null, key: 'high' | 'medium' | 'low'): void {
   if (value === null || value === undefined || Number.isNaN(value)) {
-    current.value = 1
+    if (key === 'high') batchHighCount.value = 1
+    else if (key === 'medium') batchMediumCount.value = 1
+    else batchLowCount.value = 1
   }
 }
 
-function toggleGeneratedThread(index: number): void {
-  generatedThreads.value[index].selected = !generatedThreads.value[index].selected
-}
-
-function confirmAddGeneratedThreads(): void {
-  const toAdd = generatedThreads.value.filter((t) => t.selected)
-  if (!toAdd.length) {
-    message.warning('请至少勾选一条伏笔')
-    return
-  }
-  const openedInChapterId = appStore.selectedChapterId ?? ''
-  toAdd.forEach((t) => {
-    appStore.createPlotThread({
-      title: t.title,
-      description: t.description,
-      openedInChapterId,
-      status: 'pending',
-      priority: t.priority,
-      tags: t.tags
-    })
-  })
-  message.success(`已添加 ${toAdd.length} 条伏笔`)
-  batchModalVisible.value = false
-}
 </script>
 
 <template>
@@ -1059,7 +1035,7 @@ function confirmAddGeneratedThreads(): void {
             :max="50"
             :step="1"
             placeholder="请输入"
-            @update:value="(v) => ensurePriorityCount(v, batchHighCount)"
+            @update:value="(v) => ensurePriorityCount(v, 'high')"
           />
         </div>
         <div class="ai-priority-count" style="--pri-color:#eab308">
@@ -1073,7 +1049,7 @@ function confirmAddGeneratedThreads(): void {
             :max="50"
             :step="1"
             placeholder="请输入"
-            @update:value="(v) => ensurePriorityCount(v, batchMediumCount)"
+            @update:value="(v) => ensurePriorityCount(v, 'medium')"
           />
         </div>
         <div class="ai-priority-count" style="--pri-color:#94a3b8">
@@ -1087,7 +1063,7 @@ function confirmAddGeneratedThreads(): void {
             :max="50"
             :step="1"
             placeholder="请输入"
-            @update:value="(v) => ensurePriorityCount(v, batchLowCount)"
+            @update:value="(v) => ensurePriorityCount(v, 'low')"
           />
         </div>
       </div>
@@ -1104,39 +1080,6 @@ function confirmAddGeneratedThreads(): void {
           <n-button type="primary" :loading="batchLoading" :disabled="batchLoading" @click="handleAiBatchGenerate">
             开始生成
           </n-button>
-        </div>
-      </div>
-    </n-modal>
-
-    <!-- AI 批量生成:结果预览与确认 -->
-    <n-modal
-      v-model:show="batchModalVisible"
-      preset="card"
-      title="AI 批量生成的伏笔"
-      class="arc-editor-modal-wide"
-      :mask-closable="false"
-    >
-      <div class="ai-result-list">
-        <div v-for="(thread, index) in generatedThreads" :key="index" class="ai-result-item">
-          <label class="row-check">
-            <input type="checkbox" :checked="thread.selected" @change="toggleGeneratedThread(index)" />
-          </label>
-          <div class="ai-result-body">
-            <div class="ai-result-title">{{ thread.title }}</div>
-            <div class="ai-result-desc">{{ thread.description }}</div>
-            <div v-if="thread.tags.length" class="thread-tags">
-              <n-tag v-for="tag in thread.tags" :key="tag" size="tiny" :bordered="false" class="tag-chip">{{ tag }}</n-tag>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="arc-modal-footer">
-        <div class="arc-modal-footer-left">
-          <span>{{ generatedThreads.filter((t) => t.selected).length }} / {{ generatedThreads.length }} 条已选</span>
-        </div>
-        <div class="arc-modal-footer-right">
-          <n-button @click="batchModalVisible = false">取消</n-button>
-          <n-button type="primary" @click="confirmAddGeneratedThreads">添加所选</n-button>
         </div>
       </div>
     </n-modal>
@@ -1492,32 +1435,6 @@ function confirmAddGeneratedThreads(): void {
   border-top: 1px dashed var(--arc-border);
 }
 
-/* AI 生成结果列表内的行样式(保留) */
-.row-check {
-  display: inline-flex;
-  align-items: center;
-  padding-top: 2px;
-  flex-shrink: 0;
-}
-.row-check input[type='checkbox'] {
-  width: 15px;
-  height: 15px;
-  accent-color: var(--arc-primary);
-  cursor: pointer;
-}
-
-.thread-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.tag-chip {
-  background: var(--arc-bg-body) !important;
-  color: var(--arc-text-secondary);
-  font-size: 10px;
-}
-
 .empty-state {
   display: flex;
   flex: 1;
@@ -1607,41 +1524,5 @@ function confirmAddGeneratedThreads(): void {
   color: var(--arc-text-hint);
   font-size: 12px;
   margin-top: 8px;
-}
-
-.ai-result-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-height: 60vh;
-  overflow-y: auto;
-}
-
-.ai-result-item {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: 12px;
-  border: 1px solid var(--arc-border);
-  border-radius: var(--arc-radius-md);
-  background: var(--arc-bg-body);
-}
-
-.ai-result-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.ai-result-title {
-  font-size: 14px;
-  font-weight: 650;
-  color: var(--arc-text-primary);
-  margin-bottom: 4px;
-}
-
-.ai-result-desc {
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--arc-text-secondary);
 }
 </style>
