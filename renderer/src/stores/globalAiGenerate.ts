@@ -76,6 +76,75 @@ export const useGlobalAiGenerateStore = defineStore('globalAiGenerate', () => {
   /** 请求打开番茄风向标“AI 生成新书选题”输入配置弹窗（供全局结果弹窗“换一批”触发）。 */
   const fanqieGeneratorRequest = ref(0)
 
+  /** 最近一次番茄风向标生成新书选题所用的上下文，供“换一批”自动复用重新生成。 */
+  const lastFanqieContext = ref<Record<string, unknown> | null>(null)
+  /** “换一批”自动重新生成的并发保护计数。 */
+  const regenRunningCount = ref(0)
+
+  /** 由番茄风向标页面在每次生成前写入上下文，供“换一批”复用。 */
+  function cacheFanqieContext(context: Record<string, unknown>): void {
+    lastFanqieContext.value = context
+  }
+
+  /**
+   * 全局结果弹窗点击“换一批”：不重新弹出输入配置弹窗，
+   * 而是复用最近一次上下文在后台自动重新生成一批新书选题，
+   * 完成后仍在任何页面全局弹出新的“AI 生成的新书选题”结果弹窗。
+   */
+  async function regenerateFanqieSeeds(): Promise<void> {
+    const context = lastFanqieContext.value
+    if (!context || regenRunningCount.value > 0) return
+    regenRunningCount.value += 1
+    resultVisible.value = false
+    const taskKey = `fanqie-seed-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    try {
+      const result = await appStore.runTrackedAiTask(
+        {
+          key: taskKey,
+          kind: 'inspiration',
+          label: 'AI 生成新书选题',
+          description: '正在根据榜单风向设计新书选题方案',
+          panel: 'fanqie'
+        },
+        () =>
+          window.characterArc.generateAi(
+            toIpcPayload({
+              clientTaskId: appStore.getClientTaskId(),
+              task: 'fanqie-seed',
+              settings: appStore.appSettings,
+              context
+            })
+          )
+      )
+      if (!result.success || !result.result) {
+        throw new Error(result.error ?? 'AI 生成新书选题失败')
+      }
+      const entries = Array.isArray((result.result as Record<string, unknown>)?.entries)
+        ? ((result.result as Record<string, unknown>).entries as Array<Record<string, unknown>>)
+        : []
+      if (entries.length === 0) {
+        throw new Error('AI 未返回有效的选题方案')
+      }
+      const newCandidates: GlobalAiCandidate[] = entries.map((e) => ({
+        sourceTitle: '',
+        title: String(e.title ?? '未命名选题'),
+        concept: String(e.concept ?? ''),
+        genre: String(e.genre ?? ''),
+        hook: String(e.hook ?? ''),
+        protagonist: String(e.protagonist ?? ''),
+        goldFinger: String(e.goldFinger ?? ''),
+        first3Hooks: Array.isArray(e.first3Hooks) ? (e.first3Hooks as string[]).map(String) : [],
+        outline: String(e.outline ?? '')
+      }))
+      // 无论用户当前在哪个页面，都全局弹出新的“AI 生成的新书选题”结果弹窗
+      openResult('fanqie', newCandidates, { running: 0 })
+    } catch {
+      resultVisible.value = false
+    } finally {
+      regenRunningCount.value -= 1
+    }
+  }
+
   /** 触发打开番茄输入配置弹窗（每次自增，供页面 watch）。 */
   function requestOpenFanqieGenerator(): void {
     resultVisible.value = false
@@ -256,6 +325,10 @@ export const useGlobalAiGenerateStore = defineStore('globalAiGenerate', () => {
     closeAll,
     confirmInitAndBuild,
     fanqieGeneratorRequest,
-    requestOpenFanqieGenerator
+    requestOpenFanqieGenerator,
+    cacheFanqieContext,
+    regenerateFanqieSeeds,
+    lastFanqieContext,
+    regenRunningCount
   }
 })

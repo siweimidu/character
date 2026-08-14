@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ChevronLeft, Copy, Download, ExternalLink, Flame, Lightbulb, RefreshCw } from 'lucide-vue-next'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { NButton, NCheckbox, NInput, NInputNumber, NModal, NTag, useMessage } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import { useGlobalAiGenerateStore } from '@/stores/globalAiGenerate'
@@ -264,7 +264,7 @@ interface SeedBatch {
 }
 const seedModalVisible = ref(false)
 const targetGenre = ref('')
-const seedCount = ref(3)
+const seedCount = ref<number | null>(3)
 const seedBatches = ref<SeedBatch[]>([])
 
 // 正在后台运行的选题生成任务数（驱动按钮文案与运行中批次图标）
@@ -313,7 +313,7 @@ function buildSeedContext(): Record<string, unknown> {
     platform: curBoardItem.value?.name || '番茄小说',
     targetGenre: targetGenre.value.trim(),
     checkedGenres: checkedGenres.join('、'),
-    count: seedCount.value,
+    count: seedCount.value ?? 1,
     summary: summaryText.value,
     hotGenres: JSON.stringify(hotGenres),
     hotThemes: JSON.stringify(hotThemes),
@@ -322,6 +322,21 @@ function buildSeedContext(): Record<string, unknown> {
 }
 
 async function handleSeedGenerate(): Promise<void> {
+  // 每次点击都创建独立后台任务，不再阻塞按钮、可多次并行生成。
+  const context = buildSeedContext()
+  globalAiGenerate.cacheFanqieContext(context)
+  await runSeedGeneration(context)
+}
+
+/** 生成数量为空时回车自动填入 1。 */
+function ensureSeedCount(): void {
+  if (seedCount.value == null || Number.isNaN(Number(seedCount.value))) {
+    seedCount.value = 1
+  }
+}
+
+/** 后台执行一次 AI 新书选题生成任务，完成后全局弹出结果悬浮窗。 */
+async function runSeedGeneration(context: Record<string, unknown>): Promise<void> {
   // 每次点击都创建独立后台任务，不再阻塞按钮、可多次并行生成。
   const batchId = `fanqie-seed-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   const batch: SeedBatch = { id: batchId, status: 'running', candidates: [], selected: [] }
@@ -342,7 +357,7 @@ async function handleSeedGenerate(): Promise<void> {
           clientTaskId: appStore.getClientTaskId(),
           task: 'fanqie-seed',
           settings: appStore.appSettings,
-          context: buildSeedContext()
+          context
         }))
     )
     if (!result.success || !result.result) {
@@ -413,16 +428,6 @@ function openSeedGenerator(): void {
   globalAiGenerate.closeResult()
   seedModalVisible.value = true
 }
-
-// 全局结果弹窗“换一批”请求：打开本页面的“AI 生成新书选题”输入配置弹窗
-watch(
-  () => globalAiGenerate.fanqieGeneratorRequest,
-  () => {
-    if (globalAiGenerate.fanqieGeneratorRequest > 0) {
-      openSeedGenerator()
-    }
-  }
-)
 
 // ===== 导出当前榜单数据 =====
 export type FanqieExportFormat = 'txt' | 'md' | 'json'
@@ -995,6 +1000,8 @@ async function handleExport(): Promise<void> {
           :step="1"
           size="small"
           class="seed-count-input"
+          placeholder="1"
+          @keyup.enter="ensureSeedCount"
         />
         <span class="seed-count-range">1 ~ 10</span>
       </div>

@@ -192,7 +192,7 @@ function handleBuild(): void {
       </div>
       <div class="global-ai-seed-modal-footer">
         <n-button @click="store.closeResult()">关闭</n-button>
-        <n-button @click="store.requestOpenFanqieGenerator()">换一批</n-button>
+        <n-button :loading="store.regenRunningCount > 0" @click="store.regenerateFanqieSeeds()">换一批</n-button>
         <n-button type="primary" @click="handleCreateWorks">生成作品</n-button>
       </div>
     </template>
