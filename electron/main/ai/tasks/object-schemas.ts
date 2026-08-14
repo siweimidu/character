@@ -22,6 +22,14 @@ const outlineItemSchema = z.object({
 })
 
 const taskObjectSchemas: Partial<Record<AiTaskName, z.ZodTypeAny>> = {
+  'prompt-generate': z.object({
+    entries: z.array(z.object({
+      title: stringField,
+      content: stringField,
+      tags: stringList,
+      remark: stringField
+    }))
+  }),
   'premise-enhance': z.object({
     premise: stringField
   }),

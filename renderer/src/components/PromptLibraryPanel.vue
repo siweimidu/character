@@ -26,6 +26,7 @@ import {
   NForm,
   NFormItem,
   NInput,
+  NInputNumber,
   NModal,
   NSelect,
   NTag,
@@ -64,6 +65,16 @@ const categoryManagerVisible = ref(false)
 const newCategoryName = ref('')
 const selectedEntryIds = ref<string[]>([])
 const importExportVisible = ref(false)
+
+// AI 生成提示词
+const aiGenerateVisible = ref(false)
+const aiGenerating = ref(false)
+const aiForm = reactive({
+  categoryId: '',
+  count: 5,
+  requirement: '',
+  random: false
+})
 
 // 编辑表单
 const form = reactive({
@@ -304,6 +315,92 @@ function submitEntry(): void {
   editorVisible.value = false
 }
 
+// ── AI 生成提示词 ──
+function openAiGenerate(): void {
+  aiForm.categoryId = activeCategoryId.value !== 'all' ? activeCategoryId.value : appStore.promptCategories[0]?.id || ''
+  aiForm.count = 5
+  aiForm.requirement = ''
+  aiForm.random = false
+  aiGenerateVisible.value = true
+}
+
+async function handleAiGenerate(): Promise<void> {
+  if (aiGenerating.value) return
+  const count = Math.min(20, Math.max(1, Math.floor(aiForm.count) || 1))
+  const requirement = aiForm.requirement.trim()
+  if (!aiForm.random && !requirement) {
+    message.warning('请填写提示词要求，或勾选「随机生成」')
+    return
+  }
+
+  aiGenerating.value = true
+  try {
+    const project = appStore.currentProject
+    const result = await appStore.runTrackedAiTask(
+      {
+        key: 'prompt-generate',
+        kind: 'other',
+        label: 'AI 生成写作提示词',
+        description: `正在生成 ${count} 条小说写作提示词`,
+        panel: 'prompts'
+      },
+      () =>
+        window.characterArc.generateAi({
+          task: 'prompt-generate',
+          settings: appStore.appSettings,
+          clientTaskId: appStore.getClientTaskId(),
+          context: {
+            count,
+            requirement,
+            random: aiForm.random,
+            projectId: project?.id,
+            projectTitle: project?.title,
+            projectGenre: project?.genre
+          }
+        })
+    )
+
+    if (!result.success || !result.result) {
+      message.error(result.error ?? 'AI 生成提示词失败')
+      return
+    }
+
+    const entries = (result.result as { entries?: Array<{ title?: string; content?: string; tags?: string[]; remark?: string }> })?.entries ?? []
+    if (!entries.length) {
+      message.warning('AI 没有返回有效的提示词')
+      return
+    }
+
+    let created = 0
+    entries.forEach((entry) => {
+      const content = String(entry.content ?? '').trim()
+      const title = String(entry.title ?? '').trim()
+      if (!content) return
+      appStore.createPromptEntry({
+        categoryId: aiForm.categoryId,
+        title: title || content.slice(0, 12),
+        content,
+        tags: Array.isArray(entry.tags) ? entry.tags.map(String).filter(Boolean) : [],
+        remark: String(entry.remark ?? ''),
+        isFavorite: false,
+        isPinned: false
+      })
+      created++
+    })
+
+    if (created) {
+      message.success(`AI 已生成并保存 ${created} 条提示词`)
+      aiGenerateVisible.value = false
+    } else {
+      message.warning('AI 返回的提示词为空，未保存任何内容')
+    }
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : 'AI 生成提示词失败')
+  } finally {
+    aiGenerating.value = false
+  }
+}
+
 function deletePrompt(entry: PromptEntry): void {
   dialog.warning({
     title: '确认删除提示词',
@@ -540,6 +637,10 @@ const batchMoveCategoryOptions = computed(() =>
         <n-button type="primary" strong @click="openCreateEditor()">
           <template #icon><Plus :size="16" /></template>
           新建提示词
+        </n-button>
+        <n-button type="tertiary" strong @click="openAiGenerate">
+          <template #icon><Sparkles :size="16" /></template>
+          AI 生成
         </n-button>
       </div>
     </div>
@@ -815,6 +916,70 @@ const batchMoveCategoryOptions = computed(() =>
       <template #footer>
         <span />
       </template>
+    </n-modal>
+
+    <!-- AI 生成提示词弹窗 -->
+    <n-modal
+      v-model:show="aiGenerateVisible"
+      preset="card"
+      title="AI 生成写作提示词"
+      :bordered="false"
+      style="width: min(560px, calc(100vw - 32px))"
+      @close="aiGenerateVisible = false"
+    >
+      <p class="type-manager-hint">
+        让 AI 为你批量生成适合小说写作的提示词模板（扩写、润色、对话、伏笔、大纲等），可直接保存到提示词库。
+      </p>
+      <n-form label-placement="top">
+        <n-form-item label="生成数量">
+          <n-input-number
+            v-model:value="aiForm.count"
+            :min="1"
+            :max="20"
+            :step="1"
+            style="width: 100%"
+          />
+        </n-form-item>
+        <n-form-item label="提示词要求（可选）">
+          <n-input
+            v-model:value="aiForm.requirement"
+            type="textarea"
+            placeholder="例如：偏重玄幻题材的剧情转折，或偏重古风氛围渲染..."
+            :disabled="aiForm.random"
+            :show-count="true"
+            :maxlength="500"
+          />
+        </n-form-item>
+        <n-form-item label="所属分类">
+          <n-select
+            v-model:value="aiForm.categoryId"
+            :options="categoryOptions"
+            placeholder="选择分类"
+            filterable
+          />
+        </n-form-item>
+        <label class="ai-random-toggle">
+          <input type="checkbox" v-model="aiForm.random" />
+          <span>随机生成（忽略上方要求，由 AI 自由挑选小说写作方向）</span>
+        </label>
+      </n-form>
+      <div class="type-manager-footer">
+        <span v-if="aiGenerating" class="ai-generating-tip">AI 正在生成中，请稍候...</span>
+        <span v-else></span>
+        <div class="arc-modal-footer-right">
+          <n-button round strong :disabled="aiGenerating" @click="aiGenerateVisible = false">取消</n-button>
+          <n-button
+            type="primary"
+            round
+            strong
+            :loading="aiGenerating"
+            @click="handleAiGenerate"
+          >
+            <template #icon><Sparkles :size="16" /></template>
+            开始生成
+          </n-button>
+        </div>
+      </div>
     </n-modal>
 
     <!-- 分类管理弹窗 -->
@@ -1449,6 +1614,29 @@ const batchMoveCategoryOptions = computed(() =>
   margin: 0 0 16px;
   color: var(--arc-text-muted);
   line-height: 1.7;
+}
+
+.ai-random-toggle {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--arc-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+
+.ai-random-toggle input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  accent-color: var(--arc-primary);
+  cursor: pointer;
+}
+
+.ai-generating-tip {
+  color: var(--arc-primary);
+  font-size: 13px;
 }
 
 .type-manager-add {

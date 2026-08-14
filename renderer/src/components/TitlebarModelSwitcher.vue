@@ -137,7 +137,8 @@ const taskLabelMap: Record<string, string> = {
   'catalog-batch:inspiration': '灵感批量生成',
   'catalog-batch:plot-thread': '伏笔线索批量生成',
   'cover-generate': '封面生成',
-  'ai-novel-from-reference': '按拆书风格生成作品'
+  'ai-novel-from-reference': '按拆书风格生成作品',
+  'prompt-generate': 'AI 生成写作提示词'
 }
 
 async function handleFetchModels(): Promise<void> {

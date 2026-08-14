@@ -123,6 +123,7 @@ export type AiTaskName =
   | 'continuation-import-chunk'
   | 'continuation-import-aggregate'
   | 'ai-novel-from-reference'
+  | 'prompt-generate'
 
 /**
  * AI 运行时注入 prompt 的知识条目。
@@ -471,6 +472,19 @@ export type InspirationPackResult = {
   entries: InspirationResult[]
 }
 
+/** 单条 AI 生成的提示词条目 */
+export type PromptGenerateEntry = {
+  title: string
+  content: string
+  tags: string[]
+  remark: string
+}
+
+/** AI 生成小说写作提示词结果 */
+export type PromptGenerateResult = {
+  entries: PromptGenerateEntry[]
+}
+
 /** 图鉴类数据的批量生成结果，由调用方根据 mode 解释字段。 */
 export type CatalogBatchResult = {
   entries: Array<Record<string, unknown>>
@@ -643,6 +657,7 @@ export type AiTaskResult =
   | ContinuationImportChunkResult
   | ContinuationImportAggregateResult
   | AiNovelFromReferenceResult
+  | PromptGenerateResult
 
 /** AI 任务的完整响应：结果 + 运行元数据 */
 export type AiTaskResponse = {

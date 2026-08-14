@@ -120,6 +120,10 @@ export function resolveMaxTokens(task?: AiTaskPayload): number | undefined {
       return 1200
     case 'chapter-scene-plan':
       return 400
+    case 'prompt-generate': {
+      const count = Math.min(20, Math.max(1, Number(task?.context?.count) || 5))
+      return Math.min(8000, 800 + count * 400)
+    }
     case 'chapter-first-draft':
       return resolveChapterDraftMaxTokens(task)
     case 'global-assistant':

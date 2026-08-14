@@ -54,6 +54,7 @@ import catalogBatch from './catalog-batch'
 import continuationImportChunk from './continuation-import-chunk'
 import continuationImportAggregate from './continuation-import-aggregate'
 import aiNovelFromReference from './ai-novel-from-reference'
+import promptGenerate from './prompt-generate'
 
 /** 任务处理器注册表，按任务名称映射 */
 const TASK_REGISTRY = new Map<AiTaskName, TaskHandler>()
@@ -117,6 +118,7 @@ register(catalogBatch)
 register(continuationImportChunk)
 register(continuationImportAggregate)
 register(aiNovelFromReference)
+register(promptGenerate)
 
 /**
  * 根据任务名称获取对应的任务处理器
