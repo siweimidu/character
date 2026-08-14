@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, h, reactive, ref, watch } from 'vue'
 import { Archive, BookMarked, Copy, FileJson, FileStack, FileText, FolderOpen, Lightbulb, Network, PenTool, Save, Upload, Users } from 'lucide-vue-next'
 import { NButton, NCard, NFormItem, NInput, NSelect, NTooltip, useMessage } from 'naive-ui'
 import { getPlainTextFromEditorContent } from '@/features/chapters/editorContent'
@@ -127,25 +127,65 @@ const styleForm = reactive({
 const availableSkills = ref<Array<{ id: string; name: string; description: string; scope?: 'builtin' | 'project'; group?: string }>>([])
 const isLoadingSkills = ref(false)
 
-/** 按分组名分组后的 skill，用于下拉展示分组标题 */
+/** 分组排序权重：内置分组在前，项目分组在后，未分组/根级靠前但不抢占内置分组 */
+const GROUP_SORT_WEIGHT: Record<string, number> = {
+  '内置 · 其他': 0,
+  '项目 Skills · 未分组': 1
+}
+
+/** 生成单个下拉选项（携带描述与作用域，供自定义渲染使用） */
+function toSkillOption(s: { id: string; name: string; description: string; scope?: 'builtin' | 'project' }): {
+  label: string
+  value: string
+  description: string
+  scope: string
+} {
+  return {
+    label: s.name,
+    value: s.id,
+    description: s.description || '暂无描述',
+    scope: s.scope === 'builtin' ? '内置' : '项目'
+  }
+}
+
+/**
+ * 按分组名分组后的 skill，用于下拉展示分组标题。
+ * 内置 skill 与项目 skill 均纳入可选绑定范围：内置分组在前，项目分组随后。
+ */
 const groupedAvailableSkills = computed(() => {
-  const groups = new Map<string, Array<{ label: string; value: string }>>()
+  const groups = new Map<string, Array<ReturnType<typeof toSkillOption>>>()
   for (const s of availableSkills.value) {
-    // 分组名：已分组的 skill 用其分组名，未分组的归入"未分组"
+    // 分组名：内置 skill 用"内置 · <分组>"，项目 skill 用其分组名或"未分组"
     const isBuiltin = s.scope === 'builtin'
     const groupName = isBuiltin
       ? `内置 · ${s.group || '其他'}`
       : (s.group || '项目 Skills · 未分组')
     if (!groups.has(groupName)) groups.set(groupName, [])
-    groups.get(groupName)!.push({ label: s.name, value: s.id })
+    groups.get(groupName)!.push(toSkillOption(s))
   }
   return Array.from(groups.entries())
     .map(([label, children]) => ({ type: 'group', label, children }))
-    .sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'))
+    .sort((a, b) => {
+      const aw = GROUP_SORT_WEIGHT[a.label] ?? (a.label.startsWith('内置') ? 0 : 2)
+      const bw = GROUP_SORT_WEIGHT[b.label] ?? (b.label.startsWith('内置') ? 0 : 2)
+      if (aw !== bw) return aw - bw
+      return a.label.localeCompare(b.label, 'zh-CN')
+    })
 })
 
 /** 供 NSelect 使用的 skill 选项（按分组展示） */
 const availableSkillOptions = computed(() => groupedAvailableSkills.value)
+
+/** 自定义下拉项渲染：名称 + 描述 + 作用域角标，让内置/项目 Skill 一目了然 */
+function renderSkillOption({ option }: { option: { label: string; description: string; scope: string } }) {
+  return h('div', { class: 'skill-option-cell' }, [
+    h('div', { class: 'skill-option-main' }, [
+      h('span', { class: 'skill-option-name' }, option.label),
+      h('span', { class: 'skill-option-scope', 'data-scope': option.scope }, option.scope)
+    ]),
+    h('span', { class: 'skill-option-desc' }, option.description)
+  ])
+}
 
 async function loadAvailableSkills(): Promise<void> {
   const projectId = appStore.currentProject?.id ?? ''
@@ -812,7 +852,7 @@ watch(
               </label>
               <label class="custom-field">
                 <span class="custom-field-label">绑定 Skill（可选）</span>
-                <span class="custom-field-tip">选择后，使用该风格时绑定的 Skill 方法论会自动生效。</span>
+                <span class="custom-field-tip">内置与项目 Skill 均可绑定，选择后使用该风格时对应方法论会自动生效。</span>
                 <n-select
                   v-model:value="styleForm.skillIds"
                   multiple
@@ -822,8 +862,11 @@ watch(
                   :options="availableSkillOptions"
                   :loading="isLoadingSkills"
                   :disabled="availableSkillOptions.length === 0"
-                  placeholder="从已导入的 Skill 中选择绑定"
-                  class="custom-input"
+                  placeholder="从内置或项目 Skill 中选择绑定"
+                  class="custom-input style-skill-select"
+                  :render-option="renderSkillOption"
+                  :max-tag-count="4"
+                  :menu-props="{ class: 'style-skill-menu' }"
                 />
               </label>
               <n-button type="primary" round strong block @click="saveCustomStyle">
@@ -1183,6 +1226,19 @@ watch(
   resize: vertical;
 }
 
+/* ── 绑定 Skill 下拉：输入框交互样式（作用域内生效） ── */
+.style-skill-select :deep(.n-base-selection) {
+  background: var(--arc-bg-surface);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.style-skill-select:hover :deep(.n-base-selection) {
+  border-color: color-mix(in srgb, var(--arc-primary) 45%, var(--arc-border));
+}
+.style-skill-select:focus-within :deep(.n-base-selection) {
+  border-color: color-mix(in srgb, var(--arc-primary) 55%, var(--arc-border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--arc-primary) 14%, transparent);
+}
+
 .style-footnote {
   color: var(--arc-text-secondary);
   font-size: 12px;
@@ -1496,5 +1552,116 @@ watch(
     flex-direction: column;
     align-items: flex-start;
   }
+}
+</style>
+
+<!-- 悬浮下拉卡片样式：naive-ui 下拉菜单以 teleport 渲染到 body，通过 menu-props 注入的 .style-skill-menu 类全局生效 -->
+<style>
+/* 自定义下拉项：名称 + 描述 + 作用域角标 */
+.skill-option-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 4px;
+}
+.skill-option-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.skill-option-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--arc-text-primary);
+}
+.skill-option-desc {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--arc-text-hint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.skill-option-scope {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.skill-option-scope[data-scope='内置'] {
+  background: color-mix(in srgb, #6366f1 12%, var(--arc-bg-surface));
+  color: #6366f1;
+}
+.skill-option-scope[data-scope='项目'] {
+  background: color-mix(in srgb, #0ea5e9 12%, var(--arc-bg-surface));
+  color: #0ea5e9;
+}
+
+/* 悬浮下拉卡片：毛玻璃质感（仅作用于绑定 Skill 下拉菜单） */
+.style-skill-menu {
+  border: 1px solid var(--arc-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--arc-bg-surface) 86%, transparent);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.14), 0 4px 14px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+}
+.style-skill-menu .n-base-select-option {
+  border-radius: 8px;
+}
+.style-skill-menu .n-base-select-option--selected {
+  background: color-mix(in srgb, var(--arc-primary) 12%, transparent);
+}
+
+/* 分组标题：带小圆点，层次更清晰 */
+.style-skill-menu .n-base-select-group-header {
+  position: relative;
+  padding-left: 18px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--arc-text-hint);
+}
+.style-skill-menu .n-base-select-group-header::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  transform: translateY(-50%);
+  background: color-mix(in srgb, var(--arc-primary) 70%, transparent);
+}
+
+/* 右侧透明侧滑条（滚动条）：细窄、圆角、半透明 */
+.style-skill-menu .n-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--arc-primary) 45%, transparent) transparent;
+}
+.style-skill-menu .n-scrollbar::-webkit-scrollbar {
+  width: 7px;
+}
+.style-skill-menu .n-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.style-skill-menu .n-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--arc-primary) 55%, transparent),
+    color-mix(in srgb, var(--arc-primary) 20%, transparent)
+  );
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.style-skill-menu .n-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--arc-primary) 70%, transparent);
 }
 </style>
