@@ -531,7 +531,12 @@ async function runExportSelectedSkills(): Promise<void> {
   try {
     const result = await window.characterArc.exportProjectSkills(
       currentProject.value?.id ?? '',
-      selectedSkillPaths.value,
+      // 注意：不能直接把 selectedSkillPaths.value 传给 IPC。
+      // Vue 的 ref 会让其 value 变成一个 reactive Proxy 数组，Electron 的 IPC
+      // （contextBridge / ipcRenderer.invoke）用 structuredClone 序列化参数时
+      // 无法克隆 Proxy，会抛出 “An object could not be cloned.”。
+      // 这里先展开成普通数组再跨进程传递，彻底规避该问题。
+      Array.from(selectedSkillPaths.value),
       exportFormat.value
     )
     if (!result.success) {
