@@ -639,12 +639,12 @@ export function registerAiIpcHandlers(injectedDeps: AiIpcDeps): void {
   })
 
   // ── 螺旋式深度生成 ──
-  /** 当前进行中的螺旋生成任务的 AbortController */
-  let activeSpiralController: AbortController | null = null
+  /** 当前进行中的螺旋生成任务集合，支持并行多次深度生成 */
+  const activeSpiralControllers = new Set<AbortController>()
 
   ipcMain.handle('characterarc:ai-spiral-bootstrap', async (event, payload: unknown) => {
     const controller = new AbortController()
-    activeSpiralController = controller
+    activeSpiralControllers.add(controller)
     try {
       const request = payload as Partial<SpiralBootstrapInput>
       if (!request.settings) throw new Error('缺少 AI 设置。')
@@ -675,13 +675,16 @@ export function registerAiIpcHandlers(injectedDeps: AiIpcDeps): void {
       }
       return { success: false, error: formatAiErrorMessage(error, '螺旋生成失败') }
     } finally {
-      activeSpiralController = null
+      activeSpiralControllers.delete(controller)
     }
   })
 
   ipcMain.handle('characterarc:ai-spiral-cancel', async () => {
-    if (!activeSpiralController) return { success: false, error: '没有正在进行的螺旋生成任务' }
-    activeSpiralController.abort()
+    if (activeSpiralControllers.size === 0) return { success: false, error: '没有正在进行的螺旋生成任务' }
+    // 取消所有进行中的螺旋生成任务，支持并行多次深度生成的统一停止
+    for (const controller of activeSpiralControllers) {
+      controller.abort()
+    }
     return { success: true }
   })
 

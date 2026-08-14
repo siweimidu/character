@@ -315,7 +315,10 @@ const initModalVisible = ref(false)
 const initMethod = ref<'deep' | 'quick' | 'off'>('deep')
 const initNovelLength = ref<NovelLength>('long')
 const pendingBuildSeeds = ref<FanqieSeedCandidate[]>([])
+// 仅用于防止同一弹窗实例内重复点击“开始构建”（弹窗关闭后即复位，不阻塞后续并行构建）
 const buildLoading = ref(false)
+// 后台正在运行的“生成作品”构建任务数（用于按钮文案与进度反馈）
+const buildRunningCount = ref(0)
 
 function toggleSeed(batchId: string, index: number): void {
   const idx = seedBatches.value.findIndex((b) => b.id === batchId)
@@ -522,10 +525,19 @@ async function confirmInitAndBuild(): Promise<void> {
   const novelLength = initNovelLength.value
   const methodLabel = method === 'deep' ? '深度生成' : method === 'quick' ? '快速生成' : '空白项目'
 
+  // 每次构建使用唯一任务 key（与“AI 生成新书选题”的后台并行批次一致），
+  // 即使后台已有相同构建任务在运行，也可以再次点击并行创建，不再被阻塞。
+  const buildTaskKey = `fanqie-build-works-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+  // 弹窗已关闭，立即复位按钮 loading，允许用户再次生成作品并并行构建
+  // （后台任务由全局进度面板按 buildTaskKey 跟踪）。
+  buildLoading.value = false
+  buildRunningCount.value += 1
+
   try {
     await appStore.runTrackedAiTask(
       {
-        key: 'fanqie-build-works',
+        key: buildTaskKey,
         kind: 'workflow',
         label: `创建 ${seeds.length} 个作品`,
         description: `${methodLabel} · 后台自动创建 ${seeds.length} 个新书项目`,
@@ -542,7 +554,7 @@ async function confirmInitAndBuild(): Promise<void> {
           const seed = seeds[i]
           const ws = await buildSeedWorkspace(seed, method, novelLength)
           workspaceSeeds.push(ws)
-          appStore.updateAiTaskProgress('fanqie-build-works', Math.round(((i + 1) / seeds.length) * 100))
+          appStore.updateAiTaskProgress(buildTaskKey, Math.round(((i + 1) / seeds.length) * 100))
         }
         // 全部生成完成后批量创建项目
         appStore.batchCreateProjects(workspaceSeeds)
@@ -555,7 +567,7 @@ async function confirmInitAndBuild(): Promise<void> {
       message.error(msg)
     }
   } finally {
-    buildLoading.value = false
+    buildRunningCount.value -= 1
   }
 }
 
@@ -1264,7 +1276,7 @@ async function handleExport(): Promise<void> {
       :mask-closable="false"
     >
       <p class="init-modal-hint">
-        将为勾选的 {{ pendingBuildSeeds.length }} 个新书选题创建项目。选择篇幅与初始化方式后，点击“开始构建”，系统会在后台自动为所有勾选的选题创建作品，无需跳转“新建作品”向导。
+        将为勾选的 {{ pendingBuildSeeds.length }} 个新书选题创建项目。选择篇幅与初始化方式后，点击“开始构建”，系统会在后台自动为所有勾选的选题创建作品，无需跳转“新建作品”向导。后台构建任务可并行多次进行{{ buildRunningCount > 0 ? `（当前后台已有 ${buildRunningCount} 个构建进行中）` : '' }}。
       </p>
       <!-- 篇幅选择：长篇 / 短篇 -->
       <div class="init-length-row">
@@ -1321,7 +1333,7 @@ async function handleExport(): Promise<void> {
       <div class="seed-modal-footer">
         <n-button @click="initModalVisible = false">取消</n-button>
         <n-button type="primary" :loading="buildLoading" :disabled="buildLoading" @click="confirmInitAndBuild">
-          {{ initMethod === 'off' ? '开始创建项目' : initMethod === 'deep' ? '开始深度构建' : '开始快速构建' }}
+          {{ initMethod === 'off' ? '开始创建项目' : initMethod === 'deep' ? '开始深度构建' : '开始快速构建' }}{{ buildRunningCount > 0 ? `（${buildRunningCount} 个构建中）` : '' }}
         </n-button>
       </div>
     </n-modal>
