@@ -499,6 +499,19 @@ const taskObjectSchemas: Partial<Record<AiTaskName, z.ZodTypeAny>> = {
       intensity: z.number().optional(),
       tags: z.array(z.union([stringField, z.object({ label: stringField })])).optional()
     }))
+  }),
+  'ai-novel-from-reference': z.object({
+    entries: z.array(z.object({
+      sourceTitle: stringField,
+      title: stringField,
+      concept: stringField,
+      genre: stringField,
+      hook: stringField,
+      protagonist: stringField,
+      goldFinger: stringField,
+      first3Hooks: stringList,
+      outline: stringField
+    }))
   })
 }
 

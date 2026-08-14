@@ -429,10 +429,26 @@ interface AiNovelCandidate {
   outline: string
 }
 
+// 可选目标题材列表
+const AI_NOVEL_GENRES = [
+  '都市',
+  '玄幻',
+  '悬疑',
+  '科幻',
+  '仙侠',
+  '历史',
+  '奇幻',
+  '武侠',
+  '游戏',
+  '现实',
+  '直播',
+  '体育'
+] as const
+
 // 选择参考书弹窗
 const aiNovelPickerVisible = ref(false)
 const aiNovelMode = ref<'fuse' | 'separate'>('fuse')
-const aiNovelTargetGenre = ref('')
+const aiNovelSelectedGenres = ref<string[]>([])
 const aiNovelSelectedIds = ref<string[]>([])
 
 // 结果弹窗
@@ -445,9 +461,35 @@ const aiNovelHasSelectedSeed = computed(() => aiNovelSelectedSeedIds.value.lengt
 
 function openAiNovelPicker(): void {
   aiNovelMode.value = 'fuse'
-  aiNovelTargetGenre.value = ''
+  aiNovelSelectedGenres.value = []
   aiNovelSelectedIds.value = []
   aiNovelPickerVisible.value = true
+}
+
+// 目标题材按钮：是否全部选中
+function isAiNovelAllGenresSelected(): boolean {
+  return aiNovelSelectedGenres.value.length === AI_NOVEL_GENRES.length
+}
+
+// 目标题材按钮：全选 / 取消全选
+function toggleAiNovelAllGenres(): void {
+  aiNovelSelectedGenres.value = isAiNovelAllGenresSelected()
+    ? []
+    : [...AI_NOVEL_GENRES]
+}
+
+// 目标题材按钮：切换单个题材选中状态
+function toggleAiNovelGenre(genre: string): void {
+  const index = aiNovelSelectedGenres.value.indexOf(genre)
+  if (index >= 0) {
+    aiNovelSelectedGenres.value = aiNovelSelectedGenres.value.filter((item) => item !== genre)
+  } else {
+    aiNovelSelectedGenres.value = [...aiNovelSelectedGenres.value, genre]
+  }
+}
+
+function isAiNovelGenreSelected(genre: string): boolean {
+  return aiNovelSelectedGenres.value.includes(genre)
 }
 
 function toggleAiNovelAll(): void {
@@ -518,7 +560,7 @@ async function handleAiNovelGenerate(): Promise<void> {
           settings: appStore.appSettings,
           context: {
             mode,
-            targetGenre: aiNovelTargetGenre.value.trim(),
+            targetGenre: aiNovelSelectedGenres.value.join('、'),
             references: buildAiNovelReferenceContext(pickedAssets)
           }
         }))
@@ -822,13 +864,25 @@ async function copyAiNovelCandidate(candidate: AiNovelCandidate): Promise<void> 
 
           <div class="ai-novel-mode-row">
             <span class="ai-novel-field-label">目标题材</span>
-            <n-input
-              v-model:value="aiNovelTargetGenre"
+            <n-button text size="small" @click="toggleAiNovelAllGenres">
+              {{ isAiNovelAllGenresSelected() ? '取消全选' : '全选' }}
+            </n-button>
+          </div>
+          <div class="ai-novel-genre-tags">
+            <n-tag
+              v-for="genre in AI_NOVEL_GENRES"
+              :key="genre"
+              :bordered="false"
+              round
               size="small"
-              clearable
-              class="ai-novel-genre-input"
-              placeholder="可选，如都市 / 玄幻 / 悬疑…"
-            />
+              class="ai-novel-genre-tag"
+              :type="isAiNovelGenreSelected(genre) ? 'primary' : 'default'"
+              :checkable="true"
+              :checked="isAiNovelGenreSelected(genre)"
+              @update:checked="toggleAiNovelGenre(genre)"
+            >
+              {{ genre }}
+            </n-tag>
           </div>
 
           <div class="ai-novel-select-head">
@@ -1232,8 +1286,15 @@ async function copyAiNovelCandidate(candidate: AiNovelCandidate): Promise<void> 
   flex-shrink: 0;
 }
 
-.ai-novel-genre-input {
-  width: 220px;
+.ai-novel-genre-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ai-novel-genre-tag {
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .ai-novel-select-head {
@@ -1388,10 +1449,6 @@ async function copyAiNovelCandidate(candidate: AiNovelCandidate): Promise<void> 
   .doc-item-top {
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .ai-novel-genre-input {
-    width: 100%;
   }
 }
 </style>
