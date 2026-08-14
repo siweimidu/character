@@ -240,6 +240,10 @@ defineExpose({ navigate, isEnabled })
   font-size: 10.5px;
   color: var(--arc-text-hint);
   font-family: 'JetBrains Mono', monospace;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .afs-empty {
   flex: 1;

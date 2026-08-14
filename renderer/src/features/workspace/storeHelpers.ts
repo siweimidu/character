@@ -32,6 +32,7 @@ import type {
   ReferenceStyleMetric,
   ProjectWorkspaceData,
   ThemeName,
+  SpeechProfile,
   VisionProfile,
   WorldviewEntry
 } from '@/types/app'
@@ -264,6 +265,14 @@ export const defaultAppSettings: AppSettings = {
   visionApiKey: '',
   visionBaseUrl: '',
   visionSavedModels: [],
+  speechProfileName: '',
+  speechProfiles: [],
+  activeSpeechProfileId: '',
+  speechProvider: '',
+  speechModel: '',
+  speechApiKey: '',
+  speechBaseUrl: '',
+  speechSavedModels: [],
   autoSaveInterval: '5m',
   editorFont: DEFAULT_EDITOR_FONT,
   editorMinimap: false,
@@ -395,6 +404,18 @@ function normalizeVisionProfile(profile: VisionProfile): VisionProfile {
   }
 }
 
+function normalizeSpeechProfile(profile: SpeechProfile): SpeechProfile {
+  return {
+    id: String(profile.id ?? '').trim(),
+    name: String(profile.name ?? '').trim(),
+    provider: String(profile.provider ?? '').trim(),
+    baseUrl: String(profile.baseUrl ?? '').trim(),
+    apiKey: String(profile.apiKey ?? '').trim(),
+    model: String(profile.model ?? '').trim(),
+    models: normalizeProfileModels(profile.models)
+  }
+}
+
 /** 线协议集合：与 types/app.ts 中 AppSettings.apiProtocol 定义保持一致。 */
 const API_PROTOCOLS = new Set<NonNullable<AppSettings['apiProtocol']>>([
   'auto',
@@ -476,6 +497,15 @@ export function normalizeAppSettings(settings?: Partial<AppSettings> | null): Ap
     activeVisionProfileId = visionProfiles[0]?.id ?? ''
   }
 
+  const speechProfiles = Array.isArray(source.speechProfiles)
+    ? source.speechProfiles.map(normalizeSpeechProfile).filter((profile) => profile.id)
+    : []
+  let activeSpeechProfileId = sanitizeSettingString(source.activeSpeechProfileId, '')
+  if (!activeSpeechProfileId && speechProfiles.length > 0) activeSpeechProfileId = speechProfiles[0].id
+  if (activeSpeechProfileId && !speechProfiles.find((p) => p.id === activeSpeechProfileId)) {
+    activeSpeechProfileId = speechProfiles[0]?.id ?? ''
+  }
+
   return {
     provider,
     model,
@@ -502,6 +532,16 @@ export function normalizeAppSettings(settings?: Partial<AppSettings> | null): Ap
     visionBaseUrl: sanitizeSettingString(source.visionBaseUrl, defaultAppSettings.visionBaseUrl),
     visionSavedModels: Array.isArray(source.visionSavedModels)
       ? source.visionSavedModels.map((m) => String(m).trim()).filter(Boolean).slice(0, 50)
+      : [],
+    speechProfileName: sanitizeSettingString(source.speechProfileName, defaultAppSettings.speechProfileName),
+    speechProfiles,
+    activeSpeechProfileId,
+    speechProvider: sanitizeSettingString(source.speechProvider, defaultAppSettings.speechProvider),
+    speechModel: sanitizeSettingString(source.speechModel, defaultAppSettings.speechModel),
+    speechApiKey: sanitizeSettingString(source.speechApiKey, defaultAppSettings.speechApiKey),
+    speechBaseUrl: sanitizeSettingString(source.speechBaseUrl, defaultAppSettings.speechBaseUrl),
+    speechSavedModels: Array.isArray(source.speechSavedModels)
+      ? source.speechSavedModels.map((m) => String(m).trim()).filter(Boolean).slice(0, 50)
       : [],
     autoSaveInterval: sanitizeSettingString(source.autoSaveInterval, defaultAppSettings.autoSaveInterval),
     editorFont: isEditorFont(source.editorFont) ? source.editorFont : defaultAppSettings.editorFont,

@@ -217,6 +217,7 @@ defineExpose({ loadPlugins, loadInstalled })
   display: flex;
   align-items: baseline;
   gap: 8px;
+  min-width: 0;
 }
 .apm-title {
   display: inline-flex;
@@ -225,11 +226,17 @@ defineExpose({ loadPlugins, loadInstalled })
   font-size: 13px;
   font-weight: 700;
   color: var(--arc-text-primary);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .apm-sub {
   font-size: 10px;
   font-family: var(--ga-mono, ui-monospace, monospace);
   color: var(--arc-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .apm-search {
   display: flex;
@@ -240,6 +247,7 @@ defineExpose({ loadPlugins, loadInstalled })
   border: 1px solid var(--arc-border);
   border-radius: 8px;
   background: var(--arc-bg-surface);
+  min-width: 0;
 }
 .apm-search-icon {
   color: var(--arc-text-hint);
@@ -253,6 +261,9 @@ defineExpose({ loadPlugins, loadInstalled })
   background: transparent;
   color: var(--arc-text-primary);
   font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .apm-search-btn {
   border: 1px solid color-mix(in srgb, var(--arc-primary) 40%, transparent);
@@ -269,6 +280,10 @@ defineExpose({ loadPlugins, loadInstalled })
   padding: 0 14px 8px;
   font-size: 10.5px;
   color: var(--arc-text-hint);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .apm-topic a {
   color: var(--arc-primary);
@@ -304,6 +319,7 @@ defineExpose({ loadPlugins, loadInstalled })
   border-radius: 10px;
   background: var(--arc-bg-surface);
   transition: all 0.15s ease;
+  min-width: 0;
 }
 .apm-item:hover {
   border-color: var(--arc-border-strong);
@@ -331,12 +347,18 @@ defineExpose({ loadPlugins, loadInstalled })
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 .apm-item-name {
   font-size: 12.5px;
   font-weight: 650;
   color: var(--arc-text-primary);
   text-decoration: none;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 .apm-item-name:hover {
   color: var(--arc-primary);
@@ -361,22 +383,32 @@ defineExpose({ loadPlugins, loadInstalled })
   font-size: 11px;
   color: var(--arc-text-secondary);
   line-height: 1.45;
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 .apm-item-meta {
   margin-top: 4px;
   font-size: 10px;
   color: var(--arc-text-hint);
   display: flex;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-width: 0;
 }
 .apm-item-repo {
   font-family: var(--ga-mono, ui-monospace, monospace);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 .apm-item-actions {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  flex: 0 0 auto;
 }
 .apm-import {
   display: inline-flex;

@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { Activity, Copy, Cpu, Download, ExternalLink, FileCode2, FileInput, Image, MonitorCog, Moon, Network, Palette, PlugZap, Plus, RefreshCw, ScanEye, Trash2 } from 'lucide-vue-next'
+import { Activity, AudioLines, Copy, Cpu, Download, ExternalLink, FileCode2, FileInput, Image, MonitorCog, Moon, Network, Palette, PlugZap, Plus, RefreshCw, ScanEye, Trash2 } from 'lucide-vue-next'
 import { NButton, NFormItem, NInput, NInputNumber, NModal, NSelect, NSlider, NSwitch, useMessage } from 'naive-ui'
 import { autoSaveOptions } from '@/features/settings/autoSave'
 import { getProviderPreset, providerOptions, resolveProviderDefaults } from '@/features/settings/providerPresets'
 import { AI_PROVIDER_CATALOG } from '@shared/ai-provider-catalog'
 import { imageProviderOptions, resolveImageProviderDefaults, resolveImageProviderWebsite } from '@/features/settings/imageProviderPresets'
 import { visionProviderOptions, resolveVisionProviderDefaults, resolveVisionProviderWebsite } from '@/features/settings/visionProviderPresets'
+import { speechProviderOptions, resolveSpeechProviderDefaults, resolveSpeechProviderWebsite } from '@/features/settings/speechProviderPresets'
 import { useAppStore } from '@/stores/app'
 import { darkModePresets, themePresets } from '@/theme/presets'
 import { toIpcPayload } from '@/utils/ipcPayload'
-import type { AiProfile, AppSettings, DarkModeStyle, ImageProfile, ThemeName, VisionProfile } from '@/types/app'
+import type { AiProfile, AppSettings, DarkModeStyle, ImageProfile, SpeechProfile, ThemeName, VisionProfile } from '@/types/app'
 
 const props = defineProps<{
   show: boolean
@@ -106,6 +107,9 @@ const isFetchingVisionModels = ref(false)
 const fetchedVisionModels = ref<Array<{ id: string; ownedBy: string | null }>>([])
 const isTestingVisionConnection = ref(false)
 const isBenchmarkingVisionModel = ref(false)
+const isFetchingSpeechModels = ref(false)
+const fetchedSpeechModels = ref<Array<{ id: string; ownedBy: string | null }>>([])
+const isTestingSpeechConnection = ref(false)
 
 const autoSaveSelectOptions = [...autoSaveOptions]
 const uiScaleOptions = [
@@ -155,6 +159,14 @@ const draftSettings = reactive<AppSettings>({
   visionProfiles: [],
   activeVisionProfileId: '',
   visionSavedModels: [],
+  speechProfileName: '',
+  speechProvider: '',
+  speechModel: '',
+  speechApiKey: '',
+  speechBaseUrl: '',
+  speechProfiles: [],
+  activeSpeechProfileId: '',
+  speechSavedModels: [],
   autoSaveInterval: '5m',
   editorFont: 'clear-mono',
   editorMinimap: false,
@@ -168,6 +180,7 @@ const draftTheme = ref<ThemeName>('ocean')
 const editingProfileId = ref<string>('')
 const editingImageProfileId = ref<string>('')
 const editingVisionProfileId = ref<string>('')
+const editingSpeechProfileId = ref<string>('')
 
 const editingProfile = computed<AiProfile | undefined>(() =>
   draftSettings.aiProfiles.find((p) => p.id === editingProfileId.value)
@@ -178,6 +191,9 @@ const editingImageProfile = computed<ImageProfile | undefined>(() =>
 const editingVisionProfile = computed<VisionProfile | undefined>(() =>
   draftSettings.visionProfiles.find((p) => p.id === editingVisionProfileId.value)
 )
+const editingSpeechProfile = computed<SpeechProfile | undefined>(() =>
+  draftSettings.speechProfiles.find((p) => p.id === editingSpeechProfileId.value)
+)
 const isEditingActiveProfile = computed(
   () => editingProfileId.value === draftSettings.activeAiProfileId
 )
@@ -187,6 +203,9 @@ const isEditingActiveImageProfile = computed(
 const isEditingActiveVisionProfile = computed(
   () => editingVisionProfileId.value === draftSettings.activeVisionProfileId
 )
+const isEditingActiveSpeechProfile = computed(
+  () => editingSpeechProfileId.value === draftSettings.activeSpeechProfileId
+)
 
 const scrollContainer = ref<HTMLElement | null>(null)
 const activeNav = ref('sec-ai')
@@ -195,6 +214,7 @@ const navItems = [
   { id: 'sec-network', label: '网络代理', icon: Network },
   { id: 'sec-image', label: '图片生成配置', icon: Image },
   { id: 'sec-vision', label: '图片识别配置', icon: ScanEye },
+  { id: 'sec-speech', label: '语音识别配置', icon: AudioLines },
   { id: 'sec-theme', label: '界面主题', icon: Palette },
   { id: 'sec-prefs', label: '应用偏好', icon: MonitorCog }
 ]
@@ -266,6 +286,9 @@ const imageModelSelectOptions = computed(() =>
 const visionModelSelectOptions = computed(() =>
   fetchedVisionModels.value.map((m) => ({ label: m.id, value: m.id }))
 )
+const speechModelSelectOptions = computed(() =>
+  fetchedSpeechModels.value.map((m) => ({ label: m.id, value: m.id }))
+)
 function syncDraftFromStore(): void {
   draftSettings.provider = appStore.appSettings.provider
   draftSettings.model = appStore.appSettings.model
@@ -292,6 +315,14 @@ function syncDraftFromStore(): void {
   draftSettings.visionProfiles = appStore.appSettings.visionProfiles.map((p) => ({ ...p }))
   draftSettings.activeVisionProfileId = appStore.appSettings.activeVisionProfileId
   draftSettings.visionSavedModels = [...(appStore.appSettings.visionSavedModels ?? [])]
+  draftSettings.speechProfileName = appStore.appSettings.speechProfileName
+  draftSettings.speechProvider = appStore.appSettings.speechProvider
+  draftSettings.speechModel = appStore.appSettings.speechModel
+  draftSettings.speechApiKey = appStore.appSettings.speechApiKey
+  draftSettings.speechBaseUrl = appStore.appSettings.speechBaseUrl
+  draftSettings.speechProfiles = appStore.appSettings.speechProfiles.map((p) => ({ ...p }))
+  draftSettings.activeSpeechProfileId = appStore.appSettings.activeSpeechProfileId
+  draftSettings.speechSavedModels = [...(appStore.appSettings.speechSavedModels ?? [])]
   draftSettings.autoSaveInterval = appStore.appSettings.autoSaveInterval
   draftSettings.editorFont = appStore.appSettings.editorFont
   draftSettings.uiScale = appStore.appSettings.uiScale
@@ -334,6 +365,7 @@ watch(
       editingProfileId.value = draftSettings.activeAiProfileId || draftSettings.aiProfiles[0]?.id || ''
       editingImageProfileId.value = draftSettings.activeImageProfileId || draftSettings.imageProfiles[0]?.id || ''
       editingVisionProfileId.value = draftSettings.activeVisionProfileId || draftSettings.visionProfiles[0]?.id || ''
+      editingSpeechProfileId.value = draftSettings.activeSpeechProfileId || draftSettings.speechProfiles[0]?.id || ''
       fetchedModels.value = []
     }
   },
@@ -823,6 +855,194 @@ function openImageProviderWebsite(): void {
   window.open(url, '_blank')
 }
 
+// ── 语音识别接口配置（新建 / 复制 / 删除，与 AI 接口配置一致） ──
+function selectSpeechProfile(profileId: string): void {
+  editingSpeechProfileId.value = profileId
+  const profile = editingSpeechProfile.value
+  if (profile) {
+    draftSettings.speechProfileName = profile.name
+    draftSettings.speechProvider = profile.provider
+    draftSettings.speechModel = profile.model
+    draftSettings.speechApiKey = profile.apiKey
+    draftSettings.speechBaseUrl = profile.baseUrl
+  }
+  fetchedSpeechModels.value = []
+}
+
+function generateUniqueSpeechName(base: string): string {
+  const existing = new Set(draftSettings.speechProfiles.map((p) => p.name))
+  if (!existing.has(base)) return base
+  let i = 2
+  while (existing.has(`${base} ${i}`)) i++
+  return `${base} ${i}`
+}
+
+function handleAddSpeechProfile(): void {
+  const id = generateProfileId()
+  const defaults = resolveSpeechProviderDefaults('speech-custom')
+  const newProfile: SpeechProfile = {
+    id,
+    name: generateUniqueSpeechName('语音识别配置'),
+    provider: 'speech-custom',
+    baseUrl: defaults.baseUrl,
+    apiKey: '',
+    model: defaults.model,
+    models: defaults.model ? [defaults.model] : []
+  }
+  draftSettings.speechProfiles.push(newProfile)
+  selectSpeechProfile(id)
+}
+
+function handleCopySpeechProfile(): void {
+  if (!editingSpeechProfile.value) return
+  const source = editingSpeechProfile.value
+  const id = generateProfileId()
+  const copy: SpeechProfile = {
+    id,
+    name: generateUniqueSpeechName(`${source.name} 副本`),
+    provider: source.provider,
+    baseUrl: source.baseUrl,
+    apiKey: source.apiKey,
+    model: source.model,
+    models: Array.isArray(source.models) ? [...source.models] : (source.model ? [source.model] : [])
+  }
+  draftSettings.speechProfiles.push(copy)
+  selectSpeechProfile(id)
+}
+
+function handleDeleteSpeechProfile(): void {
+  if (!editingSpeechProfile.value) return
+  if (isEditingActiveSpeechProfile.value) {
+    message.warning('当前激活的语音识别接口不能删除，请先切换到其他配置')
+    return
+  }
+  if (draftSettings.speechProfiles.length <= 1) {
+    message.warning('至少保留一个语音识别接口配置')
+    return
+  }
+  const removingId = editingSpeechProfileId.value
+  draftSettings.speechProfiles = draftSettings.speechProfiles.filter((p) => p.id !== removingId)
+  editingSpeechProfileId.value = draftSettings.activeSpeechProfileId || draftSettings.speechProfiles[0]?.id || ''
+  selectSpeechProfile(editingSpeechProfileId.value)
+}
+
+function updateEditingSpeechProfile(updates: Partial<SpeechProfile>): void {
+  const profile = editingSpeechProfile.value
+  if (!profile) return
+  Object.assign(profile, updates)
+  if (isEditingActiveSpeechProfile.value) {
+    if (updates.name !== undefined) draftSettings.speechProfileName = updates.name
+    if (updates.provider !== undefined) draftSettings.speechProvider = updates.provider
+    if (updates.model !== undefined) draftSettings.speechModel = updates.model
+    if (updates.apiKey !== undefined) draftSettings.speechApiKey = updates.apiKey
+    if (updates.baseUrl !== undefined) draftSettings.speechBaseUrl = updates.baseUrl
+  }
+}
+
+function speechProfileModels(): string[] {
+  return editingSpeechProfile.value?.models ?? []
+}
+
+function handleSaveSpeechProfileModel(): void {
+  const profile = editingSpeechProfile.value
+  if (!profile) return
+  const model = profile.model?.trim()
+  if (!model) {
+    message.warning('请先填写语音识别模型名称后再保存。')
+    return
+  }
+  const models = Array.isArray(profile.models) ? [...profile.models] : []
+  if (!models.includes(model)) {
+    models.push(model)
+    updateEditingSpeechProfile({ models: models.slice(0, 50) })
+    message.success(`已保存语音识别模型：${model}`)
+  } else {
+    message.info(`语音识别模型 ${model} 已在列表中。`)
+  }
+}
+
+function handleRemoveSpeechProfileModel(model: string): void {
+  const profile = editingSpeechProfile.value
+  if (!profile) return
+  updateEditingSpeechProfile({ models: (profile.models ?? []).filter((m) => m !== model) })
+  if (profile.model === model) updateEditingSpeechProfile({ model: '' })
+}
+
+function handleApplySpeechProfileModel(model: string): void {
+  updateEditingSpeechProfile({ model })
+  message.success(`已切换语音识别模型：${model}`)
+}
+
+function handleSpeechProviderChange(value: string): void {
+  const defaults = resolveSpeechProviderDefaults(value)
+  const updates: Partial<SpeechProfile> = {
+    provider: value,
+    model: defaults.model,
+    baseUrl: defaults.baseUrl
+  }
+  if (editingSpeechProfile.value) {
+    updateEditingSpeechProfile(updates)
+  } else {
+    draftSettings.speechProvider = value
+    draftSettings.speechModel = defaults.model
+    draftSettings.speechBaseUrl = defaults.baseUrl
+  }
+  fetchedSpeechModels.value = []
+}
+
+async function handleFetchSpeechModels(): Promise<void> {
+  if (isFetchingSpeechModels.value) return
+  isFetchingSpeechModels.value = true
+  try {
+    const profile = editingSpeechProfile.value
+    // 语音识别模型列表走 OpenAI 兼容接口，复用图片识别模型拉取逻辑
+    const result = await window.characterArc.fetchVisionModels(toIpcPayload({
+      ...draftSettings,
+      visionBaseUrl: profile?.baseUrl ?? draftSettings.speechBaseUrl,
+      visionApiKey: profile?.apiKey ?? draftSettings.speechApiKey
+    }))
+    if (!result.success) throw new Error(result.error ?? '获取语音识别模型列表失败')
+    fetchedSpeechModels.value = result.result ?? []
+    if (fetchedSpeechModels.value.length === 0) {
+      message.warning('该接口未返回任何可用语音识别模型，请手动输入模型名称。')
+    } else {
+      message.success(`获取到 ${fetchedSpeechModels.value.length} 个可用模型`)
+    }
+  } catch (error) {
+    fetchedSpeechModels.value = []
+    message.error(error instanceof Error ? error.message : '获取语音识别模型列表失败')
+  } finally {
+    isFetchingSpeechModels.value = false
+  }
+}
+
+async function handleTestSpeechConnection(): Promise<void> {
+  if (isTestingSpeechConnection.value) return
+  isTestingSpeechConnection.value = true
+  try {
+    const profile = editingSpeechProfile.value
+    // 语音识别连接测试走 OpenAI 兼容接口，复用图片识别连接测试逻辑
+    const result = await window.characterArc.testVisionConnection(toIpcPayload({
+      ...draftSettings,
+      visionModel: profile?.model ?? draftSettings.speechModel,
+      visionApiKey: profile?.apiKey ?? draftSettings.speechApiKey,
+      visionBaseUrl: profile?.baseUrl ?? draftSettings.speechBaseUrl
+    }))
+    if (!result.success) throw new Error(result.error ?? '语音识别连接测试失败')
+    const res = result.result as { provider?: string; model?: string; protocol?: string } | undefined
+    message.success(`语音识别连接测试成功：${res?.model ?? (profile?.model ?? draftSettings.speechModel)} / ${res?.protocol ?? 'auto'}`)
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '语音识别连接测试失败')
+  } finally {
+    isTestingSpeechConnection.value = false
+  }
+}
+
+function openSpeechProviderWebsite(): void {
+  const url = resolveSpeechProviderWebsite(draftSettings.speechProvider)
+  window.open(url, '_blank')
+}
+
 
 function buildProfilePayload(): AppSettings {
   const profile = editingProfile.value
@@ -1029,6 +1249,7 @@ async function saveSettings(): Promise<void> {
   const activeProfile = draftSettings.aiProfiles.find(p => p.id === draftSettings.activeAiProfileId)
   const activeImageProfile = draftSettings.imageProfiles.find(p => p.id === draftSettings.activeImageProfileId)
   const activeVisionProfile = draftSettings.visionProfiles.find(p => p.id === draftSettings.activeVisionProfileId)
+  const activeSpeechProfile = draftSettings.speechProfiles.find(p => p.id === draftSettings.activeSpeechProfileId)
   const nextSettings: AppSettings = {
     ...draftSettings,
     aiProfiles: draftSettings.aiProfiles.map((profile) => ({ ...profile })),
@@ -1052,7 +1273,14 @@ async function saveSettings(): Promise<void> {
     visionProvider: activeVisionProfile?.provider ?? draftSettings.visionProvider,
     visionModel: activeVisionProfile?.model ?? draftSettings.visionModel,
     visionApiKey: activeVisionProfile?.apiKey ?? draftSettings.visionApiKey,
-    visionBaseUrl: activeVisionProfile?.baseUrl ?? draftSettings.visionBaseUrl
+    visionBaseUrl: activeVisionProfile?.baseUrl ?? draftSettings.visionBaseUrl,
+    speechProfiles: draftSettings.speechProfiles.map((profile) => ({ ...profile })),
+    activeSpeechProfileId: draftSettings.activeSpeechProfileId,
+    speechProfileName: activeSpeechProfile?.name ?? draftSettings.speechProfileName,
+    speechProvider: activeSpeechProfile?.provider ?? draftSettings.speechProvider,
+    speechModel: activeSpeechProfile?.model ?? draftSettings.speechModel,
+    speechApiKey: activeSpeechProfile?.apiKey ?? draftSettings.speechApiKey,
+    speechBaseUrl: activeSpeechProfile?.baseUrl ?? draftSettings.speechBaseUrl
   }
 
   const saved = await appStore.saveAppSettingsDraft(nextSettings, draftTheme.value)
@@ -1740,6 +1968,171 @@ async function saveSettings(): Promise<void> {
                 {{ isBenchmarkingVisionModel ? '测试中...' : '测试模型性能' }}
               </n-button>
               <n-button strong secondary @click="openVisionProviderWebsite">
+                <template #icon><ExternalLink :size="16" /></template>
+                打开模型厂商官网
+              </n-button>
+            </div>
+          </template>
+        </section>
+
+        <section id="sec-speech" class="settings-section">
+          <div class="section-title section-title--actions">
+            <AudioLines :size="18" />
+            <div class="section-title-copy">
+              <strong>语音识别配置</strong>
+              <p>语音输入自动转文字填入输入框，支持多套语音识别服务配置新建、复制与删除。</p>
+            </div>
+            <div class="profile-tab-actions">
+              <button class="profile-action-btn" title="新建配置" @click="handleAddSpeechProfile">
+                <Plus :size="14" />
+              </button>
+              <button class="profile-action-btn" title="复制当前配置" :disabled="!editingSpeechProfile" @click="handleCopySpeechProfile">
+                <Copy :size="14" />
+              </button>
+              <button
+                class="profile-action-btn profile-action-btn--danger"
+                title="删除当前配置"
+                :disabled="!editingSpeechProfile || isEditingActiveSpeechProfile || draftSettings.speechProfiles.length <= 1"
+                @click="handleDeleteSpeechProfile"
+              >
+                <Trash2 :size="14" />
+              </button>
+            </div>
+          </div>
+
+          <div class="profile-tabs">
+            <div class="profile-tab-list">
+              <button
+                v-for="profile in draftSettings.speechProfiles"
+                :key="profile.id"
+                class="profile-tab"
+                :class="{
+                  active: editingSpeechProfileId === profile.id,
+                  'is-active-profile': profile.id === draftSettings.activeSpeechProfileId
+                }"
+                @click="selectSpeechProfile(profile.id)"
+              >
+                <span class="profile-tab-name">{{ profile.name }}</span>
+                <span v-if="profile.id === draftSettings.activeSpeechProfileId" class="profile-tab-badge">当前</span>
+              </button>
+            </div>
+          </div>
+
+          <template v-if="editingSpeechProfile">
+            <div class="settings-grid">
+              <n-form-item label="配置名称">
+                <n-input
+                  :value="editingSpeechProfile.name"
+                  placeholder="例如：我的语音识别接口"
+                  @update:value="(value) => updateEditingSpeechProfile({ name: value })"
+                />
+              </n-form-item>
+              <n-form-item label="模型厂商">
+                <n-select
+                  :options="speechProviderOptions"
+                  :value="editingSpeechProfile.provider"
+                  placeholder="选择预设快速填充模型和地址"
+                  clearable
+                  @update:value="(value) => handleSpeechProviderChange(value ?? '')"
+                />
+              </n-form-item>
+            </div>
+            <p class="settings-grid-hint">切换预设仅更新模型名和 Base URL，API Key 不会被覆盖。</p>
+            <div class="settings-grid">
+              <n-form-item label="模型名称">
+                <div class="model-input-row">
+                  <n-select
+                    v-if="fetchedSpeechModels.length > 0"
+                    :options="speechModelSelectOptions"
+                    :value="editingSpeechProfile.model"
+                    filterable
+                    tag
+                    placeholder="选择或输入语音识别模型名称"
+                    @update:value="(value: string) => updateEditingSpeechProfile({ model: value })"
+                  />
+                  <n-input
+                    v-else
+                    :value="editingSpeechProfile.model"
+                    placeholder="例如：whisper-1 / paraformer-realtime-v2"
+                    @update:value="(value) => updateEditingSpeechProfile({ model: value })"
+                  />
+                  <n-button
+                    quaternary
+                    class="model-fetch-btn"
+                    :disabled="isFetchingSpeechModels || !editingSpeechProfile.baseUrl.trim()"
+                    @click="handleFetchSpeechModels"
+                  >
+                    <template #icon>
+                      <RefreshCw v-if="fetchedSpeechModels.length > 0" :size="16" :class="{ 'spin-icon': isFetchingSpeechModels }" />
+                      <Download v-else :size="16" :class="{ 'spin-icon': isFetchingSpeechModels }" />
+                    </template>
+                  </n-button>
+                </div>
+              </n-form-item>
+              <n-form-item label="API Key">
+                <n-input
+                  type="password"
+                  show-password-on="click"
+                  :value="editingSpeechProfile.apiKey"
+                  placeholder="语音识别接口专用 API Key"
+                  @update:value="(value) => updateEditingSpeechProfile({ apiKey: value })"
+                />
+              </n-form-item>
+            </div>
+            <div class="settings-grid">
+              <n-form-item label="Base URL">
+                <n-input
+                  :value="editingSpeechProfile.baseUrl"
+                  placeholder="例如：https://api.openai.com/v1"
+                  @update:value="(value) => updateEditingSpeechProfile({ baseUrl: value })"
+                />
+              </n-form-item>
+            </div>
+            <p class="settings-grid-hint">海外 / 本地自托管 / 聚合中转多支持 OpenAI 兼容的 /audio/transcriptions 接口；国内厂商请按各自文档配置鉴权。</p>
+            <div class="saved-models-block">
+              <div class="saved-models-head">
+                <span class="saved-models-title">已保存的模型</span>
+                <span class="saved-models-count">{{ speechProfileModels().length }} 个</span>
+                <button
+                  class="saved-models-add"
+                  type="button"
+                  :disabled="!editingSpeechProfile.model.trim()"
+                  @click="handleSaveSpeechProfileModel"
+                >
+                  <Plus :size="13" />
+                  保存当前模型
+                </button>
+              </div>
+              <div v-if="speechProfileModels().length === 0" class="saved-models-empty">
+                暂无已保存的语音识别模型，输入模型名称后点击「保存当前模型」即可维护多个模型 ID。
+              </div>
+              <div v-else class="saved-models-list">
+                <button
+                  v-for="model in speechProfileModels()"
+                  :key="model"
+                  class="saved-model-chip"
+                  :class="{ 'is-current': model === editingSpeechProfile.model }"
+                  type="button"
+                  @click="handleApplySpeechProfileModel(model)"
+                >
+                  <span class="saved-model-name">{{ model }}</span>
+                  <span class="saved-model-remove" title="移除该模型" @click.stop="handleRemoveSpeechProfileModel(model)">
+                    <Trash2 :size="12" />
+                  </span>
+                </button>
+              </div>
+            </div>
+            <div class="model-test-row">
+              <n-button
+                strong
+                secondary
+                :disabled="!editingSpeechProfile.model.trim() || !editingSpeechProfile.baseUrl.trim() || isTestingSpeechConnection"
+                @click="handleTestSpeechConnection"
+              >
+                <template #icon><PlugZap :size="16" /></template>
+                {{ isTestingSpeechConnection ? '测试中...' : '测试模型连接' }}
+              </n-button>
+              <n-button strong secondary @click="openSpeechProviderWebsite">
                 <template #icon><ExternalLink :size="16" /></template>
                 打开模型厂商官网
               </n-button>

@@ -1,8 +1,23 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { NButton } from 'naive-ui'
-import { Bookmark, Paperclip, Plus, Square, Trash2, Undo2, Upload, X } from 'lucide-vue-next'
+import {
+  Bookmark,
+  FolderTree,
+  Mic,
+  Paperclip,
+  Plug,
+  Plus,
+  Puzzle,
+  Square,
+  Terminal,
+  Trash2,
+  Undo2,
+  Upload,
+  X
+} from 'lucide-vue-next'
 import type { TurnAttachment } from '@shared/assistant-runtime'
+import type { AgentModuleRuntime } from '@shared/agent-modules'
 import PromptLibrary from './PromptLibrary.vue'
 
 const props = withDefaults(defineProps<{
@@ -19,8 +34,11 @@ const props = withDefaults(defineProps<{
   skills?: Array<{ id: string; name: string; description?: string }>
   /** 项目 ID：用于斜杠唤起提示词库（按项目隔离持久化）。 */
   projectId?: string | null | undefined
+  /** 已启用的能力模块列表（用于展示能力快捷按钮） */
+  enabledModules?: AgentModuleRuntime[]
 }>(), {
-  projectId: undefined
+  projectId: undefined,
+  enabledModules: () => []
 })
 
 const emit = defineEmits<{
@@ -36,11 +54,43 @@ const emit = defineEmits<{
   (e: 'cancel'): void
   (e: 'edit-last'): void
   (e: 'clear-restored'): void
+  /** 点击语音按钮 */
+  (e: 'voice-input'): void
 }>()
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 let lastEscapeAt = 0
+
+/** 能力模块图标映射。 */
+const moduleIconMap: Record<string, unknown> = {
+  FolderTree,
+  Terminal,
+  Plug,
+  Mic,
+  Puzzle
+}
+
+/** 能力模块的简短使用提示。 */
+const moduleTipMap: Record<string, string> = {
+  'filesystem.workspace': '可直接要求读/写/搜索项目文件',
+  'filesystem.system': '可直接要求操作电脑任意路径文件',
+  'exec.shell': '可直接要求运行命令/执行脚本',
+  'mcp.market': '可要求调用 MCP 工具',
+  'speech.asr': '点击 🎤 可语音输入',
+  'browser.ego': '可要求操作浏览器/打开网页',
+  'automation.desktop': '可要求打开/操作桌面应用',
+  'multimedia.video': '可要求剪辑/转换视频',
+  'knowledge.memory': '自动生效（创作记忆/知识检索）',
+  'delegate.subagent': '可要求并行处理任务',
+  'network.http': '可要求抓取网页/调用 API',
+  'plugin.market': '导入的插件能力自动生效'
+}
+
+/** 是否有语音转文字能力。 */
+const hasSpeech = computed(() =>
+  (props.enabledModules ?? []).some((m) => m.kind === 'speech' && m.enabled)
+)
 
 /** 斜杠命令快捷指令：输入框内以 / 触发，选中后填充模板并附带 intentHint。 */
 interface SlashCommandDef {
@@ -694,6 +744,21 @@ watch(
           </div>
         </div>
       </div>
+      <!-- 已启用能力模块提示栏：展示当前可用的能力 -->
+      <div v-if="props.enabledModules && props.enabledModules.length > 0" class="cap-bar">
+        <span class="cap-bar-label">已启用</span>
+        <div class="cap-bar-items">
+          <span
+            v-for="mod in props.enabledModules"
+            :key="mod.id"
+            class="cap-chip"
+            :title="moduleTipMap[mod.id] || mod.description || '在对话中描述需求即可调用'"
+          >
+            <component :is="moduleIconMap[mod.icon] ?? Puzzle" :size="11" />
+            <span class="cap-chip-name">{{ mod.name }}</span>
+          </span>
+        </div>
+      </div>
       <textarea
         ref="textareaRef"
         :value="props.modelValue"
@@ -711,6 +776,16 @@ watch(
           </span>
         </div>
         <div class="actions">
+          <NButton
+            v-if="hasSpeech && !props.isStreaming"
+            size="small"
+            title="语音转文字（已启用）"
+            type="info"
+            secondary
+            @click="emit('voice-input')"
+          >
+            <template #icon><Mic :size="13" /></template>
+          </NButton>
           <NButton
             size="small"
             title="添加文件引用（当前章节）"
@@ -1280,5 +1355,55 @@ textarea::placeholder {
 .actions {
   display: flex;
   gap: 6px;
+}
+/* 已启用能力模块提示栏 */
+.cap-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--arc-bg-weak);
+  border: 1px solid var(--arc-border);
+  min-width: 0;
+}
+.cap-bar-label {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--arc-text-hint);
+  padding-top: 1px;
+}
+.cap-bar-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  min-width: 0;
+  flex: 1;
+}
+.cap-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--arc-primary) 10%, var(--arc-bg-surface));
+  border: 1px solid color-mix(in srgb, var(--arc-primary) 24%, var(--arc-border));
+  color: var(--arc-primary);
+  font-size: 10.5px;
+  cursor: default;
+  white-space: nowrap;
+}
+.cap-chip svg {
+  flex-shrink: 0;
+}
+.cap-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

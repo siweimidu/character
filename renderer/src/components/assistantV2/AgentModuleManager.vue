@@ -14,6 +14,7 @@ import {
   Film,
   FolderTree,
   Globe,
+  Info,
   Mic,
   Network,
   Plug,
@@ -24,6 +25,10 @@ import {
 import type { AgentModuleRuntime } from '@shared/agent-modules'
 
 const message = useMessage()
+
+const emit = defineEmits<{
+  (e: 'change'): void
+}>()
 
 const modules = ref<AgentModuleRuntime[]>([])
 const loading = ref(false)
@@ -41,6 +46,58 @@ const iconMap: Record<string, unknown> = {
   Network,
   Puzzle,
   Box
+}
+
+/** 各模块的使用说明（如何调用 / 如何触发）。 */
+const usageHintMap: Record<string, { hint: string; example: string }> = {
+  'filesystem.workspace': {
+    hint: '自动启用，在对话中直接要求「读取/写入/搜索项目文件」即可。',
+    example: '例：帮我读一下 chapter1.md'
+  },
+  'filesystem.system': {
+    hint: '启用后在对话中要求「读取/写入电脑任意路径的文件」即可。',
+    example: '例：读取 C:\\Users\\me\\notes.txt'
+  },
+  'exec.shell': {
+    hint: '启用后在对话中要求「运行命令 / 执行脚本」即可。',
+    example: '例：用 python 写个脚本统计这些文本的字数'
+  },
+  'mcp.market': {
+    hint: '先在「MCP 市场」页导入所需工具，再在对话中直接提及。',
+    example: '例：用 MCP 工具查询天气 / 读取数据库'
+  },
+  'speech.asr': {
+    hint: '启用后输入框底部出现语音按钮，点击即可语音输入。',
+    example: '例：点击 🎤 按钮开始录音转文字'
+  },
+  'browser.ego': {
+    hint: '启用后在对话中要求「打开网页 / 操作浏览器」即可。',
+    example: '例：帮我打开 google.com 搜索「写作技巧」'
+  },
+  'automation.desktop': {
+    hint: '启用后在对话中要求「打开/操作某个应用」即可（受权限门控）。',
+    example: '例：帮我打开微信并给某某发消息'
+  },
+  'multimedia.video': {
+    hint: '启用后在对话中要求「剪辑/转换视频文件」即可。',
+    example: '例：把这个 mp4 剪掉前 10 秒'
+  },
+  'knowledge.memory': {
+    hint: '自动启用，通过创作记忆、知识文档和项目检索自动生效。',
+    example: '例：帮我整理当前项目的创作记忆'
+  },
+  'delegate.subagent': {
+    hint: '自动启用，在对话中要求「并行处理多个任务」时自动触发。',
+    example: '例：同时帮我完善三个人物的设定'
+  },
+  'network.http': {
+    hint: '启用后在对话中要求「抓取网页 / 调用 API」即可。',
+    example: '例：帮我抓取这个网页的内容'
+  },
+  'plugin.market': {
+    hint: '启用后从插件市场导入的插件能力自动生效。',
+    example: '例：在插件市场导入后，在对话中按插件说明使用'
+  }
 }
 
 const riskLabels: Record<string, { text: string; cls: string }> = {
@@ -74,6 +131,7 @@ async function toggleModule(mod: AgentModuleRuntime): Promise<void> {
     await window.characterArc.agentModules.setEnabled({ id: mod.id, enabled: next })
     mod.enabled = next
     message.success(next ? `已启用「${mod.name}」` : `已停用「${mod.name}」`)
+    emit('change')
   } catch (e) {
     message.error(e instanceof Error ? e.message : '切换模块失败')
   }
@@ -113,9 +171,19 @@ defineExpose({ loadModules })
             >{{ riskLabels[mod.risk]?.text ?? mod.risk }}</span>
           </div>
           <div class="am-desc">{{ mod.description }}</div>
+          <div class="am-usage" :class="{ active: mod.enabled }">
+            <Info :size="11" />
+            <span>{{ usageHintMap[mod.id]?.hint ?? '在对话中直接描述需求即可调用。' }}</span>
+          </div>
+          <div v-if="mod.enabled && usageHintMap[mod.id]" class="am-example">
+            {{ usageHintMap[mod.id]?.example }}
+          </div>
           <div class="am-meta">
             <span v-if="mod.usageCount > 0">已用 {{ mod.usageCount }} 次</span>
             <span v-if="mod.source === 'marketplace'">市场导入</span>
+            <span v-if="mod.toolNames && mod.toolNames.length" class="am-tools">
+              {{ mod.toolNames.slice(0, 4).join(', ') }}<template v-if="mod.toolNames.length > 4">…</template>
+            </span>
           </div>
         </div>
         <button
@@ -144,15 +212,22 @@ defineExpose({ loadModules })
   display: flex;
   align-items: baseline;
   gap: 8px;
+  min-width: 0;
 }
 .am-title {
   font-size: 13px;
   font-weight: 700;
   color: var(--arc-text-primary);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .am-sub {
   font-size: 11px;
   color: var(--arc-text-hint);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .am-empty {
   padding: 24px 16px;
@@ -178,6 +253,7 @@ defineExpose({ loadModules })
   border: 1px solid var(--arc-border);
   background: var(--arc-bg-surface);
   transition: all 0.15s ease;
+  min-width: 0;
 }
 .am-item.disabled {
   opacity: 0.55;
@@ -208,6 +284,14 @@ defineExpose({ loadModules })
   font-size: 12.5px;
   font-weight: 650;
   color: var(--arc-text-primary);
+  min-width: 0;
+}
+.am-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
 }
 .am-name-text {
   min-width: 0;
@@ -223,6 +307,8 @@ defineExpose({ loadModules })
   border-radius: 999px;
   font-weight: 600;
   white-space: nowrap;
+  flex-shrink: 0;
+  flex: 0 0 auto;
 }
 .risk-low { background: rgba(4,120,87,0.12); color: #047857; }
 .risk-med { background: rgba(180,83,9,0.12); color: #b45309; }
@@ -234,12 +320,56 @@ defineExpose({ loadModules })
   color: var(--arc-text-secondary);
   line-height: 1.45;
 }
+.am-usage {
+  margin-top: 6px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: var(--arc-bg-weak);
+  border: 1px solid var(--arc-border);
+  font-size: 10.5px;
+  color: var(--arc-text-hint);
+  line-height: 1.4;
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 0;
+}
+.am-usage svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.am-usage span {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+.am-usage.active {
+  border-color: color-mix(in srgb, var(--arc-primary) 22%, var(--arc-border));
+  background: color-mix(in srgb, var(--arc-primary) 6%, var(--arc-bg-surface));
+  color: var(--arc-text-secondary);
+}
+.am-example {
+  margin-top: 3px;
+  font-size: 10px;
+  font-family: var(--ga-mono, ui-monospace, monospace);
+  color: var(--arc-primary);
+  opacity: 0.85;
+  padding-left: 1px;
+}
 .am-meta {
   margin-top: 4px;
   font-size: 10px;
   color: var(--arc-text-hint);
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
+}
+.am-tools {
+  font-family: var(--ga-mono, ui-monospace, monospace);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .am-toggle {
   border: none;

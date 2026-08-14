@@ -13,8 +13,10 @@ import {
   Users
 } from 'lucide-vue-next'
 import type { SurfaceDefinition, TurnTruncateResult } from '@shared/assistant-runtime'
+import type { AgentModuleRuntime } from '@shared/agent-modules'
 import { useAppStore } from '@/stores/app'
 import { useAssistant } from '@/composables/useAssistant'
+import { createSpeechRecorder, startBrowserSpeech } from '@/features/settings/speechInput'
 import AssistantSessionList from './AssistantSessionList.vue'
 import AssistantMessages from './AssistantMessages.vue'
 import AssistantComposer from './AssistantComposer.vue'
@@ -43,6 +45,104 @@ const composerValue = computed({
   get: () => assistant.composerValue.value,
   set: (v) => { assistant.composerValue.value = v }
 })
+
+// 已启用能力模块（供输入框展示能力提示）
+const enabledModules = ref<AgentModuleRuntime[]>([])
+async function refreshEnabledModules(): Promise<void> {
+  try {
+    const all = await window.characterArc.agentModules.list()
+    enabledModules.value = all.filter((m) => m.enabled)
+  } catch {
+    enabledModules.value = []
+  }
+}
+
+// 语音输入
+const speechListening = ref(false)
+let speechRecognition: {
+  lang: string
+  continuous: boolean
+  interimResults: boolean
+  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null
+  onend: (() => void) | null
+  onerror: ((e: { error: string }) => void) | null
+  start: () => void
+  stop: () => void
+  abort: () => void
+} | null = null
+let speechRecorder: ReturnType<typeof createSpeechRecorder> | null = null
+const isTranscribing = ref(false)
+
+/** 是否已配置语音识别厂商（使用厂商 API 而非浏览器原生） */
+function hasSpeechProviderConfig(): boolean {
+  const s = appStore.appSettings
+  return Boolean(s.speechBaseUrl?.trim() && s.speechApiKey?.trim() && s.speechModel?.trim())
+}
+
+/** 使用配置的语音识别厂商进行识别（OpenAI 兼容 /audio/transcriptions）。 */
+function startProviderSpeechRecognition(): void {
+  const settings = appStore.appSettings
+  if (speechRecorder) {
+    speechRecorder.abort()
+    speechRecorder = null
+    speechListening.value = false
+    return
+  }
+  speechRecorder = createSpeechRecorder(async (audioData, mimeType) => {
+    isTranscribing.value = true
+    try {
+      const res = await window.characterArc.transcribeSpeech({ settings, audioData, audioType: mimeType })
+      if (!res.success) throw new Error(res.error ?? '语音识别失败')
+      const text = res.result?.text?.trim()
+      if (text) {
+        composerValue.value = text
+        message.success('语音识别完成')
+      } else {
+        message.warning('未识别到语音内容')
+      }
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '语音识别失败')
+    } finally {
+      isTranscribing.value = false
+      speechRecorder = null
+      speechListening.value = false
+    }
+  })
+  speechRecorder.start().then(() => {
+    speechListening.value = true
+    message.success('开始录音，请说话…（再次点击停止）')
+  }).catch(() => {
+    speechRecorder = null
+    message.error('无法访问麦克风，请检查系统权限；或改用浏览器原生语音输入。')
+  })
+}
+
+function handleVoiceInput(): void {
+  if (speechListening.value || isTranscribing.value) {
+    speechRecognition?.stop()
+    speechRecorder?.stop()
+    speechListening.value = false
+    return
+  }
+  // 已配置语音识别厂商：走厂商 API
+  if (hasSpeechProviderConfig()) {
+    startProviderSpeechRecognition()
+    return
+  }
+  // 回退：浏览器原生 Web Speech API
+  const browser = startBrowserSpeech((text) => {
+    if (text) composerValue.value = text
+  }, () => {
+    speechListening.value = false
+  })
+  if (!browser.supported) {
+    message.warning('未配置语音识别厂商且当前环境不支持浏览器语音输入，请使用 Chrome/Edge，或在「设置 → 语音识别配置」中填写厂商信息。')
+    return
+  }
+  speechRecognition = browser as unknown as typeof speechRecognition
+  speechListening.value = true
+  message.success('开始录音，请说话…')
+}
 
 // 当前选中的智能体
 const selectedAgentId = ref<string>('')
@@ -94,6 +194,7 @@ function restoreAgentSelection(): void {
 
 onMounted(() => {
   restoreAgentSelection()
+  void refreshEnabledModules()
 })
 
 /** 统一快捷入口：录入 / 修正 / 审计等常用动作合并为一份，避免重复造轮子。 */
@@ -535,6 +636,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
         :restored-label="assistant.restoredDraftLabel.value"
         :attachments="assistant.pendingAttachments.value"
         :skills="availableSkills"
+        :enabled-modules="enabledModules"
         @send="sendWithMode"
         @attach="handleAttachFile"
         @apply-skill="(skill) => assistant.addPendingAttachment({ kind: 'skill', ref: `skill:${skill.id}`, label: skill.label })"
@@ -552,6 +654,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
         @cancel="assistant.cancel()"
         @edit-last="assistant.startEditingLastTurn()"
         @clear-restored="assistant.clearRestoredDraft()"
+        @voice-input="handleVoiceInput"
       />
     </div>
 

@@ -1,8 +1,9 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import { randomUUID } from 'node:crypto'
 import type { AiTaskPayload, AppSettings, ChapterPostGenerationIssuesPayload, ChapterPostGenerationTaskPayload, ChapterStateWarningsPayload } from './shared-types'
-import { runAiTask, streamAiTask, testAiConnection, fetchModels, fetchImageModels, generateImage, benchmarkModel, recognizeCharacterImage } from './runtime'
+import { runAiTask, streamAiTask, testAiConnection, fetchModels, fetchImageModels, generateImage, benchmarkModel, recognizeCharacterImage, transcribeSpeech } from './runtime'
 import { normalizeVisionSettings } from './transport/vision'
+import { normalizeSpeechSettings } from './transport/speech'
 import { runStreamingAgentTask } from './agent/streaming-orchestrator'
 import { isToolUseNotSupportedError } from './provider'
 import { setChapterPostGenerationIssuesEmitter, setChapterPostGenerationTaskEmitter, setChapterWarningsEmitter } from './runtime/orchestrator'
@@ -526,6 +527,23 @@ export function registerAiIpcHandlers(injectedDeps: AiIpcDeps): void {
       return { success: true, result }
     } catch (error) {
       return { success: false, error: formatAiErrorMessage(error, '图片识别模型性能测试失败') }
+    }
+  })
+
+  // ── 语音识别（语音 → 文字）：调用 OpenAI 兼容音频转写接口 ──
+  ipcMain.handle('characterarc:ai-transcribe-speech', async (_event, payload: unknown) => {
+    try {
+      const req = payload as { settings?: AppSettings; audioData?: Uint8Array; audioType?: string }
+      const normalized = normalizeSpeechSettings(req?.settings as AppSettings)
+      if (!normalized.baseUrl.trim()) throw new Error('请先在设置中填写语音识别 Base URL。')
+      if (!normalized.apiKey.trim()) throw new Error('请先在设置中填写语音识别 API Key。')
+      if (!normalized.model.trim()) throw new Error('请先在设置中填写语音识别模型。')
+      const audio = req?.audioData
+      if (!audio || audio.length === 0) throw new Error('缺少待识别的音频数据。')
+      const result = await transcribeSpeech(req.settings as AppSettings, audio, req.audioType || 'audio/webm')
+      return { success: true, result }
+    } catch (error) {
+      return { success: false, error: formatAiErrorMessage(error, '语音识别失败') }
     }
   })
 

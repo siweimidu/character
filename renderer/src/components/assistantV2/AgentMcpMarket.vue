@@ -118,20 +118,27 @@ onMounted(() => {
   display: flex;
   align-items: baseline;
   gap: 8px;
+  min-width: 0;
 }
 .amcp-title {
   font-size: 13px;
   font-weight: 700;
   color: var(--arc-text-primary);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .amcp-sub {
   font-size: 11px;
   color: var(--arc-text-hint);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .amcp-markets {
   padding: 4px 12px 8px;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 6px;
 }
 .amcp-market {
@@ -152,11 +159,19 @@ onMounted(() => {
   gap: 5px;
   font-size: 12px;
   font-weight: 650;
+  min-width: 0;
+}
+.amcp-market-name svg:first-child {
+  flex-shrink: 0;
 }
 .amcp-market-desc {
   margin-top: 3px;
   font-size: 10.5px;
   color: var(--arc-text-secondary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .amcp-list-head {
   padding: 4px 14px;
@@ -189,6 +204,7 @@ onMounted(() => {
   border: 1px solid var(--arc-border);
   border-radius: 9px;
   background: var(--arc-bg-surface);
+  min-width: 0;
 }
 .amcp-item-body {
   flex: 1;
@@ -198,16 +214,26 @@ onMounted(() => {
   font-size: 12px;
   font-weight: 650;
   color: var(--arc-text-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .amcp-item-desc {
   margin-top: 2px;
   font-size: 10.5px;
   color: var(--arc-text-secondary);
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 .amcp-item-hint {
   margin-top: 3px;
   font-size: 10px;
   color: var(--arc-text-hint);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .amcp-import {
   display: inline-flex;

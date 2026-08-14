@@ -32,10 +32,12 @@ import {
   Puzzle
 } from 'lucide-vue-next'
 import type { SurfaceDefinition, TurnTruncateResult } from '@shared/assistant-runtime'
+import type { AgentModuleRuntime } from '@shared/agent-modules'
 import AiProviderIcon from '@/components/assistantV2/AiProviderIcon.vue'
 import DeepSeekFishLogo from '@/components/assistantV2/DeepSeekFishLogo.vue'
 import { useAppStore } from '@/stores/app'
 import { useAssistant } from '@/composables/useAssistant'
+import { createSpeechRecorder, startBrowserSpeech } from '@/features/settings/speechInput'
 import AssistantSessionList from '@/components/assistantV2/AssistantSessionList.vue'
 import AssistantComposer from '@/components/assistantV2/AssistantComposer.vue'
 import AgentSelector from '@/components/assistantV2/AgentSelector.vue'
@@ -84,6 +86,24 @@ function restoreAgentSelection(): void {
     if (saved) selectedAgentId.value = saved
   } catch { /* ignore */ }
 }
+
+// ============================================================================
+// 能力模块状态（供输入框展示已启用能力 + 语音按钮等）
+// ============================================================================
+const enabledModules = ref<AgentModuleRuntime[]>([])
+async function refreshEnabledModules(): Promise<void> {
+  try {
+    const all = await window.characterArc.agentModules.list()
+    enabledModules.value = all.filter((m) => m.enabled)
+  } catch {
+    enabledModules.value = []
+  }
+}
+
+/** 是否有语音转文字能力启用。 */
+const hasSpeechEnabled = computed(() =>
+  enabledModules.value.some((m) => m.kind === 'speech' && m.enabled)
+)
 
 // ============================================================================
 // 右栏「能力与市场」设置面板（替代原侧栏折叠抽屉，避免拥挤）
@@ -291,6 +311,12 @@ function reopenDetailsPanel(): void {
   detailsCollapsed.value = false
   detailsWidth.value = clampWidth(detailsWidth.value, DETAILS_MIN_WIDTH, DETAILS_MAX_WIDTH)
 }
+
+/** 打开右侧「能力与市场」面板并切换到指定标签页。 */
+function openSettings(tab: SettingsTab = 'modules'): void {
+  settingsTab.value = tab
+  reopenDetailsPanel()
+}
 function startColumnResize(side: 'session' | 'details', event: MouseEvent): void {
   event.preventDefault()
   activeResizeCleanup?.()
@@ -330,6 +356,7 @@ onMounted(() => {
   sessionWidth.value = readStoredWidth(SESSION_WIDTH_KEY, SESSION_DEFAULT_WIDTH, SESSION_MIN_WIDTH, SESSION_MAX_WIDTH)
   detailsWidth.value = readStoredWidth(DETAILS_WIDTH_KEY, DETAILS_DEFAULT_WIDTH, DETAILS_MIN_WIDTH, DETAILS_MAX_WIDTH)
   document.addEventListener('click', onDocClick)
+  void refreshEnabledModules()
 })
 onBeforeUnmount(() => {
   activeResizeCleanup?.()
@@ -352,6 +379,100 @@ async function handleUndoTurn(turnId: string): Promise<void> {
 async function handleResendTurn(): Promise<void> {
   const result = await assistant.resendEditedTurn({ intentHint: 'global-assistant-v2:chat' })
   if (result) notifyTruncate(result, '重新分叉')
+}
+
+// ============================================================================
+// 语音输入（语音转文字）
+// ============================================================================
+const speechListening = ref(false)
+let speechRecognition: {
+  lang: string
+  continuous: boolean
+  interimResults: boolean
+  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null
+  onend: (() => void) | null
+  onerror: ((e: { error: string }) => void) | null
+  start: () => void
+  stop: () => void
+  abort: () => void
+} | null = null
+let speechRecorder: ReturnType<typeof createSpeechRecorder> | null = null
+const isTranscribing = ref(false)
+
+/** 是否已配置语音识别厂商（使用厂商 API 而非浏览器原生） */
+function hasSpeechProviderConfig(): boolean {
+  const s = appStore.appSettings
+  return Boolean(s.speechBaseUrl?.trim() && s.speechApiKey?.trim() && s.speechModel?.trim())
+}
+
+/** 使用配置的语音识别厂商进行识别（OpenAI 兼容 /audio/transcriptions）。 */
+function startProviderSpeechRecognition(): void {
+  const settings = appStore.appSettings
+  if (speechRecorder) {
+    speechRecorder.abort()
+    speechRecorder = null
+    speechListening.value = false
+    return
+  }
+  speechRecorder = createSpeechRecorder(async (audioData, mimeType) => {
+    isTranscribing.value = true
+    try {
+      const res = await window.characterArc.transcribeSpeech({
+        settings,
+        audioData,
+        audioType: mimeType
+      })
+      if (!res.success) throw new Error(res.error ?? '语音识别失败')
+      const text = res.result?.text?.trim()
+      if (text) {
+        composerValue.value = text
+        message.success('语音识别完成')
+      } else {
+        message.warning('未识别到语音内容')
+      }
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '语音识别失败')
+    } finally {
+      isTranscribing.value = false
+      speechRecorder = null
+      speechListening.value = false
+    }
+  })
+  speechRecorder.start().then(() => {
+    speechListening.value = true
+    message.success('开始录音，请说话…（再次点击停止）')
+  }).catch(() => {
+    speechRecorder = null
+    message.error('无法访问麦克风，请检查系统权限；或改用浏览器原生语音输入。')
+  })
+}
+
+/** 语音输入（优先使用配置的语音识别厂商，否则回退浏览器 Web Speech API）。 */
+function handleVoiceInput(): void {
+  if (speechListening.value || isTranscribing.value) {
+    speechRecognition?.stop()
+    speechRecorder?.stop()
+    speechListening.value = false
+    return
+  }
+  // 已配置语音识别厂商：走厂商 API
+  if (hasSpeechProviderConfig()) {
+    startProviderSpeechRecognition()
+    return
+  }
+  // 回退：浏览器原生 Web Speech API
+  const browser = startBrowserSpeech((text) => {
+    if (text) composerValue.value = text
+  }, () => {
+    speechListening.value = false
+  })
+  if (!browser.supported) {
+    message.warning('未配置语音识别厂商且当前环境不支持浏览器语音输入，请使用 Chrome/Edge，或在「设置 → 语音识别配置」中填写厂商信息。')
+    return
+  }
+  speechRecognition = browser as unknown as typeof speechRecognition
+  speechListening.value = true
+  message.success('开始录音，请说话…（再次点击停止）')
 }
 
 // ============================================================================
@@ -556,6 +677,15 @@ function handleDeleteProject(projectId: string): void {
         <button class="ga-memory-toggle" title="创作记忆（学习闭环）" @click="memoryDialogVisible = true">
           <Brain :size="14" />
         </button>
+        <button
+          v-if="enabledModules.length > 0"
+          class="ga-cap-indicator"
+          :title="`已启用 ${enabledModules.length} 个能力模块，点击查看`"
+          @click="openSettings('modules')"
+        >
+          <Puzzle :size="14" />
+          <span>{{ enabledModules.length }}</span>
+        </button>
       </div>
 
       <AgentMemoryDialog
@@ -646,6 +776,7 @@ function handleDeleteProject(projectId: string): void {
         :attachments="assistant.pendingAttachments.value"
         :skills="availableSkills"
         :project-id="selectedProjectId"
+        :enabled-modules="enabledModules"
         @send="sendWithMode"
         @attach="referencePickerVisible = true"
         @apply-skill="(skill) => assistant.addPendingAttachment({ kind: 'skill', ref: `skill:${skill.id}`, label: skill.label })"
@@ -663,6 +794,7 @@ function handleDeleteProject(projectId: string): void {
         @cancel="assistant.cancel()"
         @edit-last="assistant.startEditingLastTurn()"
         @clear-restored="assistant.clearRestoredDraft()"
+        @voice-input="handleVoiceInput"
       />
     </div>
 
@@ -695,7 +827,7 @@ function handleDeleteProject(projectId: string): void {
         </button>
       </div>
       <div class="ga-details-pane arc-scrollbar">
-        <AgentModuleManager v-if="settingsTab === 'modules'" />
+        <AgentModuleManager v-if="settingsTab === 'modules'" @change="refreshEnabledModules" />
         <AgentFileExplorer v-else-if="settingsTab === 'files'" />
         <AgentMcpMarket v-else-if="settingsTab === 'mcp'" />
         <AgentPluginMarket v-else-if="settingsTab === 'plugins'" />
@@ -1181,6 +1313,32 @@ function handleDeleteProject(projectId: string): void {
   background: var(--ga-primary-soft);
   border-color: color-mix(in srgb, var(--arc-primary) 35%, var(--arc-border));
 }
+.ga-cap-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 44px;
+  min-width: 44px;
+  padding: 0 10px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--arc-primary) 30%, var(--arc-border));
+  background: var(--ga-primary-soft);
+  color: var(--arc-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+  font-size: 12px;
+  font-weight: 650;
+}
+.ga-cap-indicator span {
+  font-family: var(--ga-mono);
+}
+.ga-cap-indicator:hover {
+  border-color: var(--arc-primary);
+  background: color-mix(in srgb, var(--arc-primary) 14%, var(--arc-bg-surface));
+}
 .ga-flow {
   flex: 1;
   min-height: 0;
@@ -1358,6 +1516,14 @@ function handleDeleteProject(projectId: string): void {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
+  min-width: 0;
+}
+.ga-tab span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 .ga-tab:hover { background: var(--arc-bg-weak); color: var(--arc-text-primary); }
 .ga-tab.active {

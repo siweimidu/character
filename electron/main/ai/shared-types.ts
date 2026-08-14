@@ -64,6 +64,22 @@ export type AppSettings = {
   visionBaseUrl?: string
   /** 可选：已保存的图片识别模型列表 */
   visionSavedModels?: string[]
+  /** 可选：语音识别配置名称 */
+  speechProfileName?: string
+  /** 可选：语音识别接口配置列表 */
+  speechProfiles?: Array<{ id: string; name: string; provider: string; baseUrl: string; apiKey: string; model: string; models?: string[] }>
+  /** 可选：当前激活的语音识别接口配置 ID */
+  activeSpeechProfileId?: string
+  /** 可选：语音识别服务预设标识 */
+  speechProvider?: string
+  /** 可选：语音识别模型 */
+  speechModel?: string
+  /** 可选：语音识别独立 API Key */
+  speechApiKey?: string
+  /** 可选：语音识别独立 Base URL */
+  speechBaseUrl?: string
+  /** 可选：已保存的语音识别模型列表 */
+  speechSavedModels?: string[]
   /** 旧数据兼容字段；AI 请求不再按时长自动取消。 */
   aiTimeoutSeconds?: number
 }

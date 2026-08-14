@@ -1093,6 +1093,17 @@ export interface VisionProfile {
   models?: string[]
 }
 
+/** 语音识别接口配置（与 AI 接口配置一样支持新建/复制/删除） */
+export interface SpeechProfile {
+  id: string
+  name: string
+  provider: string
+  baseUrl: string
+  apiKey: string
+  model: string
+  models?: string[]
+}
+
 export type EditorFont = 'clear-mono' | 'modern-sans' | 'classic-serif' | 'relaxed-kai' | 'system'
 
 export interface AppSettings {
@@ -1144,6 +1155,22 @@ export interface AppSettings {
   visionBaseUrl: string
   /** 已保存的图片识别模型列表 */
   visionSavedModels: string[]
+  /** 语音识别配置名称（用于语音输入转文字的接口配置） */
+  speechProfileName: string
+  /** 已保存的语音识别接口配置列表 */
+  speechProfiles: SpeechProfile[]
+  /** 当前激活的语音识别接口配置 ID */
+  activeSpeechProfileId: string
+  /** 语音识别服务预设标识 */
+  speechProvider: string
+  /** 语音识别模型名称 */
+  speechModel: string
+  /** 语音识别接口鉴权密钥 */
+  speechApiKey: string
+  /** 语音识别接口基础地址 */
+  speechBaseUrl: string
+  /** 已保存的语音识别模型列表 */
+  speechSavedModels: string[]
   /** 自动保存间隔选项值，如 '5m'、'live' */
   autoSaveInterval: string
   /** 写作区正文字体 */

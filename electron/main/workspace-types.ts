@@ -434,6 +434,22 @@ export type WorkspacePayload = {
     visionApiKey: string
     visionBaseUrl: string
     visionSavedModels: string[]
+    speechProfileName: string
+    speechProfiles: Array<{
+      id: string
+      name: string
+      provider: string
+      baseUrl: string
+      apiKey: string
+      model: string
+      models?: string[]
+    }>
+    activeSpeechProfileId: string
+    speechProvider: string
+    speechModel: string
+    speechApiKey: string
+    speechBaseUrl: string
+    speechSavedModels: string[]
     autoSaveInterval: string
     editorFont: string
     /** 编辑器是否显示小地图 */
@@ -674,6 +690,31 @@ export function normalizeAppSettings(
     visionBaseUrl: settings?.visionBaseUrl || '',
     visionSavedModels: Array.isArray(settings?.visionSavedModels)
       ? settings.visionSavedModels.map((m) => String(m).trim()).filter(Boolean).slice(0, 50)
+      : [],
+    speechProfileName: settings?.speechProfileName || '',
+    speechProfiles: Array.isArray(settings?.speechProfiles)
+      ? settings.speechProfiles
+          .filter((item): item is NonNullable<typeof settings.speechProfiles>[number] => !!item && typeof item === 'object')
+          .map((item) => ({
+            id: String(item.id ?? '').trim(),
+            name: String(item.name ?? '').trim(),
+            provider: String(item.provider ?? '').trim(),
+            baseUrl: String(item.baseUrl ?? '').trim(),
+            apiKey: String(item.apiKey ?? '').trim(),
+            model: String(item.model ?? '').trim(),
+            models: Array.isArray(item.models)
+              ? [...new Set(item.models.map((m) => String(m).trim()).filter(Boolean))].slice(0, 50)
+              : undefined
+          }))
+          .filter((item) => item.id)
+      : [],
+    activeSpeechProfileId: typeof settings?.activeSpeechProfileId === 'string' ? settings.activeSpeechProfileId : '',
+    speechProvider: settings?.speechProvider || '',
+    speechModel: settings?.speechModel || '',
+    speechApiKey: settings?.speechApiKey || '',
+    speechBaseUrl: settings?.speechBaseUrl || '',
+    speechSavedModels: Array.isArray(settings?.speechSavedModels)
+      ? settings.speechSavedModels.map((m) => String(m).trim()).filter(Boolean).slice(0, 50)
       : [],
     autoSaveInterval: settings?.autoSaveInterval || '5m',
     editorFont:
