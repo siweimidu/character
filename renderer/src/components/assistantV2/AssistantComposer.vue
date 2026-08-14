@@ -844,15 +844,15 @@ watch(
 }
 .slash-menu {
   position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: calc(100% + 8px);
+  left: 14px;
+  right: 14px;
+  bottom: calc(100% + 10px);
   z-index: 20;
   max-height: 320px;
   border: 1px solid var(--arc-border-strong);
-  border-radius: 10px;
+  border-radius: 14px;
   background: var(--arc-bg-surface);
-  box-shadow: var(--arc-shadow-lg);
+  box-shadow: 0 8px 32px color-mix(in srgb, var(--arc-text-primary) 12%, transparent);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -870,13 +870,14 @@ watch(
   align-items: center;
   gap: 6px;
   border: none;
-  border-radius: 6px;
-  padding: 5px 10px;
+  border-radius: 8px;
+  padding: 6px 12px;
   background: transparent;
   color: var(--arc-text-secondary);
   font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 .slash-tab.active {
   background: var(--arc-primary-soft);
@@ -954,12 +955,12 @@ watch(
   width: min(420px, calc(100vw - 48px));
   background: var(--arc-bg-surface);
   border: 1px solid var(--arc-border-strong);
-  border-radius: 12px;
-  box-shadow: var(--arc-shadow-lg);
-  padding: 16px;
+  border-radius: 16px;
+  box-shadow: 0 12px 40px color-mix(in srgb, var(--arc-text-primary) 15%, transparent);
+  padding: 18px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 .add-cmd-title {
   font-size: 15px;
@@ -979,13 +980,20 @@ watch(
 .add-cmd-field textarea {
   width: 100%;
   border: 1px solid var(--arc-border-strong);
-  border-radius: 8px;
-  padding: 8px 10px;
+  border-radius: 10px;
+  padding: 9px 12px;
   background: var(--arc-bg-body);
   color: var(--arc-text-primary);
   font: inherit;
   font-size: 13px;
   resize: vertical;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.add-cmd-field input:focus,
+.add-cmd-field textarea:focus {
+  outline: none;
+  border-color: var(--arc-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--arc-primary) 10%, transparent);
 }
 .add-cmd-actions {
   display: flex;
@@ -995,17 +1003,25 @@ watch(
 }
 .add-cmd-btn {
   border: 1px solid var(--arc-border-strong);
-  border-radius: 8px;
-  padding: 6px 14px;
+  border-radius: 999px;
+  padding: 7px 16px;
   background: var(--arc-bg-surface);
   color: var(--arc-text-primary);
   font-size: 13px;
   cursor: pointer;
+  transition: all 0.15s ease;
+}
+.add-cmd-btn:hover {
+  background: var(--arc-bg-weak);
+  border-color: var(--arc-border);
 }
 .add-cmd-btn.primary {
   background: var(--arc-primary);
   border-color: var(--arc-primary);
   color: #fff;
+}
+.add-cmd-btn.primary:hover {
+  background: color-mix(in srgb, var(--arc-primary) 90%, var(--arc-text-primary));
 }
 .add-cmd-btn:disabled {
   opacity: 0.5;
@@ -1017,13 +1033,14 @@ watch(
   gap: 10px;
   width: 100%;
   border: none;
-  border-radius: 7px;
+  border-radius: 10px;
   background: transparent;
   color: var(--arc-text-primary);
   text-align: left;
-  padding: 8px 10px;
+  padding: 9px 12px;
   cursor: pointer;
   font-size: 13px;
+  transition: background 0.15s ease;
 }
 .slash-item.active {
   background: var(--arc-primary-soft);
@@ -1056,7 +1073,7 @@ watch(
 }
 .composer-wrap {
   position: relative;
-  padding: 12px 32px 22px;
+  padding: 14px 36px 24px;
   background: linear-gradient(180deg, transparent, var(--arc-bg-body) 30%);
 }
 .native-file-input {
@@ -1069,16 +1086,16 @@ watch(
 }
 .drag-overlay {
   position: absolute;
-  inset: 4px 12px;
+  inset: 4px 16px;
   z-index: 30;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border: 2px dashed var(--arc-primary, #0ea5e9);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--arc-primary, #0ea5e9) 10%, var(--arc-bg-surface));
-  color: var(--arc-primary, #0ea5e9);
+  border: 2px dashed var(--arc-primary);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--arc-primary) 10%, var(--arc-bg-surface));
+  color: var(--arc-primary);
   font-size: 14px;
   font-weight: 600;
   pointer-events: none;
@@ -1088,17 +1105,21 @@ watch(
   margin: 0 auto;
   background: var(--arc-bg-surface);
   border: 1px solid var(--arc-border-strong);
-  border-radius: 16px;
-  padding: 12px 14px 10px;
-  box-shadow: var(--arc-shadow-md);
+  border-radius: 22px;
+  padding: 14px 16px 10px;
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--arc-text-primary) 6%, transparent);
   display: flex;
   flex-direction: column;
   gap: 8px;
-  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.composer:focus-within {
+  border-color: color-mix(in srgb, var(--arc-primary) 50%, var(--arc-border-strong));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--arc-primary) 10%, transparent);
 }
 .composer.streaming {
-  border-color: rgba(13, 125, 90, 0.4);
-  box-shadow: 0 0 0 3px rgba(13, 125, 90, 0.06), var(--arc-shadow-md);
+  border-color: color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border-strong));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--arc-primary) 6%, transparent);
 }
 .composer.editing {
   opacity: 0.56;

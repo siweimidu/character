@@ -269,7 +269,7 @@ const grouped = computed(() => {
   border-right: 1px solid var(--arc-border);
 }
 .head {
-  padding: 16px 12px 10px 14px;
+  padding: 18px 14px 12px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -288,8 +288,8 @@ const grouped = computed(() => {
   font-size: 11px;
   font-family: inherit;
   line-height: 1;
-  padding: 4px 8px;
-  border-radius: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
   transition: all 0.15s ease;
 }
 .multi-btn:hover {
@@ -430,9 +430,9 @@ const grouped = computed(() => {
 .brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   font-weight: 600;
-  font-size: 13px;
+  font-size: 13.5px;
   letter-spacing: -0.02em;
   color: var(--arc-text-primary);
 }
@@ -454,23 +454,27 @@ const grouped = computed(() => {
   letter-spacing: 0;
 }
 .new-btn {
-  margin: 4px 12px 14px;
-  padding: 8px 10px;
-  border-radius: 9px;
-  background: var(--arc-text-primary);
-  color: var(--arc-bg-body);
+  margin: 4px 14px 14px;
+  padding: 10px 12px;
+  border-radius: 999px;
+  background: var(--arc-primary);
+  color: var(--arc-primary-foreground, #fff);
   border: none;
   font-size: 12.5px;
-  font-weight: 500;
+  font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   cursor: pointer;
-  transition: transform 0.16s ease;
+  transition: transform 0.16s ease, background 0.15s ease, box-shadow 0.15s ease;
   font-family: inherit;
 }
-.new-btn:hover { transform: translateY(-1px); }
+.new-btn:hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--arc-primary) 90%, var(--arc-text-primary));
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--arc-primary) 22%, transparent);
+}
 .new-btn:active { transform: translateY(0); }
 .new-btn .plus { font-size: 14px; line-height: 1; }
 .list {
@@ -482,11 +486,11 @@ const grouped = computed(() => {
   gap: 1px;
 }
 .group-label {
-  padding: 12px 10px 4px;
+  padding: 14px 12px 6px;
   font-size: 10.5px;
   color: var(--arc-text-hint);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   font-family: var(--v2-mono);
 }
 .empty {
@@ -505,18 +509,27 @@ const grouped = computed(() => {
 }
 .item {
   position: relative;
-  padding: 9px 10px;
-  border-radius: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease;
   display: flex;
   flex-direction: column;
   gap: 3px;
+  border: 1px solid transparent;
 }
-.item:hover { background: var(--arc-bg-weak); }
-.item.active { background: var(--arc-primary-soft); }
+.item:hover {
+  background: var(--arc-bg-weak);
+}
+.item.active {
+  background: var(--arc-primary-soft);
+  border-color: color-mix(in srgb, var(--arc-primary) 18%, var(--arc-border));
+}
 .item.active .title { color: var(--arc-primary); }
-.item.selected { background: var(--arc-primary-soft); }
+.item.selected {
+  background: var(--arc-primary-soft);
+  border-color: color-mix(in srgb, var(--arc-primary) 18%, var(--arc-border));
+}
 .item.selected .title { color: var(--arc-primary); }
 .sel-check {
   flex: 0 0 auto;
@@ -544,7 +557,7 @@ const grouped = computed(() => {
 }
 .title {
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--arc-text-primary);
   white-space: nowrap;

@@ -262,10 +262,12 @@ function isCollapsed(key: string): boolean {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 8px 12px;
-  background: color-mix(in srgb, var(--arc-primary) 8%, var(--arc-bg-surface));
-  border-radius: 10px;
-  border-left: 3px solid var(--arc-primary);
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--arc-primary) 6%, var(--arc-bg-surface));
+  border-radius: 14px 14px 4px 14px;
+  border: 1px solid color-mix(in srgb, var(--arc-primary) 14%, var(--arc-border));
+  margin-left: auto;
+  max-width: 85%;
 }
 .fn-user-icon {
   color: var(--arc-primary);
@@ -280,9 +282,13 @@ function isCollapsed(key: string): boolean {
 }
 .fn-block {
   border: 1px solid var(--arc-border);
-  border-radius: 9px;
+  border-radius: 12px;
   overflow: hidden;
   background: var(--arc-bg-surface);
+  transition: border-color 0.15s ease;
+}
+.fn-block:hover {
+  border-color: color-mix(in srgb, var(--arc-border) 55%, var(--arc-border-strong));
 }
 .fn-block.collapsed {
   border-left: 3px solid var(--arc-border-strong);

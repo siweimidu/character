@@ -445,8 +445,8 @@ async function handleCommit(ids?: string[]): Promise<void> {
   --v2-del: #b91c1c;
   --v2-del-bg: rgba(185, 28, 28, 0.07);
   --v2-mono: 'JetBrains Mono', 'Consolas', 'SF Mono', ui-monospace, Menlo, monospace;
-  --v2-radius-card: 8px;
-  --v2-radius-btn: 8px;
+  --v2-radius-card: 12px;
+  --v2-radius-btn: 10px;
   display: flex;
   width: 100%;
   height: 100%;
@@ -456,7 +456,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
   overflow: hidden;
   background: var(--arc-bg-body);
   color: var(--arc-text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
+  font-family: 'Stack Sans Text', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
 }
 
 .dock-head {
@@ -465,7 +465,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
   justify-content: space-between;
   flex-shrink: 0;
   gap: 12px;
-  padding: 14px 14px 10px;
+  padding: 16px 16px 12px;
   border-bottom: 1px solid var(--arc-border);
   background: var(--arc-bg-surface);
 }
@@ -479,12 +479,12 @@ async function handleCommit(ids?: string[]): Promise<void> {
 
 .brand-mark {
   display: inline-flex;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--arc-primary-soft);
   color: var(--arc-primary);
 }
@@ -537,22 +537,22 @@ async function handleCommit(ids?: string[]): Promise<void> {
 
 .agent-strip {
   display: flex;
-  min-height: 44px;
+  min-height: 46px;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  padding: 6px 14px;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--arc-border);
   background: var(--arc-bg-surface);
 }
 .session-strip {
   display: flex;
-  min-height: 34px;
+  min-height: 36px;
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
   gap: 10px;
-  padding: 0 14px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--arc-border);
   background: var(--arc-bg-surface);
 }
@@ -579,8 +579,8 @@ async function handleCommit(ids?: string[]): Promise<void> {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   flex-shrink: 0;
-  gap: 4px;
-  padding: 8px 10px;
+  gap: 6px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--arc-border);
   background: var(--arc-bg-surface);
 }
@@ -588,16 +588,21 @@ async function handleCommit(ids?: string[]): Promise<void> {
 .dock-tabs button {
   display: inline-flex;
   min-width: 0;
-  height: 30px;
+  height: 32px;
   align-items: center;
   justify-content: center;
   gap: 5px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   color: var(--arc-text-secondary);
   cursor: pointer;
   font-size: 12px;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.dock-tabs button:hover {
+  background: var(--arc-bg-weak);
+  color: var(--arc-text-primary);
 }
 
 .dock-tabs button.active {
@@ -676,19 +681,21 @@ async function handleCommit(ids?: string[]): Promise<void> {
 
 .quick-list button {
   border: 1px solid var(--arc-border);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--arc-bg-surface);
   color: var(--arc-text-primary);
   cursor: pointer;
   font-size: 12.5px;
-  line-height: 1.4;
-  padding: 10px 11px;
+  line-height: 1.45;
+  padding: 11px 13px;
   text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
 }
 
 .quick-list button:hover {
-  border-color: var(--arc-primary);
-  background: var(--arc-primary-soft);
+  border-color: color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border));
+  background: color-mix(in srgb, var(--arc-primary) 5%, var(--arc-bg-surface));
+  transform: translateY(-1px);
 }
 
 
@@ -712,13 +719,18 @@ async function handleCommit(ids?: string[]): Promise<void> {
 .dock-foot button {
   width: 100%;
   border: 1px solid var(--v2-accent-line);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--arc-primary-soft);
   color: var(--arc-primary);
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
-  padding: 8px 10px;
+  padding: 9px 12px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.dock-foot button:hover {
+  background: color-mix(in srgb, var(--arc-primary) 12%, var(--arc-bg-surface));
+  border-color: var(--arc-primary);
 }
 
 .sessions-pane :deep(.session-list) {
@@ -741,25 +753,25 @@ async function handleCommit(ids?: string[]): Promise<void> {
 }
 
 .staged-pane :deep(.change) {
-  border-radius: 8px;
-  padding: 10px 11px;
+  border-radius: 12px;
+  padding: 11px 13px;
 }
 
 .chat-pane :deep(.messages) {
-  padding: 18px 16px 10px;
-  gap: 18px;
+  padding: 18px 18px 10px;
+  gap: 20px;
 }
 
 .chat-pane :deep(.composer-wrap) {
   flex-shrink: 0;
-  padding: 10px 14px 14px;
+  padding: 12px 16px 16px;
   background: linear-gradient(180deg, transparent, var(--arc-bg-body) 35%);
 }
 
 .chat-pane :deep(.composer) {
   max-width: none;
-  border-radius: 12px;
-  box-shadow: var(--arc-shadow-sm);
+  border-radius: 16px;
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--arc-text-primary) 6%, transparent);
 }
 
 .chat-pane :deep(.composer .hint span:last-child) {

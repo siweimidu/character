@@ -612,8 +612,8 @@ async function handleCommit(ids?: string[]): Promise<void> {
   --v2-del: #b91c1c;
   --v2-del-bg: rgba(185, 28, 28, 0.07);
   --v2-mono: 'JetBrains Mono', 'Consolas', 'SF Mono', ui-monospace, Menlo, monospace;
-  --v2-radius-card: 14px;
-  --v2-radius-btn: 8px;
+  --v2-radius-card: 16px;
+  --v2-radius-btn: 10px;
   --session-col-width: 220px;
   --stage-col-width: 380px;
   letter-spacing: -0.005em;
@@ -627,7 +627,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
   overflow: hidden;
   background: var(--arc-bg-body);
   color: var(--arc-text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
+  font-family: 'Stack Sans Text', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
 }
 .session-col,
 .stage-col {
@@ -638,6 +638,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  background: var(--arc-bg-surface);
 }
 .session-col :deep(.session-list) {
   width: 100%;
@@ -706,10 +707,10 @@ async function handleCommit(ids?: string[]): Promise<void> {
   position: relative;
 }
 .agent-toolbar {
-  padding: 10px 32px 0;
+  padding: 14px 36px 4px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   z-index: 10;
 }
 .agent-toolbar :deep(.agent-selector) {
@@ -720,20 +721,22 @@ async function handleCommit(ids?: string[]): Promise<void> {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 46px;
+  height: 44px;
   min-width: 44px;
   padding: 0 12px;
-  border-radius: 10px;
-  border: 1px solid var(--arc-border, #ddd);
+  border-radius: 14px;
+  border: 1px solid var(--arc-border);
   background: var(--arc-bg-surface);
-  color: var(--arc-primary, #0ea5e9);
+  color: var(--arc-primary);
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
   box-sizing: border-box;
 }
 .memory-toggle:hover {
-  background: rgba(127, 127, 127, 0.1);
+  background: var(--arc-primary-soft);
+  border-color: color-mix(in srgb, var(--arc-primary) 35%, var(--arc-border));
+  color: var(--arc-primary);
 }
 .starter {
   flex: 1;
@@ -742,13 +745,13 @@ async function handleCommit(ids?: string[]): Promise<void> {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px 32px;
+  padding: 28px 36px;
 }
 .starter-inner {
-  width: min(720px, 100%);
+  width: min(760px, 100%);
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 26px;
 }
 .starter-head {
   text-align: center;
@@ -756,10 +759,10 @@ async function handleCommit(ids?: string[]): Promise<void> {
 .starter-kicker {
   font-family: var(--v2-mono);
   font-size: 11px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--arc-primary);
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 .starter h2 {
   margin: 0;
@@ -767,17 +770,18 @@ async function handleCommit(ids?: string[]): Promise<void> {
   font-size: 30px;
   line-height: 1.15;
   font-weight: 700;
+  letter-spacing: -0.02em;
 }
 .starter-sub {
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   color: var(--arc-text-secondary);
-  font-size: 13.5px;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 1.6;
 }
 .asset-strip {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
   justify-content: center;
 }
 .asset-pill {
@@ -785,16 +789,17 @@ async function handleCommit(ids?: string[]): Promise<void> {
   background: var(--arc-bg-surface);
   color: var(--arc-text-secondary);
   border-radius: 999px;
-  padding: 6px 10px;
+  padding: 7px 14px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+  transition: border-color 0.15s ease, color 0.15s ease, transform 0.15s ease, background 0.15s ease;
 }
 .asset-pill:hover {
-  border-color: var(--arc-primary);
+  border-color: color-mix(in srgb, var(--arc-primary) 45%, var(--arc-border));
   color: var(--arc-primary);
+  background: var(--arc-primary-soft);
   transform: translateY(-1px);
 }
 .asset-pill span {
@@ -808,25 +813,26 @@ async function handleCommit(ids?: string[]): Promise<void> {
 .quick-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 .quick-card {
-  min-height: 58px;
+  min-height: 60px;
   border: 1px solid var(--arc-border);
-  border-radius: 10px;
+  border-radius: 14px;
   background: var(--arc-bg-surface);
   color: var(--arc-text-primary);
   text-align: left;
-  padding: 12px 13px;
+  padding: 13px 15px;
   cursor: pointer;
   font-size: 13px;
-  line-height: 1.35;
-  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+  line-height: 1.4;
+  transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
 }
 .quick-card:hover {
-  border-color: var(--arc-primary);
-  background: var(--arc-primary-soft);
-  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border));
+  background: color-mix(in srgb, var(--arc-primary) 5%, var(--arc-bg-surface));
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--arc-primary) 10%, transparent);
 }
 
 .stream-strip {
@@ -873,18 +879,22 @@ async function handleCommit(ids?: string[]): Promise<void> {
   border-left: 1px solid var(--arc-border);
   background: var(--arc-bg-surface);
 }
+.stage-col.resizing .stage-resizer::after {
+  background: var(--arc-primary);
+}
 .stage-col-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--arc-border);
   flex-shrink: 0;
+  background: var(--arc-bg-surface);
 }
 .stage-col-title {
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   color: var(--arc-text-primary);
 }
 .collapse-btn {
@@ -935,7 +945,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
 .stage-mini-badge {
   font-size: 10px;
   font-family: var(--v2-mono);
-  padding: 2px 6px;
+  padding: 2px 7px;
   border-radius: 999px;
   background: var(--arc-primary);
   color: #fff;

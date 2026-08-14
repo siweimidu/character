@@ -823,10 +823,10 @@ const hasContent = computed(() => props.messages.length > 0)
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
   overflow-anchor: none;
-  padding: 24px 28px 18px;
+  padding: 26px 32px 20px;
   display: flex;
   flex-direction: column;
-  gap: 26px;
+  gap: 28px;
   min-width: 0;
   min-height: 0;
   position: relative;
@@ -902,9 +902,9 @@ const hasContent = computed(() => props.messages.length > 0)
   width: min(100%, 900px);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
   min-width: 0;
-  padding-top: 30px;
+  padding-top: 32px;
   border-top: 1px solid var(--arc-border);
 }
 .turn-entry.is-first {
@@ -923,6 +923,7 @@ const hasContent = computed(() => props.messages.length > 0)
   display: flex;
   align-items: flex-start;
   gap: 10px;
+  justify-content: flex-end;
 }
 .copy-prompt-btn {
   display: inline-flex;
@@ -933,7 +934,7 @@ const hasContent = computed(() => props.messages.length > 0)
   height: 24px;
   margin-top: 2px;
   border: 1px solid var(--arc-border);
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
   color: var(--arc-text-hint);
   cursor: pointer;
@@ -1045,9 +1046,9 @@ const hasContent = computed(() => props.messages.length > 0)
   justify-content: space-between;
   gap: 10px;
   margin-top: 6px;
-  padding: 10px 14px;
+  padding: 10px 16px;
   border: 1px dashed var(--arc-border);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--arc-bg-weak);
 }
 .ms-action-bar.has-selection {
@@ -1209,9 +1210,9 @@ const hasContent = computed(() => props.messages.length > 0)
   gap: 2px;
   padding: 3px;
   border: 1px solid var(--arc-border);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--arc-bg-surface);
-  box-shadow: var(--arc-shadow-md);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--arc-text-primary) 8%, transparent);
   opacity: 0;
   pointer-events: none;
   transform: translateY(3px);
@@ -1229,7 +1230,7 @@ const hasContent = computed(() => props.messages.length > 0)
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
   color: var(--arc-text-secondary);
   cursor: pointer;
@@ -1358,8 +1359,8 @@ const hasContent = computed(() => props.messages.length > 0)
 .user-avatar {
   display: inline-flex;
   flex: 0 0 auto;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
@@ -1380,6 +1381,10 @@ const hasContent = computed(() => props.messages.length > 0)
   min-width: 0;
   white-space: pre-wrap;
   font-weight: 500;
+  padding: 10px 16px;
+  border-radius: 16px 16px 4px 16px;
+  background: color-mix(in srgb, var(--arc-primary) 6%, var(--arc-bg-surface));
+  border: 1px solid color-mix(in srgb, var(--arc-primary) 14%, var(--arc-border));
 }
 .assistant-block {
   display: flex;
@@ -1390,9 +1395,13 @@ const hasContent = computed(() => props.messages.length > 0)
 .message-section {
   min-width: 0;
   border: 1px solid var(--arc-border);
-  border-radius: 6px;
+  border-radius: 12px;
   background: var(--arc-bg-surface);
   overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+.message-section:hover {
+  border-color: color-mix(in srgb, var(--arc-border) 60%, var(--arc-border-strong));
 }
 .section-summary {
   min-height: 36px;
@@ -1441,11 +1450,11 @@ const hasContent = computed(() => props.messages.length > 0)
 }
 .assistant-mark {
   display: inline-flex;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--arc-primary-soft);
   color: var(--arc-primary);
 }

@@ -447,7 +447,7 @@ function bindTarget(changeId: string, entityId: string): void {
   flex-direction: column;
 }
 .review-head {
-  padding: 14px 16px 12px;
+  padding: 16px 18px 14px;
   border-bottom: 1px solid var(--arc-border);
   display: flex;
   flex-direction: column;
@@ -479,9 +479,10 @@ function bindTarget(changeId: string, entityId: string): void {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: -0.01em;
 }
 .review-meta {
-  padding: 12px 16px;
+  padding: 12px 18px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -512,16 +513,20 @@ function bindTarget(changeId: string, entityId: string): void {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 14px 16px 16px;
+  padding: 16px 18px 18px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 .target-box {
   border: 1px solid var(--arc-border);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--arc-bg-surface);
-  padding: 10px;
+  padding: 12px;
+  transition: border-color 0.15s ease;
+}
+.target-box:hover {
+  border-color: color-mix(in srgb, var(--arc-border) 55%, var(--arc-border-strong));
 }
 .target-box.compact {
   margin: 8px 0 10px;
@@ -547,11 +552,11 @@ function bindTarget(changeId: string, entityId: string): void {
   flex-direction: column;
   gap: 2px;
   border: 1px solid var(--arc-border);
-  border-radius: 7px;
+  border-radius: 10px;
   background: var(--arc-bg-surface);
   color: var(--arc-text-secondary);
   cursor: pointer;
-  padding: 7px 8px;
+  padding: 8px 10px;
   text-align: left;
   transition: border-color 0.15s ease, background 0.15s ease;
 }
@@ -589,7 +594,7 @@ function bindTarget(changeId: string, entityId: string): void {
 }
 .review-diff {
   border: 1px solid var(--arc-border);
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
 }
 .review-diff-line {
@@ -749,11 +754,15 @@ function bindTarget(changeId: string, entityId: string): void {
 }
 .change {
   border: 1px solid var(--arc-border);
-  border-radius: var(--v2-radius-card, 14px);
-  padding: 12px 14px;
-  transition: border-color 0.18s ease, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  border-radius: var(--v2-radius-card, 16px);
+  padding: 13px 15px;
+  transition: border-color 0.18s ease, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease;
   background: var(--arc-bg-surface);
   animation: cardIn 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.change:hover {
+  border-color: color-mix(in srgb, var(--arc-primary) 25%, var(--arc-border));
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--arc-text-primary) 6%, transparent);
 }
 @keyframes cardIn {
   from { opacity: 0; transform: translateY(4px); }
@@ -783,8 +792,8 @@ function bindTarget(changeId: string, entityId: string): void {
   font-family: var(--v2-mono, monospace);
   font-size: 10px;
   letter-spacing: 0.04em;
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
   background: var(--arc-bg-weak);
   color: var(--arc-text-secondary);
   text-transform: uppercase;

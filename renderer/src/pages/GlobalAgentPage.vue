@@ -675,7 +675,7 @@ async function copyMessage(text: string): Promise<void> {
   overflow: hidden;
   background: var(--arc-bg-body);
   color: var(--arc-text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
+  font-family: 'Stack Sans Text', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
   letter-spacing: -0.005em;
 }
 
@@ -686,24 +686,24 @@ async function copyMessage(text: string): Promise<void> {
   min-width: 0;
   min-height: 0;
   border-right: 1px solid var(--arc-border);
-  background: var(--arc-bg-sidebar);
+  background: var(--arc-bg-surface);
 }
 .ga-brand-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 14px 10px;
+  padding: 16px 16px 12px;
 }
 .ga-back {
   border: 1px solid var(--arc-border);
-  background: transparent;
+  background: var(--arc-bg-surface);
   color: var(--arc-text-secondary);
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
   flex-shrink: 0;
   transition: all 0.15s ease;
@@ -719,6 +719,7 @@ async function copyMessage(text: string): Promise<void> {
   font-size: 15px;
   font-weight: 700;
   color: var(--arc-text-primary);
+  letter-spacing: -0.01em;
 }
 .ga-brand-icon {
   color: var(--arc-primary);
@@ -728,20 +729,20 @@ async function copyMessage(text: string): Promise<void> {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  margin: 2px 12px 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--arc-border);
-  border-radius: 9px;
-  background: var(--arc-bg-surface);
-  color: var(--arc-text-primary);
+  margin: 2px 14px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--arc-primary);
+  border-radius: 999px;
+  background: var(--arc-primary);
+  color: #fff;
   font-size: 12.5px;
   font-weight: 650;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 .ga-new-session:hover {
-  border-color: var(--arc-primary);
-  color: var(--arc-primary);
+  background: color-mix(in srgb, var(--arc-primary) 90%, var(--arc-text-primary));
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--arc-primary) 22%, transparent);
 }
 .ga-session-region {
   flex: 1;
@@ -759,9 +760,9 @@ async function copyMessage(text: string): Promise<void> {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 8px 10px;
+  padding: 9px 12px;
   border: 1px solid var(--arc-border);
-  border-radius: 9px;
+  border-radius: 10px;
   background: var(--arc-bg-surface);
   color: var(--arc-text-secondary);
   font-size: 12px;
@@ -770,8 +771,9 @@ async function copyMessage(text: string): Promise<void> {
   transition: all 0.15s ease;
 }
 .ga-settings-toggle:hover {
-  border-color: var(--arc-primary);
+  border-color: color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border));
   color: var(--arc-primary);
+  background: var(--arc-primary-soft);
 }
 .ga-settings-drawer {
   border: 1px solid var(--arc-border);
@@ -794,9 +796,9 @@ async function copyMessage(text: string): Promise<void> {
   flex-direction: column;
   align-items: center;
   gap: 3px;
-  padding: 6px 2px;
+  padding: 7px 2px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   color: var(--arc-text-secondary);
   font-size: 9.5px;
@@ -822,8 +824,8 @@ async function copyMessage(text: string): Promise<void> {
 }
 .ga-ctx-card {
   position: relative;
-  padding: 9px 11px;
-  border-radius: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
   background: var(--arc-bg-weak);
   border: 1px solid var(--arc-border);
 }
@@ -1099,10 +1101,10 @@ async function copyMessage(text: string): Promise<void> {
   50% { opacity: 0.35; }
 }
 .ga-agent-toolbar {
-  padding: 10px 32px 0;
+  padding: 14px 36px 4px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   z-index: 10;
 }
 .ga-agent-toolbar :deep(.agent-selector) {
@@ -1113,10 +1115,10 @@ async function copyMessage(text: string): Promise<void> {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 46px;
+  height: 44px;
   min-width: 44px;
   padding: 0 12px;
-  border-radius: 10px;
+  border-radius: 14px;
   border: 1px solid var(--arc-border);
   background: var(--arc-bg-surface);
   color: var(--arc-primary);
@@ -1126,7 +1128,8 @@ async function copyMessage(text: string): Promise<void> {
   box-sizing: border-box;
 }
 .ga-memory-toggle:hover {
-  background: var(--arc-bg-weak);
+  background: var(--arc-primary-soft);
+  border-color: color-mix(in srgb, var(--arc-primary) 35%, var(--arc-border));
 }
 
 .ga-flow {
@@ -1194,19 +1197,21 @@ async function copyMessage(text: string): Promise<void> {
 }
 .ga-quick-card {
   border: 1px solid var(--arc-border);
-  border-radius: 9px;
+  border-radius: 14px;
   background: var(--arc-bg-surface);
   color: var(--arc-text-secondary);
   text-align: left;
-  padding: 9px 11px;
+  padding: 11px 13px;
   cursor: pointer;
   font-size: 12px;
-  line-height: 1.35;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  line-height: 1.4;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease, transform 0.15s ease;
 }
 .ga-quick-card:hover {
-  border-color: var(--arc-primary);
+  border-color: color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border));
   color: var(--arc-primary);
+  background: var(--arc-primary-soft);
+  transform: translateY(-1px);
 }
 .ga-err-banner {
   margin: 0 32px 8px;
@@ -1223,14 +1228,15 @@ async function copyMessage(text: string): Promise<void> {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--arc-border);
   flex-shrink: 0;
+  background: var(--arc-bg-surface);
 }
 .ga-stage-title {
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   color: var(--arc-text-primary);
 }
 .ga-collapse-btn {

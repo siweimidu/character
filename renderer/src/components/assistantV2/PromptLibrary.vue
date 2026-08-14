@@ -241,9 +241,9 @@ function usePrompt(entry: PromptEntry): void {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border: 1px solid var(--arc-border);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--arc-bg-surface);
   transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
 }

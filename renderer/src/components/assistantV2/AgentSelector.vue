@@ -228,23 +228,24 @@ watch(() => props.modelValue, () => {
 .selector-trigger {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  padding: 6px 12px;
-  border-radius: 10px;
+  padding: 8px 14px;
+  border-radius: 14px;
   cursor: pointer;
   background: var(--arc-bg-surface);
   border: 1px solid var(--arc-border);
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 .selector-trigger:hover {
-  border-color: var(--arc-primary);
+  border-color: color-mix(in srgb, var(--arc-primary) 35%, var(--arc-border));
   background: var(--arc-bg-surface-hover);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--arc-primary) 8%, transparent);
 }
 .agent-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
   overflow: hidden;
   flex-shrink: 0;
   background: var(--arc-bg-weak);
@@ -281,6 +282,7 @@ watch(() => props.modelValue, () => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin-top: 2px;
 }
 .chevron {
   color: var(--arc-text-hint);
@@ -292,15 +294,15 @@ watch(() => props.modelValue, () => {
 }
 .dropdown {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 8px);
   left: 0;
   z-index: 100;
-  width: 300px;
-  max-height: 400px;
+  width: 320px;
+  max-height: 420px;
   background: var(--arc-bg-surface);
   border: 1px solid var(--arc-border-strong);
-  border-radius: 12px;
-  box-shadow: var(--arc-shadow-lg);
+  border-radius: 16px;
+  box-shadow: 0 12px 40px color-mix(in srgb, var(--arc-text-primary) 12%, transparent);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -309,7 +311,7 @@ watch(() => props.modelValue, () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--arc-border);
   font-size: 12px;
   font-weight: 600;
@@ -339,16 +341,21 @@ watch(() => props.modelValue, () => {
   background: var(--arc-bg-surface);
 }
 .scope-tabs button {
-  padding: 5px 8px;
+  padding: 6px 10px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 10px;
   background: transparent;
   color: var(--arc-text-secondary);
   cursor: pointer;
   font-size: 12px;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.scope-tabs button:hover {
+  background: var(--arc-bg-weak);
+  color: var(--arc-text-primary);
 }
 .scope-tabs button.active {
-  border-color: var(--arc-primary);
+  border-color: color-mix(in srgb, var(--arc-primary) 35%, var(--arc-border));
   background: var(--arc-primary-soft);
   color: var(--arc-primary);
   font-weight: 600;
@@ -356,12 +363,12 @@ watch(() => props.modelValue, () => {
 .agent-list {
   overflow-y: auto;
   flex: 1;
-  padding: 6px;
+  padding: 8px;
 }
 .agent-row {
   display: flex;
   align-items: center;
-  border-radius: 8px;
+  border-radius: 10px;
   transition: background 0.15s ease;
 }
 .agent-row:hover {
@@ -379,7 +386,7 @@ watch(() => props.modelValue, () => {
   gap: 10px;
   flex: 1;
   min-width: 0;
-  padding: 8px 4px 8px 10px;
+  padding: 10px 6px 10px 12px;
   border: none;
   background: transparent;
   cursor: pointer;
@@ -414,9 +421,9 @@ watch(() => props.modelValue, () => {
   background: var(--arc-danger-soft);
 }
 .item-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
   overflow: hidden;
   flex-shrink: 0;
   display: flex;
@@ -467,7 +474,7 @@ watch(() => props.modelValue, () => {
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 10px;
+  padding: 12px;
   border: none;
   background: transparent;
   border-top: 1px solid var(--arc-border);
@@ -475,6 +482,7 @@ watch(() => props.modelValue, () => {
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
+  transition: background 0.15s ease;
 }
 .create-item:hover {
   background: var(--arc-primary-soft);
