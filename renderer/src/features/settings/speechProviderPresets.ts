@@ -21,6 +21,16 @@ export interface SpeechProviderPreset {
 
 /** 语音识别厂商预设 */
 export const speechProviderPresets: SpeechProviderPreset[] = [
+  // ── Groq（置顶推荐）──
+  {
+    label: 'Groq',
+    value: 'speech-groq',
+    model: 'whisper-large-v3-turbo',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    hint: 'Groq Whisper 语音转写，走 OpenAI 兼容的 /audio/transcriptions 接口，需 Groq API Key。',
+    website: 'https://groq.com'
+  },
+
   // ── 国内云厂商 ──
   {
     label: '火山引擎语音识别',
@@ -172,6 +182,7 @@ export const speechProviderOptions = speechProviderPresets.map(({ label, value }
 
 /** 根据语音识别服务预设返回对应的模型厂商官网地址 */
 const SPEECH_PROVIDER_WEBSITES: Record<string, string> = {
+  'speech-groq': 'https://groq.com',
   'speech-volcengine': 'https://www.volcengine.com/speech',
   'speech-baidu': 'https://ai.baidu.com/tech/speech/asr',
   'speech-alibaba': 'https://www.aliyun.com/product/bailian',

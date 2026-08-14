@@ -2027,7 +2027,7 @@ async function saveSettings(): Promise<void> {
                   @update:value="(value) => updateEditingSpeechProfile({ name: value })"
                 />
               </n-form-item>
-              <n-form-item label="模型厂商">
+              <n-form-item label="厂商">
                 <n-select
                   :options="speechProviderOptions"
                   :value="editingSpeechProfile.provider"
