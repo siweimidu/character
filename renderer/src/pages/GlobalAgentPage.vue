@@ -17,8 +17,8 @@ import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import {
   ArrowLeft,
-  Bot,
   Brain,
+  ChevronDown,
   FolderTree,
   MessagesSquare,
   Plug,
@@ -27,6 +27,7 @@ import {
   Package
 } from 'lucide-vue-next'
 import type { SurfaceDefinition, TurnTruncateResult } from '@shared/assistant-runtime'
+import AiProviderIcon from '@/components/assistantV2/AiProviderIcon.vue'
 import { useAppStore } from '@/stores/app'
 import { useAssistant } from '@/composables/useAssistant'
 import AssistantSessionList from '@/components/assistantV2/AssistantSessionList.vue'
@@ -116,6 +117,45 @@ function handleReferenceConfirm(refs: PickedReference[]): void {
 const currentProject = computed(() =>
   projects.value.find((item) => item.id === selectedProjectId.value) ?? projects.value[0] ?? null
 )
+
+// ============================================================================
+// 侧栏项目选择器：直接引用 / 切换主页小说项目（DeepSeek Harness 上下文选择）
+// ============================================================================
+const projectPickerOpen = ref(false)
+const projectPickerEl = ref<HTMLElement | null>(null)
+function toggleProjectPicker(): void {
+  projectPickerOpen.value = !projectPickerOpen.value
+}
+function onProjectPickerDocClick(event: MouseEvent): void {
+  if (!projectPickerOpen.value) return
+  if (projectPickerEl.value && !projectPickerEl.value.contains(event.target as Node)) {
+    projectPickerOpen.value = false
+  }
+}
+function selectProject(projectId: string): void {
+  if (projectId !== selectedProjectId.value) {
+    appStore.openProject(projectId)
+    // 打开项目后重新定位到全局智能体视图，避免跳转到工作台
+    appStore.currentView = 'global-agent'
+    message.success(`已切换上下文至《${currentProject.value?.title || '该小说'}》`)
+  }
+  projectPickerOpen.value = false
+}
+
+// 当前使用的 AI 接口 / 模型（标题栏模型切换器共享同一数据源）
+const activeProfileName = computed(() => {
+  const profile = appStore.appSettings.aiProfiles.find(
+    (p) => p.id === appStore.appSettings.activeAiProfileId
+  )
+  return profile?.name || appStore.appSettings.provider || '未配置'
+})
+const activeProvider = computed(() => {
+  const profile = appStore.appSettings.aiProfiles.find(
+    (p) => p.id === appStore.appSettings.activeAiProfileId
+  )
+  return profile?.provider || appStore.appSettings.provider || ''
+})
+const activeModel = computed(() => appStore.appSettings.model || '未选模型')
 
 function sendWithMode(intentHint?: string): void {
   void assistant.send({
@@ -289,8 +329,12 @@ onMounted(() => {
   restoreAgentSelection()
   sessionWidth.value = readStoredWidth(SESSION_WIDTH_KEY, SESSION_DEFAULT_WIDTH, SESSION_MIN_WIDTH, SESSION_MAX_WIDTH)
   stageWidth.value = readStoredWidth(STAGE_WIDTH_KEY, STAGE_DEFAULT_WIDTH, STAGE_MIN_WIDTH, STAGE_MAX_WIDTH)
+  document.addEventListener('click', onProjectPickerDocClick)
 })
-onBeforeUnmount(() => { activeResizeCleanup?.() })
+onBeforeUnmount(() => {
+  activeResizeCleanup?.()
+  document.removeEventListener('click', onProjectPickerDocClick)
+})
 
 // 写回暂存变更
 const isCommitting = ref(false)
@@ -345,7 +389,7 @@ async function copyMessage(text: string): Promise<void> {
           <ArrowLeft :size="16" />
         </button>
         <div class="ga-brand">
-          <Bot :size="17" class="ga-brand-icon" />
+          <AiProviderIcon :provider="activeProvider" :size="17" class="ga-brand-icon" />
           <span>全局智能体</span>
         </div>
       </div>
@@ -405,14 +449,41 @@ async function copyMessage(text: string): Promise<void> {
           </div>
         </div>
 
-        <div v-if="currentProject" class="ga-ctx-card">
-          <div class="ga-ctx-label">当前上下文</div>
-          <div class="ga-ctx-title">{{ currentProject.title || '未命名小说' }}</div>
-          <div class="ga-ctx-meta">{{ currentProject.genre || '未分类' }} · {{ currentProject.novelLength === 'short' ? '短篇' : '长篇' }}</div>
+        <!-- 项目上下文选择器：直接引用 / 切换主页小说项目 -->
+        <div ref="projectPickerEl" class="ga-ctx-card">
+          <div class="ga-ctx-label">当前上下文 · 小说项目</div>
+          <button type="button" class="ga-ctx-select" @click="toggleProjectPicker">
+            <span v-if="currentProject" class="ga-ctx-title">{{ currentProject.title || '未命名小说' }}</span>
+            <span v-else class="ga-ctx-title muted">未选择小说</span>
+            <ChevronDown :size="13" class="ga-ctx-caret" :class="{ open: projectPickerOpen }" />
+          </button>
+          <div v-if="currentProject" class="ga-ctx-meta">{{ currentProject.genre || '未分类' }} · {{ currentProject.novelLength === 'short' ? '短篇' : '长篇' }}</div>
+
+          <div v-if="projectPickerOpen" class="ga-ctx-dropdown">
+            <div class="ga-ctx-dropdown-head">选择小说项目</div>
+            <div class="ga-ctx-dropdown-list arc-scrollbar">
+              <button
+                v-for="project in projects"
+                :key="project.id"
+                type="button"
+                class="ga-ctx-option"
+                :class="{ active: project.id === selectedProjectId }"
+                @click="selectProject(project.id)"
+              >
+                <span class="ga-ctx-option-title">{{ project.title || '未命名小说' }}</span>
+                <span class="ga-ctx-option-meta">{{ project.genre || '未分类' }}</span>
+              </button>
+              <div v-if="projects.length === 0" class="ga-ctx-dropdown-empty">暂无小说项目，请先返回主页创建。</div>
+            </div>
+          </div>
         </div>
-        <div v-else class="ga-ctx-card">
-          <div class="ga-ctx-label">当前上下文</div>
-          <div class="ga-ctx-title muted">未选择小说</div>
+
+        <!-- AI 接口 / 模型指示（与标题栏模型切换器共享数据源） -->
+        <div class="ga-ai-indicator">
+          <AiProviderIcon :provider="activeProvider" :size="14" />
+          <span class="ga-ai-indicator-name">{{ activeProfileName }}</span>
+          <span class="ga-ai-indicator-sep">·</span>
+          <span class="ga-ai-indicator-model">{{ activeModel }}</span>
         </div>
       </div>
     </div>
@@ -750,6 +821,7 @@ async function copyMessage(text: string): Promise<void> {
   height: 240px;
 }
 .ga-ctx-card {
+  position: relative;
   padding: 9px 11px;
   border-radius: 10px;
   background: var(--arc-bg-weak);
@@ -762,13 +834,38 @@ async function copyMessage(text: string): Promise<void> {
   color: var(--arc-text-hint);
   margin-bottom: 4px;
 }
+.ga-ctx-select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.ga-ctx-select:hover .ga-ctx-title {
+  color: var(--arc-primary);
+}
+.ga-ctx-caret {
+  flex: 0 0 auto;
+  color: var(--arc-text-hint);
+  transition: transform 0.18s ease;
+}
+.ga-ctx-caret.open {
+  transform: rotate(180deg);
+}
 .ga-ctx-title {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 13px;
   font-weight: 700;
   color: var(--arc-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color 0.15s ease;
 }
 .ga-ctx-title.muted {
   color: var(--arc-text-hint);
@@ -778,6 +875,108 @@ async function copyMessage(text: string): Promise<void> {
   margin-top: 3px;
   font-size: 11.5px;
   color: var(--arc-text-secondary);
+}
+.ga-ctx-dropdown {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 30;
+  max-height: 260px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--arc-border-strong);
+  border-radius: 12px;
+  background: var(--arc-bg-surface);
+  box-shadow: var(--arc-shadow-md);
+}
+.ga-ctx-dropdown-head {
+  padding: 8px 12px;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--arc-text-hint);
+  border-bottom: 1px solid var(--arc-border);
+}
+.ga-ctx-dropdown-list {
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  padding: 4px;
+}
+.ga-ctx-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.ga-ctx-option:hover {
+  background: var(--arc-bg-weak);
+}
+.ga-ctx-option.active {
+  background: var(--arc-primary-soft);
+}
+.ga-ctx-option-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--arc-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ga-ctx-option.active .ga-ctx-option-title {
+  color: var(--arc-primary);
+}
+.ga-ctx-option-meta {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--arc-text-hint);
+}
+.ga-ctx-dropdown-empty {
+  padding: 14px 12px;
+  font-size: 12px;
+  color: var(--arc-text-hint);
+  text-align: center;
+}
+.ga-ai-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--arc-primary) 6%, var(--arc-bg-surface));
+  border: 1px solid color-mix(in srgb, var(--arc-primary) 14%, var(--arc-border));
+  color: var(--arc-text-secondary);
+  font-size: 11px;
+  min-width: 0;
+}
+.ga-ai-indicator-name {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: var(--arc-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40%;
+}
+.ga-ai-indicator-sep {
+  flex: 0 0 auto;
+  color: var(--arc-text-hint);
+}
+.ga-ai-indicator-model {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ===== 折叠窄条 ===== */
