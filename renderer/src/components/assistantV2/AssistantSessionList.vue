@@ -6,6 +6,8 @@ import type { AssistantSession } from '@shared/assistant-runtime'
 const props = defineProps<{
   sessions: AssistantSession[]
   activeSessionId: string | null
+  /** 由外部页面提供新建会话入口时，隐藏本组件自带的头部与新建按钮，避免重复。 */
+  hideNewButton?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -135,7 +137,7 @@ const grouped = computed(() => {
 
 <template>
   <div class="session-list">
-    <div class="head">
+    <div v-if="!props.hideNewButton" class="head">
       <div class="brand">
         <span class="dot" />
         <span>智能体</span>
@@ -155,8 +157,18 @@ const grouped = computed(() => {
         </button>
       </div>
     </div>
+    <!-- 外部页面（GlobalAgentPage）隐藏新建按钮时，仍保留批量删除的多选入口 -->
+    <div v-if="props.hideNewButton && !selectionMode && props.sessions.length > 0" class="batch-entry">
+      <button
+        class="multi-btn"
+        title="多选批量删除"
+        @click="toggleSelectionMode"
+      >
+        多选删除
+      </button>
+    </div>
 
-    <button class="new-btn" @click="emit('create')">
+    <button v-if="!props.hideNewButton" class="new-btn" @click="emit('create')">
       <span class="plus">+</span>
       <span>新建对话</span>
     </button>
@@ -265,6 +277,7 @@ const grouped = computed(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  height: 100%;
   background: var(--arc-bg-surface);
   border-right: 1px solid var(--arc-border);
 }
@@ -297,7 +310,17 @@ const grouped = computed(() => {
   color: var(--arc-primary);
   border-color: var(--arc-primary);
 }
+.batch-entry {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  margin: 0 12px 10px;
+  flex-shrink: 0;
+}
 .batch-bar {
+  position: relative;
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -307,6 +330,7 @@ const grouped = computed(() => {
   border-radius: 9px;
   background: var(--arc-bg-weak);
   border: 1px solid var(--arc-border);
+  flex-shrink: 0;
 }
 .batch-select-all {
   display: inline-flex;
@@ -350,8 +374,8 @@ const grouped = computed(() => {
   align-items: center;
   gap: 5px;
   border: none;
-  background: var(--v2-danger-soft);
-  color: var(--v2-danger);
+  background: var(--v2-danger-soft, color-mix(in srgb, var(--arc-danger) 12%, transparent));
+  color: var(--v2-danger, var(--arc-danger));
   cursor: pointer;
   font-size: 12px;
   font-family: inherit;

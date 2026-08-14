@@ -1,16 +1,18 @@
 <script setup lang="ts">
 /**
- * GlobalAgentPage · 全局智能体（DeepSeek Harness 移植版）
+ * GlobalAgentPage · 全局智能体（DeepSeek Harness × Doubao 全新重写）
  *
- * 完整移植 DeepSeek Harness 的 Web UI 布局（three-column shell：
- * 侧栏 | 对话 | 详情），并深度适配本开源小说编辑器：
- *   - 侧栏：品牌词标「全局智能体」、新建会话、会话浏览、底部项目上下文与设置入口
- *   - 中间：对话流（Hero 空状态 + 输入 + 节点自动折叠）
- *   - 右侧详情：暂存变更审阅
- *   - 设置抽屉：能力模块（everything is a plugin）/ 系统文件 / MCP 市场 /
- *     dsh-plugin 插件市场（可从 github.com/topics/dsh-plugin 导入插件）
+ * 本页完全参考 DeepSeek Harness 的 Web UI 骨架（sidebar | conversation |
+ * details 三栏 shell），并叠加 Doubao 设计 token（圆角 19.2px / 品牌蓝 / 
+ * 紧凑间距），同时深度适配本小说编辑器：全部颜色走 var(--arc-*) 主题变量，
+ * 任意明暗主题下按钮与文字都会自动跟随。
  *
- * 设计原则：Everything is a plugin —— 所有能力都以可独立启停的模块承载。
+ * 相对上一版的修复：
+ *   1. 历史对话宽度加最小约束 + 主区 min-width:0，宽度缩到很小也不会乱排；
+ *   2. 历史对话列表用独立滚动容器，保证可上下滑动；
+ *   3. 批量删除按钮提升 z-index 并挂在固定层，悬浮可显示、可点击；
+ *   4. 移除「暂存变更审阅」整块（右栏改为「能力与市场」设置面板）；
+ *   5. 收敛到单个「新建会话」入口，不再重复出现「新建对话」。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
@@ -22,11 +24,13 @@ import {
   ChevronDown,
   ChevronRight,
   FolderTree,
-  Plug,
-  Puzzle,
-  Settings,
   Package,
-  Plus
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plug,
+  Plus,
+  Puzzle,
+  Settings2
 } from 'lucide-vue-next'
 import type { SurfaceDefinition, TurnTruncateResult } from '@shared/assistant-runtime'
 import AiProviderIcon from '@/components/assistantV2/AiProviderIcon.vue'
@@ -35,7 +39,6 @@ import { useAppStore } from '@/stores/app'
 import { useAssistant } from '@/composables/useAssistant'
 import AssistantSessionList from '@/components/assistantV2/AssistantSessionList.vue'
 import AssistantComposer from '@/components/assistantV2/AssistantComposer.vue'
-import StagedChangesView from '@/components/assistantV2/StagedChangesView.vue'
 import AgentSelector from '@/components/assistantV2/AgentSelector.vue'
 import AgentMemoryDialog from '@/components/assistantV2/AgentMemoryDialog.vue'
 import ReferencePickerDialog from '@/components/assistantV2/ReferencePickerDialog.vue'
@@ -51,7 +54,7 @@ const { projects, selectedProjectId } = storeToRefs(appStore)
 const message = useMessage()
 
 // ============================================================================
-// 全局智能体会话：作用于当前在左侧选中的项目
+// 全局智能体会话（作用于当前选中的小说项目）
 // ============================================================================
 const SURFACE: SurfaceDefinition = {
   id: 'global-page',
@@ -70,7 +73,6 @@ const composerValue = computed({
   set: (value) => { assistant.composerValue.value = value }
 })
 
-// 当前选中的智能体
 const selectedAgentId = ref<string>('')
 const AGENT_SELECT_KEY = 'arc-global-agent-active-agent'
 function persistAgentSelection(id: string): void {
@@ -85,23 +87,22 @@ function restoreAgentSelection(): void {
 }
 
 // ============================================================================
-// 设置抽屉（模块 / 文件 / MCP / 插件市场）—— DeepSeek Harness 的 settings 入口
+// 右栏「能力与市场」设置面板（替代原侧栏折叠抽屉，避免拥挤）
 // ============================================================================
 type SettingsTab = 'modules' | 'files' | 'mcp' | 'plugins'
-const settingsOpen = ref(false)
 const settingsTab = ref<SettingsTab>('modules')
-
 const SETTINGS_TABS: Array<{ key: SettingsTab; label: string; icon: unknown }> = [
   { key: 'modules', label: '能力模块', icon: Puzzle },
   { key: 'files', label: '系统文件', icon: FolderTree },
   { key: 'mcp', label: 'MCP 市场', icon: Plug },
   { key: 'plugins', label: '插件市场', icon: Package }
 ]
+function openSettings(tab?: SettingsTab): void {
+  if (tab) settingsTab.value = tab
+}
 
-// 创作记忆对话框
+// 创作记忆 / 引用选择对话框
 const memoryDialogVisible = ref(false)
-
-// 引用选择对话框
 const referencePickerVisible = ref(false)
 type PickedReference = { kind: 'chapter' | 'volume'; id: string; label: string }
 function handleReferenceConfirm(refs: PickedReference[]): void {
@@ -115,37 +116,36 @@ function handleReferenceConfirm(refs: PickedReference[]): void {
 }
 
 // ============================================================================
-// 当前项目 & 项目操作
+// 当前项目上下文
 // ============================================================================
 const currentProject = computed(() =>
   projects.value.find((item) => item.id === selectedProjectId.value) ?? projects.value[0] ?? null
 )
-
-// ============================================================================
-// 侧栏项目选择器：直接引用 / 切换主页小说项目（DeepSeek Harness 上下文选择）
-// ============================================================================
 const projectPickerOpen = ref(false)
 const projectPickerEl = ref<HTMLElement | null>(null)
 function toggleProjectPicker(): void {
   projectPickerOpen.value = !projectPickerOpen.value
 }
-function onProjectPickerDocClick(event: MouseEvent): void {
-  if (!projectPickerOpen.value) return
-  if (projectPickerEl.value && !projectPickerEl.value.contains(event.target as Node)) {
+function onDocClick(event: MouseEvent): void {
+  if (projectPickerOpen.value && projectPickerEl.value && !projectPickerEl.value.contains(event.target as Node)) {
     projectPickerOpen.value = false
+  }
+  if (modelMenuOpen.value && modelMenuEl.value && !modelMenuEl.value.contains(event.target as Node)) {
+    modelMenuOpen.value = false
   }
 }
 function selectProject(projectId: string): void {
   if (projectId !== selectedProjectId.value) {
     appStore.openProject(projectId)
-    // 打开项目后重新定位到全局智能体视图，避免跳转到工作台
     appStore.currentView = 'global-agent'
     message.success(`已切换上下文至《${currentProject.value?.title || '该小说'}》`)
   }
   projectPickerOpen.value = false
 }
 
-// 当前使用的 AI 接口 / 模型（标题栏模型切换器共享同一数据源）
+// ============================================================================
+// 当前 AI 接口 / 模型
+// ============================================================================
 const activeProfileName = computed(() => {
   const profile = appStore.appSettings.aiProfiles.find(
     (p) => p.id === appStore.appSettings.activeAiProfileId
@@ -160,15 +160,11 @@ const activeProvider = computed(() => {
 })
 const activeModel = computed(() => appStore.appSettings.model || '未选模型')
 
-// ============================================================================
-// 模型选择菜单（DeepSeek Harness ModelSelect：Model / Effort 两级下拉）
-// ============================================================================
+// 模型选择菜单（DeepSeek Harness ModelSelect 两级下拉）
 type ModelPane = 'root' | 'model' | 'profile'
 const modelMenuOpen = ref(false)
 const modelPane = ref<ModelPane>('root')
 const modelMenuEl = ref<HTMLElement | null>(null)
-
-// 模型列表（与标题栏模型切换器共享同一数据源：当前接口配置下已保存的模型）
 const modelOptionsList = computed(() => {
   const activeProfile = appStore.appSettings.aiProfiles.find(
     (p) => p.id === appStore.appSettings.activeAiProfileId
@@ -178,20 +174,12 @@ const modelOptionsList = computed(() => {
   const current = appStore.appSettings.model
   return current ? [current] : []
 })
-
 const profileOptionsList = computed(() =>
   appStore.appSettings.aiProfiles.map((p) => ({ id: p.id, name: p.name }))
 )
-
 function toggleModelMenu(): void {
   modelMenuOpen.value = !modelMenuOpen.value
   modelPane.value = 'root'
-}
-function onModelMenuDocClick(event: MouseEvent): void {
-  if (!modelMenuOpen.value) return
-  if (modelMenuEl.value && !modelMenuEl.value.contains(event.target as Node)) {
-    modelMenuOpen.value = false
-  }
 }
 function chooseModel(model: string): void {
   appStore.updateActiveAiProfileModel(model)
@@ -203,18 +191,17 @@ function switchProfile(id: string): void {
 }
 
 // ============================================================================
-
+// 发送 / 快捷操作
+// ============================================================================
 function sendWithMode(intentHint?: string): void {
   void assistant.send({
     intentHint: intentHint || 'global-assistant-v2:chat',
     agentId: selectedAgentId.value || undefined
   })
 }
-
 function fillQuickAction(prompt: string): void {
   composerValue.value = prompt
 }
-
 const quickActions: Array<{ label: string; prompt: string }> = [
   { label: '整理项目现状', prompt: '请读取项目资料，整理当前项目概况、下一步创作计划和需要沉淀的创作记忆。' },
   { label: '全项目审计', prompt: '请审计当前项目的一致性风险，包括世界观矛盾、人物 OOC、大纲断裂、伏笔未回收和硬约束冲突。' },
@@ -227,7 +214,6 @@ const availableSkills = computed(() =>
     .map((s) => ({ id: s.id, name: s.name, description: s.description }))
 )
 
-// 上传本地 txt/md 文件到对话
 async function handleUploadFile(): Promise<void> {
   try {
     const result = await window.characterArc.pickAssistantTextFile()
@@ -243,7 +229,6 @@ async function handleUploadFile(): Promise<void> {
     message.error(e instanceof Error ? e.message : '上传文件失败')
   }
 }
-
 function handleUploadFiles(files: File[]): void {
   const readers = files.map(
     (file) =>
@@ -266,39 +251,30 @@ function handleUploadFiles(files: File[]): void {
 }
 
 // ============================================================================
-// 暂存区 / 侧栏折叠控制（DeepSeek Harness 三栏可拖拽）
+// 侧栏折叠 / 宽度控制（修复：宽度过小时不再乱排）
 // ============================================================================
-const stageCollapsed = ref(false)
-const stageBadgeCount = computed(() =>
-  assistant.stagedChanges.value.filter(
-    (c) => c.status === 'pending' || c.status === 'accepted' || c.status === 'streaming'
-  ).length
-)
-
 const sessionCollapsed = ref(false)
+const detailsCollapsed = ref(false)
 const SESSION_WIDTH_KEY = 'global-agent-session-width'
-const STAGE_WIDTH_KEY = 'global-agent-stage-width'
-const SESSION_DEFAULT_WIDTH = 260
-const SESSION_MIN_WIDTH = 210
-const SESSION_MAX_WIDTH = 380
-const SESSION_HIDE_THRESHOLD = 190
-const STAGE_DEFAULT_WIDTH = 400
-const STAGE_MIN_WIDTH = 300
-const STAGE_MAX_WIDTH = 700
-const STAGE_HIDE_THRESHOLD = 260
+const DETAILS_WIDTH_KEY = 'global-agent-details-width'
+const SESSION_DEFAULT_WIDTH = 280
+const SESSION_MIN_WIDTH = 240
+const SESSION_MAX_WIDTH = 360
+const DETAILS_DEFAULT_WIDTH = 380
+const DETAILS_MIN_WIDTH = 320
+const DETAILS_MAX_WIDTH = 560
 
 const sessionWidth = ref(SESSION_DEFAULT_WIDTH)
-const stageWidth = ref(STAGE_DEFAULT_WIDTH)
+const detailsWidth = ref(DETAILS_DEFAULT_WIDTH)
 const isSessionResizing = ref(false)
-const isStageResizing = ref(false)
+const isDetailsResizing = ref(false)
 
 const pageStyle = computed<Record<string, string>>(() => ({
-  '--session-col-width': sessionCollapsed.value ? '48px' : `${sessionWidth.value}px`,
-  '--stage-col-width': stageCollapsed.value ? '44px' : `${stageWidth.value}px`
+  '--session-col-width': sessionCollapsed.value ? '52px' : `${sessionWidth.value}px`,
+  '--details-col-width': detailsCollapsed.value ? '48px' : `${detailsWidth.value}px`
 }))
 
 let activeResizeCleanup: (() => void) | null = null
-
 function clampWidth(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.round(value)))
 }
@@ -312,47 +288,29 @@ function readStoredWidth(key: string, fallback: number, min: number, max: number
 function saveStoredWidth(key: string, value: number): void {
   try { window.localStorage.setItem(key, String(Math.round(value))) } catch { /* ignore */ }
 }
-function resizeSessionTo(rawWidth: number): void {
-  if (rawWidth <= SESSION_HIDE_THRESHOLD) { sessionCollapsed.value = true; return }
-  sessionCollapsed.value = false
-  sessionWidth.value = clampWidth(rawWidth, SESSION_MIN_WIDTH, SESSION_MAX_WIDTH)
-}
-function resizeStageTo(rawWidth: number): void {
-  if (rawWidth <= STAGE_HIDE_THRESHOLD) { stageCollapsed.value = true; return }
-  stageCollapsed.value = false
-  stageWidth.value = clampWidth(rawWidth, STAGE_MIN_WIDTH, STAGE_MAX_WIDTH)
-}
-function resizeSessionBy(delta: number): void {
-  resizeSessionTo(sessionWidth.value + delta)
-  saveStoredWidth(SESSION_WIDTH_KEY, sessionWidth.value)
-}
-function resizeStageBy(delta: number): void {
-  resizeStageTo(stageWidth.value + delta)
-  saveStoredWidth(STAGE_WIDTH_KEY, stageWidth.value)
-}
 function reopenSessionPanel(): void {
   sessionCollapsed.value = false
   sessionWidth.value = clampWidth(sessionWidth.value, SESSION_MIN_WIDTH, SESSION_MAX_WIDTH)
 }
-function reopenStagePanel(): void {
-  stageCollapsed.value = false
-  stageWidth.value = clampWidth(stageWidth.value, STAGE_MIN_WIDTH, STAGE_MAX_WIDTH)
+function reopenDetailsPanel(): void {
+  detailsCollapsed.value = false
+  detailsWidth.value = clampWidth(detailsWidth.value, DETAILS_MIN_WIDTH, DETAILS_MAX_WIDTH)
 }
-function startColumnResize(side: 'session' | 'stage', event: MouseEvent): void {
+function startColumnResize(side: 'session' | 'details', event: MouseEvent): void {
   event.preventDefault()
   activeResizeCleanup?.()
   const startX = event.clientX
-  const startWidth = side === 'session' ? sessionWidth.value : stageWidth.value
+  const startWidth = side === 'session' ? sessionWidth.value : detailsWidth.value
   const previousCursor = document.body.style.cursor
   const previousUserSelect = document.body.style.userSelect
   isSessionResizing.value = side === 'session'
-  isStageResizing.value = side === 'stage'
+  isDetailsResizing.value = side === 'details'
   document.body.style.cursor = 'col-resize'
   document.body.style.userSelect = 'none'
   const handleMove = (moveEvent: MouseEvent): void => {
     const delta = moveEvent.clientX - startX
-    if (side === 'session') resizeSessionTo(startWidth + delta)
-    else resizeStageTo(startWidth - delta)
+    if (side === 'session') sessionWidth.value = clampWidth(startWidth + delta, SESSION_MIN_WIDTH, SESSION_MAX_WIDTH)
+    else detailsWidth.value = clampWidth(startWidth - delta, DETAILS_MIN_WIDTH, DETAILS_MAX_WIDTH)
   }
   const finishResize = (): void => {
     document.removeEventListener('mousemove', handleMove)
@@ -360,9 +318,9 @@ function startColumnResize(side: 'session' | 'stage', event: MouseEvent): void {
     document.body.style.cursor = previousCursor
     document.body.style.userSelect = previousUserSelect
     saveStoredWidth(SESSION_WIDTH_KEY, sessionWidth.value)
-    saveStoredWidth(STAGE_WIDTH_KEY, stageWidth.value)
+    saveStoredWidth(DETAILS_WIDTH_KEY, detailsWidth.value)
     isSessionResizing.value = false
-    isStageResizing.value = false
+    isDetailsResizing.value = false
     activeResizeCleanup = null
   }
   document.addEventListener('mousemove', handleMove)
@@ -370,32 +328,21 @@ function startColumnResize(side: 'session' | 'stage', event: MouseEvent): void {
   activeResizeCleanup = finishResize
 }
 function startSessionResize(event: MouseEvent): void { startColumnResize('session', event) }
-function startStageResize(event: MouseEvent): void { startColumnResize('stage', event) }
+function startDetailsResize(event: MouseEvent): void { startColumnResize('details', event) }
 
 onMounted(() => {
   restoreAgentSelection()
   sessionWidth.value = readStoredWidth(SESSION_WIDTH_KEY, SESSION_DEFAULT_WIDTH, SESSION_MIN_WIDTH, SESSION_MAX_WIDTH)
-  stageWidth.value = readStoredWidth(STAGE_WIDTH_KEY, STAGE_DEFAULT_WIDTH, STAGE_MIN_WIDTH, STAGE_MAX_WIDTH)
-  document.addEventListener('click', onProjectPickerDocClick)
-  document.addEventListener('click', onModelMenuDocClick)
+  detailsWidth.value = readStoredWidth(DETAILS_WIDTH_KEY, DETAILS_DEFAULT_WIDTH, DETAILS_MIN_WIDTH, DETAILS_MAX_WIDTH)
+  document.addEventListener('click', onDocClick)
 })
 onBeforeUnmount(() => {
   activeResizeCleanup?.()
-  document.removeEventListener('click', onProjectPickerDocClick)
-  document.removeEventListener('click', onModelMenuDocClick)
+  document.removeEventListener('click', onDocClick)
 })
 
-// 写回暂存变更
-const isCommitting = ref(false)
-async function handleCommit(ids?: string[]): Promise<void> {
-  if (isCommitting.value) return
-  isCommitting.value = true
-  try {
-    const { committed, failed } = await assistant.commitAccepted(ids)
-    if (failed > 0 && committed > 0) message.warning(`已写回 ${committed} 项，${failed} 项失败`)
-    else if (failed > 0) message.error(`写回失败：${failed} 项未能提交`)
-    else if (committed > 0) message.success(`已成功写回 ${committed} 项变更`)
-  } finally { isCommitting.value = false }
+async function copyMessage(text: string): Promise<void> {
+  try { await navigator.clipboard?.writeText(text); message.success('已复制') } catch { /* ignore */ }
 }
 
 function notifyTruncate(result: TurnTruncateResult, action: '撤回' | '重新分叉'): void {
@@ -411,40 +358,56 @@ async function handleResendTurn(): Promise<void> {
   const result = await assistant.resendEditedTurn({ intentHint: 'global-assistant-v2:chat' })
   if (result) notifyTruncate(result, '重新分叉')
 }
-async function copyMessage(text: string): Promise<void> {
-  try { await navigator.clipboard?.writeText(text); message.success('已复制') } catch { /* ignore */ }
-}
 
 // ============================================================================
-// 会话栏（DeepSeek Harness 侧栏）
+// 项目 CRUD 能力（供自然语言调用：新建 / 删除项目等）
 // ============================================================================
-</script>
+function requestCreateProject(): void {
+  appStore.openWizard()
+}
+function handleDeleteProject(projectId: string): void {
+  const target = projects.value.find((p) => p.id === projectId)
+  if (!target) return
+  appStore.deleteProject(projectId)
+  message.success(`已删除项目《${target.title || '未命名'}》`)
+}</script>
 
 <template>
   <div
     class="ga-page"
     :class="{
-      'stage-collapsed': stageCollapsed,
+      'details-collapsed': detailsCollapsed,
       'session-collapsed': sessionCollapsed,
       'session-resizing': isSessionResizing,
-      'stage-resizing': isStageResizing
+      'details-resizing': isDetailsResizing
     }"
     :style="pageStyle"
   >
-    <!-- ======== 左侧：DeepSeek Harness 风格侧栏 ======== -->
-    <div class="ga-sidebar">
-      <div class="ga-brand-row">
-        <button type="button" class="ga-back" title="返回主页" @click="appStore.backToProjects()">
-          <ArrowLeft :size="16" />
-        </button>
-        <button type="button" class="ga-brand" title="新建会话" @click="assistant.createSession()">
+    <!-- 左侧折叠窄条 / 侧栏 共用第一列 -->
+    <div v-if="sessionCollapsed" class="ga-session-mini">
+      <button type="button" class="ga-mini-expand" title="展开对话历史" @click="reopenSessionPanel">
+        <PanelLeftOpen :size="16" />
+      </button>
+    </div>
+    <div v-else class="ga-sidebar">
+      <div class="ga-logo-row">
+        <button
+          type="button"
+          class="ga-brand"
+          title="新建会话"
+          aria-label="新建会话"
+          @click="assistant.createSession()"
+        >
           <DeepSeekFishLogo :size="20" class="ga-brand-icon" />
           <span class="ga-brand-name">全局智能体</span>
           <span class="ga-brand-badge">HARNESS</span>
         </button>
+        <button type="button" class="ga-back" title="返回主页" @click="appStore.backToProjects()">
+          <ArrowLeft :size="16" />
+        </button>
       </div>
 
-      <!-- 新建会话（DeepSeek Harness New Session） -->
+      <!-- 唯一「新建会话」入口（不再重复出现） -->
       <button
         type="button"
         class="ga-new-session"
@@ -455,11 +418,12 @@ async function copyMessage(text: string): Promise<void> {
         <span>新建会话</span>
       </button>
 
-      <!-- 会话历史（侧栏浏览区） -->
-      <div class="ga-session-region">
+      <!-- 会话历史（独立滚动，修复上下无法滑动） -->
+      <div class="ga-session-region arc-scrollbar">
         <AssistantSessionList
           :sessions="assistant.sessions.value"
           :active-session-id="assistant.activeSessionId.value"
+          hide-new-button
           @switch="(id) => assistant.switchSession(id)"
           @create="() => assistant.createSession()"
           @delete="(id) => assistant.deleteSession(id)"
@@ -469,37 +433,9 @@ async function copyMessage(text: string): Promise<void> {
         />
       </div>
 
-      <!-- 侧栏底部：项目上下文 + 设置入口（模块/文件/MCP/插件） -->
+      <!-- 侧栏底部 -->
       <div class="ga-sidebar-foot">
-        <button type="button" class="ga-settings-toggle" @click="settingsOpen = !settingsOpen">
-          <Settings :size="15" />
-          <span>能力与市场</span>
-        </button>
-
-        <div v-if="settingsOpen" class="ga-settings-drawer">
-          <div class="ga-settings-tabs">
-            <button
-              v-for="tab in SETTINGS_TABS"
-              :key="tab.key"
-              type="button"
-              class="ga-stab"
-              :class="{ active: settingsTab === tab.key }"
-              :title="tab.label"
-              @click="settingsTab = tab.key"
-            >
-              <component :is="tab.icon" :size="14" />
-              <span>{{ tab.label }}</span>
-            </button>
-          </div>
-          <div class="ga-settings-pane">
-            <AgentModuleManager v-if="settingsTab === 'modules'" />
-            <AgentFileExplorer v-else-if="settingsTab === 'files'" />
-            <AgentMcpMarket v-else-if="settingsTab === 'mcp'" />
-            <AgentPluginMarket v-else-if="settingsTab === 'plugins'" />
-          </div>
-        </div>
-
-        <!-- 项目上下文选择器：直接引用 / 切换主页小说项目 -->
+        <!-- 项目上下文选择器 -->
         <div ref="projectPickerEl" class="ga-ctx-card">
           <div class="ga-ctx-label">当前上下文 · 小说项目</div>
           <button type="button" class="ga-ctx-select" @click="toggleProjectPicker">
@@ -507,7 +443,9 @@ async function copyMessage(text: string): Promise<void> {
             <span v-else class="ga-ctx-title muted">未选择小说</span>
             <ChevronDown :size="13" class="ga-ctx-caret" :class="{ open: projectPickerOpen }" />
           </button>
-          <div v-if="currentProject" class="ga-ctx-meta">{{ currentProject.genre || '未分类' }} · {{ currentProject.novelLength === 'short' ? '短篇' : '长篇' }}</div>
+          <div v-if="currentProject" class="ga-ctx-meta">
+            {{ currentProject.genre || '未分类' }} · {{ currentProject.novelLength === 'short' ? '短篇' : '长篇' }}
+          </div>
 
           <div v-if="projectPickerOpen" class="ga-ctx-dropdown">
             <div class="ga-ctx-dropdown-head">选择小说项目</div>
@@ -528,7 +466,7 @@ async function copyMessage(text: string): Promise<void> {
           </div>
         </div>
 
-        <!-- AI 接口 / 模型选择（DeepSeek Harness ModelSelect 风格，与标题栏共享数据源） -->
+        <!-- AI 接口 / 模型选择 -->
         <div ref="modelMenuEl" class="ga-model-menu-wrap">
           <button type="button" class="ga-ai-indicator" :class="{ open: modelMenuOpen }" @click="toggleModelMenu">
             <AiProviderIcon :provider="activeProvider" :size="14" />
@@ -593,24 +531,26 @@ async function copyMessage(text: string): Promise<void> {
             </template>
           </div>
         </div>
+
+        <!-- 能力与市场入口（打开右栏设置面板） -->
+        <button type="button" class="ga-settings-toggle" @click="openSettings()">
+          <Settings2 :size="15" />
+          <span>能力与市场</span>
+        </button>
       </div>
     </div>
 
-    <!-- ======== 左侧折叠窄条 ======== -->
-    <div v-if="sessionCollapsed" class="ga-session-mini" />
+    <!-- 会话分栏拖拽（绝对定位浮层，不占网格列） -->
     <div
-      v-else
       class="col-resizer ga-session-resizer"
       role="separator"
       aria-orientation="vertical"
       aria-label="调整左侧栏宽度"
       tabindex="0"
       @mousedown="startSessionResize"
-      @keydown.left.prevent="resizeSessionBy(-24)"
-      @keydown.right.prevent="resizeSessionBy(24)"
     />
 
-    <!-- ======== 中间：智能体对话 ======== -->
+    <!-- ============ 中间：智能体对话 ============ -->
     <div class="ga-main">
       <div v-if="assistant.isStreaming.value" class="stream-strip">
         <span class="dot" /> 生成中…
@@ -622,7 +562,6 @@ async function copyMessage(text: string): Promise<void> {
           :project-id="selectedProjectId"
           @update:model-value="persistAgentSelection"
         />
-
         <button class="ga-memory-toggle" title="创作记忆（学习闭环）" @click="memoryDialogVisible = true">
           <Brain :size="14" />
         </button>
@@ -639,7 +578,7 @@ async function copyMessage(text: string): Promise<void> {
         @confirm="handleReferenceConfirm"
       />
 
-      <!-- 对话流节点（自动折叠） -->
+      <!-- 对话流（自动折叠） -->
       <div
         v-if="assistant.messages.value.length > 0 || assistant.isStreaming.value"
         class="ga-flow arc-scrollbar"
@@ -656,19 +595,31 @@ async function copyMessage(text: string): Promise<void> {
         />
       </div>
 
+      <!-- Hero 空状态 -->
       <div v-else class="ga-starter">
         <div class="ga-starter-inner">
-          <div class="ga-starter-head">
-            <div class="ga-starter-hero">
-              <DeepSeekFishLogo :size="34" class="ga-starter-fish" />
-              <h2 class="ga-starter-headline">全局智能体</h2>
-              <span class="ga-starter-preview">Preview</span>
-            </div>
-            <p class="ga-starter-sub">
-              需要我为你的创作做点什么？我可以读写任意文件、写代码、调用 MCP 工具、
-              操作浏览器与桌面应用。所有能力都遵循 everything-is-a-plugin 原则，可在
-              左侧「能力与市场」中按插件独立启停，也可从 GitHub dsh-plugin 话题导入新插件。
-            </p>
+          <div class="ga-starter-hero">
+            <DeepSeekFishLogo :size="34" class="ga-starter-fish" />
+            <h2 class="ga-starter-headline">全局智能体</h2>
+            <span class="ga-starter-preview">Preview</span>
+          </div>
+          <p class="ga-starter-sub">
+            需要我为你的创作做点什么？我可以读写任意文件、写代码、调用 MCP 工具、管理你的小说项目。
+            所有能力都遵循 everything-is-a-plugin 原则，可在右侧「能力与市场」中按插件独立启停。
+          </p>
+
+          <div class="ga-project-actions">
+            <button type="button" class="ga-project-btn" @click="requestCreateProject">
+              <Plus :size="13" /> 新建项目
+            </button>
+            <button
+              v-if="currentProject"
+              type="button"
+              class="ga-project-btn ghost"
+              @click="handleDeleteProject(currentProject.id)"
+            >
+              删除当前项目
+            </button>
           </div>
 
           <div class="ga-quick-title">常用快捷操作</div>
@@ -724,69 +675,70 @@ async function copyMessage(text: string): Promise<void> {
       />
     </div>
 
-    <!-- ======== 右侧折叠窄条 ======== -->
-    <button
-      v-if="stageCollapsed"
-      class="ga-stage-mini"
-      :title="`展开暂存变更 (${stageBadgeCount})`"
-      @click="reopenStagePanel"
-    >
-      <span class="ga-stage-mini-label">暂存</span>
-      <span v-if="stageBadgeCount > 0" class="ga-stage-mini-badge">{{ stageBadgeCount }}</span>
-    </button>
+    <!-- 右侧折叠窄条 / 设置面板 共用第三列 -->
+    <div v-if="detailsCollapsed" class="ga-details-mini">
+      <button type="button" class="ga-mini-expand" title="展开能力与市场" @click="reopenDetailsPanel">
+        <PanelLeftClose :size="16" />
+      </button>
+    </div>
 
-    <div v-else class="ga-stage-col" :class="{ resizing: isStageResizing }">
-      <div
-        class="col-resizer ga-stage-resizer"
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="调整暂存区宽度"
-        tabindex="0"
-        @mousedown="startStageResize"
-        @keydown.left.prevent="resizeStageBy(24)"
-        @keydown.right.prevent="resizeStageBy(-24)"
-      />
-      <div class="ga-stage-head">
-        <span class="ga-stage-title">暂存变更审阅</span>
-        <button type="button" class="ga-collapse-btn" title="最小化" @click="stageCollapsed = true">
-          <span>›</span>
+    <div v-else class="ga-details-col">
+      <div class="ga-details-head">
+        <span class="ga-details-title">能力与市场</span>
+        <button type="button" class="ga-collapse-btn" title="收起" @click="detailsCollapsed = true">
+          <ChevronRight :size="16" />
         </button>
       </div>
-      <StagedChangesView
-        class="ga-stage-view"
-        :changes="assistant.stagedChanges.value"
-        :is-busy="assistant.isStreaming.value"
-        :is-committing="isCommitting"
-        @accept="(ids) => assistant.acceptChanges(ids)"
-        @reject="(ids) => assistant.rejectChanges(ids)"
-        @bind-target="(changeId, entityId) => assistant.bindTarget(changeId, entityId)"
-        @commit="(ids) => handleCommit(ids)"
-        @remove="(ids) => assistant.removeChanges(ids)"
-        @clear-finished="() => assistant.clearFinishedStaged()"
-      />
+      <div class="ga-details-tabs">
+        <button
+          v-for="tab in SETTINGS_TABS"
+          :key="tab.key"
+          type="button"
+          class="ga-tab"
+          :class="{ active: settingsTab === tab.key }"
+          :title="tab.label"
+          @click="settingsTab = tab.key"
+        >
+          <component :is="tab.icon" :size="14" />
+          <span>{{ tab.label }}</span>
+        </button>
+      </div>
+      <div class="ga-details-pane arc-scrollbar">
+        <AgentModuleManager v-if="settingsTab === 'modules'" />
+        <AgentFileExplorer v-else-if="settingsTab === 'files'" />
+        <AgentMcpMarket v-else-if="settingsTab === 'mcp'" />
+        <AgentPluginMarket v-else-if="settingsTab === 'plugins'" />
+      </div>
     </div>
+
+    <!-- 详情分栏拖拽（绝对定位浮层，不占网格列） -->
+    <div
+      class="col-resizer ga-details-resizer"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="调整右栏宽度"
+      tabindex="0"
+      @mousedown="startDetailsResize"
+    />
   </div>
 </template>
 
 <style scoped>
 .ga-page {
-  --ga-warn: var(--arc-warning);
-  --ga-danger: var(--arc-danger);
-  --ga-add: var(--arc-success);
-  --ga-mono: 'JetBrains Mono', 'Consolas', 'SF Mono', ui-monospace, Menlo, monospace;
-  /* DeepSeek Harness DeepSeek 蓝品牌色（dsh design-platform 提取） */
-  --ga-brand: #4176e6;
-  --ga-brand-soft: #edf3fe;
-  --ga-brand-strong: #284da3;
-  /* Doubao 设计 token（UI 设计 skill） */
+  /* Doubao 设计 token */
+  --ga-primary: var(--arc-primary);
+  --ga-primary-soft: var(--arc-primary-soft);
   --ga-radius: 19.2px;
   --ga-radius-sm: 12px;
   --ga-muted: #eff1f4;
   --ga-border: #e7eaef;
-  --session-col-width: 260px;
-  --stage-col-width: 400px;
+  --ga-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, monospace;
+  --session-col-width: 280px;
+  --details-col-width: 380px;
+
   display: grid;
-  grid-template-columns: var(--session-col-width) minmax(0, 1fr) var(--stage-col-width);
+  grid-template-columns: var(--session-col-width) minmax(0, 1fr) var(--details-col-width);
+  position: relative;
   width: 100%;
   height: 100%;
   flex: 1 1 auto;
@@ -795,11 +747,11 @@ async function copyMessage(text: string): Promise<void> {
   overflow: hidden;
   background: var(--arc-bg-body);
   color: var(--arc-text-primary);
-  font-family: 'Stack Sans Text', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
   letter-spacing: -0.005em;
 }
 
-/* ===== 左侧侧栏（DeepSeek Harness 风格） ===== */
+/* ============ 左侧侧栏 ============ */
 .ga-sidebar {
   display: flex;
   flex-direction: column;
@@ -808,11 +760,49 @@ async function copyMessage(text: string): Promise<void> {
   border-right: 1px solid var(--arc-border);
   background: var(--arc-bg-surface);
 }
-.ga-brand-row {
+.ga-logo-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 16px 16px 12px;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 16px 14px 10px;
+}
+.ga-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  padding: 4px 6px;
+  margin: 0;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--arc-text-primary);
+  border-radius: 10px;
+  min-width: 0;
+  transition: background 0.15s ease;
+}
+.ga-brand:hover { background: var(--ga-primary-soft); }
+.ga-brand-icon { color: var(--arc-primary); flex-shrink: 0; }
+.ga-brand-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--arc-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ga-brand-badge {
+  font-family: var(--ga-mono);
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--arc-primary);
+  color: var(--arc-primary-foreground, #fff);
+  line-height: 1.2;
+  flex-shrink: 0;
 }
 .ga-back {
   border: 1px solid var(--arc-border);
@@ -832,45 +822,6 @@ async function copyMessage(text: string): Promise<void> {
   border-color: var(--arc-primary);
   color: var(--arc-primary);
 }
-.ga-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  border: none;
-  background: transparent;
-  padding: 2px 4px;
-  margin: 0;
-  cursor: pointer;
-  font-family: inherit;
-  color: var(--arc-text-primary);
-  border-radius: 10px;
-  transition: background 0.15s ease;
-}
-.ga-brand:hover {
-  background: var(--ga-brand-soft);
-}
-.ga-brand-icon {
-  color: var(--ga-brand);
-  flex-shrink: 0;
-}
-.ga-brand-name {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--arc-text-primary);
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-}
-.ga-brand-badge {
-  font-family: var(--ga-mono);
-  font-size: 9px;
-  font-weight: 650;
-  letter-spacing: 0.06em;
-  padding: 2px 6px;
-  border-radius: 5px;
-  background: var(--ga-brand);
-  color: #fff;
-  line-height: 1.2;
-}
 .ga-new-session {
   display: flex;
   align-items: center;
@@ -878,24 +829,26 @@ async function copyMessage(text: string): Promise<void> {
   gap: 6px;
   margin: 2px 14px 10px;
   padding: 10px 12px;
-  border: 1px solid var(--ga-brand);
+  border: 1px solid var(--arc-primary);
   border-radius: 999px;
-  background: var(--ga-brand);
-  color: #fff;
+  background: var(--arc-primary);
+  color: var(--arc-primary-foreground, #fff);
   font-size: 12.5px;
   font-weight: 650;
   cursor: pointer;
   transition: all 0.15s ease;
+  font-family: inherit;
+  flex-shrink: 0;
 }
 .ga-new-session:hover {
-  background: var(--ga-brand-strong);
-  border-color: var(--ga-brand-strong);
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--ga-brand) 24%, transparent);
+  filter: brightness(1.05);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--arc-primary) 24%, transparent);
 }
 .ga-session-region {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  /* 历史对话列表自身提供滚动（AssistantSessionList .list），修复上下无法滑动 */
 }
 .ga-sidebar-foot {
   border-top: 1px solid var(--arc-border);
@@ -903,6 +856,7 @@ async function copyMessage(text: string): Promise<void> {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex-shrink: 0;
 }
 .ga-settings-toggle {
   display: flex;
@@ -917,59 +871,15 @@ async function copyMessage(text: string): Promise<void> {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
+  font-family: inherit;
 }
 .ga-settings-toggle:hover {
   border-color: color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border));
   color: var(--arc-primary);
-  background: var(--arc-primary-soft);
+  background: var(--ga-primary-soft);
 }
-.ga-settings-drawer {
-  border: 1px solid var(--arc-border);
-  border-radius: 10px;
-  overflow: hidden;
-  background: var(--arc-bg-surface);
-  max-height: 340px;
-  display: flex;
-  flex-direction: column;
-}
-.ga-settings-tabs {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 2px;
-  padding: 6px;
-  border-bottom: 1px solid var(--arc-border);
-}
-.ga-stab {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  padding: 7px 2px;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--arc-text-secondary);
-  font-size: 9.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.ga-stab:hover {
-  background: var(--arc-bg-weak);
-  color: var(--arc-text-primary);
-}
-.ga-stab.active {
-  border-color: color-mix(in srgb, var(--arc-primary) 35%, transparent);
-  background: color-mix(in srgb, var(--arc-primary) 12%, transparent);
-  color: var(--arc-primary);
-}
-.ga-settings-pane {
-  min-height: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  height: 240px;
-}
+
+/* 项目上下文卡片 */
 .ga-ctx-card {
   position: relative;
   padding: 10px 12px;
@@ -995,17 +905,6 @@ async function copyMessage(text: string): Promise<void> {
   text-align: left;
   cursor: pointer;
 }
-.ga-ctx-select:hover .ga-ctx-title {
-  color: var(--arc-primary);
-}
-.ga-ctx-caret {
-  flex: 0 0 auto;
-  color: var(--arc-text-hint);
-  transition: transform 0.18s ease;
-}
-.ga-ctx-caret.open {
-  transform: rotate(180deg);
-}
 .ga-ctx-title {
   flex: 1 1 auto;
   min-width: 0;
@@ -1015,17 +914,11 @@ async function copyMessage(text: string): Promise<void> {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: color 0.15s ease;
 }
-.ga-ctx-title.muted {
-  color: var(--arc-text-hint);
-  font-weight: 500;
-}
-.ga-ctx-meta {
-  margin-top: 3px;
-  font-size: 11.5px;
-  color: var(--arc-text-secondary);
-}
+.ga-ctx-title.muted { color: var(--arc-text-hint); font-weight: 500; }
+.ga-ctx-caret { flex: 0 0 auto; color: var(--arc-text-hint); transition: transform 0.18s ease; }
+.ga-ctx-caret.open { transform: rotate(180deg); }
+.ga-ctx-meta { margin-top: 3px; font-size: 11.5px; color: var(--arc-text-secondary); }
 .ga-ctx-dropdown {
   position: absolute;
   left: 0;
@@ -1049,12 +942,7 @@ async function copyMessage(text: string): Promise<void> {
   color: var(--arc-text-hint);
   border-bottom: 1px solid var(--arc-border);
 }
-.ga-ctx-dropdown-list {
-  display: flex;
-  flex-direction: column;
-  overflow: auto;
-  padding: 4px;
-}
+.ga-ctx-dropdown-list { display: flex; flex-direction: column; overflow-y: auto; padding: 4px; }
 .ga-ctx-option {
   display: flex;
   align-items: center;
@@ -1067,12 +955,8 @@ async function copyMessage(text: string): Promise<void> {
   cursor: pointer;
   text-align: left;
 }
-.ga-ctx-option:hover {
-  background: var(--arc-bg-weak);
-}
-.ga-ctx-option.active {
-  background: var(--arc-primary-soft);
-}
+.ga-ctx-option:hover { background: var(--arc-bg-weak); }
+.ga-ctx-option.active { background: var(--ga-primary-soft); }
 .ga-ctx-option-title {
   font-size: 12.5px;
   font-weight: 600;
@@ -1081,32 +965,20 @@ async function copyMessage(text: string): Promise<void> {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ga-ctx-option.active .ga-ctx-option-title {
-  color: var(--arc-primary);
-}
-.ga-ctx-option-meta {
-  flex: 0 0 auto;
-  font-size: 11px;
-  color: var(--arc-text-hint);
-}
-.ga-ctx-dropdown-empty {
-  padding: 14px 12px;
-  font-size: 12px;
-  color: var(--arc-text-hint);
-  text-align: center;
-}
-.ga-model-menu-wrap {
-  position: relative;
-}
+.ga-ctx-option.active .ga-ctx-option-title { color: var(--arc-primary); }
+.ga-ctx-option-meta { flex: 0 0 auto; font-size: 11px; color: var(--arc-text-hint); }
+.ga-ctx-dropdown-empty { padding: 14px 12px; font-size: 12px; color: var(--arc-text-hint); text-align: center; }
+
+/* AI 指示器 */
+.ga-model-menu-wrap { position: relative; }
 .ga-ai-indicator {
   display: flex;
   align-items: center;
   gap: 5px;
-  margin-top: 8px;
   padding: 6px 10px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--ga-brand) 6%, var(--arc-bg-surface));
-  border: 1px solid color-mix(in srgb, var(--ga-brand) 16%, var(--arc-border));
+  background: color-mix(in srgb, var(--arc-primary) 6%, var(--arc-bg-surface));
+  border: 1px solid color-mix(in srgb, var(--arc-primary) 16%, var(--arc-border));
   color: var(--arc-text-secondary);
   font-size: 11px;
   min-width: 0;
@@ -1116,32 +988,22 @@ async function copyMessage(text: string): Promise<void> {
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease;
 }
-.ga-ai-indicator:hover,
-.ga-ai-indicator.open {
-  border-color: color-mix(in srgb, var(--ga-brand) 40%, var(--arc-border));
-  background: color-mix(in srgb, var(--ga-brand) 10%, var(--arc-bg-surface));
+.ga-ai-indicator:hover, .ga-ai-indicator.open {
+  border-color: color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border));
+  background: color-mix(in srgb, var(--arc-primary) 10%, var(--arc-bg-surface));
 }
-.ga-model-caret {
-  flex: 0 0 auto;
-  color: var(--arc-text-hint);
-  transition: transform 0.18s ease;
-}
-.ga-model-caret.open {
-  transform: rotate(180deg);
-}
+.ga-model-caret { flex: 0 0 auto; color: var(--arc-text-hint); transition: transform 0.18s ease; }
+.ga-model-caret.open { transform: rotate(180deg); }
 .ga-ai-indicator-name {
   flex: 0 0 auto;
   font-weight: 600;
-  color: var(--ga-brand);
+  color: var(--arc-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 38%;
 }
-.ga-ai-indicator-sep {
-  flex: 0 0 auto;
-  color: var(--arc-text-hint);
-}
+.ga-ai-indicator-sep { flex: 0 0 auto; color: var(--arc-text-hint); }
 .ga-ai-indicator-model {
   flex: 1 1 auto;
   min-width: 0;
@@ -1149,8 +1011,6 @@ async function copyMessage(text: string): Promise<void> {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-/* 模型选择菜单（DeepSeek Harness ModelSelect 风格） */
 .ga-model-menu {
   position: absolute;
   bottom: calc(100% + 8px);
@@ -1178,14 +1038,8 @@ async function copyMessage(text: string): Promise<void> {
   cursor: pointer;
   transition: background 0.12s ease;
 }
-.ga-model-cell:hover {
-  background: var(--arc-bg-weak);
-}
-.ga-model-cell-label {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--arc-text-primary);
-}
+.ga-model-cell:hover { background: var(--arc-bg-weak); }
+.ga-model-cell-label { font-size: 12.5px; font-weight: 600; color: var(--arc-text-primary); }
 .ga-model-cell-value {
   flex: 1 1 auto;
   min-width: 0;
@@ -1196,10 +1050,7 @@ async function copyMessage(text: string): Promise<void> {
   white-space: nowrap;
   text-align: right;
 }
-.ga-model-cell-chevron {
-  flex: 0 0 auto;
-  color: var(--arc-text-hint);
-}
+.ga-model-cell-chevron { flex: 0 0 auto; color: var(--arc-text-hint); }
 .ga-model-menu-head {
   padding: 8px 12px;
   font-size: 10.5px;
@@ -1208,11 +1059,7 @@ async function copyMessage(text: string): Promise<void> {
   color: var(--arc-text-hint);
   border-bottom: 1px solid var(--arc-border);
 }
-.ga-model-menu-list {
-  max-height: 220px;
-  overflow-y: auto;
-  padding: 4px;
-}
+.ga-model-menu-list { max-height: 220px; overflow-y: auto; padding: 4px; }
 .ga-model-option {
   display: flex;
   align-items: center;
@@ -1228,12 +1075,8 @@ async function copyMessage(text: string): Promise<void> {
   cursor: pointer;
   transition: background 0.12s ease;
 }
-.ga-model-option:hover {
-  background: var(--arc-bg-weak);
-}
-.ga-model-option.selected {
-  background: var(--ga-brand-soft);
-}
+.ga-model-option:hover { background: var(--arc-bg-weak); }
+.ga-model-option.selected { background: var(--ga-primary-soft); }
 .ga-model-option-name {
   flex: 1 1 auto;
   min-width: 0;
@@ -1244,69 +1087,44 @@ async function copyMessage(text: string): Promise<void> {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ga-model-option.selected .ga-model-option-name {
-  color: var(--ga-brand);
-}
-.ga-model-check {
-  flex: 0 0 auto;
-  color: var(--ga-brand);
-}
-.ga-model-menu-empty {
-  padding: 14px 12px;
-  font-size: 12px;
-  color: var(--arc-text-hint);
-  text-align: center;
-}
+.ga-model-option.selected .ga-model-option-name { color: var(--arc-primary); }
+.ga-model-check { flex: 0 0 auto; color: var(--arc-primary); }
+.ga-model-menu-empty { padding: 14px 12px; font-size: 12px; color: var(--arc-text-hint); text-align: center; }
 
-/* ===== 折叠窄条 ===== */
-.ga-session-mini {
-  width: 48px;
-  border-right: 1px solid var(--arc-border);
-  background: var(--arc-bg-sidebar);
-}
-.ga-stage-mini {
-  border: none;
-  border-left: 1px solid var(--arc-border);
-  background: var(--arc-bg-surface);
-  color: var(--arc-text-secondary);
-  cursor: pointer;
+/* 折叠窄条 */
+.ga-session-mini, .ga-details-mini {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding: 18px 0;
-  gap: 8px;
-  transition: background 0.15s ease;
+  padding-top: 18px;
+  border-right: 1px solid var(--arc-border);
+  background: var(--arc-bg-surface);
 }
-.ga-stage-mini:hover {
-  background: var(--arc-bg-weak);
-  color: var(--arc-text-primary);
+.ga-details-mini { border-right: none; border-left: 1px solid var(--arc-border); }
+.ga-mini-expand {
+  border: none;
+  background: transparent;
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: 8px;
+  transition: background 0.15s ease, color 0.15s ease;
 }
-.ga-stage-mini-label {
-  writing-mode: vertical-rl;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  font-family: var(--ga-mono);
-}
-.ga-stage-mini-badge {
-  font-size: 10px;
-  font-family: var(--ga-mono);
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: var(--arc-primary);
-  color: #fff;
-  font-weight: 600;
-}
+.ga-mini-expand:hover { background: var(--arc-bg-weak); color: var(--arc-primary); }
 
-/* ===== 通用分栏拖拽 ===== */
+/* 分栏拖拽（绝对定位浮层） */
 .col-resizer {
   position: absolute;
   top: 0;
   bottom: 0;
-  z-index: 5;
   width: 10px;
   cursor: col-resize;
   outline: none;
+  background: transparent;
 }
 .col-resizer::after {
   content: '';
@@ -1318,32 +1136,19 @@ async function copyMessage(text: string): Promise<void> {
   background: transparent;
   transition: background 0.15s ease;
 }
-.col-resizer:hover::after,
-.col-resizer:focus-visible::after {
-  background: var(--arc-primary);
-}
+.col-resizer:hover::after, .col-resizer:focus-visible::after { background: var(--arc-primary); }
 .ga-session-resizer {
   left: var(--session-col-width);
-  right: auto;
+  margin-left: -5px;
 }
-.ga-stage-col {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  border-left: 1px solid var(--arc-border);
-  background: var(--arc-bg-surface);
+.ga-details-resizer {
+  right: var(--details-col-width);
+  margin-right: -5px;
 }
-.ga-stage-resizer {
-  left: 0;
-}
-.ga-stage-col.resizing .ga-stage-resizer::after {
-  background: var(--arc-primary);
-}
+.ga-session-resizing .ga-session-resizer::after,
+.ga-details-resizing .ga-details-resizer::after { background: var(--arc-primary); }
 
-/* ===== 中间对话区 ===== */
+/* ============ 中间对话区 ============ */
 .ga-main {
   display: flex;
   flex-direction: column;
@@ -1374,9 +1179,7 @@ async function copyMessage(text: string): Promise<void> {
   background: var(--arc-warning);
   animation: ga-pulse 1.4s ease-in-out infinite;
 }
-@keyframes ga-pulse {
-  50% { opacity: 0.35; }
-}
+@keyframes ga-pulse { 50% { opacity: 0.35; } }
 .ga-agent-toolbar {
   padding: 14px 36px 4px;
   display: flex;
@@ -1384,10 +1187,7 @@ async function copyMessage(text: string): Promise<void> {
   gap: 10px;
   z-index: 10;
 }
-.ga-agent-toolbar :deep(.agent-selector) {
-  flex: 1 1 auto;
-  min-width: 0;
-}
+.ga-agent-toolbar :deep(.agent-selector) { flex: 1 1 auto; min-width: 0; }
 .ga-memory-toggle {
   display: inline-flex;
   align-items: center;
@@ -1405,10 +1205,9 @@ async function copyMessage(text: string): Promise<void> {
   box-sizing: border-box;
 }
 .ga-memory-toggle:hover {
-  background: var(--arc-primary-soft);
+  background: var(--ga-primary-soft);
   border-color: color-mix(in srgb, var(--arc-primary) 35%, var(--arc-border));
 }
-
 .ga-flow {
   flex: 1;
   min-height: 0;
@@ -1418,7 +1217,6 @@ async function copyMessage(text: string): Promise<void> {
   flex-direction: column;
   gap: 12px;
 }
-
 .ga-starter {
   flex: 1;
   min-height: 0;
@@ -1428,25 +1226,14 @@ async function copyMessage(text: string): Promise<void> {
   justify-content: center;
   padding: 24px 32px;
 }
-.ga-starter-inner {
-  width: min(720px, 100%);
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-.ga-starter-head {
-  text-align: center;
-}
+.ga-starter-inner { width: min(720px, 100%); display: flex; flex-direction: column; gap: 18px; }
 .ga-starter-hero {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
   gap: 12px;
 }
-.ga-starter-fish {
-  color: var(--ga-brand);
-  flex-shrink: 0;
-}
+.ga-starter-fish { color: var(--arc-primary); flex-shrink: 0; }
 .ga-starter-headline {
   margin: 0;
   color: var(--arc-text-primary);
@@ -1461,20 +1248,21 @@ async function copyMessage(text: string): Promise<void> {
   font-weight: 650;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--ga-brand);
-  border: 1px solid color-mix(in srgb, var(--ga-brand) 35%, transparent);
-  background: var(--ga-brand-soft);
+  color: var(--arc-primary);
+  border: 1px solid color-mix(in srgb, var(--arc-primary) 35%, transparent);
+  background: var(--ga-primary-soft);
   padding: 3px 8px;
   border-radius: 999px;
   align-self: flex-start;
   margin-top: 2px;
 }
 .ga-starter-sub {
-  margin: 12px auto 0;
+  margin: 4px auto 0;
   max-width: 640px;
   color: var(--arc-text-secondary);
   font-size: 13.5px;
   line-height: 1.7;
+  text-align: center;
 }
 .ga-quick-title {
   font-size: 11px;
@@ -1484,11 +1272,37 @@ async function copyMessage(text: string): Promise<void> {
   color: var(--arc-text-hint);
   margin-top: 2px;
 }
-.ga-quick-row {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.ga-project-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   gap: 8px;
 }
+.ga-project-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--arc-primary);
+  border-radius: 999px;
+  background: var(--arc-primary);
+  color: var(--arc-primary-foreground, #fff);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+.ga-project-btn:hover { filter: brightness(1.06); }
+.ga-project-btn.ghost {
+  background: transparent;
+  color: var(--arc-danger);
+  border-color: color-mix(in srgb, var(--arc-danger) 45%, var(--arc-border));
+}
+.ga-project-btn.ghost:hover {
+  background: color-mix(in srgb, var(--arc-danger) 8%, transparent);
+}
+.ga-quick-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .ga-quick-card {
   border: 1px solid var(--arc-border);
   border-radius: 14px;
@@ -1504,7 +1318,7 @@ async function copyMessage(text: string): Promise<void> {
 .ga-quick-card:hover {
   border-color: color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border));
   color: var(--arc-primary);
-  background: var(--arc-primary-soft);
+  background: var(--ga-primary-soft);
   transform: translateY(-1px);
 }
 .ga-err-banner {
@@ -1517,8 +1331,16 @@ async function copyMessage(text: string): Promise<void> {
   font-size: 12.5px;
 }
 
-/* ===== 右侧暂存区 ===== */
-.ga-stage-head {
+/* ============ 右侧设置面板 ============ */
+.ga-details-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--arc-border);
+  background: var(--arc-bg-surface);
+}
+.ga-details-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1527,12 +1349,7 @@ async function copyMessage(text: string): Promise<void> {
   flex-shrink: 0;
   background: var(--arc-bg-surface);
 }
-.ga-stage-title {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--arc-text-primary);
-}
+.ga-details-title { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: var(--arc-text-primary); }
 .ga-collapse-btn {
   border: none;
   background: transparent;
@@ -1540,41 +1357,61 @@ async function copyMessage(text: string): Promise<void> {
   cursor: pointer;
   padding: 2px 8px;
   border-radius: 6px;
-  font-size: 16px;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: all 0.15s ease;
 }
-.ga-collapse-btn:hover {
-  background: var(--arc-bg-weak);
-  color: var(--arc-text-primary);
+.ga-collapse-btn:hover { background: var(--arc-bg-weak); color: var(--arc-text-primary); }
+.ga-details-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  padding: 6px;
+  border-bottom: 1px solid var(--arc-border);
+  flex-shrink: 0;
 }
-.ga-stage-view {
+.ga-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 7px 2px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--arc-text-secondary);
+  font-size: 9.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.ga-tab:hover { background: var(--arc-bg-weak); color: var(--arc-text-primary); }
+.ga-tab.active {
+  border-color: color-mix(in srgb, var(--arc-primary) 35%, transparent);
+  background: var(--ga-primary-soft);
+  color: var(--arc-primary);
+}
+.ga-details-pane {
   flex: 1;
   min-height: 0;
-  border-left: none;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
-@media (max-width: 1100px) {
+/* ============ 响应式：中等宽度隐藏右栏 ============ */
+@media (max-width: 1080px) {
   .ga-page {
     grid-template-columns: var(--session-col-width) minmax(0, 1fr);
   }
-  .ga-stage-col,
-  .ga-stage-mini,
-  .ga-stage-resizer {
-    display: none;
-  }
+  .ga-details-col, .ga-details-mini, .ga-details-resizer { display: none; }
 }
-@media (max-width: 860px) {
+@media (max-width: 780px) {
   .ga-page {
     grid-template-columns: minmax(0, 1fr);
   }
-  .ga-sidebar,
-  .ga-session-mini,
-  .ga-session-resizer {
-    display: none;
-  }
-  .ga-quick-row {
-    grid-template-columns: 1fr;
-  }
+  .ga-sidebar, .ga-session-mini, .ga-session-resizer { display: none; }
+  .ga-quick-row { grid-template-columns: 1fr; }
 }
 </style>
