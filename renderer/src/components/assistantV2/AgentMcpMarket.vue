@@ -45,7 +45,8 @@ async function importTool(tool: McpToolListing): Promise<void> {
       toolId: tool.id
     })
     message.success(result.message)
-    void loadTools(tool.marketId)
+    // 导入后回到完整清单，避免按单市场过滤后“只剩一项”造成困惑
+    void loadTools()
   } catch (e) {
     message.error(e instanceof Error ? e.message : '导入失败')
   }

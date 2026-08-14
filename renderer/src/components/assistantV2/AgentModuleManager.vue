@@ -106,7 +106,7 @@ defineExpose({ loadModules })
         </div>
         <div class="am-body">
           <div class="am-name">
-            {{ mod.name }}
+            <span class="am-name-text" :title="mod.name">{{ mod.name }}</span>
             <span
               class="am-risk"
               :class="riskLabels[mod.risk]?.cls ?? 'risk-low'"
@@ -204,15 +204,25 @@ defineExpose({ loadModules })
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
   font-size: 12.5px;
   font-weight: 650;
   color: var(--arc-text-primary);
 }
+.am-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .am-risk {
+  flex-shrink: 0;
   font-size: 9.5px;
+  line-height: 1.5;
   padding: 1px 6px;
   border-radius: 999px;
   font-weight: 600;
+  white-space: nowrap;
 }
 .risk-low { background: rgba(4,120,87,0.12); color: #047857; }
 .risk-med { background: rgba(180,83,9,0.12); color: #b45309; }
