@@ -1,51 +1,45 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import {
+  DEFAULT_THEME,
+  computeSelectionRect,
+  computeViewport,
+  dispose as disposeEngine,
+  paintBlockLayer,
+  renderBlocks,
+  yToScrollTop,
+  type MinimapSelection,
+  type MinimapThemeColors
+} from './minimapEngine'
 
 /**
- * 编辑器右侧纵向预览缩略条（VSCode 风格 Minimap）。
+ * 编辑器右侧纵向预览缩略小地图（VSCode 风格 Minimap）。
  *
- * 本次为彻底重构，学习 VSCode 的实现思路，修复此前版本的两个顽固问题：
+ * 本组件只负责三件事：
+ *   1. 渲染层 —— 把正文按行采样渲染色块（见 minimapEngine.ts），并在其上
+ *      叠加「视口框」与「选区高亮」。
+ *   2. 交互事件 —— 点击跳转、拖拽视口框、滚轮同步、关闭按钮。
+ *   3. 滚动同步 —— 监听主编辑器滚动 / 内容 / 主题 / 尺寸变化，节流刷新。
  *
- * 一、为什么之前「显示乱码」？
- *   旧实现把每个字符先采样再降采样成 2×5 的像素位图（VSCode 的
- *   minimapCharRenderer 思路）。但这种方式对笔画繁多的中文并不适用：
- *   中文被压成 2×5 个离散像素后，形同随机噪点，肉眼看到的就是「乱码」。
+ * 与旧版逐字渲染文字不同，新版严格遵循「色块化 + 超长文档采样降级 + 节流」
+ * 三项性能约束，彻底避免逐字 fillText 造成的卡顿与文字重叠。
  *
- *   新实现改为「整行文字以连续抗锯齿方式直接小号绘制」（canvas fillText /
- *   整体 drawImage 缩放），中文字形会以连续渐变的纹理呈现，观感与 VSCode
- *   一致（像缩略图而不像乱码）。
- *
- * 二、为什么之前「滑动条跟正文不同步」？
- *   旧实现采用了「行采样」：当正文行数超过缩略图可容纳行数时，只挑选
- *   一部分代表性行来显示（_downsample）。采样后的缩略图高度与正文实际
- *   可滚动高度不再对应，于是视口框的换算、拖拽跳转的换算全部失真——
- *   表现为缩略图滚到底、正文却还能继续往下滑。
- *
- *   新实现改为「整篇文档等比压缩到缩略图一屏」（scale-to-fit）：
- *     lineHeight = 缩略图可视高度 / 总行数
- *   缩略图恒展示整篇文档，其内容总高恒等于可视高度，因此视口框位置、
- *   选区位置、点击/拖拽跳转都与正文可滚动范围严格 1:1 对应，彻底消除
- *   滚动不同步。
- *
- * 实现要点（对照 VSCode）：
- *   - 文字层与视口框分离：文字层渲染到离屏 canvas 并缓存（内容/主题/
- *     尺寸变化时才重绘），滚动时只重绘廉价的视口框，滚动流畅不卡顿。
- *   - 按行连续抗锯齿小号绘制，行数过密（每行不足 ~1.5px）时字号退化为
- *     1px、呈现为条形纹理，仍保证缩略图恒等于可视高度、滚动严格同步。
+ * 性能要点：
+ *   - 色块层离屏缓存：只有内容 / 主题 / 尺寸变化时才重建色块层，滚动时
+ *     只叠加轻量视口框，不重建。
+ *   - requestAnimationFrame 节流：高频滚动 / 输入被合并到同一帧绘制。
+ *   - 超长文档自动合并采样，canvas 高度恒定，行数再多也不会撑爆或卡死。
+ *   - 滚动同步本身通过监听 scroll 事件驱动，只在可视视口框位置变化时重绘。
  */
 
-/** 选中文本在正文纯文本中的字符区间（含头不含尾） */
-export interface MinimapSelection {
-  from: number
-  to: number
-}
+// ── Props / Emits ─────────────────────────────────────────────
 
 const props = defineProps<{
   /** 当前可见状态 */
   visible: boolean
-  /** 获取正文纯文本：由父组件注入，随编辑器内容实时更新 */
+  /** 获取正文纯文本（由父组件注入，随编辑器内容实时更新） */
   getText: () => string
-  /** 获取当前选区在纯文本中的字符区间；无选区时返回 null */
+  /** 获取当前选区在纯文本中的字符区间；无选区返回 null */
   getSelection?: () => MinimapSelection | null
   /** 正文滚动容器 */
   scrollContainer: HTMLDivElement | null
@@ -57,382 +51,208 @@ const emit = defineEmits<{
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 
-// ── 尺寸常量（CSS px）──────────────────────────────────────────
-const MINIMAP_WIDTH = 112
+// ── 尺寸常量 ──────────────────────────────────────────────────
+
+/** 缩略图整体宽度（含留白） */
+const MINIMAP_WIDTH = 120
+/** 内容区左右留白 */
 const MINIMAP_PADDING = 8
 
-/**
- * 渲染文字层时使用的可读最小字号（CSS px，放大 canvas 上的字号）。
- *
- * 旧实现直接以 `lineHeight`（可能只有 1~2px）作为字号调用 fillText 画整行中文，
- * 中文被压成 1~2px 的像素团后完全无法辨认字形，观感即「乱码」。
- *
- * 新实现（VSCode 式）先用这个较大的可读字号在放大分辨率的离屏 canvas 上逐行绘制，
- * 再整体 drawImage 缩小到缩略图尺寸。缩放过程中的抗锯齿渐变会保留字形轮廓，
- * 呈现为可辨认的「小字」，观感与 VSCode minimap 一致。
- */
-const MIN_RENDER_FONT = 8
-/** 放大 canvas 的系数上限，防止超长文档把离屏 canvas 撑得过大。 */
-const MAX_ZOOM = 24
-/** 缩略图中可见内容区与容器顶部的留白 */
-const CONTENT_TOP_PAD = 0
-
-// ── 离屏文字层缓存 ────────────────────────────────────────────
-let textLayer: HTMLCanvasElement | null = null
-let textLayerW = 0
-let textLayerH = 0
-let textLayerRenderedText = ''
+// ── 内部状态 ──────────────────────────────────────────────────
 
 let rafId = 0
 let dragging = false
 
-// ── 主题颜色缓存 ──────────────────────────────────────────────
-let cachedColor = '#52525b'
-let cachedViewportFill = 'rgba(128, 128, 128, 0.22)'
-let cachedViewportStroke = 'rgba(128, 128, 128, 0.6)'
-let cachedSelectionFill = 'rgba(59, 130, 246, 0.32)'
-let cachedSelectionStroke = 'rgba(59, 130, 246, 0.7)'
+// 主题颜色缓存（跟随编辑器主题自动切换）
+let theme: MinimapThemeColors = { ...DEFAULT_THEME }
 
-/** 读取一次主题变量，缓存用于绘制。 */
-function refreshThemeColors(): void {
-  const root = getComputedStyle(document.documentElement)
-  const primary = root.getPropertyValue('--arc-primary').trim()
-  const text = root.getPropertyValue('--arc-text-secondary').trim()
-    || root.getPropertyValue('--arc-text-primary').trim()
-    || '#52525b'
+// 尺寸（CSS px）
+let contentCssW = 0
+let contentCssH = 0
+let dpr = 1
 
-  cachedColor = text
-  const base = primary || '#3b82f6'
-  cachedSelectionFill = colorWithAlpha(base, 0.30)
-  cachedSelectionStroke = colorWithAlpha(base, 0.75)
-  cachedViewportFill = 'rgba(128, 128, 128, 0.20)'
-  cachedViewportStroke = 'rgba(128, 128, 128, 0.55)'
-}
+// ── 主题适配 ──────────────────────────────────────────────────
 
-/** 把 hex 颜色解析为 { r, g, b }，非 hex（rgba 等）回退为 null。 */
-function parseHexColor(hex: string): { r: number; g: number; b: number } | null {
-  const m = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(hex.trim())
-  if (!m) return null
-  let h = m[1]
-  if (h.length === 3) h = h.split('').map((c) => c + c).join('')
-  return {
-    r: parseInt(h.slice(0, 2), 16),
-    g: parseInt(h.slice(2, 4), 16),
-    b: parseInt(h.slice(4, 6), 16)
-  }
-}
-
-/** 把 hex 颜色转成带透明度通道的 rgba 字符串。 */
-function colorWithAlpha(hex: string, alpha: number): string {
-  const rgb = parseHexColor(hex)
-  if (rgb) return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`
-  if (/^rgba?\(/.test(hex)) return hex
-  return `rgba(59, 130, 246, ${alpha})`
-}
-
-/** 与 VSCode `strings.isFullWidthCharacter` 一致的宽字符判定。 */
-function isFullWidthCharacter(charCode: number): boolean {
-  return (
-    (charCode >= 0x2e80 && charCode <= 0xd7af)
-    || (charCode >= 0xf900 && charCode <= 0xfaff)
-    || (charCode >= 0xff01 && charCode <= 0xff5e)
-    || (charCode >= 0xffe0 && charCode <= 0xffe6)
-  )
-}
-
-/** 一个字符的显示宽度（字符单元数，全角=2、半角=1）。 */
-function charCellCount(ch: string): number {
-  if (ch === '\t') return 4
-  return isFullWidthCharacter(ch.charCodeAt(0)) ? 2 : 1
-}
-
-/** 获取正文块数组：按换行拆分为「一行」。空内容给一个占位行。 */
-function getContentBlocks(): string[] {
-  const text = (props.getText() || '').replace(/\r\n/g, '\n')
-  if (!text.trim()) return ['']
-  return text.split('\n')
-}
-
-/**
- * 计算缩略图布局：
- *   - lineHeight：整篇文档等比压缩到缩略图可视高度的单行高度。
- *   - contentTotalH：恒等于可视高度（scale-to-fit），因此与正文滚动严格同步。
- */
-function computeLayout(
-  blocks: string[],
-  cssH: number
-): { lineHeight: number; contentTotalH: number } {
-  const lineCount = Math.max(1, blocks.length)
-  const lineHeight = Math.max(0.5, cssH / lineCount)
-  const contentTotalH = cssH
-  return { lineHeight, contentTotalH }
-}
-
-/** 构建/复用离屏文字层 canvas，尺寸变化时重建。 */
-function ensureTextLayer(pxW: number, pxH: number): HTMLCanvasElement {
-  if (!textLayer || textLayer.width !== pxW || textLayer.height !== pxH) {
-    textLayer = document.createElement('canvas')
-    textLayer.width = pxW
-    textLayer.height = pxH
-  }
-  return textLayer
-}
-
-/**
- * 计算放大系数：让放大 canvas 上的渲染字号达到可读大小（MIN_RENDER_FONT），
- * 再整体缩小到缩略图尺寸，从而呈现 VSCode 式可辨认的「小字」。
- *
- * 旧实现直接以 lineHeight（可能仅 1~2px）作为字号绘制，中文被压成像素团而
- * 成乱码。改为放大渲染后整体缩小，缩放抗锯齿会保留字形轮廓。
- */
-function computeZoom(lineHeight: number): number {
-  if (lineHeight >= MIN_RENDER_FONT) return 1
-  return Math.min(MAX_ZOOM, Math.max(1, Math.ceil(MIN_RENDER_FONT / Math.max(0.5, lineHeight))))
-}
-
-/**
- * 渲染整篇文档到离屏文字层（VSCode 式：放大渲染后整体缩小，修复「乱码」）。
- *
- * 做法：
- *   1. 先算出每行在缩略图中的目标行高 lineHeight。
- *   2. 用放大系数 zoom 把离屏 canvas 分辨率放大（渲染字号 = lineHeight × zoom，
- *      保证中文可辨认）。
- *   3. 在该高分辨率 canvas 上逐行绘制，上屏时再 drawImage 等比缩小到目标尺寸。
- *
- * 由于整体等比缩放，行高/滚动同步与缩放前完全一致，不改变既有定位逻辑。
- * 返回本次渲染所用行高，供选区换算使用。
- */
-function renderTextLayer(pxW: number, pxH: number, cssW: number, cssH: number): number {
-  const blocks = getContentBlocks()
-  const { lineHeight } = computeLayout(blocks, cssH)
-  const zoom = computeZoom(lineHeight)
-
-  const layer = ensureTextLayer(
-    Math.round(pxW * zoom),
-    Math.round(pxH * zoom)
-  )
-  const lctx = layer.getContext('2d')
-  if (!lctx) return 0
-
-  lctx.setTransform(1, 0, 0, 1, 0, 0)
-  lctx.clearRect(0, 0, layer.width, layer.height)
-  // 以 CSS 坐标绘制，字号/行距按 zoom 放大，保证字形可读。
-  lctx.setTransform(zoom, 0, 0, zoom, 0, 0)
-
-  const fg = cachedColor
-  const renderFont = Math.max(1, lineHeight * zoom)
-  lctx.font = `${renderFont}px "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif`
-  lctx.textBaseline = 'middle'
-  lctx.textAlign = 'left'
-  lctx.fillStyle = fg
-  lctx.textRendering = 'optimizeLegibility'
-  for (let i = 0; i < blocks.length; i++) {
-    const line = blocks[i]
-    if (!line) continue
-    const y = i * lineHeight + lineHeight / 2
-    lctx.fillText(line, 0, y, cssW)
-  }
-  return lineHeight
-}
-
-/** 把「正文可视区高度比例」换算成缩略图视口框信息。 */
-function computeViewport(
-  el: HTMLDivElement,
-  cssH: number
-): { boxTop: number; boxHeight: number } {
-  const vp = el.clientHeight
-  const total = el.scrollHeight
-  if (total <= 0) {
-    return { boxTop: 0, boxHeight: cssH }
-  }
-  const visibleFrac = Math.min(1, vp / total)
-  const boxHeight = Math.max(4, Math.min(cssH, visibleFrac * cssH))
-  const scrollFrac = total > vp
-    ? Math.min(1, Math.max(0, el.scrollTop / (total - vp)))
-    : 0
-  const boxTop = scrollFrac * Math.max(0, cssH - boxHeight)
-  return { boxTop, boxHeight }
-}
-
-/** 计算某行内字符偏移的近似 x 坐标（用于选区高亮）。 */
-function measureLinePrefix(
-  ctx: CanvasRenderingContext2D,
-  line: string,
-  charOffset: number,
-  fw: number,
-  hw: number
-): number {
-  let w = 0
-  const n = Math.min(charOffset, line.length)
-  for (let i = 0; i < n; i++) {
-    w += isFullWidthCharacter(line.charCodeAt(i)) ? fw : hw
-  }
-  return w
-}
-
-/** 把选区 [from, to)（全文本字符区间）映射到缩略图坐标（无采样，直接按行换算）。 */
-function computeSelectionRect(
-  blocks: string[],
-  lineHeight: number,
-  ctx: CanvasRenderingContext2D,
-  sel: MinimapSelection | null | undefined,
-  cssW: number,
-  cssH: number
-): { x: number; y: number; w: number; h: number } | null {
-  if (!sel || sel.to <= sel.from) return null
-  if (blocks.length === 0) return null
-
-  // 计算每个块的起始字符偏移（与 getEditorText 的 \n 分隔一致）
-  const offsets: number[] = []
-  let acc = 0
-  for (let i = 0; i < blocks.length; i++) {
-    offsets.push(acc)
-    acc += blocks[i].length + 1
-  }
-
-  let startSrc = -1
-  let endSrc = -1
-  for (let i = 0; i < blocks.length; i++) {
-    const lineStart = offsets[i]
-    const lineEnd = lineStart + blocks[i].length
-    if (sel.from <= lineEnd && sel.to >= lineStart) {
-      if (startSrc === -1) startSrc = i
-      endSrc = i
+/** 解析 hex/rgba 颜色为 {r,g,b}，用于生成带透明度的变体。 */
+function parseColor(color: string): { r: number; g: number; b: number } | null {
+  const trimmed = color.trim()
+  const hex = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(trimmed)
+  if (hex) {
+    let h = hex[1]
+    if (h.length === 3) h = h.split('').map((c) => c + c).join('')
+    return {
+      r: parseInt(h.slice(0, 2), 16),
+      g: parseInt(h.slice(2, 4), 16),
+      b: parseInt(h.slice(4, 6), 16)
     }
   }
-  if (startSrc === -1 || endSrc === -1) return null
-
-  const y0 = startSrc * lineHeight
-  const y1 = (endSrc + 1) * lineHeight
-  const y = Math.max(0, Math.min(y0, cssH - 3))
-  const h = Math.max(3, Math.min(cssH - y, y1 - y0))
-
-  // 近似测量字符宽度：半角 = 半角字宽，全角 = 全角字宽
-  const fw = ctx.measureText('字').width
-  const hw = ctx.measureText('a').width
-  const x0 = measureLinePrefix(ctx, blocks[startSrc], sel.from - offsets[startSrc], fw, hw)
-  const x1 = measureLinePrefix(ctx, blocks[endSrc], sel.to - offsets[endSrc], fw, hw)
-  const x = Math.max(0, Math.min(x0, cssW - 4))
-  const w = Math.max(4, Math.min(cssW - x, x1 - x0))
-
-  return { x, y, w, h }
+  const rgba = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i.exec(trimmed)
+  if (rgba) {
+    return { r: +rgba[1], g: +rgba[2], b: +rgba[3] }
+  }
+  return null
 }
+
+function withAlpha(color: string, alpha: number): string {
+  const rgb = parseColor(color)
+  if (rgb) return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`
+  if (/^rgba?\(/i.test(color)) return color
+  return `rgba(128, 128, 128, ${alpha})`
+}
+
+/**
+ * 从 CSS 变量读取主题颜色，跟随编辑器主题自动切换（支持暗色 / 纸质暖色等）。
+ * 在暗色主题下自动选择较亮的色块前景色，暖色 / 浅色主题下选择较深色，确保对比度。
+ */
+function refreshTheme(): void {
+  const root = getComputedStyle(document.documentElement)
+  const isDark = document.documentElement.classList.contains('dark-mode')
+
+  // 正文前景色：深色模式取浅灰，浅色模式取深灰。
+  const textVar = root.getPropertyValue('--arc-text-secondary').trim()
+    || root.getPropertyValue('--arc-text-primary').trim()
+  const bgVar = root.getPropertyValue('--arc-bg-body').trim()
+  const primaryVar = root.getPropertyValue('--arc-primary').trim()
+
+  // 依据背景亮度决定前景色明暗，保证色块在不同主题下都可见。
+  const bgRgb = parseColor(bgVar || (isDark ? '#1e1e1e' : '#ffffff'))
+  let foreground = textVar
+  if (!foreground && bgRgb) {
+    const luminance = (bgRgb.r * 0.299 + bgRgb.g * 0.587 + bgRgb.b * 0.114) / 255
+    foreground = luminance > 0.5 ? '#52525b' : '#b4b4bc'
+  }
+  if (!foreground) foreground = isDark ? '#b4b4bc' : '#52525b'
+
+  const base = primaryVar || '#3b82f6'
+
+  theme = {
+    foreground,
+    viewportFill: 'rgba(128, 128, 128, 0.20)',
+    viewportStroke: withAlpha(foreground, 0.6),
+    selectionFill: withAlpha(base, 0.30),
+    selectionStroke: withAlpha(base, 0.75),
+    faint: withAlpha(foreground, 0.35)
+  }
+}
+
+// ── 绘制调度（节流核心）───────────────────────────────────────
+
+/**
+ * 把一次完整绘制调度到下一帧执行，并合并同帧内的多次请求
+ * （滚动 / 输入等高频事件不会造成每事件一次全量绘制）。
+ */
+function scheduleDraw(): void {
+  if (!props.visible) return
+  if (rafId) return // 已有待执行帧，直接合并，避免堆积
+  rafId = requestAnimationFrame(() => {
+    rafId = 0
+    draw()
+  })
+}
+
+// ── 主绘制入口 ────────────────────────────────────────────────
 
 function draw(): void {
   const canvas = canvasRef.value
   const el = props.scrollContainer
-  if (!canvas || !el) return
+  if (!canvas || !el || !props.visible) return
 
-  refreshThemeColors()
+  refreshTheme()
 
-  const dpr = window.devicePixelRatio || 1
-  const cssW = MINIMAP_WIDTH - MINIMAP_PADDING * 2
-  const cssH = Math.max(40, el.clientHeight - CONTENT_TOP_PAD * 2)
-  const pxW = Math.max(1, Math.round(cssW * dpr))
-  const pxH = Math.max(1, Math.round(cssH * dpr))
+  // 尺寸（含窗口 / 布局变化自动自适应重绘）
+  dpr = window.devicePixelRatio || 1
+  contentCssW = MINIMAP_WIDTH - MINIMAP_PADDING * 2
+  contentCssH = Math.max(40, el.clientHeight)
+
+  const pxW = Math.max(1, Math.round(contentCssW * dpr))
+  const pxH = Math.max(1, Math.round(contentCssH * dpr))
   if (canvas.width !== pxW) canvas.width = pxW
   if (canvas.height !== pxH) canvas.height = pxH
-  canvas.style.width = cssW + 'px'
-  canvas.style.height = cssH + 'px'
+  canvas.style.width = contentCssW + 'px'
+  canvas.style.height = contentCssH + 'px'
 
   const ctx = canvas.getContext('2d')
   if (!ctx) return
 
-  // ── 文字层：仅在内容/主题/尺寸变化时重建（滚动只复用缓存）──
   const text = props.getText() || ''
-  const textChanged = text !== textLayerRenderedText
-  if (textChanged || textLayerW !== pxW || textLayerH !== pxH) {
-    textLayerRenderedText = text
-    textLayerW = pxW
-    textLayerH = pxH
-    renderTextLayer(pxW, pxH, cssW, cssH)
+
+  // 1. 色块层：仅在内容 / 主题 / 尺寸变化时重建，其余情况直接复用缓存。
+  renderBlocks(text, contentCssW, contentCssH, dpr, theme)
+
+  // 2. 上屏色块层。
+  paintBlockLayer(ctx, contentCssW, contentCssH)
+
+  // 3. 选区高亮（可选）。
+  if (props.getSelection) {
+    const selRect = computeSelectionRect(
+      text,
+      props.getSelection(),
+      contentCssW,
+      contentCssH
+    )
+    if (selRect) {
+      const sx = selRect.x * dpr
+      const sy = selRect.y * dpr
+      const sw = selRect.w * dpr
+      const sh = selRect.h * dpr
+      ctx.fillStyle = theme.selectionFill
+      ctx.fillRect(sx, sy, sw, sh)
+      ctx.strokeStyle = theme.selectionStroke
+      ctx.lineWidth = Math.max(1, dpr)
+      ctx.strokeRect(sx + 0.5, sy + 0.5, sw - 1, sh - 1)
+    }
   }
 
-  // ── 上屏文字层（把放大渲染的文字层等比缩小到目标尺寸，VSCode 式小字）──
-  ctx.setTransform(1, 0, 0, 1, 0, 0)
-  ctx.clearRect(0, 0, pxW, pxH)
-  if (textLayer) {
-    ctx.imageSmoothingEnabled = true
-    ctx.imageSmoothingQuality = 'high'
-    // 源图可能被 zoom 放大（更清晰），也可能 zoom=1（等尺寸），统一按目标尺寸绘制
-    ctx.drawImage(textLayer, 0, 0, textLayer.width, textLayer.height, 0, 0, pxW, pxH)
-  }
-
-  // ── 选区高亮（叠在文字上层）──
-  const blocks = getContentBlocks()
-  const { lineHeight } = computeLayout(blocks, cssH)
-  const selRect = computeSelectionRect(blocks, lineHeight, ctx, props.getSelection?.(), cssW, cssH)
-  if (selRect) {
-    const sx = selRect.x * dpr
-    const sy = selRect.y * dpr
-    const sw = selRect.w * dpr
-    const sh = selRect.h * dpr
-    ctx.fillStyle = cachedSelectionFill
-    ctx.fillRect(sx, sy, sw, sh)
-    ctx.strokeStyle = cachedSelectionStroke
-    ctx.lineWidth = Math.max(1, dpr)
-    ctx.strokeRect(sx + 0.5, sy + 0.5, sw - 1, sh - 1)
-  }
-
-  drawViewport(ctx, pxW, pxH, cssH)
+  // 4. 视口框（始终实时绘制，开销极小）。
+  drawViewport(ctx, pxW, pxH)
 }
 
-function drawViewport(
-  ctx: CanvasRenderingContext2D,
-  pxW: number,
-  pxH: number,
-  cssH: number
-): void {
+/** 绘制当前视口框（半透明矩形标记可视范围）。 */
+function drawViewport(ctx: CanvasRenderingContext2D, pxW: number, pxH: number): void {
   const el = props.scrollContainer
   if (!el) return
-  const { boxTop, boxHeight } = computeViewport(el, cssH)
-  // 视口框为设备像素绘制（CSS 坐标 × 缩放比 = 设备像素）
-  const scale = pxH / cssH
-  const y = Math.max(0, Math.min(boxTop * scale, pxH - 3))
-  const h = Math.max(3, Math.min(boxHeight * scale, pxH - y))
-  ctx.fillStyle = cachedViewportFill
+  const { top, height } = computeViewport(
+    el.scrollTop,
+    el.clientHeight,
+    el.scrollHeight,
+    contentCssH
+  )
+  const scale = pxH / contentCssH
+  const y = Math.max(0, Math.min(top * scale, pxH - 3))
+  const h = Math.max(3, Math.min(height * scale, pxH - y))
+  ctx.fillStyle = theme.viewportFill
   ctx.fillRect(0, y, pxW, h)
-  ctx.strokeStyle = cachedViewportStroke
+  ctx.strokeStyle = theme.viewportStroke
   ctx.lineWidth = 1
   ctx.strokeRect(0.5, y + 0.5, pxW - 1, h - 1)
 }
 
-/**
- * 把缩略图上的 y 坐标（CSS 坐标）映射为正文 scrollTop，用于点击/拖拽跳转。
- * 与 computeViewport 严格互为逆运算，保证拖拽时正文与缩略图严格同步。
- */
-function yToScrollTop(clientY: number): number {
-  const el = props.scrollContainer
-  const canvas = canvasRef.value
-  if (!el || !canvas) return 0
-  const rect = canvas.getBoundingClientRect()
-  const cssH = rect.height
-  if (cssH <= 0) return 0
-  const y = Math.max(0, Math.min(clientY - rect.top, cssH))
+// ── 交互事件（点击跳转 / 拖拽同步 / 滚轮同步）─────────────────
 
-  const vp = el.clientHeight
-  const total = el.scrollHeight
-  if (total <= vp) return 0
-
-  const visibleFrac = Math.min(1, vp / total)
-  const boxHeight = Math.max(4, Math.min(cssH, visibleFrac * cssH))
-  const boxTop = Math.max(0, Math.min(y - boxHeight / 2, cssH - boxHeight))
-  const scrollFrac = boxTop / Math.max(1, cssH - boxHeight)
-  return Math.round(scrollFrac * (total - vp))
-}
-
+/** 把事件 clientY 换算为正文 scrollTop 并滚动。 */
 function jumpToClientY(clientY: number): void {
   const el = props.scrollContainer
-  if (!el) return
-  el.scrollTop = yToScrollTop(clientY)
+  const canvas = canvasRef.value
+  if (!el || !canvas) return
+  const rect = canvas.getBoundingClientRect()
+  if (rect.height <= 0) return
+  const localY = clientY - rect.top
+  el.scrollTop = yToScrollTop(
+    localY,
+    rect.height,
+    el.clientHeight,
+    el.scrollHeight
+  )
 }
 
+/** ① 点击缩略图任意位置 → 代码编辑器直接滚动跳转至对应行。 */
 function onPointerDown(e: PointerEvent): void {
   dragging = true
   jumpToClientY(e.clientY)
   ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
 }
 
+/** ② 鼠标拖动视口框 → 实时同步滚动主编辑器。 */
 function onPointerMove(e: PointerEvent): void {
   if (!dragging) return
   jumpToClientY(e.clientY)
@@ -442,6 +262,7 @@ function onPointerUp(): void {
   dragging = false
 }
 
+/** 滚轮在缩略图上滑动 → 同步主编辑器滚动。 */
 function onWheel(e: WheelEvent): void {
   const el = props.scrollContainer
   if (!el) return
@@ -449,41 +270,54 @@ function onWheel(e: WheelEvent): void {
   e.preventDefault()
 }
 
-// 主题变化时重绘，确保缩略图颜色跟随主题
+// ── 主题 / 窗口自适应 ─────────────────────────────────────────
+
+// 主题变量或 dark-mode class 变化时重绘，确保色块颜色跟随主题。
 const themeObserver = typeof MutationObserver !== 'undefined'
   ? new MutationObserver(() => scheduleDraw())
   : null
 
+// 窗口缩放 / 设备像素比变化时自动自适应重绘。
+function handleResize(): void {
+  scheduleDraw()
+}
+
+// ── 生命周期 ──────────────────────────────────────────────────
+
+onMounted(() => {
+  window.addEventListener('resize', handleResize)
+  themeObserver?.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['class', 'style']
+  })
+})
+
+onBeforeUnmount(() => {
+  if (rafId) cancelAnimationFrame(rafId)
+  window.removeEventListener('resize', handleResize)
+  themeObserver?.disconnect()
+  disposeEngine()
+})
+
+// 可见性变化时重绘（多等一帧确保容器尺寸稳定）。
 watch(
   () => props.visible,
   (v) => {
-    if (v) {
-      // 多等一帧确保容器尺寸稳定后再绘制
-      nextTick(() => requestAnimationFrame(scheduleDraw))
-    }
+    if (v) nextTick(() => requestAnimationFrame(() => scheduleDraw()))
   },
   { immediate: true }
 )
 
+// 滚动容器就绪时重绘。
 watch(
   () => props.scrollContainer,
-  () => nextTick(() => requestAnimationFrame(scheduleDraw))
+  () => nextTick(() => requestAnimationFrame(() => scheduleDraw()))
 )
 
-onBeforeUnmount(() => {
-  cancelAnimationFrame(rafId)
-  themeObserver?.disconnect()
-})
-
-// 由父组件通过 expose 触发重绘（编辑器内容/滚动变化时调用）
+// 由父组件通过 expose 触发重绘（编辑器内容 / 滚动 / 光标变化时调用）。
+// 内部经过 rAF 节流，高频调用也不会造成卡顿。
 function redraw(): void {
   scheduleDraw()
-}
-
-function scheduleDraw(): void {
-  if (!props.visible) return
-  cancelAnimationFrame(rafId)
-  rafId = requestAnimationFrame(draw)
 }
 
 defineExpose({ redraw })

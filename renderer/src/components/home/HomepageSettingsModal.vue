@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { Activity, Copy, Cpu, Download, ExternalLink, FileInput, Image, MonitorCog, Moon, Network, Palette, PlugZap, Plus, RefreshCw, ScanEye, Trash2 } from 'lucide-vue-next'
+import { Activity, Copy, Cpu, Download, ExternalLink, FileCode2, FileInput, Image, MonitorCog, Moon, Network, Palette, PlugZap, Plus, RefreshCw, ScanEye, Trash2 } from 'lucide-vue-next'
 import { NButton, NFormItem, NInput, NInputNumber, NModal, NSelect, NSlider, NSwitch, useMessage } from 'naive-ui'
 import { autoSaveOptions } from '@/features/settings/autoSave'
 import { getProviderPreset, providerOptions, resolveProviderDefaults } from '@/features/settings/providerPresets'
@@ -31,6 +31,12 @@ function applyThemeImmediately(themeName: ThemeName): void {
 function applyDarkModeImmediately(value: boolean): void {
   draftSettings.darkMode = value
   appStore.updateAppSetting('darkMode', value, { flushWorkspace: false })
+}
+
+/** 代码缩略小地图开关即时生效并持久化，无需再点保存设置 */
+function applyMinimapImmediately(value: boolean): void {
+  draftSettings.editorMinimap = value
+  appStore.updateAppSetting('editorMinimap', value, { flushWorkspace: false })
 }
 
 /** 调节主题主色深浅（即时生效），替换旧的纸质纹理强度滑动条 */
@@ -293,6 +299,7 @@ function syncDraftFromStore(): void {
   draftSettings.darkModeStyle = appStore.appSettings.darkModeStyle
   draftSettings.aiTimeoutSeconds = appStore.appSettings.aiTimeoutSeconds
   draftSettings.themeColorIntensity = appStore.appSettings.themeColorIntensity ?? 0.5
+  draftSettings.editorMinimap = appStore.appSettings.editorMinimap
   draftTheme.value = appStore.theme
 }
 
@@ -1821,6 +1828,19 @@ async function saveSettings(): Promise<void> {
             <n-switch
               :value="draftSettings.darkMode"
               @update:value="(value) => applyDarkModeImmediately(value)"
+            />
+          </div>
+          <div class="dark-mode-row">
+            <div class="dark-mode-label">
+              <FileCode2 :size="15" />
+              <div>
+                <span class="dark-mode-text">代码缩略小地图</span>
+                <span class="dark-mode-hint">在章节正文右侧显示 VSCode 风格代码缩略预览，开关即刻生效</span>
+              </div>
+            </div>
+            <n-switch
+              :value="draftSettings.editorMinimap"
+              @update:value="(value) => applyMinimapImmediately(value)"
             />
           </div>
           <div v-if="draftSettings.darkMode" class="dark-style-grid">
