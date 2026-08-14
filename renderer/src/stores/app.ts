@@ -4865,7 +4865,9 @@ export const useAppStore = defineStore('app', () => {
   /**
    * 执行一次被跟踪的 AI 任务。
    *
-   * - 同 key 已在运行时直接拒绝，避免重复请求。
+   * - 同 key 已在运行时直接拒绝，避免重复请求；如需同一功能并发多次，
+   *   调用方应为每次调用生成唯一 key（参考番茄风向标选题、批量生成的 `#序号` 模式）。
+   * - 并发任务通过 clientTaskId 调用栈隔离，互不覆盖 abort 通道。
    * - 无论 executor 抛异常还是成功返回，任务都会被标记为结束并在短暂保留后自动清理。
    * - 返回值是 executor 的返回值，方便调用方继续处理结果。
    * - 自动生成 `clientTaskId` 并注入到 executor 的闭包上下文中（通过 `getClientTaskId()`）。
@@ -4880,8 +4882,9 @@ export const useAppStore = defineStore('app', () => {
 
     // 生成唯一 clientTaskId，用于主进程 abort 通道
     const clientTaskId = `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    // 把 clientTaskId 挂到全局，让 executor 内部构造 payload 时可以取到
-    currentClientTaskId = clientTaskId
+    // 把 clientTaskId 压入调用栈，让 executor 内部构造 payload 时可以取到当前任务对应的 id。
+    // 使用栈结构支持多个任务并发运行（如后台并行多次生成），互不覆盖。
+    clientTaskIdStack.push(clientTaskId)
 
     const run: AiTaskRun = {
       ...input,
@@ -4902,7 +4905,9 @@ export const useAppStore = defineStore('app', () => {
       finalizeAiTask(input.key, 'error', msg)
       throw error
     } finally {
-      currentClientTaskId = null
+      // 弹出当前任务的 id，避免影响其他仍在运行的任务
+      const idx = clientTaskIdStack.lastIndexOf(clientTaskId)
+      if (idx >= 0) clientTaskIdStack.splice(idx, 1)
     }
   }
 
@@ -4911,11 +4916,11 @@ export const useAppStore = defineStore('app', () => {
    * 组件在 executor 闭包里构造 IPC payload 时可以通过 `getClientTaskId()` 取到，
    * 注入到 `payload.clientTaskId` 字段，让主进程能按此 id 做 abort。
    */
-  let currentClientTaskId: string | null = null
+  const clientTaskIdStack: string[] = []
 
   /** 获取当前正在执行的任务的 clientTaskId（供 executor 闭包内使用） */
   function getClientTaskId(): string | undefined {
-    return currentClientTaskId ?? undefined
+    return clientTaskIdStack.length ? clientTaskIdStack[clientTaskIdStack.length - 1] : undefined
   }
 
   function finalizeAiTask(key: string, stage: 'done' | 'error', error?: string): void {

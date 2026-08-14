@@ -251,14 +251,33 @@ export interface FanqieSeedCandidate {
   outline: string
 }
 
-const SEED_TASK_KEY = 'fanqie-seed'
-const seedLoading = computed(() => appStore.isAiTaskRunning(SEED_TASK_KEY))
+// 每次点击“AI 生成新书选题”都会创建一个独立的后台任务（唯一 key），
+// 可同时并行多次生成，全部在后台执行、互不阻塞按钮。
+interface SeedBatch {
+  id: string
+  status: 'running' | 'done' | 'error'
+  error?: string
+  candidates: FanqieSeedCandidate[]
+  selected: boolean[]
+}
 const seedModalVisible = ref(false)
 const seedOptionsVisible = ref(false)
 const targetGenre = ref('')
 const seedCount = ref(3)
-const seedCandidates = ref<FanqieSeedCandidate[]>([])
-const selectedSeeds = ref<boolean[]>([])
+const seedBatches = ref<SeedBatch[]>([])
+
+// 正在后台运行的选题生成任务数（驱动按钮文案与运行中批次图标）
+const seedRunningCount = computed(() => seedBatches.value.filter((b) => b.status === 'running').length)
+
+// 合并所有批次的候选方案，供“生成作品”与选中统计使用
+const allSeedCandidates = computed<Array<{ batchId: string; seed: FanqieSeedCandidate; selected: boolean; index: number }>>(
+  () =>
+    seedBatches.value.flatMap((b) =>
+      b.candidates.map((seed, i) => ({ batchId: b.id, seed, selected: b.selected[i] ?? false, index: i }))
+    )
+)
+const selectedSeedsCount = computed(() => allSeedCandidates.value.filter((c) => c.selected).length)
+const totalSeedsCount = computed(() => allSeedCandidates.value.length)
 
 // ===== 热门综合赛道多选 =====
 const seedGenres = computed<AnyRecord[]>(() => curPeriodData.value?.hot_genres || [])
@@ -289,19 +308,25 @@ const initMethod = ref<'deep' | 'quick' | 'off'>('deep')
 const pendingBuildSeeds = ref<FanqieSeedCandidate[]>([])
 const buildLoading = ref(false)
 
-function toggleSeed(index: number): void {
-  if (index >= 0 && index < selectedSeeds.value.length) {
-    selectedSeeds.value[index] = !selectedSeeds.value[index]
-  }
+function toggleSeed(batchId: string, index: number): void {
+  const idx = seedBatches.value.findIndex((b) => b.id === batchId)
+  if (idx < 0) return
+  const batch = seedBatches.value[idx]
+  if (index < 0 || index >= batch.selected.length) return
+  const nextSelected = batch.selected.slice()
+  nextSelected[index] = !nextSelected[index]
+  seedBatches.value[idx] = { ...batch, selected: nextSelected }
 }
 
 function isAllSeedsSelected(): boolean {
-  return selectedSeeds.value.length > 0 && selectedSeeds.value.every(Boolean)
+  return totalSeedsCount.value > 0 && allSeedCandidates.value.every((c) => c.selected)
 }
 
 function toggleAllSeeds(): void {
   const all = isAllSeedsSelected()
-  selectedSeeds.value = selectedSeeds.value.map(() => !all)
+  seedBatches.value.forEach((b) => {
+    b.selected = b.selected.map(() => !all)
+  })
 }
 
 function buildSeedContext(): Record<string, unknown> {
@@ -332,12 +357,16 @@ function buildSeedContext(): Record<string, unknown> {
 }
 
 async function handleSeedGenerate(): Promise<void> {
-  if (seedLoading.value) return
+  // 每次点击都创建独立后台任务，不再阻塞按钮、可多次并行生成。
+  const batchId = `fanqie-seed-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const batch: SeedBatch = { id: batchId, status: 'running', candidates: [], selected: [] }
+  seedBatches.value.push(batch)
   seedModalVisible.value = false
+
   try {
     const result = await appStore.runTrackedAiTask(
       {
-        key: SEED_TASK_KEY,
+        key: batchId,
         kind: 'inspiration',
         label: 'AI 生成新书选题',
         description: '正在根据榜单风向设计新书选题方案',
@@ -358,9 +387,10 @@ async function handleSeedGenerate(): Promise<void> {
       : []
     if (entries.length === 0) {
       message.warning('AI 未返回有效的选题方案')
+      updateSeedBatch(batchId, { status: 'error', error: 'AI 未返回有效的选题方案' })
       return
     }
-    seedCandidates.value = entries.map((e) => ({
+    const candidates = entries.map((e) => ({
       title: String(e.title ?? '未命名选题'),
       concept: String(e.concept ?? ''),
       genre: String(e.genre ?? ''),
@@ -370,10 +400,24 @@ async function handleSeedGenerate(): Promise<void> {
       first3Hooks: Array.isArray(e.first3Hooks) ? (e.first3Hooks as string[]).map(String) : [],
       outline: String(e.outline ?? '')
     }))
-    selectedSeeds.value = seedCandidates.value.map(() => true)
+    updateSeedBatch(batchId, { status: 'done', candidates, selected: candidates.map(() => true) })
     seedOptionsVisible.value = true
   } catch (error) {
+    updateSeedBatch(batchId, { status: 'error', error: error instanceof Error ? error.message : String(error) })
     message.error(error instanceof Error ? error.message : 'AI 生成新书选题失败，请检查模型配置')
+  }
+}
+
+function updateSeedBatch(id: string, patch: Partial<Pick<SeedBatch, 'status' | 'error' | 'candidates' | 'selected'>>): void {
+  const idx = seedBatches.value.findIndex((b) => b.id === id)
+  if (idx < 0) return
+  const cur = seedBatches.value[idx]
+  seedBatches.value[idx] = {
+    ...cur,
+    ...patch,
+    // 合并：新的 candidates/selected 替换，但保留已有字段
+    candidates: patch.candidates ?? cur.candidates,
+    selected: patch.selected ?? cur.selected
   }
 }
 
@@ -387,10 +431,9 @@ function openSeedGenerator(): void {
 
 /** 点击“生成作品”：先弹出初始化方式弹窗 */
 function handleGenerateWorks(): void {
-  const picked = seedCandidates.value
-    .map((seed, index) => ({ seed, index }))
-    .filter(({ index }) => selectedSeeds.value[index])
-    .map(({ seed }) => seed)
+  const picked = allSeedCandidates.value
+    .filter((c) => c.selected)
+    .map((c) => c.seed)
   if (picked.length === 0) {
     message.warning('请先勾选要生成的新书选题')
     return
@@ -786,8 +829,8 @@ async function handleExport(): Promise<void> {
           <button class="export-btn" :disabled="loading || exportLoading" @click="openExportDialog">
             <Download :size="13" /> 导出当前数据
           </button>
-          <button class="seed-btn" :disabled="loading || seedLoading" @click="openSeedGenerator">
-            <Lightbulb :size="13" /> {{ seedLoading ? '生成中…' : 'AI 生成新书选题' }}
+          <button class="seed-btn" :disabled="loading" @click="openSeedGenerator">
+            <Lightbulb :size="13" /> {{ seedRunningCount > 0 ? `AI 生成新书选题（${seedRunningCount} 个后台运行中）` : 'AI 生成新书选题' }}
           </button>
           <button class="refresh-btn" :disabled="loading" @click="loadAll(true)">
             <RefreshCw :size="13" /> 刷新
@@ -1051,8 +1094,8 @@ async function handleExport(): Promise<void> {
       />
       <div class="seed-modal-footer">
         <n-button @click="seedModalVisible = false">取消</n-button>
-        <n-button type="primary" :loading="seedLoading" :disabled="seedLoading" @click="handleSeedGenerate">
-          开始生成
+        <n-button type="primary" @click="handleSeedGenerate">
+          开始生成{{ seedRunningCount > 0 ? `（后台已运行 ${seedRunningCount} 个）` : '' }}
         </n-button>
       </div>
     </n-modal>
@@ -1069,42 +1112,50 @@ async function handleExport(): Promise<void> {
         <n-checkbox :checked="isAllSeedsSelected()" @update:checked="toggleAllSeeds" class="seed-check-all">
           全选
         </n-checkbox>
-        <span class="seed-selected-count">已选 {{ selectedSeeds.filter(Boolean).length }} / {{ seedCandidates.length }}</span>
+        <span class="seed-selected-count">已选 {{ selectedSeedsCount }} / {{ totalSeedsCount }}{{ seedRunningCount > 0 ? `（${seedRunningCount} 个后台生成中）` : '' }}</span>
       </div>
       <div class="seed-list">
-        <div
-          v-for="(seed, index) in seedCandidates"
-          :key="index"
-          class="seed-card"
-          :class="{ 'seed-card-checked': selectedSeeds[index] }"
-          @click="toggleSeed(index)"
-        >
-          <div class="seed-card-head">
-            <n-checkbox
-              :checked="selectedSeeds[index]"
-              class="seed-check"
-              @update:checked="toggleSeed(index)"
-              @click.stop
-            />
-            <span class="seed-rank num">#{{ index + 1 }}</span>
-            <span class="seed-title">{{ seed.title }}</span>
-            <n-tag v-if="seed.genre" size="small" :bordered="false" class="seed-genre">{{ seed.genre }}</n-tag>
+        <template v-for="batch in seedBatches" :key="batch.id">
+          <div v-if="batch.status === 'running'" class="seed-batch-running">
+            <span class="spinner" aria-hidden="true"></span> 正在后台生成新书选题…
           </div>
-          <div class="seed-row"><span class="seed-k">核心卖点</span>{{ seed.concept }}</div>
-          <div class="seed-row"><span class="seed-k">钩子</span>{{ seed.hook }}</div>
-          <div class="seed-row"><span class="seed-k">主角</span>{{ seed.protagonist }}</div>
-          <div class="seed-row"><span class="seed-k">金手指</span>{{ seed.goldFinger }}</div>
-          <div v-if="seed.first3Hooks.length" class="seed-row">
-            <span class="seed-k">前3章钩子</span>
-            <div class="seed-hooks">
-              <div v-for="(h, i) in seed.first3Hooks" :key="i" class="seed-hook">{{ i + 1 }}. {{ h }}</div>
+          <div v-else-if="batch.status === 'error'" class="seed-batch-error">
+            该批选题生成失败{{ batch.error ? `：${batch.error}` : '' }}
+          </div>
+          <div
+            v-for="(seed, index) in batch.candidates"
+            :key="batch.id + '-' + index"
+            class="seed-card"
+            :class="{ 'seed-card-checked': batch.selected[index] }"
+            @click="toggleSeed(batch.id, index)"
+          >
+            <div class="seed-card-head">
+              <n-checkbox
+                :checked="batch.selected[index]"
+                class="seed-check"
+                @update:checked="toggleSeed(batch.id, index)"
+                @click.stop
+              />
+              <span class="seed-rank num">#{{ index + 1 }}</span>
+              <span class="seed-title">{{ seed.title }}</span>
+              <n-tag v-if="seed.genre" size="small" :bordered="false" class="seed-genre">{{ seed.genre }}</n-tag>
+            </div>
+            <div class="seed-row"><span class="seed-k">核心卖点</span>{{ seed.concept }}</div>
+            <div class="seed-row"><span class="seed-k">钩子</span>{{ seed.hook }}</div>
+            <div class="seed-row"><span class="seed-k">主角</span>{{ seed.protagonist }}</div>
+            <div class="seed-row"><span class="seed-k">金手指</span>{{ seed.goldFinger }}</div>
+            <div v-if="seed.first3Hooks.length" class="seed-row">
+              <span class="seed-k">前3章钩子</span>
+              <div class="seed-hooks">
+                <div v-for="(h, i) in seed.first3Hooks" :key="i" class="seed-hook">{{ i + 1 }}. {{ h }}</div>
+              </div>
+            </div>
+            <div class="seed-row"><span class="seed-k">主线</span>{{ seed.outline }}</div>
+            <div class="seed-actions">
+              <button type="button" class="seed-action-btn" @click.stop="copySeed(seed)"><Copy :size="12" /> 复制方案</button>
             </div>
           </div>
-          <div class="seed-row"><span class="seed-k">主线</span>{{ seed.outline }}</div>
-          <div class="seed-actions">
-            <button type="button" class="seed-action-btn" @click.stop="copySeed(seed)"><Copy :size="12" /> 复制方案</button>
-          </div>
-        </div>
+        </template>
       </div>
       <div class="seed-modal-footer">
         <n-button @click="seedOptionsVisible = false">关闭</n-button>
@@ -1849,6 +1900,35 @@ async function handleExport(): Promise<void> {
 }
 .seed-check-all { font-size: 13px; }
 .seed-selected-count { font-size: 12px; color: var(--arc-text-hint); }
+.seed-batch-running {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px;
+  border: 1px dashed var(--arc-border-strong);
+  border-radius: var(--arc-radius-md);
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  font-size: 13px;
+}
+.seed-batch-running .spinner {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border: 2px solid var(--arc-border-strong);
+  border-top-color: var(--arc-primary);
+  border-radius: 50%;
+  animation: arc-spin 0.8s linear infinite;
+}
+.seed-batch-error {
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, #e5484d 45%, var(--arc-border));
+  border-radius: var(--arc-radius-md);
+  background: color-mix(in srgb, #e5484d 6%, var(--arc-bg-surface));
+  color: var(--arc-text-secondary);
+  font-size: 13px;
+}
+@keyframes arc-spin { to { transform: rotate(360deg); } }
 .seed-card-checked {
   border-color: var(--arc-primary);
   box-shadow: 0 0 0 1px var(--arc-primary);
