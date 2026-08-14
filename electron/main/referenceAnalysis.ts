@@ -443,7 +443,7 @@ function computeMetrics(text: string, chapters: string[]): ReferenceStyleMetric[
 
   return [
     { label: '总字数', value: `${characterCount.toLocaleString('zh-CN')} 字` },
-    { label: '章节估计', value: `${Math.max(chapters.length, 1)} 段/章` },
+    { label: '分段数', value: `${Math.max(chapters.length, 1)} 段` },
     { label: '平均句长', value: `${avgSentenceLength.toFixed(1)} 字/句` },
     { label: '对白段落占比', value: `${(dialogueParagraphRatio * 100).toFixed(0)}%` },
     { label: '短句比例', value: `${(shortSentenceRatio * 100).toFixed(0)}%` },

@@ -663,8 +663,8 @@ export class AgentProfileStore {
     if (scope === 'local' && projectId) {
       const local = this.list({ scope: 'local', projectId })
       if (!local.length) {
-        // 项目无本小说智能体时回落到全局
-        return this.list({ scope: 'global' })[0] ?? local[0]
+        // 项目无本小说智能体时回落到全局（此时 local 必为空，local[0] 恒为 undefined，无需兜底）
+        return this.list({ scope: 'global' })[0]
       }
       // 默认选择本小说智能体中的「创作大师」（若存在）
       const novelist = local.find((a) => a.id === builtinProjectId('builtin-novelist', projectId))
