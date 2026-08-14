@@ -220,6 +220,8 @@ interface DragState {
 const dragState = ref<DragState | null>(null)
 /** 拖拽结束抬起后，是否要吞掉随之而来的 click，避免误打开项目 */
 const suppressClick = ref(false)
+/** 被拖拽卡片相对鼠标按下点的位移（跟随鼠标移动，提供明确的拖拽视觉反馈） */
+const dragOffset = ref<{ x: number; y: number } | null>(null)
 
 function handlePointerDown(event: PointerEvent, projectId: string): void {
   // 批量管理模式下禁止拖拽；仅左键
@@ -255,6 +257,8 @@ function handleWindowPointerMove(event: PointerEvent): void {
     appStore.setProjectSortMode('manual')
     draggingId.value = ds.id
   }
+  // 被拖拽卡片跟随鼠标移动，用户能清晰看到拖拽动作
+  dragOffset.value = { x: dx, y: dy }
   reorderOnMove(event.clientX, event.clientY)
 }
 
@@ -262,10 +266,24 @@ function handleWindowPointerMove(event: PointerEvent): void {
 function reorderOnMove(x: number, y: number): void {
   const ds = dragState.value
   if (!ds || !ds.active || !ds.moved) return
-  const el = document.elementFromPoint(x, y) as HTMLElement | null
-  const card = el?.closest('.homepage-project-card') as HTMLElement | null
-  const targetId = card?.dataset.projectId
-  if (!targetId || targetId === ds.id) return
+  // 使用 elementsFromPoint 遍历 pointer 下所有层叠元素，跳过被拖拽卡片自身，
+  // 避免 is-dragging 卡片放大并置顶后遮挡目标卡片导致命中失败（拖拽“没反应”）
+  const pointEls =
+    typeof document.elementsFromPoint === 'function'
+      ? (document.elementsFromPoint(x, y) as HTMLElement[])
+      : (document.elementFromPoint ? [document.elementFromPoint(x, y)] : [])
+  let card: HTMLElement | null = null
+  let targetId: string | null = null
+  for (const el of pointEls) {
+    if (!el || !el.closest) continue
+    const c = el.closest('.homepage-project-card') as HTMLElement | null
+    if (c && c.dataset.projectId && c.dataset.projectId !== ds.id) {
+      card = c
+      targetId = c.dataset.projectId
+      break
+    }
+  }
+  if (!card || !targetId) return
 
   const fromIndex = manualList.value.findIndex((p) => p.id === ds.id)
   const toIndex = manualList.value.findIndex((p) => p.id === targetId)
@@ -299,6 +317,7 @@ function handleWindowPointerUp(event: PointerEvent): void {
   }
   draggingId.value = null
   dragState.value = null
+  dragOffset.value = null
   // click 事件随后触发，处理完后再复位抑制标记
   requestAnimationFrame(() => {
     suppressClick.value = false
@@ -311,6 +330,12 @@ function handleClickConsumed(): void {
 
 function isDragging(projectId: string): boolean {
   return draggingId.value === projectId
+}
+
+/** 被拖拽卡片的鼠标跟随偏移；非拖拽卡片返回 null */
+function getDragOffset(projectId: string): { x: number; y: number } | null {
+  if (draggingId.value !== projectId) return null
+  return dragOffset.value
 }
 </script>
 
@@ -420,6 +445,7 @@ function isDragging(projectId: string): boolean {
           :selected="selectedIds.has(project.id)"
           :draggable="!selectMode"
           :is-dragging="isDragging(project.id)"
+          :drag-offset="getDragOffset(project.id)"
           :suppress-click="suppressClick"
           @open="emit('open', $event)"
           @menu-select="(action, projectId) => emit('menuSelect', action, projectId)"

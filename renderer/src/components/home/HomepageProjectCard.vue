@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { Check, Clock4, GripHorizontal, MoreHorizontal } from 'lucide-vue-next'
 import type { DropdownOption } from 'naive-ui'
 import { NDropdown } from 'naive-ui'
@@ -16,6 +17,7 @@ const props = defineProps<{
   selected?: boolean
   draggable?: boolean
   isDragging?: boolean
+  dragOffset?: { x: number; y: number } | null
   suppressClick?: boolean
 }>()
 
@@ -39,13 +41,20 @@ function handleCardClick(): void {
     emit('open', props.project.id)
   }
 }
+
+/** 拖拽时卡片跟随鼠标的位移（transform）。非拖拽时返回 undefined，避免干扰 transition-group 的位移动画 */
+const dragStyle = computed<{ transform: string } | undefined>(() => {
+  if (!props.isDragging || !props.dragOffset) return undefined
+  // translate 跟随鼠标；scale/rotate 与 .is-dragging 的视觉保持一致
+  return { transform: `translate(${props.dragOffset.x}px, ${props.dragOffset.y}px) scale(1.04) rotate(1deg)` }
+})
 </script>
 
 <template>
   <article
     class="homepage-project-card"
     :class="{ 'is-select-mode': selectMode, 'is-selected': selected, 'is-dragging': isDragging, 'is-draggable': draggable }"
-    :style="animationDelay ? { animationDelay } : undefined"
+    :style="animationDelay ? { animationDelay, ...(dragStyle ?? {}) } : dragStyle"
     :data-project-id="project.id"
     @click="handleCardClick"
     @pointerdown="(e) => emit('pointerDown', e, project.id)"
@@ -334,8 +343,8 @@ function handleCardClick(): void {
   opacity: 0.55;
   border-color: var(--arc-primary);
   box-shadow: 0 14px 30px rgba(0, 0, 0, 0.2);
-  transform: scale(1.04) rotate(1deg);
-  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.18s, box-shadow 0.2s;
+  /* 拖拽时通过 inline transform 跟随鼠标，需即时响应，不能有 transition 延迟 */
+  transition: opacity 0.18s, box-shadow 0.2s;
   z-index: 3;
 }
 
