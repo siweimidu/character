@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { History, Plus, Search, X } from 'lucide-vue-next'
+import { Pencil, Plus, Search, X } from 'lucide-vue-next'
 import { NButton, NInput, NInputGroup, NModal, NSelect } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import type { PromptEntry } from '@/types/app'
@@ -39,6 +39,9 @@ const draftLabel = ref('')
 const draftText = ref('')
 const draftCategoryId = ref('')
 const editingId = ref<string | null>(null)
+
+/** 与创作模块提示词库对齐的可插值变量提示。 */
+const TEMPLATE_VARIABLES_HINT = '{{content}} · {{chapter}} · {{role}}'
 
 /** 分类选项：默认归类到第一个分类 */
 const categoryOptions = computed(() =>
@@ -157,7 +160,7 @@ function usePrompt(entry: PromptEntry): void {
             </button>
             <div class="prompt-item-actions">
               <button type="button" title="编辑" @click="openEdit(item)">
-                <History :size="14" />
+                <Pencil :size="14" />
               </button>
               <button type="button" class="danger" title="删除" @click="remove(item)">
                 <X :size="14" />
@@ -196,7 +199,10 @@ function usePrompt(entry: PromptEntry): void {
           />
         </label>
         <label class="prompt-field">
-          <span>提示词内容</span>
+          <span class="prompt-field-head">
+            提示词内容
+            <span class="variable-hint">支持变量：{{ TEMPLATE_VARIABLES_HINT }}</span>
+          </span>
           <NInput v-model:value="draftText" type="textarea" :rows="5" placeholder="输入你想保存的常用提示词内容…" />
         </label>
       </div>
@@ -239,6 +245,13 @@ function usePrompt(entry: PromptEntry): void {
   border: 1px solid var(--arc-border);
   border-radius: 8px;
   background: var(--arc-bg-surface);
+  transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.prompt-manager-item:hover {
+  border-color: color-mix(in srgb, var(--arc-primary) 28%, var(--arc-border));
+  background: color-mix(in srgb, var(--arc-primary) 2%, var(--arc-bg-surface));
+  box-shadow: var(--arc-shadow-sm);
 }
 
 .prompt-item-main {
@@ -261,6 +274,7 @@ function usePrompt(entry: PromptEntry): void {
 
 .prompt-item-main strong {
   font-size: 13px;
+  font-weight: 700;
 }
 
 .prompt-item-main span {
@@ -293,10 +307,11 @@ function usePrompt(entry: PromptEntry): void {
 
 .prompt-item-actions button:hover {
   background: var(--arc-glass-06);
-  color: var(--arc-text-primary);
+  color: var(--arc-primary);
 }
 
 .prompt-item-actions button.danger:hover {
+  background: color-mix(in srgb, var(--arc-danger) 10%, var(--arc-bg-surface));
   color: #e5484d;
 }
 
@@ -315,5 +330,18 @@ function usePrompt(entry: PromptEntry): void {
 .prompt-field > span {
   font-size: 12px;
   color: var(--arc-text-secondary);
+}
+
+.prompt-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.variable-hint {
+  color: var(--arc-text-hint);
+  font-size: 11px;
+  font-weight: 400;
 }
 </style>
