@@ -424,6 +424,22 @@ function backToProjectCenter(): void {
   padding: 4px clamp(16px, 2vw, 26px) clamp(20px, 3vw, 34px);
 }
 
+/* 回收站右侧滑动条：透明、隐藏，但在右侧边缘仍可上下滑动 */
+.recycle-main::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.recycle-main::-webkit-scrollbar-track {
+  background: transparent;
+}
+.recycle-main::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+}
+.recycle-main::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.28);
+}
+
 .recycle-heading {
   display: flex;
   align-items: flex-end;
