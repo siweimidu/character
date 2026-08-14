@@ -401,6 +401,8 @@ export const useAppStore = defineStore('app', () => {
   const globalRecycleBin = ref<import('@/types/app').RecycleBinEntry[]>(stored.globalRecycleBin ?? [])
   /** 首页“我的作品”当前选中的排序方式 */
   const projectSortMode = ref<string>(stored.projectSortMode ?? 'created')
+  /** 首页“我的作品”各排序维度的升/降方向 */
+  const projectSortDirections = ref<Record<string, 'asc' | 'desc'>>({ ...(stored.projectSortDirections ?? {}) })
   /** 当前项目的回收站条目（项目级删除内容） */
   const projectRecycleBin = computed(() => currentWorkspace.value.recycleBin)
   /** 回收站当前查看范围：'global' 显示全局回收站，'all' 显示当前项目 + 全局，其余为指定项目 ID */
@@ -798,6 +800,10 @@ export const useAppStore = defineStore('app', () => {
       ? (payload as Partial<StoredState>).globalRecycleBin!
       : []
     projectSortMode.value = (payload as Partial<StoredState>).projectSortMode ?? 'created'
+    projectSortDirections.value = {
+      ...(projectSortDirections.value),
+      ...((payload as Partial<StoredState>).projectSortDirections ?? {})
+    }
     const workspaceAiRuns = Object.entries(projectWorkspaces.value).flatMap(([projectId, workspace]) =>
       (workspace.aiRuns ?? []).map((run) => ({ ...run, projectId: run.projectId || projectId }))
     )
@@ -829,7 +835,8 @@ export const useAppStore = defineStore('app', () => {
       appSettings: toSerializable(appSettings.value),
       coverWorkbenchHistory: toSerializable(coverWorkbenchHistory.value),
       globalRecycleBin: toSerializable(globalRecycleBin.value),
-      projectSortMode: projectSortMode.value
+      projectSortMode: projectSortMode.value,
+      projectSortDirections: projectSortDirections.value
     }
   }
 
@@ -2100,6 +2107,12 @@ export const useAppStore = defineStore('app', () => {
   /** 设置首页“我的作品”的排序方式并持久化 */
   function setProjectSortMode(mode: string): void {
     projectSortMode.value = mode || 'created'
+    schedulePersist('fast')
+  }
+
+  /** 设置首页“我的作品”某个排序维度的升/降方向并持久化 */
+  function setProjectSortDirection(dimension: string, direction: 'asc' | 'desc'): void {
+    projectSortDirections.value = { ...projectSortDirections.value, [dimension]: direction }
     schedulePersist('fast')
   }
 
@@ -5198,6 +5211,8 @@ export const useAppStore = defineStore('app', () => {
     globalRecycleBinEntries,
     projectSortMode,
     setProjectSortMode,
+    projectSortDirections,
+    setProjectSortDirection,
     emptyRecycleBin,
     permanentlyDeleteRecycleEntry,
     purgeExpiredRecycleBin,

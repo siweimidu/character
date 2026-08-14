@@ -1,22 +1,32 @@
 <script setup lang="ts">
-import { computed, h, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { NButton, NEmpty } from 'naive-ui'
 import type { DropdownOption } from 'naive-ui'
-import { Check, CheckSquare, ChevronsUpDown, Square, Trash2, Wand2, X } from 'lucide-vue-next'
+import { ArrowDown, ArrowUp, CheckSquare, ChevronsUpDown, GripHorizontal, Square, Trash2, Wand2, X } from 'lucide-vue-next'
 import type { ProjectSummary } from '@/types/app'
 import { useAppStore } from '@/stores/app'
 import HomepageProjectCard from './HomepageProjectCard.vue'
 
-/** 首页“我的作品”的排序方式 */
-type SortMode = 'created' | 'edited' | 'wordCount' | 'titleLength' | 'manual'
+/** 首页“我的作品”的排序维度 */
+type SortDimension = 'created' | 'edited' | 'wordCount' | 'titleLength'
+/** 排序方向：asc 升序 / desc 降序 */
+type SortDirection = 'asc' | 'desc'
+/** 完整排序方式（含手动） */
+type SortMode = SortDimension | 'manual'
 
-const SORT_OPTIONS: { key: SortMode; label: string }[] = [
-  { key: 'created', label: '按建立时间排序' },
-  { key: 'edited', label: '按最近编辑排序' },
-  { key: 'wordCount', label: '按作品字数排序' },
-  { key: 'titleLength', label: '按书名长度排序' },
-  { key: 'manual', label: '手动排序' }
+/** 各排序维度的展示名与用户首选方向 */
+const SORT_OPTIONS: { key: SortDimension; label: string; defaultDirection: SortDirection }[] = [
+  { key: 'created', label: '按建立时间', defaultDirection: 'asc' }, // 最早在前
+  { key: 'edited', label: '按最近编辑', defaultDirection: 'desc' }, // 最新编辑在前
+  { key: 'wordCount', label: '按作品字数', defaultDirection: 'desc' }, // 字数最多在前
+  { key: 'titleLength', label: '按作品名称', defaultDirection: 'desc' } // 名称最长在前
 ]
+
+/** 每个维度的方向文案（用于悬浮窗中的方向切换） */
+const DIRECTION_LABEL: Record<SortDirection, string> = {
+  asc: '升序',
+  desc: '降序'
+}
 
 const props = defineProps<{
   projects: ProjectSummary[]
@@ -35,11 +45,20 @@ const appStore = useAppStore()
 
 const selectMode = ref(false)
 const selectedIds = ref<Set<string>>(new Set())
-/** 当前排序方式，默认按建立时间（与新建作品置顶的默认行为一致），持久化在 store */
+/** 当前排序方式，默认按建立时间（最早在前），持久化在 store */
 const sortMode = computed<SortMode>(() => {
   const stored = appStore.projectSortMode
   return SORT_OPTIONS.some((o) => o.key === stored) ? (stored as SortMode) : 'created'
 })
+/** 当前排序维度的方向（默认取该维度的首选方向，持久化在 store） */
+const sortDirection = computed<SortDirection>(() => {
+  if (sortMode.value === 'manual') return 'asc'
+  const opt = SORT_OPTIONS.find((o) => o.key === sortMode.value)
+  return appStore.projectSortDirections[sortMode.value] ?? opt?.defaultDirection ?? 'asc'
+})
+/** 悬浮窗中每个维度当前应展示的方向（升/降） */
+const dimensionDirection = (key: SortDimension): SortDirection =>
+  appStore.projectSortDirections[key] ?? SORT_OPTIONS.find((o) => o.key === key)?.defaultDirection ?? 'asc'
 const sortVisible = ref(false)
 
 /** 手动排序时的本地列表（用于拖拽过程中的实时重排，落盘后同步给 store） */
@@ -49,43 +68,33 @@ const draggingId = ref<string | null>(null)
 /** 是否正在通过拖拽首次初始化手动列表（拖拽时以当前展示顺序为基准，防止被 watch 用 store 原始顺序覆盖） */
 let isDragInit = false
 
-/** 排序下拉菜单选项：当前生效的排序方式带勾选标记 */
-const sortMenuOptions = computed<DropdownOption[]>(() =>
-  SORT_OPTIONS.map((opt) => {
-    const isActive = sortMode.value === opt.key
-    return {
-      key: opt.key,
-      label: opt.label,
-      icon: isActive ? () => h(Check, { size: 14 }) : undefined
-    }
-  })
-)
-
 const allSelected = computed(() =>
   props.projects.length > 0 && selectedIds.value.size === props.projects.length
 )
 
 const selectedCount = computed(() => selectedIds.value.size)
 
-/** 展示用作品列表：手动模式走本地拖拽列表，其余按所选方式实时排序 */
+/** 展示用作品列表：手动模式走本地拖拽列表，其余按所选维度 + 方向实时排序 */
 const displayProjects = computed<ProjectSummary[]>(() => {
   if (sortMode.value === 'manual') {
     return manualList.value
   }
   const list = [...props.projects]
-  const mode = sortMode.value
+  const mode = sortMode.value as SortDimension
+  const dir = sortDirection.value
   list.sort((a, b) => {
+    // 统一先按“升序基准”比较，再按方向决定正反
+    let base = 0
     if (mode === 'created') {
-      return toTimestamp(b.createdAt) - toTimestamp(a.createdAt)
+      base = toTimestamp(a.createdAt) - toTimestamp(b.createdAt)
+    } else if (mode === 'edited') {
+      base = toTimestamp(a.lastEdited) - toTimestamp(b.lastEdited)
+    } else if (mode === 'wordCount') {
+      base = parseWordCount(a.wordCount) - parseWordCount(b.wordCount)
+    } else {
+      base = (a.title?.length ?? 0) - (b.title?.length ?? 0)
     }
-    if (mode === 'edited') {
-      return toTimestamp(b.lastEdited) - toTimestamp(a.lastEdited)
-    }
-    if (mode === 'wordCount') {
-      return parseWordCount(b.wordCount) - parseWordCount(a.wordCount)
-    }
-    // titleLength：书名越长越靠前
-    return (b.title?.length ?? 0) - (a.title?.length ?? 0)
+    return dir === 'asc' ? base : -base
   })
   return list
 })
@@ -136,12 +145,29 @@ watch(
   }
 )
 
-function selectSort(key: string | number): void {
-  appStore.setProjectSortMode(String(key))
+/** 在悬浮窗中选中某个排序维度 */
+function selectSort(dimension: SortDimension): void {
+  if (sortMode.value === 'manual' || sortMode.value !== dimension) {
+    appStore.setProjectSortMode(dimension)
+  }
+  draggingId.value = null
   sortVisible.value = false
-  if (sortMode.value !== 'manual') {
+}
+
+/** 切换某个排序维度的升/降方向 */
+function toggleDirection(dimension: SortDimension): void {
+  const next: SortDirection = dimensionDirection(dimension) === 'asc' ? 'desc' : 'asc'
+  appStore.setProjectSortDirection(dimension, next)
+  if (sortMode.value === dimension) {
     draggingId.value = null
   }
+}
+
+/** 是否开启手动排序 */
+function enableManualSort(): void {
+  appStore.setProjectSortMode('manual')
+  draggingId.value = null
+  sortVisible.value = false
 }
 
 function toggleSelect(projectId: string): void {
@@ -302,18 +328,48 @@ function isDragging(projectId: string): boolean {
       <div class="project-collection-header">
         <div class="project-collection-tools">
           <template v-if="!selectMode">
-            <n-dropdown
+            <n-popover
               v-model:show="sortVisible"
               trigger="click"
               placement="bottom-start"
-              :options="sortMenuOptions"
-              @select="selectSort"
+              :show-arrow="false"
+              class="sort-popover"
             >
-              <button class="sort-btn" :title="`排序：${SORT_OPTIONS.find((o) => o.key === sortMode)?.label ?? ''}`">
-                <ChevronsUpDown :size="14" />
-                <span class="sort-btn-label">排序</span>
-              </button>
-            </n-dropdown>
+              <template #trigger>
+                <button class="sort-btn" :title="`排序：${SORT_OPTIONS.find((o) => o.key === sortMode)?.label ?? ''}（${sortMode === 'manual' ? '手动排序' : (sortDirection === 'asc' ? '最早/最短/最少/最早编辑' : '最晚/最长/最多/最新编辑')}）`">
+                  <ChevronsUpDown :size="14" />
+                  <span class="sort-btn-label">排序</span>
+                </button>
+              </template>
+              <div class="sort-popover-body">
+                <p class="sort-popover-title">选择排序方式</p>
+                <div
+                  v-for="opt in SORT_OPTIONS"
+                  :key="opt.key"
+                  class="sort-option"
+                  :class="{ active: sortMode === opt.key }"
+                  @click="selectSort(opt.key)"
+                >
+                  <span class="sort-option-label">{{ opt.label }}</span>
+                  <button
+                    class="sort-option-dir"
+                    :title="`切换方向：当前${DIRECTION_LABEL[dimensionDirection(opt.key)]}`"
+                    @click.stop="toggleDirection(opt.key)"
+                  >
+                    <ArrowUp v-if="dimensionDirection(opt.key) === 'asc'" :size="13" />
+                    <ArrowDown v-else :size="13" />
+                  </button>
+                </div>
+                <div
+                  class="sort-option"
+                  :class="{ active: sortMode === 'manual' }"
+                  @click="enableManualSort"
+                >
+                  <span class="sort-option-label">手动排序</span>
+                  <span class="sort-option-dir manual-dir">拖拽</span>
+                </div>
+              </div>
+            </n-popover>
             <button class="batch-mode-btn" title="批量管理" @click="enterSelectMode">
               <CheckSquare :size="14" />
               批量管理
@@ -422,6 +478,83 @@ function isDragging(projectId: string): boolean {
 
 .sort-btn-label {
   white-space: nowrap;
+}
+
+/* 排序悬浮窗 */
+.sort-popover-body {
+  min-width: 210px;
+  padding: 4px;
+}
+
+.sort-popover-title {
+  margin: 0 0 4px;
+  padding: 2px 8px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--arc-text-hint);
+  border-bottom: 1px solid var(--arc-border);
+}
+
+.sort-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--arc-text-secondary);
+  font-size: 13px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sort-option:hover {
+  background: var(--arc-bg-weak);
+  color: var(--arc-text-primary);
+}
+
+.sort-option.active {
+  color: var(--arc-primary);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--arc-primary) 7%, var(--arc-bg-surface));
+}
+
+.sort-option-label {
+  white-space: nowrap;
+}
+
+.sort-option-dir {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--arc-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--arc-text-hint);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.sort-option-dir:hover {
+  border-color: var(--arc-primary);
+  color: var(--arc-primary);
+  background: color-mix(in srgb, var(--arc-primary) 8%, var(--arc-bg-surface));
+}
+
+.sort-option.active .sort-option-dir {
+  color: var(--arc-primary);
+  border-color: color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border));
+}
+
+.manual-dir {
+  width: auto;
+  padding: 0 6px;
+  border: none;
+  font-size: 11px;
+  color: var(--arc-text-hint);
+  cursor: default;
 }
 
 .batch-create-btn {

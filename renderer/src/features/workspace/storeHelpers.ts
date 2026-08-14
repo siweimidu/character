@@ -51,6 +51,8 @@ export interface StoredState {
   globalRecycleBin: import('@/types/app').RecycleBinEntry[]
   /** 首页“我的作品”当前选中的排序方式 */
   projectSortMode?: string
+  /** 首页“我的作品”各排序维度的升/降方向，如 { created: 'asc', edited: 'desc' } */
+  projectSortDirections?: Record<string, 'asc' | 'desc'>
 }
 
 // 旧版存储结构：所有字段可选，用于从旧格式迁移数据
