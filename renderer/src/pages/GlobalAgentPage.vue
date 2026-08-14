@@ -209,23 +209,14 @@ function switchProfile(id: string): void {
 // ============================================================================
 function sendWithMode(intentHint?: string): void {
   void assistant.send({
-    intentHint: intentHint || 'global-assistant-v2:chat',
+    intentHint: intentHint || 'global-assistant-v2:standard',
     agentId: selectedAgentId.value || undefined
   })
 }
-function fillQuickAction(prompt: string): void {
-  composerValue.value = prompt
-}
-const quickActions: Array<{ label: string; prompt: string }> = [
-  { label: '整理项目现状', prompt: '请读取项目资料，整理当前项目概况、下一步创作计划和需要沉淀的创作记忆。' },
-  { label: '全项目审计', prompt: '请审计当前项目的一致性风险，包括世界观矛盾、人物 OOC、大纲断裂、伏笔未回收和硬约束冲突。' },
-  { label: '补全创作记忆', prompt: '请基于现有项目资料，补全当前状态、创作计划、待回收伏笔和素材清单。' }
-]
-
 const availableSkills = computed(() =>
   (currentProject.value?.projectSkills ?? [])
     .filter((s) => s.enabled)
-    .map((s) => ({ id: s.id, name: s.name, description: s.description }))
+    .map((s) => ({ id: s.id, name: s.name, description: s.description, category: s.category }))
 )
 
 async function handleUploadFile(): Promise<void> {
@@ -489,18 +480,7 @@ function handleVoiceInput(): void {
   message.success('开始录音，请说话…（再次点击停止）')
 }
 
-// ============================================================================
-// 项目 CRUD 能力（供自然语言调用：新建 / 删除项目等）
-// ============================================================================
-function requestCreateProject(): void {
-  appStore.openWizard()
-}
-function handleDeleteProject(projectId: string): void {
-  const target = projects.value.find((p) => p.id === projectId)
-  if (!target) return
-  appStore.deleteProject(projectId)
-  message.success(`已删除项目《${target.title || '未命名'}》`)
-}</script>
+</script>
 
 <template>
   <div
@@ -691,15 +671,6 @@ function handleDeleteProject(projectId: string): void {
         <button class="ga-memory-toggle" title="创作记忆（学习闭环）" @click="memoryDialogVisible = true">
           <Brain :size="14" />
         </button>
-        <button
-          v-if="enabledModules.length > 0"
-          class="ga-cap-indicator"
-          :title="`已启用 ${enabledModules.length} 个能力模块，点击查看`"
-          @click="openSettings('modules')"
-        >
-          <Puzzle :size="14" />
-          <span>{{ enabledModules.length }}</span>
-        </button>
       </div>
 
       <AgentMemoryDialog
@@ -737,37 +708,6 @@ function handleDeleteProject(projectId: string): void {
             <DeepSeekFishLogo :size="34" class="ga-starter-fish" />
             <h2 class="ga-starter-headline">全局智能体</h2>
             <span class="ga-starter-preview">Preview</span>
-          </div>
-          <p class="ga-starter-sub">
-            需要我为你的创作做点什么？我可以读写任意文件、写代码、调用 MCP 工具、管理你的小说项目。
-            所有能力都遵循 everything-is-a-plugin 原则，可在右侧「能力与市场」中按插件独立启停。
-          </p>
-
-          <div class="ga-project-actions">
-            <button type="button" class="ga-project-btn" @click="requestCreateProject">
-              <Plus :size="13" /> 新建项目
-            </button>
-            <button
-              v-if="currentProject"
-              type="button"
-              class="ga-project-btn ghost"
-              @click="handleDeleteProject(currentProject.id)"
-            >
-              删除当前项目
-            </button>
-          </div>
-
-          <div class="ga-quick-title">常用快捷操作</div>
-          <div class="ga-quick-row">
-            <button
-              v-for="action in quickActions"
-              :key="action.label"
-              type="button"
-              class="ga-quick-card"
-              @click="fillQuickAction(action.prompt)"
-            >
-              {{ action.label }}
-            </button>
           </div>
 
           <PromptLibrary
@@ -1328,32 +1268,6 @@ function handleDeleteProject(projectId: string): void {
   background: var(--ga-primary-soft);
   border-color: color-mix(in srgb, var(--arc-primary) 35%, var(--arc-border));
 }
-.ga-cap-indicator {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  height: 44px;
-  min-width: 44px;
-  padding: 0 10px;
-  border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--arc-primary) 30%, var(--arc-border));
-  background: var(--ga-primary-soft);
-  color: var(--arc-primary);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: all 0.15s ease;
-  box-sizing: border-box;
-  font-size: 12px;
-  font-weight: 650;
-}
-.ga-cap-indicator span {
-  font-family: var(--ga-mono);
-}
-.ga-cap-indicator:hover {
-  border-color: var(--arc-primary);
-  background: color-mix(in srgb, var(--arc-primary) 14%, var(--arc-bg-surface));
-}
 .ga-flow {
   flex: 1;
   min-height: 0;
@@ -1401,71 +1315,6 @@ function handleDeleteProject(projectId: string): void {
   border-radius: 999px;
   align-self: flex-start;
   margin-top: 2px;
-}
-.ga-starter-sub {
-  margin: 4px auto 0;
-  max-width: 640px;
-  color: var(--arc-text-secondary);
-  font-size: 13.5px;
-  line-height: 1.7;
-  text-align: center;
-}
-.ga-quick-title {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--arc-text-hint);
-  margin-top: 2px;
-}
-.ga-project-actions {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-.ga-project-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border: 1px solid var(--arc-primary);
-  border-radius: 999px;
-  background: var(--arc-primary);
-  color: var(--arc-primary-foreground, #fff);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  font-family: inherit;
-}
-.ga-project-btn:hover { filter: brightness(1.06); }
-.ga-project-btn.ghost {
-  background: transparent;
-  color: var(--arc-danger);
-  border-color: color-mix(in srgb, var(--arc-danger) 45%, var(--arc-border));
-}
-.ga-project-btn.ghost:hover {
-  background: color-mix(in srgb, var(--arc-danger) 8%, transparent);
-}
-.ga-quick-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.ga-quick-card {
-  border: 1px solid var(--arc-border);
-  border-radius: 14px;
-  background: var(--arc-bg-surface);
-  color: var(--arc-text-secondary);
-  text-align: left;
-  padding: 11px 13px;
-  cursor: pointer;
-  font-size: 12px;
-  line-height: 1.4;
-  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease, transform 0.15s ease;
-}
-.ga-quick-card:hover {
-  border-color: color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border));
-  color: var(--arc-primary);
-  background: var(--ga-primary-soft);
-  transform: translateY(-1px);
 }
 .ga-err-banner {
   margin: 0 32px 8px;
@@ -1566,6 +1415,5 @@ function handleDeleteProject(projectId: string): void {
     grid-template-columns: minmax(0, 1fr);
   }
   .ga-sidebar, .ga-session-mini, .ga-session-resizer { display: none; }
-  .ga-quick-row { grid-template-columns: 1fr; }
 }
 </style>

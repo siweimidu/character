@@ -226,7 +226,7 @@ const quickActions: Array<{ label: string; prompt: string }> = [
 const availableSkills = computed(() =>
   (appStore.currentProject?.projectSkills ?? [])
     .filter((s) => s.enabled)
-    .map((s) => ({ id: s.id, name: s.name, description: s.description }))
+    .map((s) => ({ id: s.id, name: s.name, description: s.description, category: s.category }))
 )
 
 const assetLinks = computed(() => [

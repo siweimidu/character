@@ -3,14 +3,10 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { NButton } from 'naive-ui'
 import {
   Bookmark,
-  FolderTree,
   Mic,
   Paperclip,
-  Plug,
   Plus,
-  Puzzle,
   Square,
-  Terminal,
   Trash2,
   Undo2,
   Upload,
@@ -31,7 +27,7 @@ const props = withDefaults(defineProps<{
   /** 待发送的引用附件芯片列表 */
   attachments?: TurnAttachment[]
   /** 可被 / 快捷指令选择的 skills（命令菜单第二类） */
-  skills?: Array<{ id: string; name: string; description?: string }>
+  skills?: Array<{ id: string; name: string; description?: string; category?: string }>
   /** 项目 ID：用于斜杠唤起提示词库（按项目隔离持久化）。 */
   projectId?: string | null | undefined
   /** 已启用的能力模块列表（用于展示能力快捷按钮） */
@@ -65,31 +61,6 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 let lastEscapeAt = 0
 
-/** 能力模块图标映射。 */
-const moduleIconMap: Record<string, unknown> = {
-  FolderTree,
-  Terminal,
-  Plug,
-  Mic,
-  Puzzle
-}
-
-/** 能力模块的简短使用提示。 */
-const moduleTipMap: Record<string, string> = {
-  'filesystem.workspace': '可直接要求读/写/搜索项目文件',
-  'filesystem.system': '可直接要求操作电脑任意路径文件',
-  'exec.shell': '可直接要求运行命令/执行脚本',
-  'mcp.market': '可要求调用 MCP 工具',
-  'speech.asr': '点击 🎤 可语音输入',
-  'browser.ego': '可要求操作浏览器/打开网页',
-  'automation.desktop': '可要求打开/操作桌面应用',
-  'multimedia.video': '可要求剪辑/转换视频',
-  'knowledge.memory': '自动生效（创作记忆/知识检索）',
-  'delegate.subagent': '可要求并行处理任务',
-  'network.http': '可要求抓取网页/调用 API',
-  'plugin.market': '导入的插件能力自动生效'
-}
-
 /** 是否有语音转文字能力。 */
 const hasSpeech = computed(() =>
   (props.enabledModules ?? []).some((m) => m.kind === 'speech' && m.enabled)
@@ -106,9 +77,10 @@ interface SlashCommandDef {
   builtin?: boolean
 }
 const BUILTIN_COMMANDS: SlashCommandDef[] = [
-  { key: 'plan', label: '/plan', description: '规划模式：先产出分步计划，确认后执行', template: '/plan 请先产出本任务的分步执行计划（需求概述、涉及文件清单、分步任务、风险点、验证方案），等待我确认后再按顺序执行。', intentHint: 'global-assistant-v2:plan', builtin: true },
-  { key: 'spec', label: '/spec', description: '规格模式：大型重构/系统搭建，先出规格文档', template: '/spec 请先产出三份规格文档（spec.md 需求规格说明书、tasks.md 任务清单、checklist.md 交付验收清单），确认定稿后再落地开发。', intentHint: 'global-assistant-v2:spec', builtin: true },
-  { key: 'goal', label: '/goal', description: '目标自主模式：设定验收标准后自主循环执行', template: '/goal 我的目标如下：\n【最终目标】\n【验收标准】\n【限制条件】\n请自主拆解任务并持续执行，直到达成全部验收标准后输出交付总结。', intentHint: 'global-assistant-v2:goal', builtin: true },
+  { key: 'standard', label: '/standard', description: '标准模式：常规对话与创作协助', template: 'standard', intentHint: 'global-assistant-v2:standard', builtin: true },
+  { key: 'ptc', label: '/ptc', description: 'PTC 模式：规划-任务-执行的结构化流程', template: 'ptc', intentHint: 'global-assistant-v2:ptc', builtin: true },
+  { key: 'minimal', label: '/minimal', description: '极简模式：精简输出、直击要点', template: 'minimal', intentHint: 'global-assistant-v2:minimal', builtin: true },
+  { key: 'creative', label: '/creative', description: '创造模式：激发灵感，自由创作', template: 'creative', intentHint: 'global-assistant-v2:creative', builtin: true },
   { key: 'audit', label: '/audit', description: '全书审计：矛盾、OOC、伏笔', template: '请审计当前项目的一致性风险，包括世界观矛盾、人物 OOC、大纲断裂、伏笔未回收和硬约束冲突。', intentHint: 'slash:audit', builtin: true },
   { key: 'fix', label: '/fix', description: '修正一致性', template: '请检查项目里可能跑偏或重复的设定，并把需要修正的内容产出为可暂存的修正方案。', intentHint: 'slash:fix', builtin: true },
   { key: 'ingest', label: '/ingest', description: '录入设定草稿', template: '我会给你一段设定草稿，请拆成可写入的世界观、人物、组织、大纲或创作记忆暂存变更。', intentHint: 'slash:ingest', builtin: true },
@@ -200,7 +172,7 @@ const slashIdxByTab = { command: ref(0), skill: ref(0) }
 type SlashEntry =
   | { kind: 'command'; key: string; label: string; description: string; template: string; intentHint: string; builtin?: boolean }
   | { kind: 'promptlib'; key: string; label: string; description: string }
-  | { kind: 'skill'; id: string; label: string; name: string; description: string }
+  | { kind: 'skill'; id: string; label: string; name: string; description: string; category?: string }
 
 /** 提示词库入口：始终位于斜杠命令首位，点击唤起提示词库管理弹窗。 */
 const PROMPT_LIB_ENTRY: Extract<SlashEntry, { kind: 'promptlib' }> = {
@@ -222,11 +194,25 @@ const slashSkillEntries = computed<Array<Extract<SlashEntry, { kind: 'skill' }>>
     id: s.id,
     name: s.name,
     label: `/skill:${s.name}`, 
-    description: s.description || '绑定智能体技能'
+    description: s.description || '绑定智能体技能',
+    category: s.category
   }))
 )
 
-/** 分组展示：命令 | Skills */
+/** 技能分类的中文名称映射。 */
+const SKILL_CATEGORY_LABELS: Record<string, string> = {
+  market: '市场与获取',
+  analysis: '分析',
+  writing: '写作',
+  polish: '打磨润色',
+  cover: '封面',
+  tool: '工具'
+}
+function skillCategoryLabel(category?: string): string {
+  return (category && SKILL_CATEGORY_LABELS[category]) || '其他'
+}
+
+/** 分组展示：命令 | Skills（Skills 按分类进一步分组） */
 const slashGroups = computed(() => {
   const q = slashQuery.value.trim().toLowerCase()
   const match = (label: string, key: string) => {
@@ -237,13 +223,38 @@ const slashGroups = computed(() => {
   const skills = slashSkillEntries.value.filter((s) => match(s.label, s.id))
   const groups: Array<{ title: string; items: SlashEntry[] }> = []
   if (commands.length) groups.push({ title: '命令', items: commands })
-  if (skills.length) groups.push({ title: 'Skills', items: skills })
+  if (skills.length) {
+    // 将 skills 按分类分组展示
+    const byCat = new Map<string, Extract<SlashEntry, { kind: 'skill' }>[]>()
+    for (const s of skills) {
+      const cat = skillCategoryLabel(s.category)
+      if (!byCat.has(cat)) byCat.set(cat, [])
+      byCat.get(cat)!.push(s)
+    }
+    for (const [cat, items] of byCat) {
+      groups.push({ title: `Skills · ${cat}`, items })
+    }
+  }
   return groups
 })
 
-const slashMatches = computed<SlashEntry[]>(() =>
-  slashGroups.value.find((g) => (g.title === '命令') === (slashTab.value === 'command'))?.items ?? []
-)
+const slashMatches = computed<SlashEntry[]>(() => {
+  const activeTabIsCommand = slashTab.value === 'command'
+  const activeGroups = slashGroups.value.filter((g) => (g.title === '命令') === activeTabIsCommand)
+  return activeGroups.flatMap((g) => g.items)
+})
+
+/** Skills 栏的分组列表，每项附带其在 slashMatches 中的平铺索引（用于高亮对齐）。 */
+const slashSkillGroupsRendered = computed<Array<{ title: string; items: Array<{ entry: SlashEntry; index: number }> }>>(() => {
+  const groups: Array<{ title: string; items: Array<{ entry: SlashEntry; index: number }> }> = []
+  let offset = 0
+  for (const g of slashGroups.value) {
+    if (g.title === '命令') continue
+    const mapped = g.items.map((entry) => ({ entry, index: offset++ }))
+    groups.push({ title: g.title, items: mapped })
+  }
+  return groups
+})
 
 function slashEntryKey(e: SlashEntry): string {
   if (e.kind === 'command') return `cmd:${e.key}`
@@ -729,37 +740,24 @@ watch(
           </div>
           <div v-else class="slash-items">
             <template v-if="slashSkillEntries.length">
-              <div class="slash-group-title">Skills</div>
-              <button
-                v-for="(entry, ei) in slashSkillEntries"
-                :key="slashEntryKey(entry)"
-                type="button"
-                class="slash-item"
-                :class="{ active: ei === slashActiveIdx }"
-                @mousedown.prevent="onSlashItemMouseDown($event, ei)"
-                @mouseenter="slashActiveIdx = ei"
-              >
-                <span class="slash-label">{{ entry.label }}</span>
-                <span class="slash-desc">{{ entry.description }}</span>
-              </button>
+              <template v-for="(group, gi) in slashSkillGroupsRendered" :key="gi">
+                <div class="slash-group-title">{{ group.title }}</div>
+                <button
+                  v-for="({ entry, index }, ei) in group.items"
+                  :key="slashEntryKey(entry)"
+                  type="button"
+                  class="slash-item"
+                  :class="{ active: index === slashActiveIdx }"
+                  @mousedown.prevent="onSlashItemMouseDown($event, index)"
+                  @mouseenter="slashActiveIdx = index"
+                >
+                  <span class="slash-label">{{ entry.label }}</span>
+                  <span class="slash-desc">{{ entry.description }}</span>
+                </button>
+              </template>
             </template>
             <div v-else class="slash-empty">没有匹配的 Skills</div>
           </div>
-        </div>
-      </div>
-      <!-- 已启用能力模块提示栏：展示当前可用的能力 -->
-      <div v-if="props.enabledModules && props.enabledModules.length > 0" class="cap-bar">
-        <span class="cap-bar-label">已启用</span>
-        <div class="cap-bar-items">
-          <span
-            v-for="mod in props.enabledModules"
-            :key="mod.id"
-            class="cap-chip"
-            :title="moduleTipMap[mod.id] || mod.description || '在对话中描述需求即可调用'"
-          >
-            <component :is="moduleIconMap[mod.icon] ?? Puzzle" :size="11" />
-            <span class="cap-chip-name">{{ mod.name }}</span>
-          </span>
         </div>
       </div>
       <textarea
@@ -1396,55 +1394,5 @@ textarea::placeholder {
 .actions {
   display: flex;
   gap: 6px;
-}
-/* 已启用能力模块提示栏 */
-.cap-bar {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 8px;
-  background: var(--arc-bg-weak);
-  border: 1px solid var(--arc-border);
-  min-width: 0;
-}
-.cap-bar-label {
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--arc-text-hint);
-  padding-top: 1px;
-}
-.cap-bar-items {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 6px;
-  min-width: 0;
-  flex: 1;
-}
-.cap-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 100%;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--arc-primary) 10%, var(--arc-bg-surface));
-  border: 1px solid color-mix(in srgb, var(--arc-primary) 24%, var(--arc-border));
-  color: var(--arc-primary);
-  font-size: 10.5px;
-  cursor: default;
-  white-space: nowrap;
-}
-.cap-chip svg {
-  flex-shrink: 0;
-}
-.cap-chip-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 </style>

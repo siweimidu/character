@@ -103,7 +103,7 @@ function buildIntentHintBlock(intentHint?: string, userMessage?: string): string
     const block = buildModeBlock(mode)
     if (block) return block
   }
-  const textPrefix = userMessage?.trim().match(/^\/(plan|spec|goal)\b/)?.[1]
+  const textPrefix = userMessage?.trim().match(/^\/(standard|ptc|minimal|creative)\b/)?.[1]
   if (textPrefix) {
     const block = buildModeBlock(textPrefix)
     if (block) return block
@@ -148,6 +148,14 @@ function buildModeBlock(mode: string): string {
 5. 达成全部验收标准：主动终止流程，输出完整交付总结；
 6. 如果遇到无法解决的阻塞问题，立刻暂停，向用户上报卡点。
 边界限制：遇到架构级重大决策、大范围破坏性变更，主动请求用户确认；禁止无限循环盲目重试，连续多次优化无效必须停止并说明原因；不擅自扩大需求范围，严格守住用户给定目标边界。`
+    case 'standard':
+      return `【当前模式】标准模式。功能完整的编码 Agent：支持文件编辑、Shell、文件与网页检索、Skills、计划、目标、子代理和工作流。在创作项目中即具备完整能力基线——可读取项目全部资料、执行文件操作、调用 Skills、制定计划、拆分子代理并推进工作流，按用户意图灵活处理。`
+    case 'ptc':
+      return `【当前模式】PTC 模式（Code Mode，Program-To-Compose）。具备标准模式的全部能力，并通过 Code Mode SDK 呈现工具：让模型用一个 TypeScript 程序把多步工具调用组合成一次执行（原本多次往返合并为一次）。当任务可拆成连续、确定的多步操作时，应优先用一段程序整体编排，减少往返、提高效率；仍可读写项目资料、产出暂存变更，写操作走 stage_* 暂存区。`
+    case 'minimal':
+      return `【当前模式】极简模式。仅提供持久 bash 与 str_replace_editor 两个工具的极简编码 Agent：固定提示、不注入运行时上下文、无压缩。在创作项目中即收敛为最精简的执行方式——只保留最基本的文件操作（持久 Shell 与文本编辑），不做额外检索与计划展开，聚焦直接完成当前最小改动。`
+    case 'creative':
+      return `【当前模式】创造模式。用于创建自定义 Agent preset：具备标准模式的全部能力，并提供运行时检查、插件实验和 preset 创作指导。在创作项目中即支持探索与自省——可检查运行时插件、做实验性能力组合，并在既有能力之上创建新的自定义助手预设；面向希望深度定制创作流程的用户。`
     default:
       return ''
   }

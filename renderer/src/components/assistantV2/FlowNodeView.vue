@@ -15,8 +15,8 @@ import {
   ChevronRight,
   CircleAlert,
   Copy,
-  GitFork,
   Loader2,
+  RefreshCw,
   Pencil,
   SquareTerminal,
   Undo2,
@@ -227,6 +227,9 @@ function isCollapsed(key: string): boolean {
         <Sparkles :size="13" class="fn-head-icon" />
         <span class="fn-head-label">智能体</span>
         <span class="fn-actions">
+          <button v-if="!isStreaming" type="button" class="fn-action" title="重新生成" @click="emit('resend')">
+            <RefreshCw :size="12" />
+          </button>
           <button v-if="!isStreaming" type="button" class="fn-action" title="复制" @click="copyMessage">
             <Copy :size="12" />
           </button>
@@ -235,9 +238,6 @@ function isCollapsed(key: string): boolean {
           </button>
           <button v-if="!isStreaming" type="button" class="fn-action" title="撤回" @click="emit('undo')">
             <Undo2 :size="12" />
-          </button>
-          <button v-if="!isStreaming" type="button" class="fn-action" title="重新分叉" @click="emit('resend')">
-            <GitFork :size="12" />
           </button>
         </span>
       </div>
