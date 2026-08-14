@@ -82,13 +82,11 @@ function handleBuild(): void {
     :mask-closable="false"
   >
     <template v-if="!isFanqie">
-      <n-card style="width: min(860px, 92vw)" :bordered="false" role="dialog" aria-modal="true">
-        <template #header>
-          <div class="global-ai-detail-header">
-            <strong>{{ resultTitle }}</strong>
-            <span>{{ resultSubtitle }}</span>
-          </div>
-        </template>
+      <div class="global-ai-knowledge-modal" role="dialog" aria-modal="true">
+        <div class="global-ai-detail-header">
+          <strong>{{ resultTitle }}</strong>
+          <span>{{ resultSubtitle }}</span>
+        </div>
 
         <n-scrollbar style="max-height: 52vh">
           <div class="global-ai-knowledge-list">
@@ -131,15 +129,13 @@ function handleBuild(): void {
           </div>
         </n-scrollbar>
 
-        <template #footer>
-          <div class="global-ai-footer">
-            <n-button @click="store.closeResult()">关闭</n-button>
-            <n-button type="primary" :disabled="!store.hasSelected" @click="handleCreateWorks">
-              生成选中作品（{{ store.selectedCount }}）
-            </n-button>
-          </div>
-        </template>
-      </n-card>
+        <div class="global-ai-knowledge-modal-footer">
+          <n-button @click="store.closeResult()">关闭</n-button>
+          <n-button type="primary" :disabled="!store.hasSelected" @click="handleCreateWorks">
+            生成选中作品（{{ store.selectedCount }}）
+          </n-button>
+        </div>
+      </div>
     </template>
 
     <template v-else>
@@ -304,7 +300,20 @@ function handleBuild(): void {
 .global-ai-hooks { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; }
 .global-ai-hook { color: var(--arc-text-secondary); font-size: 12px; }
 .global-ai-actions { display: flex; justify-content: flex-end; margin-top: 4px; }
-.global-ai-footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.global-ai-knowledge-modal {
+  width: min(860px, 92vw);
+  padding: 18px;
+  background: var(--arc-bg-surface);
+  border: 1px solid var(--arc-border);
+  border-radius: var(--arc-radius-lg);
+}
+.global-ai-knowledge-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
 
 /* 番茄选题结果 */
 .global-ai-seed-options-modal { width: min(760px, 92vw); }
