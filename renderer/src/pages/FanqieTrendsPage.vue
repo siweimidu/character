@@ -34,7 +34,7 @@ async function copyBookIntro(intro: unknown): Promise<void> {
 }
 
 function backToProjectCenter(): void {
-  appStore.navigateBack()
+  appStore.backToProjects()
 }
 
 // ===== 频道标签与展示顺序 =====

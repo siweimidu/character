@@ -197,13 +197,8 @@ function saveRetention(): void {
 }
 
 function backToProjectCenter(): void {
-  // 返回进入回收站前的页面：从主页进入则回项目中心，从工作台进入则回项目工作台
-  const returnView = appStore.recycleBinReturnView
-  if (returnView === 'workbench' || returnView === 'chapter-studio') {
-    appStore.backToWorkbench()
-  } else {
-    appStore.backToProjects()
-  }
+  // 返回项目中心：始终回到项目主页，而非返回进入回收站前的页面
+  appStore.backToProjects()
 }
 </script>
 
