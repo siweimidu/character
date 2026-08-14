@@ -17,6 +17,7 @@ import type {
   PersistedTurnEvent,
   StagedChange,
   SurfaceDefinition,
+  SurfaceId,
   TurnAttachment,
   TurnEvent,
   TurnTruncateResult
@@ -107,7 +108,7 @@ export function useAssistant(options: UseAssistantOptions) {
   const sessionScopeRef = (): string | undefined => (isChapterSurface ? undefined : options.scopeRef?.())
   // 会话存储统一的 surface：章节创作等入口与项目工作台智能体共用同一份项目级会话历史，
   // 保证「章节创作里的对话」与「项目工作台里的智能体对话」完全同步。
-  const sessionSurfaceId: string = isChapterSurface ? 'global-page' : options.surface.id
+  const sessionSurfaceId: SurfaceId = isChapterSurface ? 'global-page' : options.surface.id
 
   // === 会话 ===
   const sessions = ref<AssistantSession[]>([])
