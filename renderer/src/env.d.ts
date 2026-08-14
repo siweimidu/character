@@ -272,6 +272,19 @@ declare global {
         content?: string
         error?: string
       }>
+      saveAssistantUpload: (payload: {
+        projectId?: string
+        fileName?: string
+        mime?: string
+        dataBase64?: string
+      }) => Promise<{
+        success: boolean
+        path?: string
+        name?: string
+        size?: number
+        mime?: string
+        error?: string
+      }>
       generateAi: (payload: unknown) => Promise<{
         success: boolean
         result?: unknown

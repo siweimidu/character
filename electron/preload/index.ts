@@ -33,6 +33,8 @@ contextBridge.exposeInMainWorld('characterArc', {
   pickContinuationNovel: () => ipcRenderer.invoke('characterarc:pick-continuation-novel'),
   /** 选择本地文本文件（txt/md）并返回内容，用于智能体对话框上传 */
   pickAssistantTextFile: () => ipcRenderer.invoke('characterarc:pick-assistant-text-file'),
+  /** 智能体上传任意格式文件：保存到工作区上传目录并返回相对路径 */
+  saveAssistantUpload: (payload: unknown) => ipcRenderer.invoke('characterarc:assistant:upload:save', toIpcPayload(payload)),
   /** 将当前项目导出为 JSON 文件 */
   exportJson: (payload: unknown) => ipcRenderer.invoke('characterarc:export-json', toIpcPayload(payload)),
   /** 将当前项目导出为 .carc 项目归档包 */

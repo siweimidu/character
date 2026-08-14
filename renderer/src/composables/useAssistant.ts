@@ -709,6 +709,12 @@ export function useAssistant(options: UseAssistantOptions) {
     isCanceling.value = false
 
     try {
+      // 附件可能以 Vue reactive proxy 形式存在；Electron IPC 无法结构化克隆
+      // Proxy 对象（报 "An object could not be cloned"）。这里显式收敛为纯 JSON，
+      // 确保跨 IPC 传输的附件始终是可克隆的普通对象（兜底防御，preload 同样有净化）。
+      const plainAttachments = sendOptions.attachments
+        ? JSON.parse(JSON.stringify(sendOptions.attachments)) as TurnAttachment[]
+        : undefined
       const result = await A.turnSend({
         sessionId,
         clientRequestId: optimisticTurnId,
@@ -716,7 +722,7 @@ export function useAssistant(options: UseAssistantOptions) {
         scopeRef: options.scopeRef?.(),
         userMessage: effectiveText,
         intentHint: sendOptions.intentHint,
-        attachments: sendOptions.attachments,
+        attachments: plainAttachments,
         agentId: sendOptions.agentId,
         agentScope: sendOptions.agentScope,
         agentProjectId: sendOptions.agentProjectId ?? options.projectId()

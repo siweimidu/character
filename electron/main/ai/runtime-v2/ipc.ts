@@ -405,14 +405,19 @@ async function expandAttachmentReferences(
       if (parts.length === 0) continue
       blocks.push(`【引用分卷 ${rows.length} 章】\n${parts.join('\n\n')}`)
     } else if (kind === 'file') {
-      // 上传文件：直接使用内联 content（若为空则给出占位说明）。
+      // 上传文件：优先内联文本 content；若为二进制（content 为空）但已保存到工作区
+      // 上传目录（带 path），则提示模型用 file 工具读取该文件。
       const content = typeof att.content === 'string' && att.content.trim()
         ? att.content.slice(0, 60000)
         : ''
       const name = att.label || att.ref.replace(/^file:/, '') || '上传文件'
+      let note = '\n（文件内容为空或为二进制格式，无法以文本直接携带。）'
+      if (att.path) {
+        note = `\n（该文件为二进制/不可内联格式，已保存到工作区上传目录，相对路径为：\`${att.path}\`。如需了解其内容，请调用 file_read / file_info / file_list 等文件工具读取该路径。）`
+      }
       blocks.push(
         `【上传文件：${name}】` +
-        (content ? `\n${content}` : '\n（文件内容为空或为二进制格式，无法以文本直接携带。如有需要请告诉我文件里应包含的内容。）')
+        (content ? `\n${content}` : note)
       )
     }
   }

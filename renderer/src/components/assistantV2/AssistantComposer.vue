@@ -32,7 +32,7 @@ const emit = defineEmits<{
   (e: 'add-reference', ref: { kind: 'chapter' | 'volume' | 'skill'; id: string; label: string }): void
   (e: 'upload-file'): void
   (e: 'upload-files', files: File[]): void
-  (e: 'add-file', file: { name: string; content: string; mime: string; size: number }): void
+  (e: 'add-file', file: { name: string; content: string; mime: string; size: number; path?: string }): void
   (e: 'cancel'): void
   (e: 'edit-last'): void
   (e: 'clear-restored'): void
@@ -369,6 +369,7 @@ async function addFilesAsAttachment(files: File[]): Promise<void> {
   if (files.length === 0) return
   for (const file of files) {
     let content = ''
+    let savedPath: string | undefined
     const isTextLike =
       file.type.startsWith('text/') ||
       /\.(txt|md|markdown|mdown|mkd|json|js|ts|py|css|html|xml|csv|log|ya?ml|ini|sql|sh)$/i.test(file.name)
@@ -379,13 +380,44 @@ async function addFilesAsAttachment(files: File[]): Promise<void> {
         content = ''
       }
     }
+    // 二进制/不可内联文件（如压缩包、图片、音视频）：读取为 base64 保存到工作区
+    // 上传目录，并把相对路径随附件下发，让 AI 能用 file_read / file_list 等工具读取。
+    if (!content && file.size > 0) {
+      try {
+        const buffer = await file.arrayBuffer()
+        const base64 = bytesToBase64(buffer)
+        if (base64.length <= 25 * 1024 * 1024) {
+          const res = await window.characterArc.saveAssistantUpload({
+            projectId: props.projectId ?? undefined,
+            fileName: file.name,
+            mime: file.type || 'application/octet-stream',
+            dataBase64: base64
+          })
+          if (res?.success && res.path) savedPath = res.path
+        }
+      } catch {
+        // 保存失败则仅以文件名引用，仍可发送（AI 只看到文件名）
+      }
+    }
     emit('add-file', {
       name: file.name,
       content,
       mime: file.type || 'application/octet-stream',
-      size: file.size
+      size: file.size,
+      path: savedPath
     })
   }
+}
+
+/** 把 ArrayBuffer 转为 base64 字符串（分块拼接，避免大文件超出参数长度限制）。 */
+function bytesToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  const chunk = 0x8000
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
+  }
+  return btoa(binary)
 }
 
 // ── 本地文件拖拽上传 + 章节/分卷引用拖拽 ──

@@ -592,7 +592,7 @@ async function copyMessage(text: string): Promise<void> {
         @remove-attachment="(key) => assistant.removePendingAttachment(key)"
         @upload-file="handleUploadFile"
         @upload-files="handleUploadFiles"
-        @add-file="(file) => assistant.addPendingAttachment({ kind: 'file', ref: `file:${file.name}`, label: file.name, content: file.content, mime: file.mime, size: file.size })"
+        @add-file="(file) => assistant.addPendingAttachment({ kind: 'file', ref: `file:${file.name}`, label: file.name, content: file.content, mime: file.mime, size: file.size, path: file.path })"
         @cancel="assistant.cancel()"
         @edit-last="assistant.startEditingLastTurn()"
         @clear-restored="assistant.clearRestoredDraft()"

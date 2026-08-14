@@ -1774,6 +1774,53 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
   })
 
+  // 智能体对话框上传任意格式文件：把渲染进程读到的文件内容保存到工作区上传目录，
+  // 并返回相对路径（供 AI 用 file_read / file_list 等文件工具读取）。
+  ipcMain.handle('characterarc:assistant:upload:save', async (_event, payload: unknown) => {
+    try {
+      const request = (payload ?? {}) as {
+        projectId?: string
+        fileName?: string
+        mime?: string
+        dataBase64?: string
+      }
+      const fileName = String(request.fileName ?? '未命名文件').trim()
+      if (!fileName) return { success: false, error: '缺少文件名。' }
+      const base64 = String(request.dataBase64 ?? '')
+      if (!base64) return { success: false, error: '缺少文件内容。' }
+      if (base64.length > 25 * 1024 * 1024) {
+        return { success: false, error: '文件过大（超过 25MB），请精简后重试。' }
+      }
+      const safeName = fileName.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').slice(0, 200) || 'upload.bin'
+      const projectId = String(request.projectId ?? '').trim()
+      const uploadRoot = join(getWorkspaceDirPath(), 'uploads', 'assistant')
+      const projectDir = projectId
+        ? join(uploadRoot, projectId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80))
+        : join(uploadRoot, '_ungrouped')
+      await mkdir(projectDir, { recursive: true })
+      const extIndex = safeName.lastIndexOf('.')
+      const ext = extIndex > 0 ? safeName.slice(extIndex) : ''
+      const stem = extIndex > 0 ? safeName.slice(0, extIndex) : safeName
+      const uniqueName = `${stem}-${Date.now()}${ext}`
+      const absPath = join(projectDir, uniqueName)
+      const buf = Buffer.from(base64, 'base64')
+      await writeFile(absPath, buf)
+      const relPath = relative(getWorkspaceDirPath(), absPath).split('\\').join('/')
+      return {
+        success: true,
+        path: relPath,
+        name: safeName,
+        size: buf.byteLength,
+        mime: String(request.mime ?? 'application/octet-stream')
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '保存上传文件失败'
+      }
+    }
+  })
+
   // ── 关系组织数据批量导入/导出 ──
   ipcMain.handle('characterarc:export-relations-data', async (_event, payload: unknown) => {
     const window = deps.windowManager.getActiveWindow()

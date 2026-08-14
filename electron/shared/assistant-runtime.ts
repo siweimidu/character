@@ -423,6 +423,8 @@ export interface TurnAttachment {
   mime?: string
   /** 文件附件专用：文件大小（字节）。 */
   size?: number
+  /** 文件附件专用：保存到工作区上传目录后的相对路径（供 AI 用文件工具读取）。 */
+  path?: string
 }
 
 export interface TurnCancelRequest {
