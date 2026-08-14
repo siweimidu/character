@@ -486,21 +486,22 @@ function handleSelectionChange(): void {
   }
   const sel = window.getSelection()
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
+    // 不在这里清空 cachedSelectionText：当用户点击悬浮工具栏按钮时，
+    // 浏览器会因 mousedown 清除 window.getSelection()，触发 selectionchange，
+    // 若在此清空缓存，handleSelAction 将拿不到选中文本（AI 润色/改写无反应）。
+    // 清空缓存的职责由 handleMouseDown（点击非工具栏区域时）承担。
     selToolbarVisible.value = false
-    cachedSelectionText = ''
     return
   }
   const range = sel.getRangeAt(0)
   const scrollEl = scrollRef.value
   if (!scrollEl || !scrollEl.contains(range.commonAncestorContainer)) {
     selToolbarVisible.value = false
-    cachedSelectionText = ''
     return
   }
   const rect = range.getBoundingClientRect()
   if (rect.width === 0 && rect.height === 0) {
     selToolbarVisible.value = false
-    cachedSelectionText = ''
     return
   }
   // 在工具栏显示前缓存选区文本，mousedown 时浏览器会清除 window.getSelection()
@@ -535,6 +536,8 @@ function handleMouseDown(e: MouseEvent): void {
   const toolbar = document.querySelector('.arc-sel-toolbar')
   if (toolbar?.contains(e.target as Node)) return
   selToolbarVisible.value = false
+  // 点击非工具栏区域时清空选区缓存，避免旧的选中文本残留
+  cachedSelectionText = ''
 }
 
 const commandPaletteVisible = ref(false)

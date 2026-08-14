@@ -124,6 +124,7 @@ const editor = useEditor({
     EditorSearchExtension,
   ],
   content: ensureEditorHtmlContent(props.modelValue),
+  editable: true,
   editorProps: {
     attributes: {
       class: 'simple-editor',
