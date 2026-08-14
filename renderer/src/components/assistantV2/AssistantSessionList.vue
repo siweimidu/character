@@ -480,18 +480,18 @@ const grouped = computed(() => {
 .list {
   flex: 1;
   overflow-y: auto;
-  padding: 0 8px 12px;
+  padding: 4px 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 8px;
 }
 .group-label {
-  padding: 14px 12px 6px;
-  font-size: 10.5px;
+  padding: 12px 6px 2px;
+  font-size: 11px;
   color: var(--arc-text-hint);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-family: var(--v2-mono);
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  font-family: inherit;
 }
 .empty {
   padding: 24px 12px;
@@ -509,26 +509,31 @@ const grouped = computed(() => {
 }
 .item {
   position: relative;
-  padding: 10px 12px;
-  border-radius: 10px;
+  padding: 11px 13px;
+  border-radius: 14px;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.16s ease;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  border: 1px solid transparent;
+  gap: 6px;
+  border: 1px solid var(--arc-border);
+  background: var(--arc-bg-surface);
 }
 .item:hover {
-  background: var(--arc-bg-weak);
+  border-color: color-mix(in srgb, var(--arc-primary) 42%, var(--arc-border));
+  background: color-mix(in srgb, var(--arc-primary) 5%, var(--arc-bg-surface));
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--arc-text-primary) 6%, transparent);
 }
 .item.active {
   background: var(--arc-primary-soft);
-  border-color: color-mix(in srgb, var(--arc-primary) 18%, var(--arc-border));
+  border-color: color-mix(in srgb, var(--arc-primary) 48%, var(--arc-border));
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--arc-primary) 12%, transparent);
 }
 .item.active .title { color: var(--arc-primary); }
 .item.selected {
   background: var(--arc-primary-soft);
-  border-color: color-mix(in srgb, var(--arc-primary) 18%, var(--arc-border));
+  border-color: color-mix(in srgb, var(--arc-primary) 48%, var(--arc-border));
 }
 .item.selected .title { color: var(--arc-primary); }
 .sel-check {
@@ -542,7 +547,7 @@ const grouped = computed(() => {
   justify-content: center;
   color: #fff;
   background: transparent;
-  margin-bottom: 3px;
+  margin-bottom: 2px;
   transition: all 0.15s ease;
 }
 .sel-check.checked {
@@ -558,7 +563,7 @@ const grouped = computed(() => {
 .title {
   font-family: inherit;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--arc-text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -612,9 +617,10 @@ const grouped = computed(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--arc-text-hint);
-  font-family: var(--v2-mono);
+  font-family: inherit;
+  letter-spacing: 0.01em;
 }
 .del {
   border: none;

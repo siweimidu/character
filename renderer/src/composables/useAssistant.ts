@@ -112,8 +112,16 @@ export function useAssistant(options: UseAssistantOptions) {
   // === 会话 ===
   const sessions = ref<AssistantSession[]>([])
   const activeSessionId = ref<string | null>(null)
+  /**
+   * 尚未写入历史的新建对话（草稿会话）。
+   * 用户点「新建对话」后先只在前端生成，不持久化、不进入历史列表；
+   * 只有当真正向 AI 发送了第一条消息时才写入后端并加入历史。
+   */
+  const draftSession = ref<AssistantSession | null>(null)
   const activeSession = computed(() =>
-    sessions.value.find((s) => s.id === activeSessionId.value) ?? null
+    draftSession.value && draftSession.value.id === activeSessionId.value
+      ? draftSession.value
+      : (sessions.value.find((s) => s.id === activeSessionId.value) ?? null)
   )
 
   // === Turn 序列 + 事件流 ===
@@ -518,21 +526,73 @@ export function useAssistant(options: UseAssistantOptions) {
     // 支持多任务并行：即使当前有会话正在生成，也允许新建对话，旧的生成在后台继续执行。
     const pid = options.projectId()
     if (!pid) return null
-    const session = await A.sessionCreate({
+    // 新建对话默认不写入历史：先以前端生成的 ID 在内存中创建「草稿会话」，
+    // 只有当用户真正向 AI 发送了第一条消息时才持久化并进入历史列表。
+    const now = new Date().toISOString()
+    const session: AssistantSession = {
+      id: crypto.randomUUID(),
       projectId: pid,
       surfaceId: sessionSurfaceId,
       scopeRef: sessionScopeRef(),
-      title: title || defaultSessionTitle()
-    })
-    sessions.value = [session, ...sessions.value]
-    await switchSession(session.id)
+      title: title || defaultSessionTitle(),
+      createdAt: now,
+      updatedAt: now
+    }
+    draftSession.value = session
+    activeSessionId.value = session.id
+    turns.value = []
+    eventsByTurn.value = new Map()
+    stagedChanges.value = []
+    streamingTurnId.value = null
+    isCanceling.value = false
+    cancelEditing()
+    restoredDraftLabel.value = ''
+    composerValue.value = ''
+    pendingAttachments.value = []
+    isInitializing.value = false
     return session
+  }
+
+  /**
+   * 将「草稿会话」正式写入后端并加入历史列表，返回持久化后的会话。
+   * 若当前活跃会话不是草稿（已是持久化会话）则直接返回。
+   */
+  async function persistDraftSession(title: string): Promise<AssistantSession | null> {
+    if (!draftSession.value) return null
+    const pid = options.projectId()
+    if (!pid) return null
+    const draft = draftSession.value
+    // 用前端生成的同一 ID 通过 sessionRestore 创建后端会话（该接口支持指定 id）。
+    const res = await A.sessionRestore({
+      id: draft.id,
+      projectId: pid,
+      surfaceId: draft.surfaceId,
+      scopeRef: draft.scopeRef,
+      title
+    })
+    if (!res.ok) {
+      lastError.value = res.error || '新建对话写入历史失败'
+      return null
+    }
+    const persisted: AssistantSession = {
+      ...draft,
+      title,
+      updatedAt: new Date().toISOString()
+    }
+    draftSession.value = null
+    // 新会话置顶，与「发送首条消息即成为最近对话」的习惯一致。
+    sessions.value = [persisted, ...sessions.value]
+    return persisted
   }
 
   async function switchSession(sessionId: string): Promise<void> {
     // 支持多任务并行：允许在生成中切换会话，后台生成继续执行，切回时自动 replay 最新状态。
     if (!sessions.value.some((s) => s.id === sessionId)) {
       return
+    }
+    // 切换到其他会话时，丢弃尚未写入历史的草稿会话（从未持久化，无需后端清理）。
+    if (draftSession.value && draftSession.value.id === activeSessionId.value) {
+      draftSession.value = null
     }
     activeSessionId.value = sessionId
     turns.value = []
@@ -665,21 +725,30 @@ export function useAssistant(options: UseAssistantOptions) {
     if ((!trimmedText && !hasAttachments) || isStreaming.value) return
     const effectiveText = trimmedText || (hasAttachments ? '请处理我上传/引用的文件。' : '')
     let sessionId = activeSessionId.value
+    const derivedTitle = deriveSessionTitle(effectiveText)
     if (!sessionId) {
-      const session = await createSession(deriveSessionTitle(effectiveText))
+      const session = await createSession(derivedTitle)
       if (!session) return
       sessionId = session.id
-    } else {
-      // 已有会话但仍是默认标题（如通过"新建对话"按钮创建）：用首条提问摘要覆盖
-      const current = sessions.value.find((s) => s.id === sessionId)
-      if (current && isDefaultTitle(current.title)) {
-        void renameSession(sessionId, deriveSessionTitle(effectiveText))
-      }
     }
 
     if (!await appStore.flushAppSettings()) {
       lastError.value = appStore.persistenceError ?? 'AI 设置保存失败，未发送本次请求。'
       return
+    }
+
+    // 新建对话（草稿会话）在用户真正发送首条消息时才写入历史，标题用首条提问摘要。
+    // 放到 flushAppSettings 之后，避免设置保存失败时留下空的草稿会话。
+    if (draftSession.value && draftSession.value.id === sessionId) {
+      const persisted = await persistDraftSession(derivedTitle)
+      if (!persisted) return
+      sessionId = persisted.id
+    } else {
+      // 已有会话但仍是默认标题（如历史会话未命名）：用首条提问摘要覆盖
+      const current = sessions.value.find((s) => s.id === sessionId)
+      if (current && isDefaultTitle(current.title)) {
+        void renameSession(sessionId, derivedTitle)
+      }
     }
 
     if (composerValue.value.trim() === trimmedText) {
@@ -981,6 +1050,7 @@ export function useAssistant(options: UseAssistantOptions) {
   watch(
     () => options.projectId(),
     async () => {
+      draftSession.value = null
       activeSessionId.value = null
       turns.value = []
       eventsByTurn.value = new Map()
@@ -1001,6 +1071,7 @@ export function useAssistant(options: UseAssistantOptions) {
         if (newRef === oldRef) return
         // 章节级 Surface 共享项目级会话：切换章节/分卷时保持同一个对话，仅保留原会话。
         if (isChapterSurface) return
+        draftSession.value = null
         activeSessionId.value = null
         turns.value = []
         eventsByTurn.value = new Map()

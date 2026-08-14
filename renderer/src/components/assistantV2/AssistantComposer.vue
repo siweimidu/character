@@ -587,7 +587,6 @@ watch(
       <div v-if="selectedMode" class="mode-chip-bar">
         <span class="mode-chip">
           <span class="mode-chip-label">{{ selectedMode.label }}</span>
-          <span class="mode-chip-hint">已选中，输入你的任务后发送</span>
           <button type="button" class="mode-chip-x" title="移除模式" aria-label="移除模式" @click="clearMode">
             <X :size="11" />
           </button>
@@ -1177,10 +1176,6 @@ watch(
 .mode-chip-label {
   font-family: var(--v2-mono);
   font-weight: 700;
-}
-.mode-chip-hint {
-  color: var(--arc-text-secondary);
-  font-size: 11px;
 }
 .mode-chip-x {
   width: 18px;
