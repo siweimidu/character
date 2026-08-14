@@ -60,8 +60,20 @@ const canvasRef = ref<HTMLCanvasElement | null>(null)
 // ── 尺寸常量（CSS px）──────────────────────────────────────────
 const MINIMAP_WIDTH = 112
 const MINIMAP_PADDING = 8
-/** 每行可读文字的最小缩略行高（CSS px）。低于此值则退化为整体缩略模式。 */
-const MIN_TEXT_LINE_HEIGHT = 1.5
+
+/**
+ * 渲染文字层时使用的可读最小字号（CSS px，放大 canvas 上的字号）。
+ *
+ * 旧实现直接以 `lineHeight`（可能只有 1~2px）作为字号调用 fillText 画整行中文，
+ * 中文被压成 1~2px 的像素团后完全无法辨认字形，观感即「乱码」。
+ *
+ * 新实现（VSCode 式）先用这个较大的可读字号在放大分辨率的离屏 canvas 上逐行绘制，
+ * 再整体 drawImage 缩小到缩略图尺寸。缩放过程中的抗锯齿渐变会保留字形轮廓，
+ * 呈现为可辨认的「小字」，观感与 VSCode minimap 一致。
+ */
+const MIN_RENDER_FONT = 8
+/** 放大 canvas 的系数上限，防止超长文档把离屏 canvas 撑得过大。 */
+const MAX_ZOOM = 24
 /** 缩略图中可见内容区与容器顶部的留白 */
 const CONTENT_TOP_PAD = 0
 
@@ -167,30 +179,49 @@ function ensureTextLayer(pxW: number, pxH: number): HTMLCanvasElement {
 }
 
 /**
- * 渲染整篇文档到离屏文字层（连续抗锯齿方式，修复「乱码」）。
+ * 计算放大系数：让放大 canvas 上的渲染字号达到可读大小（MIN_RENDER_FONT），
+ * 再整体缩小到缩略图尺寸，从而呈现 VSCode 式可辨认的「小字」。
+ *
+ * 旧实现直接以 lineHeight（可能仅 1~2px）作为字号绘制，中文被压成像素团而
+ * 成乱码。改为放大渲染后整体缩小，缩放抗锯齿会保留字形轮廓。
+ */
+function computeZoom(lineHeight: number): number {
+  if (lineHeight >= MIN_RENDER_FONT) return 1
+  return Math.min(MAX_ZOOM, Math.max(1, Math.ceil(MIN_RENDER_FONT / Math.max(0.5, lineHeight))))
+}
+
+/**
+ * 渲染整篇文档到离屏文字层（VSCode 式：放大渲染后整体缩小，修复「乱码」）。
+ *
+ * 做法：
+ *   1. 先算出每行在缩略图中的目标行高 lineHeight。
+ *   2. 用放大系数 zoom 把离屏 canvas 分辨率放大（渲染字号 = lineHeight × zoom，
+ *      保证中文可辨认）。
+ *   3. 在该高分辨率 canvas 上逐行绘制，上屏时再 drawImage 等比缩小到目标尺寸。
+ *
+ * 由于整体等比缩放，行高/滚动同步与缩放前完全一致，不改变既有定位逻辑。
  * 返回本次渲染所用行高，供选区换算使用。
  */
 function renderTextLayer(pxW: number, pxH: number, cssW: number, cssH: number): number {
-  const layer = ensureTextLayer(pxW, pxH)
+  const blocks = getContentBlocks()
+  const { lineHeight } = computeLayout(blocks, cssH)
+  const zoom = computeZoom(lineHeight)
+
+  const layer = ensureTextLayer(
+    Math.round(pxW * zoom),
+    Math.round(pxH * zoom)
+  )
   const lctx = layer.getContext('2d')
   if (!lctx) return 0
 
-  const dpr = pxW / cssW
   lctx.setTransform(1, 0, 0, 1, 0, 0)
-  lctx.clearRect(0, 0, pxW, pxH)
-  lctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  lctx.clearRect(0, 0, layer.width, layer.height)
+  // 以 CSS 坐标绘制，字号/行距按 zoom 放大，保证字形可读。
+  lctx.setTransform(zoom, 0, 0, zoom, 0, 0)
 
-  const blocks = getContentBlocks()
-  const { lineHeight } = computeLayout(blocks, cssH)
   const fg = cachedColor
-
-  // 按行直接小号绘制文字（连续抗锯齿，VSCode 缩略纹理观感）。
-  // 行高不足 MIN_TEXT_LINE_HEIGHT 时字号退化为 1px，密集文档呈现为
-  // 条形纹理，仍能正确反映全文概貌且滚动严格同步。
-  const fontSize = lineHeight >= MIN_TEXT_LINE_HEIGHT
-    ? Math.round(lineHeight)
-    : Math.max(1, Math.floor(lineHeight))
-  lctx.font = `${fontSize}px "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif`
+  const renderFont = Math.max(1, lineHeight * zoom)
+  lctx.font = `${renderFont}px "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif`
   lctx.textBaseline = 'middle'
   lctx.textAlign = 'left'
   lctx.fillStyle = fg
@@ -317,11 +348,14 @@ function draw(): void {
     renderTextLayer(pxW, pxH, cssW, cssH)
   }
 
-  // ── 上屏文字层 ──
+  // ── 上屏文字层（把放大渲染的文字层等比缩小到目标尺寸，VSCode 式小字）──
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.clearRect(0, 0, pxW, pxH)
   if (textLayer) {
-    ctx.drawImage(textLayer, 0, 0)
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
+    // 源图可能被 zoom 放大（更清晰），也可能 zoom=1（等尺寸），统一按目标尺寸绘制
+    ctx.drawImage(textLayer, 0, 0, textLayer.width, textLayer.height, 0, 0, pxW, pxH)
   }
 
   // ── 选区高亮（叠在文字上层）──
