@@ -642,6 +642,11 @@ app.whenReady().then(async () => {
 })
 
 app.on('before-quit', () => {
+  // 关闭所有 MCP 连接
+  import('./ai/agent-modules/mcp-servers')
+    .then((m) => m.closeAllMcpConnections())
+    .catch(() => {})
+
   const db = getWorkspaceDbIfInitialized()
   if (!db || !latestWorkspaceSnapshot) {
     return

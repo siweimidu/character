@@ -106,6 +106,12 @@ export const AGENT_MODULE_IPC_CHANNELS = {
   MCP_LIST_MARKETS: 'characterarc:agent-module:mcp:list-markets',
   MCP_LIST_TOOLS: 'characterarc:agent-module:mcp:list-tools',
   MCP_IMPORT: 'characterarc:agent-module:mcp:import',
+  // MCP 服务器管理
+  MCP_SERVER_LIST: 'characterarc:agent-module:mcp:server:list',
+  MCP_SERVER_ADD: 'characterarc:agent-module:mcp:server:add',
+  MCP_SERVER_UPDATE: 'characterarc:agent-module:mcp:server:update',
+  MCP_SERVER_DELETE: 'characterarc:agent-module:mcp:server:delete',
+  MCP_SERVER_TEST: 'characterarc:agent-module:mcp:server:test',
   // dsh-plugin 插件市场
   PLUGIN_LIST: 'characterarc:agent-module:plugin:list',
   PLUGIN_IMPORT: 'characterarc:agent-module:plugin:import',
@@ -248,6 +254,64 @@ export interface McpImportResult {
   message: string
 }
 
+// --- MCP 服务器连接管理 ---
+
+/** MCP 服务器传输类型。 */
+export type McpServerTransport = 'stdio' | 'http'
+
+/** MCP 服务器配置。 */
+export interface McpServerDefinition {
+  id: string
+  name: string
+  description?: string
+  transport: McpServerTransport
+  /** stdio 模式：可执行命令（如 npx、node） */
+  command?: string
+  /** stdio 模式：启动参数 */
+  args?: string[]
+  /** stdio 模式：工作目录 */
+  cwd?: string
+  /** stdio 模式：环境变量 */
+  env?: Record<string, string>
+  /** http 模式：服务器 URL（如 https://mcp.soul:3000/mcp） */
+  url?: string
+  /** http 模式：API Key（可选） */
+  apiKey?: string
+  /** 是否启用 */
+  enabled: boolean
+  /** 创建时间 */
+  createdAt?: string
+  /** 最近连接时间 */
+  lastConnectedAt?: string
+  /** 连接状态 */
+  status?: 'connected' | 'disconnected' | 'error'
+  /** 错误信息 */
+  lastError?: string
+}
+
+export interface McpServerAddRequest {
+  name: string
+  description?: string
+  transport: McpServerTransport
+  command?: string
+  args?: string[]
+  cwd?: string
+  env?: Record<string, string>
+  url?: string
+  apiKey?: string
+}
+
+export interface McpServerTestResult {
+  ok: boolean
+  message: string
+  tools?: Array<{
+    name: string
+    description?: string
+    serverId: string
+    serverName: string
+  }>
+}
+
 // --- dsh-plugin 插件市场 ---
 
 /** dsh-plugin GitHub 仓库条目（来源于 github.com/topics/dsh-plugin）。 */
@@ -339,13 +403,13 @@ export const BUILTIN_AGENT_MODULES: Omit<AgentModuleDefinition, 'icon' | 'versio
   {
     id: 'mcp.market',
     name: 'MCP 市场',
-    description: '从 mcp.so、smithery 等 MCP 市场导入工具，扩展智能体能力。',
+    description: '接入远程 mcp.soul 或本地 MCP 服务器，读写小说项目文件。',
     kind: 'mcp',
     source: 'builtin',
     scope: 'global',
     enabledByDefault: false,
     risk: 'high',
-    toolNames: ['mcp_list_tools', 'mcp_call_tool'],
+    toolNames: ['novel_read_chapter', 'novel_write_chapter', 'novel_read_character', 'novel_write_character', 'novel_read_foreshadow', 'novel_write_foreshadow', 'novel_read_world', 'novel_write_world', 'novel_read_outline', 'novel_write_outline', 'mcp_list_markets', 'mcp_list_tools', 'mcp_call_tool'],
     author: 'CharacterArc'
   },
   {

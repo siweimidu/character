@@ -28,3 +28,20 @@ export {
   uninstallDshPlugin,
   listInstalledPlugins
 } from './tools/plugin'
+// MCP 服务器管理
+export {
+  addMcpServer,
+  updateMcpServer,
+  deleteMcpServer,
+  listMcpServers,
+  testMcpServerConnection,
+  discoverMcpTools,
+  callMcpTool,
+  closeAllMcpConnections,
+  DEFAULT_MCP_SOUL_SERVER
+} from './mcp-servers'
+export {
+  createNovelMcpTools,
+  SqliteNovelAccessor
+} from './mcp-novel-server'
+export type { NovelProjectAccessor } from './mcp-novel-server'

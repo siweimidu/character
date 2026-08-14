@@ -63,8 +63,8 @@ const usageHintMap: Record<string, { hint: string; example: string }> = {
     example: '例：用 python 写个脚本统计这些文本的字数'
   },
   'mcp.market': {
-    hint: '先在「MCP 市场」页导入所需工具，再在对话中直接提及。',
-    example: '例：用 MCP 工具查询天气 / 读取数据库'
+    hint: '接入远程 mcp.soul 或本地 MCP 服务器，通过 MCP 工具读写小说项目文件。',
+    example: '例：用 MCP 工具读取章节 / 更新人物卡'
   },
   'speech.asr': {
     hint: '启用后输入框底部出现语音按钮，点击即可语音输入。',

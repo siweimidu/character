@@ -25,6 +25,8 @@ import {
   type AgentModuleSetEnabledRequest,
   type McpImportRequest,
   type McpToolListing,
+  type McpServerAddRequest,
+  type McpServerDefinition,
   type PluginImportRequest,
   type PluginListRequest
 } from '@shared/agent-modules'
@@ -36,6 +38,13 @@ import {
   uninstallDshPlugin,
   listInstalledPlugins
 } from './tools/plugin'
+import {
+  addMcpServer,
+  updateMcpServer,
+  deleteMcpServer,
+  listMcpServers,
+  testMcpServerConnection
+} from './mcp-servers'
 
 /** 单次目录列举上限。 */
 const MAX_LIST_ENTRIES = 500
@@ -182,27 +191,49 @@ export function registerAgentModuleIpcHandlers(): void {
   })
 
   ipcMain.handle(CH.MCP_LIST_TOOLS, async (_evt, payload: { marketId?: string }) => {
-    // 骨架：返回各市场的工具占位清单。实际可从市场 API 拉取。
-    const marketId = payload?.marketId
-    const markets = KNOWN_MCP_MARKETS.filter((m) => !marketId || m.id === marketId)
-    const listings: McpToolListing[] = []
-    for (const market of markets) {
+    // 从已连接的 MCP 服务器发现真实工具
+    const { discoverMcpTools } = await import('./mcp-servers')
+    const discovered = await discoverMcpTools()
+    const listings: McpToolListing[] = discovered.map((t) => ({
+      id: `${t.serverId}.${t.name}`,
+      marketId: t.serverName,
+      name: `${t.serverName}/${t.name}`,
+      description: t.description ?? '',
+      installHint: `已连接服务器「${t.serverName}」，可直接调用。`
+    }))
+
+    // 如果没有外部 MCP 服务器，返回内置小说项目 MCP 工具提示
+    if (listings.length === 0 && (!payload?.marketId || payload.marketId === 'mcp.so' || payload.marketId === 'smithery')) {
       listings.push({
-        id: `${market.id}.server`,
-        marketId: market.id,
-        name: `${market.name} 服务器接入`,
-        description: `从 ${market.name} 导入一个 MCP 服务器，扩展智能体工具集。`,
-        installHint: `在「MCP 市场」模块配置 ${market.id} 的服务器连接。`
+        id: 'builtin.novel-project',
+        marketId: 'builtin',
+        name: '小说项目 MCP 工具集',
+        description: '内置 MCP 工具：读写章节、人物卡、伏笔、世界观、大纲。',
+        installHint: '已在 MCP 市场模块启用时自动可用。'
       })
     }
+
     return listings
   })
 
   ipcMain.handle(CH.MCP_IMPORT, async (_evt, payload: McpImportRequest) => {
     if (!payload?.marketId || !payload?.toolId) fail('缺少 marketId 或 toolId。')
     const registry = getAgentModuleRegistry()
-    // 骨架：导入后把 mcp.market 模块启用，并记录配置。
+    // 导入工具时，确保 MCP 市场模块已启用
     registry.setEnabled('mcp.market', true)
+
+    // 如果是导入已连接服务器的工具，直接启用该服务器
+    // toolId 格式: `${serverId}.${toolName}`，serverId 可能包含点号
+    // 先尝试按 marketId（服务器名称）匹配
+    const servers = await listMcpServers()
+    const server = servers.find(
+      (s) => s.id === payload.toolId.split('.')[0] ||
+             s.name.toLowerCase() === String(payload.marketId ?? '').toLowerCase()
+    )
+    if (server && !server.enabled) {
+      await updateMcpServer(server.id, { enabled: true })
+    }
+
     const config = registry.getConfig('mcp.market')
     config[`imported:${payload.marketId}:${payload.toolId}`] = {
       importedAt: new Date().toISOString()
@@ -211,8 +242,45 @@ export function registerAgentModuleIpcHandlers(): void {
     return {
       ok: true,
       moduleId: 'mcp.market',
-      message: `已从 ${payload.marketId} 导入 ${payload.toolId}，MCP 市场模块已启用。`
+      message: `已导入 ${payload.marketId}/${payload.toolId}，MCP 市场模块已启用。`
     }
+  })
+
+  // ==================== MCP 服务器管理 ====================
+  ipcMain.handle(CH.MCP_SERVER_LIST, async () => {
+    return listMcpServers()
+  })
+
+  ipcMain.handle(CH.MCP_SERVER_ADD, async (_evt, payload: McpServerAddRequest) => {
+    if (!payload?.name) fail('缺少服务器名称。')
+    if (!payload?.transport) fail('缺少传输类型。')
+    return addMcpServer({
+      name: payload.name,
+      description: payload.description,
+      transport: payload.transport,
+      command: payload.command,
+      args: payload.args,
+      cwd: payload.cwd,
+      env: payload.env,
+      url: payload.url,
+      apiKey: payload.apiKey
+    })
+  })
+
+  ipcMain.handle(CH.MCP_SERVER_UPDATE, async (_evt, payload: { id: string; patch: Partial<McpServerDefinition> }) => {
+    if (!payload?.id) fail('缺少服务器 id。')
+    return updateMcpServer(payload.id, payload.patch ?? {})
+  })
+
+  ipcMain.handle(CH.MCP_SERVER_DELETE, async (_evt, payload: { id: string }) => {
+    if (!payload?.id) fail('缺少服务器 id。')
+    await deleteMcpServer(payload.id)
+    return { ok: true }
+  })
+
+  ipcMain.handle(CH.MCP_SERVER_TEST, async (_evt, payload: { id: string }) => {
+    if (!payload?.id) fail('缺少服务器 id。')
+    return testMcpServerConnection(payload.id)
   })
 
   // ==================== dsh-plugin 插件市场 ====================

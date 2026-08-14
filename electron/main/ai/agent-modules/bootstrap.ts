@@ -9,6 +9,7 @@ import { AgentModuleRegistry, InMemoryModuleStore } from './registry'
 import { createSystemFileTools } from './tools/system-filesystem'
 import { createExecTools } from './tools/exec'
 import { createMcpTools } from './tools/mcp'
+import { SqliteNovelAccessor } from './mcp-novel-server'
 
 /** 全局唯一模块注册表实例。 */
 let registry: AgentModuleRegistry | null = null
@@ -64,18 +65,18 @@ export function initAgentModuleRegistry(): AgentModuleRegistry {
     definition: {
       id: 'mcp.market',
       name: 'MCP 市场',
-      description: '从 mcp.so、smithery 等 MCP 市场导入工具，扩展智能体能力。',
+      description: '接入远程 mcp.soul 或本地 MCP 服务器，读写小说项目文件。',
       kind: 'mcp',
       source: 'builtin',
       scope: 'global',
       enabledByDefault: false,
       risk: 'high',
-      toolNames: ['mcp_list_markets', 'mcp_call_tool'],
+      toolNames: ['novel_read_chapter', 'novel_write_chapter', 'novel_read_character', 'novel_write_character', 'novel_read_foreshadow', 'novel_write_foreshadow', 'novel_read_world', 'novel_write_world', 'novel_read_outline', 'novel_write_outline', 'mcp_list_markets', 'mcp_list_tools', 'mcp_call_tool'],
       icon: 'Plug',
       version: '1.0.0',
       author: 'CharacterArc'
     },
-    createTools: () => createMcpTools()
+    createTools: () => createMcpTools({ accessor: new SqliteNovelAccessor() })
   })
 
   registry.register({
