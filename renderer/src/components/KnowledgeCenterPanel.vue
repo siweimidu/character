@@ -33,20 +33,14 @@ import {
   type KnowledgeDocumentView,
   type ReferenceAssetLibrary
 } from '@/features/knowledge/knowledgeCenter'
-import {
-  createProjectWorkspaceSeed,
-  createProjectWorkspaceSeedFromSpiral,
-  type ProjectBootstrapResult,
-  type ProjectWorkspaceSeed,
-  type SpiralBootstrapResult
-} from '@/features/wizard/projectSeed'
-import type { NovelLength } from '@/types/app'
 import { useAppStore } from '@/stores/app'
+import { useGlobalAiGenerateStore } from '@/stores/globalAiGenerate'
 import { useBatchImport } from '@/composables/useBatchImport'
 import { toIpcPayload } from '@/utils/ipcPayload'
 import BatchImportModal from './BatchImportModal.vue'
 
 const appStore = useAppStore()
+const globalAiGenerate = useGlobalAiGenerateStore()
 const dialog = useDialog()
 const message = useMessage()
 const { openModal } = useBatchImport()
@@ -425,18 +419,6 @@ const AI_NOVEL_TASK_KEY = 'ai-novel-from-reference'
 const AI_NOVEL_MAX_SELECT = 10
 const aiNovelLoading = computed(() => appStore.isAiTaskRunning(AI_NOVEL_TASK_KEY))
 
-interface AiNovelCandidate {
-  sourceTitle: string
-  title: string
-  concept: string
-  genre: string
-  hook: string
-  protagonist: string
-  goldFinger: string
-  first3Hooks: string[]
-  outline: string
-}
-
 // 可选目标题材列表
 const AI_NOVEL_GENRES = [
   '都市',
@@ -459,20 +441,6 @@ const aiNovelMode = ref<'fuse' | 'separate'>('fuse')
 const aiNovelSelectedGenres = ref<string[]>([])
 const aiNovelSelectedIds = ref<string[]>([])
 
-// 结果弹窗
-const aiNovelResultsVisible = ref(false)
-const aiNovelCandidates = ref<AiNovelCandidate[]>([])
-const aiNovelSelectedSeedIds = ref<string[]>([])
-
-const aiNovelSelectedSeedCount = computed(() => aiNovelSelectedSeedIds.value.length)
-const aiNovelHasSelectedSeed = computed(() => aiNovelSelectedSeedIds.value.length > 0)
-
-// 生成作品时的初始化方式弹窗（篇幅 + 深度/快速/空白）
-const aiNovelInitVisible = ref(false)
-const aiNovelInitMethod = ref<'deep' | 'quick' | 'off'>('deep')
-const aiNovelInitLength = ref<NovelLength>('long')
-const aiNovelPendingSeeds = ref<AiNovelCandidate[]>([])
-const aiNovelBuildLoading = ref(false)
 
 function openAiNovelPicker(): void {
   aiNovelMode.value = 'fuse'
@@ -591,7 +559,8 @@ async function handleAiNovelGenerate(): Promise<void> {
       message.warning('AI 未返回有效的作品方案，请重试')
       return
     }
-    aiNovelCandidates.value = entries.map((e) => ({
+    // 无论用户当前在哪个页面，都全局弹出 AI 生成的新作品方案悬浮窗
+    globalAiGenerate.openResult('knowledge', entries.map((e) => ({
       sourceTitle: String(e.sourceTitle ?? ''),
       title: String(e.title ?? '未命名作品'),
       concept: String(e.concept ?? ''),
@@ -601,149 +570,12 @@ async function handleAiNovelGenerate(): Promise<void> {
       goldFinger: String(e.goldFinger ?? ''),
       first3Hooks: Array.isArray(e.first3Hooks) ? (e.first3Hooks as string[]).map(String) : [],
       outline: String(e.outline ?? '')
-    }))
-    aiNovelSelectedSeedIds.value = aiNovelCandidates.value.map((_, index) => String(index))
-    aiNovelResultsVisible.value = true
+    })))
   } catch (error) {
     message.error(error instanceof Error ? error.message : 'AI 生成作品失败，请检查模型配置')
   }
 }
 
-function handleAiNovelCreateWorks(): void {
-  const selectedSet = new Set(aiNovelSelectedSeedIds.value)
-  const picked = aiNovelCandidates.value
-    .map((candidate, index) => ({ candidate, index }))
-    .filter(({ index }) => selectedSet.has(String(index)))
-  if (picked.length === 0) {
-    message.warning('请先勾选要创建的新作品')
-    return
-  }
-
-  // 不直接创建，改为弹出初始化方式弹窗，让用户选择篇幅与生成方式后再后台自动构建
-  aiNovelPendingSeeds.value = picked.map(({ candidate }) => candidate)
-  aiNovelInitMethod.value = 'deep'
-  aiNovelInitLength.value = 'long'
-  aiNovelResultsVisible.value = false
-  aiNovelInitVisible.value = true
-}
-
-/** 构建单个作品的 ProjectWorkspaceSeed（深度/快速/空白），复用番茄风向标同款逻辑 */
-async function buildAiNovelWorkspace(
-  candidate: AiNovelCandidate,
-  method: 'deep' | 'quick' | 'off',
-  novelLength: NovelLength
-): Promise<ProjectWorkspaceSeed> {
-  const premise = [candidate.concept, candidate.hook, candidate.outline].filter(Boolean).join('\n')
-  const wizardValues = {
-    title: candidate.title,
-    genre: candidate.genre || '都市',
-    novelLength,
-    premise,
-    shouldGenerate: method !== 'off'
-  }
-
-  if (method === 'deep') {
-    const result = await window.characterArc.spiralBootstrap(
-      toIpcPayload({
-        settings: appStore.appSettings,
-        projectTitle: candidate.title,
-        projectGenre: candidate.genre || '都市',
-        projectNovelLength: novelLength,
-        projectPremise: premise
-      })
-    )
-    if (!result.success || !result.result) {
-      throw new Error(result.error ?? `「${candidate.title}」深度生成失败`)
-    }
-    return createProjectWorkspaceSeedFromSpiral(wizardValues, result.result as SpiralBootstrapResult)
-  }
-
-  if (method === 'quick') {
-    const result = await window.characterArc.generateAi(
-      toIpcPayload({
-        task: 'project-bootstrap',
-        settings: appStore.appSettings,
-        context: {
-          projectTitle: candidate.title,
-          projectGenre: candidate.genre || '都市',
-          projectNovelLength: novelLength,
-          projectPremise: premise
-        }
-      })
-    )
-    if (!result.success || !result.result) {
-      throw new Error(result.error ?? `「${candidate.title}」快速生成失败`)
-    }
-    return createProjectWorkspaceSeed(wizardValues, result.result as ProjectBootstrapResult)
-  }
-
-  // 空白项目：直接创建骨架
-  return createProjectWorkspaceSeed(wizardValues)
-}
-
-/**
- * 用户选定初始化方式后，在后台自动为所有勾选的作品创建项目，不跳转“新建作品”向导。
- */
-async function confirmAiNovelInitAndBuild(): Promise<void> {
-  if (aiNovelBuildLoading.value) return
-  const seeds = aiNovelPendingSeeds.value
-  if (seeds.length === 0) return
-  aiNovelBuildLoading.value = true
-  aiNovelInitVisible.value = false
-
-  const method = aiNovelInitMethod.value
-  const novelLength = aiNovelInitLength.value
-  const methodLabel = method === 'deep' ? '深度生成' : method === 'quick' ? '快速生成' : '空白项目'
-
-  try {
-    await appStore.runTrackedAiTask(
-      {
-        key: 'knowledge-build-works',
-        kind: 'workflow',
-        label: `创建 ${seeds.length} 个作品`,
-        description: `按拆书风格 ${methodLabel} · 后台自动创建 ${seeds.length} 个新书项目`,
-        panel: 'knowledge',
-        onCancel: () => {
-          // 深度生成支持通过 IPC 取消
-          void window.characterArc.cancelSpiralBootstrap()
-        }
-      },
-      async () => {
-        const workspaceSeeds: ProjectWorkspaceSeed[] = []
-        // 逐个生成，每个完成后立即反馈进度
-        for (let i = 0; i < seeds.length; i++) {
-          const seed = seeds[i]
-          const ws = await buildAiNovelWorkspace(seed, method, novelLength)
-          workspaceSeeds.push(ws)
-          appStore.updateAiTaskProgress('knowledge-build-works', Math.round(((i + 1) / seeds.length) * 100))
-        }
-        // 全部生成完成后批量创建项目到主页
-        appStore.batchCreateProjects(workspaceSeeds)
-        message.success(`已在后台创建 ${workspaceSeeds.length} 个作品`)
-      }
-    )
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : '创建作品失败，请检查模型配置'
-    if (!msg.includes('已取消')) {
-      message.error(msg)
-    }
-  } finally {
-    aiNovelBuildLoading.value = false
-  }
-}
-
-function formatAiNovelCandidate(candidate: AiNovelCandidate): string {
-  return `【书名】${candidate.title}\n【来源】${candidate.sourceTitle || '多书融合'}\n【核心卖点】${candidate.concept}\n【题材】${candidate.genre}\n【钩子】${candidate.hook}\n【主角】${candidate.protagonist}\n【金手指】${candidate.goldFinger}\n【前3章钩子】\n${candidate.first3Hooks.map((h, i) => `  ${i + 1}. ${h}`).join('\n')}\n【主线】${candidate.outline}`
-}
-
-async function copyAiNovelCandidate(candidate: AiNovelCandidate): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(formatAiNovelCandidate(candidate))
-    message.success('作品方案已复制')
-  } catch {
-    message.error('复制失败')
-  }
-}
 </script>
 
 <template>
@@ -1044,136 +876,6 @@ async function copyAiNovelCandidate(candidate: AiNovelCandidate): Promise<void> 
       </n-card>
     </n-modal>
 
-    <!-- AI 生成作品：结果确认 -->
-    <n-modal v-model:show="aiNovelResultsVisible">
-      <n-card style="width: min(860px, 92vw)" :bordered="false" role="dialog" aria-modal="true">
-        <template #header>
-          <div class="detail-header">
-            <strong>AI 生成的新作品方案</strong>
-            <span>勾选要创建为项目的作品，将自动建为新项目</span>
-          </div>
-        </template>
-
-        <n-scrollbar style="max-height: 52vh">
-          <n-checkbox-group
-            v-model:value="aiNovelSelectedSeedIds"
-            class="ai-novel-result-group"
-          >
-            <n-checkbox
-              v-for="(candidate, index) in aiNovelCandidates"
-              :key="index"
-              :value="String(index)"
-              class="ai-novel-result-card"
-            >
-              <div class="ai-novel-result-head">
-                <strong>{{ candidate.title }}</strong>
-                <n-tag size="tiny" :bordered="false" type="info">{{ candidate.genre || '未分类' }}</n-tag>
-                <n-tag v-if="candidate.sourceTitle" size="tiny" :bordered="false" type="warning">
-                  源自《{{ candidate.sourceTitle }}》
-                </n-tag>
-              </div>
-              <p class="ai-novel-result-concept">{{ candidate.concept }}</p>
-              <p class="ai-novel-result-line"><b>钩子：</b>{{ candidate.hook }}</p>
-              <p class="ai-novel-result-line"><b>主角：</b>{{ candidate.protagonist }}</p>
-              <p class="ai-novel-result-line"><b>金手指：</b>{{ candidate.goldFinger }}</p>
-              <div v-if="candidate.first3Hooks.length" class="ai-novel-result-hooks">
-                <span class="ai-novel-result-hook" v-for="(hook, hi) in candidate.first3Hooks" :key="hi">
-                  第{{ hi + 1 }}章：{{ hook }}
-                </span>
-              </div>
-              <p class="ai-novel-result-outline"><b>主线：</b>{{ candidate.outline }}</p>
-              <div class="ai-novel-result-actions">
-                <n-button text size="tiny" @click.stop="copyAiNovelCandidate(candidate)">复制方案</n-button>
-              </div>
-            </n-checkbox>
-          </n-checkbox-group>
-        </n-scrollbar>
-
-        <template #footer>
-          <div class="ai-novel-footer">
-            <n-button @click="aiNovelResultsVisible = false">关闭</n-button>
-            <n-button
-              type="primary"
-              :disabled="!aiNovelHasSelectedSeed"
-              @click="handleAiNovelCreateWorks"
-            >
-              生成选中作品（{{ aiNovelSelectedSeedCount }}）
-            </n-button>
-          </div>
-        </template>
-      </n-card>
-    </n-modal>
-
-    <!-- 生成作品：选择初始化方式（篇幅 + 深度/快速/空白） -->
-    <n-modal
-      v-model:show="aiNovelInitVisible"
-      preset="card"
-      title="选择初始化方式"
-      style="width: 540px"
-      :mask-closable="false"
-    >
-      <p class="ai-novel-init-hint">
-        将为勾选的 {{ aiNovelPendingSeeds.length }} 个新作品创建项目。选择篇幅与初始化方式后，点击“开始构建”，系统会在后台自动为所有勾选的作品创建项目，无需跳转“新建作品”向导。
-      </p>
-      <!-- 篇幅选择：长篇 / 短篇 -->
-      <div class="ai-novel-init-length-row">
-        <span class="ai-novel-init-length-label">作品篇幅</span>
-        <div class="ai-novel-init-length-options">
-          <button
-            type="button"
-            class="ai-novel-init-length-btn"
-            :class="{ active: aiNovelInitLength === 'long' }"
-            @click="aiNovelInitLength = 'long'"
-          >
-            长篇
-          </button>
-          <button
-            type="button"
-            class="ai-novel-init-length-btn"
-            :class="{ active: aiNovelInitLength === 'short' }"
-            @click="aiNovelInitLength = 'short'"
-          >
-            短篇
-          </button>
-        </div>
-      </div>
-      <!-- 初始化方式：深度生成 / 快速生成 / 空白项目 -->
-      <div class="ai-novel-init-mode-list">
-        <button
-          type="button"
-          class="ai-novel-init-mode-card"
-          :class="{ active: aiNovelInitMethod === 'deep' }"
-          @click="aiNovelInitMethod = 'deep'"
-        >
-          <strong>深度生成</strong>
-          <span>螺旋式推导：从角色核心矛盾出发，生成完整角色、章节大纲和世界设定。通常耗时 1 到 3 分钟。</span>
-        </button>
-        <button
-          type="button"
-          class="ai-novel-init-mode-card"
-          :class="{ active: aiNovelInitMethod === 'quick' }"
-          @click="aiNovelInitMethod = 'quick'"
-        >
-          <strong>快速生成</strong>
-          <span>一次性生成世界观和大纲骨架，不含角色设计。速度快，约 10 秒。</span>
-        </button>
-        <button
-          type="button"
-          class="ai-novel-init-mode-card"
-          :class="{ active: aiNovelInitMethod === 'off' }"
-          @click="aiNovelInitMethod = 'off'"
-        >
-          <strong>空白项目</strong>
-          <span>只创建项目骨架与首章草稿，从零开始搭建。</span>
-        </button>
-      </div>
-      <div class="ai-novel-init-footer">
-        <n-button @click="aiNovelInitVisible = false" :disabled="aiNovelBuildLoading">取消</n-button>
-        <n-button type="primary" :loading="aiNovelBuildLoading" :disabled="aiNovelBuildLoading" @click="confirmAiNovelInitAndBuild">
-          {{ aiNovelInitMethod === 'off' ? '开始创建项目' : aiNovelInitMethod === 'deep' ? '开始深度构建' : '开始快速构建' }}
-        </n-button>
-      </div>
-    </n-modal>
   </section>
 </template>
 

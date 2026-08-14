@@ -16,6 +16,7 @@ import FanqieTrendsPage from '@/pages/FanqieTrendsPage.vue'
 import RecycleBinPage from '@/pages/RecycleBinPage.vue'
 import GlobalAgentPage from '@/pages/GlobalAgentPage.vue'
 import AiTaskProgressDock from '@/components/AiTaskProgressDock.vue'
+import GlobalAiGenerateModal from '@/components/GlobalAiGenerateModal.vue'
 import TitlebarModelSwitcher from '@/components/TitlebarModelSwitcher.vue'
 import HomepageSettingsModal from '@/components/home/HomepageSettingsModal.vue'
 
@@ -319,6 +320,7 @@ onBeforeUnmount(() => {
             </Transition>
           </div>
           <AiTaskProgressDock />
+          <GlobalAiGenerateModal />
         </div>
         <HomepageSettingsModal v-model:show="settingsVisible" />
       </n-dialog-provider>

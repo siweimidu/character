@@ -1,19 +1,13 @@
 <script setup lang="ts">
 import { ChevronLeft, Copy, Download, ExternalLink, Flame, Lightbulb, RefreshCw } from 'lucide-vue-next'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { NButton, NCheckbox, NInput, NInputNumber, NModal, NTag, useMessage } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
+import { useGlobalAiGenerateStore } from '@/stores/globalAiGenerate'
 import { toIpcPayload } from '@/utils/ipcPayload'
-import {
-  createProjectWorkspaceSeed,
-  createProjectWorkspaceSeedFromSpiral,
-  type ProjectBootstrapResult,
-  type ProjectWorkspaceSeed,
-  type SpiralBootstrapResult
-} from '@/features/wizard/projectSeed'
-import type { NovelLength } from '@/types/app'
 
 const appStore = useAppStore()
+const globalAiGenerate = useGlobalAiGenerateStore()
 const message = useMessage()
 
 function openBookUrl(url: unknown): void {
@@ -269,23 +263,12 @@ interface SeedBatch {
   selected: boolean[]
 }
 const seedModalVisible = ref(false)
-const seedOptionsVisible = ref(false)
 const targetGenre = ref('')
 const seedCount = ref(3)
 const seedBatches = ref<SeedBatch[]>([])
 
 // 正在后台运行的选题生成任务数（驱动按钮文案与运行中批次图标）
 const seedRunningCount = computed(() => seedBatches.value.filter((b) => b.status === 'running').length)
-
-// 合并所有批次的候选方案，供“生成作品”与选中统计使用
-const allSeedCandidates = computed<Array<{ batchId: string; seed: FanqieSeedCandidate; selected: boolean; index: number }>>(
-  () =>
-    seedBatches.value.flatMap((b) =>
-      b.candidates.map((seed, i) => ({ batchId: b.id, seed, selected: b.selected[i] ?? false, index: i }))
-    )
-)
-const selectedSeedsCount = computed(() => allSeedCandidates.value.filter((c) => c.selected).length)
-const totalSeedsCount = computed(() => allSeedCandidates.value.length)
 
 // ===== 热门综合赛道多选 =====
 const seedGenres = computed<AnyRecord[]>(() => curPeriodData.value?.hot_genres || [])
@@ -310,36 +293,6 @@ function toggleAllGenres(): void {
   }
 }
 
-// ===== 生成作品时的初始化方式弹窗 =====
-const initModalVisible = ref(false)
-const initMethod = ref<'deep' | 'quick' | 'off'>('deep')
-const initNovelLength = ref<NovelLength>('long')
-const pendingBuildSeeds = ref<FanqieSeedCandidate[]>([])
-// 仅用于防止同一弹窗实例内重复点击“开始构建”（弹窗关闭后即复位，不阻塞后续并行构建）
-const buildLoading = ref(false)
-// 后台正在运行的“生成作品”构建任务数（用于按钮文案与进度反馈）
-const buildRunningCount = ref(0)
-
-function toggleSeed(batchId: string, index: number): void {
-  const idx = seedBatches.value.findIndex((b) => b.id === batchId)
-  if (idx < 0) return
-  const batch = seedBatches.value[idx]
-  if (index < 0 || index >= batch.selected.length) return
-  const nextSelected = batch.selected.slice()
-  nextSelected[index] = !nextSelected[index]
-  seedBatches.value[idx] = { ...batch, selected: nextSelected }
-}
-
-function isAllSeedsSelected(): boolean {
-  return totalSeedsCount.value > 0 && allSeedCandidates.value.every((c) => c.selected)
-}
-
-function toggleAllSeeds(): void {
-  const all = isAllSeedsSelected()
-  seedBatches.value.forEach((b) => {
-    b.selected = b.selected.map(() => !all)
-  })
-}
 
 function buildSeedContext(): Record<string, unknown> {
   const hotGenres = (curPeriodData.value?.hot_genres || []).slice(0, 8).map((g: AnyRecord) => ({
@@ -403,6 +356,7 @@ async function handleSeedGenerate(): Promise<void> {
       return
     }
     const candidates = entries.map((e) => ({
+      sourceTitle: '',
       title: String(e.title ?? '未命名选题'),
       concept: String(e.concept ?? ''),
       genre: String(e.genre ?? ''),
@@ -413,7 +367,8 @@ async function handleSeedGenerate(): Promise<void> {
       outline: String(e.outline ?? '')
     }))
     updateSeedBatch(batchId, { status: 'done', candidates, selected: candidates.map(() => true) })
-    seedOptionsVisible.value = true
+    // 无论用户当前在哪个页面，都全局弹出 AI 生成的新书选题结果悬浮窗
+    syncSeedsToGlobal()
   } catch (error) {
     updateSeedBatch(batchId, { status: 'error', error: error instanceof Error ? error.message : String(error) })
     message.error(error instanceof Error ? error.message : 'AI 生成新书选题失败，请检查模型配置')
@@ -433,156 +388,40 @@ function updateSeedBatch(id: string, patch: Partial<Pick<SeedBatch, 'status' | '
   }
 }
 
+/**
+ * 把当前所有已完成批次的候选合并写入全局弹窗 store，并全局弹出结果悬浮窗。
+ * 若结果弹窗已打开则刷新候选，否则打开。
+ */
+function syncSeedsToGlobal(): void {
+  const doneCands = seedBatches.value
+    .filter((b) => b.status === 'done')
+    .flatMap((b) => b.candidates)
+    .map((c) => ({ ...c, sourceTitle: '' }))
+  const running = seedRunningCount.value
+  if (globalAiGenerate.resultVisible) {
+    globalAiGenerate.resetResult(doneCands, running)
+  } else {
+    globalAiGenerate.openResult('fanqie', doneCands, { running })
+  }
+}
+
 function openSeedGenerator(): void {
   targetGenre.value = ''
   selectedGenres.value = []
   seedGenresCollapsed.value = false
-  seedOptionsVisible.value = false
+  globalAiGenerate.closeResult()
   seedModalVisible.value = true
 }
 
-/** 点击“生成作品”：先弹出初始化方式弹窗 */
-function handleGenerateWorks(): void {
-  const picked = allSeedCandidates.value
-    .filter((c) => c.selected)
-    .map((c) => c.seed)
-  if (picked.length === 0) {
-    message.warning('请先勾选要生成的新书选题')
-    return
-  }
-  pendingBuildSeeds.value = picked
-  initMethod.value = 'deep'
-  initModalVisible.value = true
-}
-
-/** 构建单个选题的 ProjectWorkspaceSeed（深度/快速/空白） */
-async function buildSeedWorkspace(
-  seed: FanqieSeedCandidate,
-  method: 'deep' | 'quick' | 'off',
-  novelLength: NovelLength
-): Promise<ProjectWorkspaceSeed> {
-  const premise = [seed.concept, seed.hook, seed.outline].filter(Boolean).join('\n')
-  const wizardValues = {
-    title: seed.title,
-    genre: seed.genre || '都市',
-    novelLength,
-    premise,
-    shouldGenerate: method !== 'off'
-  }
-
-  if (method === 'deep') {
-    const result = await window.characterArc.spiralBootstrap(
-      toIpcPayload({
-        settings: appStore.appSettings,
-        projectTitle: seed.title,
-        projectGenre: seed.genre || '都市',
-        projectNovelLength: novelLength,
-        projectPremise: premise
-      })
-    )
-    if (!result.success || !result.result) {
-      throw new Error(result.error ?? `「${seed.title}」深度生成失败`)
+// 全局结果弹窗“换一批”请求：打开本页面的“AI 生成新书选题”输入配置弹窗
+watch(
+  () => globalAiGenerate.fanqieGeneratorRequest,
+  () => {
+    if (globalAiGenerate.fanqieGeneratorRequest > 0) {
+      openSeedGenerator()
     }
-    return createProjectWorkspaceSeedFromSpiral(wizardValues, result.result as SpiralBootstrapResult)
   }
-
-  if (method === 'quick') {
-    const result = await window.characterArc.generateAi(
-      toIpcPayload({
-        task: 'project-bootstrap',
-        settings: appStore.appSettings,
-        context: {
-          projectTitle: seed.title,
-          projectGenre: seed.genre || '都市',
-          projectNovelLength: novelLength,
-          projectPremise: premise
-        }
-      })
-    )
-    if (!result.success || !result.result) {
-      throw new Error(result.error ?? `「${seed.title}」快速生成失败`)
-    }
-    return createProjectWorkspaceSeed(wizardValues, result.result as ProjectBootstrapResult)
-  }
-
-  // 空白项目：直接创建骨架
-  return createProjectWorkspaceSeed(wizardValues)
-}
-
-/**
- * 用户选定初始化方式后，在后台自动为所有勾选的选题创建项目。
- * 不再跳转“新建作品”向导，全部在后台执行。
- */
-async function confirmInitAndBuild(): Promise<void> {
-  if (buildLoading.value) return
-  const seeds = pendingBuildSeeds.value
-  if (seeds.length === 0) return
-  buildLoading.value = true
-  initModalVisible.value = false
-  seedOptionsVisible.value = false
-
-  const method = initMethod.value
-  const novelLength = initNovelLength.value
-  const methodLabel = method === 'deep' ? '深度生成' : method === 'quick' ? '快速生成' : '空白项目'
-
-  // 每次构建使用唯一任务 key（与“AI 生成新书选题”的后台并行批次一致），
-  // 即使后台已有相同构建任务在运行，也可以再次点击并行创建，不再被阻塞。
-  const buildTaskKey = `fanqie-build-works-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-
-  // 弹窗已关闭，立即复位按钮 loading，允许用户再次生成作品并并行构建
-  // （后台任务由全局进度面板按 buildTaskKey 跟踪）。
-  buildLoading.value = false
-  buildRunningCount.value += 1
-
-  try {
-    await appStore.runTrackedAiTask(
-      {
-        key: buildTaskKey,
-        kind: 'workflow',
-        label: `创建 ${seeds.length} 个作品`,
-        description: `${methodLabel} · 后台自动创建 ${seeds.length} 个新书项目`,
-        panel: 'fanqie',
-        onCancel: () => {
-          // 深度生成支持通过 IPC 取消
-          void window.characterArc.cancelSpiralBootstrap()
-        }
-      },
-      async () => {
-        const workspaceSeeds: ProjectWorkspaceSeed[] = []
-        // 逐个生成，每个完成后立即反馈进度
-        for (let i = 0; i < seeds.length; i++) {
-          const seed = seeds[i]
-          const ws = await buildSeedWorkspace(seed, method, novelLength)
-          workspaceSeeds.push(ws)
-          appStore.updateAiTaskProgress(buildTaskKey, Math.round(((i + 1) / seeds.length) * 100))
-        }
-        // 全部生成完成后批量创建项目
-        appStore.batchCreateProjects(workspaceSeeds)
-        message.success(`已在后台创建 ${workspaceSeeds.length} 个作品`)
-      }
-    )
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : '创建作品失败，请检查模型配置'
-    if (!msg.includes('已取消')) {
-      message.error(msg)
-    }
-  } finally {
-    buildRunningCount.value -= 1
-  }
-}
-
-function formatSeedCandidate(seed: FanqieSeedCandidate): string {
-  return `【书名】${seed.title}\n【核心卖点】${seed.concept}\n【题材】${seed.genre}\n【钩子】${seed.hook}\n【主角】${seed.protagonist}\n【金手指】${seed.goldFinger}\n【前3章钩子】\n${seed.first3Hooks.map((h, i) => `  ${i + 1}. ${h}`).join('\n')}\n【主线】${seed.outline}`
-}
-
-async function copySeed(seed: FanqieSeedCandidate): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(formatSeedCandidate(seed))
-    message.success('选题方案已复制')
-  } catch {
-    message.error('复制失败')
-  }
-}
+)
 
 // ===== 导出当前榜单数据 =====
 export type FanqieExportFormat = 'txt' | 'md' | 'json'
@@ -1199,141 +1038,6 @@ async function handleExport(): Promise<void> {
         <n-button @click="seedModalVisible = false">取消</n-button>
         <n-button type="primary" @click="handleSeedGenerate">
           开始生成{{ seedRunningCount > 0 ? `（后台已运行 ${seedRunningCount} 个）` : '' }}
-        </n-button>
-      </div>
-    </n-modal>
-
-    <!-- AI 生成新书选题：候选展示 -->
-    <n-modal
-      v-model:show="seedOptionsVisible"
-      preset="card"
-      title="AI 生成的新书选题"
-      class="seed-options-modal"
-      :mask-closable="false"
-    >
-      <div class="seed-toolbar">
-        <n-checkbox :checked="isAllSeedsSelected()" @update:checked="toggleAllSeeds" class="seed-check-all">
-          全选
-        </n-checkbox>
-        <span class="seed-selected-count">已选 {{ selectedSeedsCount }} / {{ totalSeedsCount }}{{ seedRunningCount > 0 ? `（${seedRunningCount} 个后台生成中）` : '' }}</span>
-      </div>
-      <div class="seed-list">
-        <template v-for="batch in seedBatches" :key="batch.id">
-          <div v-if="batch.status === 'running'" class="seed-batch-running">
-            <span class="spinner" aria-hidden="true"></span> 正在后台生成新书选题…
-          </div>
-          <div v-else-if="batch.status === 'error'" class="seed-batch-error">
-            该批选题生成失败{{ batch.error ? `：${batch.error}` : '' }}
-          </div>
-          <div
-            v-for="(seed, index) in batch.candidates"
-            :key="batch.id + '-' + index"
-            class="seed-card"
-            :class="{ 'seed-card-checked': batch.selected[index] }"
-            @click="toggleSeed(batch.id, index)"
-          >
-            <div class="seed-card-head">
-              <n-checkbox
-                :checked="batch.selected[index]"
-                class="seed-check"
-                @update:checked="toggleSeed(batch.id, index)"
-                @click.stop
-              />
-              <span class="seed-rank num">#{{ index + 1 }}</span>
-              <span class="seed-title">{{ seed.title }}</span>
-              <n-tag v-if="seed.genre" size="small" :bordered="false" class="seed-genre">{{ seed.genre }}</n-tag>
-            </div>
-            <div class="seed-row"><span class="seed-k">核心卖点</span>{{ seed.concept }}</div>
-            <div class="seed-row"><span class="seed-k">钩子</span>{{ seed.hook }}</div>
-            <div class="seed-row"><span class="seed-k">主角</span>{{ seed.protagonist }}</div>
-            <div class="seed-row"><span class="seed-k">金手指</span>{{ seed.goldFinger }}</div>
-            <div v-if="seed.first3Hooks.length" class="seed-row">
-              <span class="seed-k">前3章钩子</span>
-              <div class="seed-hooks">
-                <div v-for="(h, i) in seed.first3Hooks" :key="i" class="seed-hook">{{ i + 1 }}. {{ h }}</div>
-              </div>
-            </div>
-            <div class="seed-row"><span class="seed-k">主线</span>{{ seed.outline }}</div>
-            <div class="seed-actions">
-              <button type="button" class="seed-action-btn" @click.stop="copySeed(seed)"><Copy :size="12" /> 复制方案</button>
-            </div>
-          </div>
-        </template>
-      </div>
-      <div class="seed-modal-footer">
-        <n-button @click="seedOptionsVisible = false">关闭</n-button>
-        <n-button @click="openSeedGenerator">换一批</n-button>
-        <n-button type="primary" @click="handleGenerateWorks">生成作品</n-button>
-      </div>
-    </n-modal>
-
-    <!-- 生成作品：选择初始化方式 -->
-    <n-modal
-      v-model:show="initModalVisible"
-      preset="card"
-      title="选择初始化方式"
-      style="width: 540px"
-      :mask-closable="false"
-    >
-      <p class="init-modal-hint">
-        将为勾选的 {{ pendingBuildSeeds.length }} 个新书选题创建项目。选择篇幅与初始化方式后，点击“开始构建”，系统会在后台自动为所有勾选的选题创建作品，无需跳转“新建作品”向导。后台构建任务可并行多次进行{{ buildRunningCount > 0 ? `（当前后台已有 ${buildRunningCount} 个构建进行中）` : '' }}。
-      </p>
-      <!-- 篇幅选择：长篇 / 短篇 -->
-      <div class="init-length-row">
-        <span class="init-length-label">作品篇幅</span>
-        <div class="init-length-options">
-          <button
-            type="button"
-            class="init-length-btn"
-            :class="{ active: initNovelLength === 'long' }"
-            @click="initNovelLength = 'long'"
-          >
-            长篇
-          </button>
-          <button
-            type="button"
-            class="init-length-btn"
-            :class="{ active: initNovelLength === 'short' }"
-            @click="initNovelLength = 'short'"
-          >
-            短篇
-          </button>
-        </div>
-      </div>
-      <!-- 初始化方式：深度生成 / 快速生成 / 空白项目 -->
-      <div class="init-mode-list">
-        <button
-          type="button"
-          class="init-mode-card"
-          :class="{ active: initMethod === 'deep' }"
-          @click="initMethod = 'deep'"
-        >
-          <strong>深度生成</strong>
-          <span>螺旋式推导：从角色核心矛盾出发，生成完整角色、章节大纲和世界设定。通常耗时 1 到 3 分钟。</span>
-        </button>
-        <button
-          type="button"
-          class="init-mode-card"
-          :class="{ active: initMethod === 'quick' }"
-          @click="initMethod = 'quick'"
-        >
-          <strong>快速生成</strong>
-          <span>一次性生成世界观和大纲骨架，不含角色设计。速度快，约 10 秒。</span>
-        </button>
-        <button
-          type="button"
-          class="init-mode-card"
-          :class="{ active: initMethod === 'off' }"
-          @click="initMethod = 'off'"
-        >
-          <strong>空白项目</strong>
-          <span>只创建项目骨架与首章草稿，从零开始搭建。</span>
-        </button>
-      </div>
-      <div class="seed-modal-footer">
-        <n-button @click="initModalVisible = false">取消</n-button>
-        <n-button type="primary" :loading="buildLoading" :disabled="buildLoading" @click="confirmInitAndBuild">
-          {{ initMethod === 'off' ? '开始创建项目' : initMethod === 'deep' ? '开始深度构建' : '开始快速构建' }}{{ buildRunningCount > 0 ? `（${buildRunningCount} 个构建中）` : '' }}
         </n-button>
       </div>
     </n-modal>
