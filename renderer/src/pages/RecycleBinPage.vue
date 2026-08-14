@@ -146,12 +146,14 @@ function formatRelative(iso: string): string {
   if (Number.isNaN(date.getTime())) return ''
   const diff = date.getTime() - Date.now()
   const abs = Math.abs(diff)
-  const days = Math.floor(abs / (24 * 60 * 60 * 1000))
-  const hours = Math.floor((abs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000))
-  const minutes = Math.floor((abs % (60 * 60 * 1000)) / (60 * 1000))
   const unit = diff < 0 ? '前' : '后'
+  // 按“完整保留天数”向上取整：每个文件从删除时刻起走完完整保留天数才自动删除，
+  // 因此刚删除（如保留 5 天）时显示“5 天后”，避免因取整误差提前显示成“4 天后”。
+  const days = Math.ceil(abs / (24 * 60 * 60 * 1000))
   if (days > 0) return `${days} 天${unit}`
+  const hours = Math.floor((abs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000))
   if (hours > 0) return `${hours} 小时${unit}`
+  const minutes = Math.floor((abs % (60 * 60 * 1000)) / (60 * 1000))
   return `${Math.max(minutes, 1)} 分钟${unit}`
 }
 

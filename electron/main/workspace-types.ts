@@ -460,6 +460,9 @@ export type WorkspacePayload = {
     /** AI 请求超时秒数 */
     aiTimeoutSeconds: number
     themeColorIntensity: number
+    recycleBinSettings?: {
+      retentionDays: number
+    }
   }
   coverWorkbenchHistory: Array<{
     id: string
@@ -736,8 +739,18 @@ export function normalizeAppSettings(
     themeColorIntensity:
       typeof settings?.themeColorIntensity === 'number' && Number.isFinite(settings.themeColorIntensity)
         ? Math.min(1, Math.max(0, settings.themeColorIntensity))
-        : 0.5
+        : 0.5,
+    recycleBinSettings: normalizeRecycleBinSettings(settings?.recycleBinSettings)
   }
+}
+
+function normalizeRecycleBinSettings(
+  value?: WorkspacePayload['appSettings']['recycleBinSettings']
+): WorkspacePayload['appSettings']['recycleBinSettings'] | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const days = value.retentionDays
+  if (typeof days !== 'number' || !Number.isFinite(days) || days < 1) return undefined
+  return { retentionDays: Math.floor(days) }
 }
 
 export function mergeAppSettingsIntoWorkspaceSnapshot(

@@ -559,8 +559,21 @@ export function normalizeAppSettings(settings?: Partial<AppSettings> | null): Ap
     themeColorIntensity:
       typeof source.themeColorIntensity === 'number' && Number.isFinite(source.themeColorIntensity)
         ? Math.min(1, Math.max(0, source.themeColorIntensity))
-        : defaultAppSettings.themeColorIntensity
+        : defaultAppSettings.themeColorIntensity,
+    // 保留回收站全局配置（保留天数），避免标准化时被丢弃导致设置“不变”
+    recycleBinSettings: normalizeRecycleBinSettings(source.recycleBinSettings)
   }
+}
+
+/** 标准化回收站全局配置：保留天数为大于 0 的整数，缺省时返回 undefined 以沿用默认值 */
+function normalizeRecycleBinSettings(
+  settings?: Partial<import('@/types/app').RecycleBinSettings> | null
+): import('@/types/app').RecycleBinSettings | undefined {
+  if (!settings || typeof settings !== 'object') return undefined
+  const raw = settings.retentionDays
+  const days =
+    typeof raw === 'number' && Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : undefined
+  return days !== undefined ? { retentionDays: days } : undefined
 }
 
 // 加载本地持久化的应用状态，当前实现为返回空初始状态

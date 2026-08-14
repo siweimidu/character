@@ -367,6 +367,7 @@ export async function ensureWorkspaceDb(): Promise<DatabaseSync> {
       dark_mode_style TEXT NOT NULL DEFAULT 'standard',
       ai_timeout_seconds INTEGER NOT NULL DEFAULT 180,
       theme_color_intensity REAL NOT NULL DEFAULT 0.5,
+      recycle_bin_settings_json TEXT NOT NULL DEFAULT '{}',
       deleted_builtin_agent_ids_json TEXT NOT NULL DEFAULT '[]'
     ) STRICT;
 
@@ -601,6 +602,10 @@ function ensureAppSettingsColumns(db: DatabaseSync): void {
 
   if (!columnNames.has('theme_color_intensity')) {
     db.exec(`ALTER TABLE app_settings ADD COLUMN theme_color_intensity REAL NOT NULL DEFAULT 0.5;`)
+  }
+
+  if (!columnNames.has('recycle_bin_settings_json')) {
+    db.exec(`ALTER TABLE app_settings ADD COLUMN recycle_bin_settings_json TEXT NOT NULL DEFAULT '{}';`)
   }
 
   if (!columnNames.has('deleted_builtin_agent_ids_json')) {
@@ -917,7 +922,7 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
   if (projects.length === 0) {
     const settings = db.prepare(`
       SELECT theme, selected_project_id AS selectedProjectId, project_sort_mode AS projectSortMode, provider, api_key AS apiKey, base_url AS baseUrl, proxy_url AS proxyUrl, temperature, top_p AS topP, auto_save_interval AS autoSaveInterval, editor_font AS editorFont
-      , editor_minimap AS editorMinimap, ai_timeout_seconds AS aiTimeoutSeconds, model, ai_profiles_json AS aiProfilesJson, active_ai_profile_id AS activeAiProfileId, image_profiles_json AS imageProfilesJson, active_image_profile_id AS activeImageProfileId, image_provider AS imageProvider, image_model AS imageModel, image_api_key AS imageApiKey, image_base_url AS imageBaseUrl, vision_profile_name AS visionProfileName, vision_profiles_json AS visionProfilesJson, active_vision_profile_id AS activeVisionProfileId, vision_provider AS visionProvider, vision_model AS visionModel, vision_api_key AS visionApiKey, vision_base_url AS visionBaseUrl, vision_saved_models_json AS visionSavedModelsJson, speech_profile_name AS speechProfileName, speech_profiles_json AS speechProfilesJson, active_speech_profile_id AS activeSpeechProfileId, speech_provider AS speechProvider, speech_model AS speechModel, speech_api_key AS speechApiKey, speech_base_url AS speechBaseUrl, speech_saved_models_json AS speechSavedModelsJson, ui_scale AS uiScale, dark_mode AS darkMode, dark_mode_style AS darkModeStyle, theme_color_intensity AS themeColorIntensity
+      , editor_minimap AS editorMinimap, ai_timeout_seconds AS aiTimeoutSeconds, model, ai_profiles_json AS aiProfilesJson, active_ai_profile_id AS activeAiProfileId, image_profiles_json AS imageProfilesJson, active_image_profile_id AS activeImageProfileId, image_provider AS imageProvider, image_model AS imageModel, image_api_key AS imageApiKey, image_base_url AS imageBaseUrl, vision_profile_name AS visionProfileName, vision_profiles_json AS visionProfilesJson, active_vision_profile_id AS activeVisionProfileId, vision_provider AS visionProvider, vision_model AS visionModel, vision_api_key AS visionApiKey, vision_base_url AS visionBaseUrl, vision_saved_models_json AS visionSavedModelsJson, speech_profile_name AS speechProfileName, speech_profiles_json AS speechProfilesJson, active_speech_profile_id AS activeSpeechProfileId, speech_provider AS speechProvider, speech_model AS speechModel, speech_api_key AS speechApiKey, speech_base_url AS speechBaseUrl, speech_saved_models_json AS speechSavedModelsJson, ui_scale AS uiScale, dark_mode AS darkMode, dark_mode_style AS darkModeStyle, theme_color_intensity AS themeColorIntensity, recycle_bin_settings_json AS recycleBinSettingsJson
       FROM app_settings
       WHERE id = 1
     `).get() as
@@ -964,6 +969,7 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
           darkModeStyle: string
           aiTimeoutSeconds: number
           themeColorIntensity: number
+          recycleBinSettingsJson: string
         }
       | undefined
 
@@ -1098,7 +1104,8 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
               uiScale: settings.uiScale,
               darkMode: Boolean(settings.darkMode),
               aiTimeoutSeconds: settings.aiTimeoutSeconds,
-              themeColorIntensity: settings.themeColorIntensity ?? 0.5
+              themeColorIntensity: settings.themeColorIntensity ?? 0.5,
+              recycleBinSettings: parseJson(settings.recycleBinSettingsJson, undefined)
             })
           }
         : normalizeAppSettings({}),
@@ -1423,7 +1430,7 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
 
   const settings = db.prepare(`
     SELECT theme, selected_project_id AS selectedProjectId, project_sort_mode AS projectSortMode, provider, api_key AS apiKey, base_url AS baseUrl, proxy_url AS proxyUrl, temperature, top_p AS topP, auto_save_interval AS autoSaveInterval, editor_font AS editorFont
-    , editor_minimap AS editorMinimap, ai_timeout_seconds AS aiTimeoutSeconds, model, ai_profiles_json AS aiProfilesJson, active_ai_profile_id AS activeAiProfileId, image_profiles_json AS imageProfilesJson, active_image_profile_id AS activeImageProfileId, image_provider AS imageProvider, image_model AS imageModel, image_api_key AS imageApiKey, image_base_url AS imageBaseUrl, vision_profile_name AS visionProfileName, vision_profiles_json AS visionProfilesJson, active_vision_profile_id AS activeVisionProfileId, vision_provider AS visionProvider, vision_model AS visionModel, vision_api_key AS visionApiKey, vision_base_url AS visionBaseUrl, vision_saved_models_json AS visionSavedModelsJson, speech_profile_name AS speechProfileName, speech_profiles_json AS speechProfilesJson, active_speech_profile_id AS activeSpeechProfileId, speech_provider AS speechProvider, speech_model AS speechModel, speech_api_key AS speechApiKey, speech_base_url AS speechBaseUrl, speech_saved_models_json AS speechSavedModelsJson, ui_scale AS uiScale, dark_mode AS darkMode, dark_mode_style AS darkModeStyle, theme_color_intensity AS themeColorIntensity
+    , editor_minimap AS editorMinimap, ai_timeout_seconds AS aiTimeoutSeconds, model, ai_profiles_json AS aiProfilesJson, active_ai_profile_id AS activeAiProfileId, image_profiles_json AS imageProfilesJson, active_image_profile_id AS activeImageProfileId, image_provider AS imageProvider, image_model AS imageModel, image_api_key AS imageApiKey, image_base_url AS imageBaseUrl, vision_profile_name AS visionProfileName, vision_profiles_json AS visionProfilesJson, active_vision_profile_id AS activeVisionProfileId, vision_provider AS visionProvider, vision_model AS visionModel, vision_api_key AS visionApiKey, vision_base_url AS visionBaseUrl, vision_saved_models_json AS visionSavedModelsJson, speech_profile_name AS speechProfileName, speech_profiles_json AS speechProfilesJson, active_speech_profile_id AS activeSpeechProfileId, speech_provider AS speechProvider, speech_model AS speechModel, speech_api_key AS speechApiKey, speech_base_url AS speechBaseUrl, speech_saved_models_json AS speechSavedModelsJson, ui_scale AS uiScale, dark_mode AS darkMode, dark_mode_style AS darkModeStyle, theme_color_intensity AS themeColorIntensity, recycle_bin_settings_json AS recycleBinSettingsJson
     FROM app_settings
     WHERE id = 1
   `).get() as
@@ -1470,6 +1477,7 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
         darkModeStyle: string
         aiTimeoutSeconds: number
         themeColorIntensity: number
+        recycleBinSettingsJson: string
       }
     | undefined
 
@@ -1629,7 +1637,8 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
         uiScale: settings.uiScale,
         darkMode: Boolean(settings.darkMode),
         aiTimeoutSeconds: settings.aiTimeoutSeconds,
-        themeColorIntensity: settings.themeColorIntensity ?? 0.5
+        themeColorIntensity: settings.themeColorIntensity ?? 0.5,
+        recycleBinSettings: parseJson(settings.recycleBinSettingsJson, undefined)
       })
     },
     globalRecycleBin,
@@ -2185,8 +2194,8 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
     }
 
     db.prepare(`
-    INSERT INTO app_settings (id, theme, selected_project_id, project_sort_mode, provider, model, api_key, base_url, proxy_url, temperature, top_p, ai_profiles_json, active_ai_profile_id, image_profiles_json, active_image_profile_id, image_provider, image_model, image_api_key, image_base_url, vision_profile_name, vision_profiles_json, active_vision_profile_id, vision_provider, vision_model, vision_api_key, vision_base_url, vision_saved_models_json, speech_profile_name, speech_profiles_json, active_speech_profile_id, speech_provider, speech_model, speech_api_key, speech_base_url, speech_saved_models_json, auto_save_interval, editor_font, editor_minimap, ui_scale, dark_mode, dark_mode_style, ai_timeout_seconds, theme_color_intensity, deleted_builtin_agent_ids_json)
-    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT deleted_builtin_agent_ids_json FROM app_settings WHERE id = 1), '[]'))
+    INSERT INTO app_settings (id, theme, selected_project_id, project_sort_mode, provider, model, api_key, base_url, proxy_url, temperature, top_p, ai_profiles_json, active_ai_profile_id, image_profiles_json, active_image_profile_id, image_provider, image_model, image_api_key, image_base_url, vision_profile_name, vision_profiles_json, active_vision_profile_id, vision_provider, vision_model, vision_api_key, vision_base_url, vision_saved_models_json, speech_profile_name, speech_profiles_json, active_speech_profile_id, speech_provider, speech_model, speech_api_key, speech_base_url, speech_saved_models_json, auto_save_interval, editor_font, editor_minimap, ui_scale, dark_mode, dark_mode_style, ai_timeout_seconds, theme_color_intensity, recycle_bin_settings_json, deleted_builtin_agent_ids_json)
+    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT deleted_builtin_agent_ids_json FROM app_settings WHERE id = 1), '[]'))
     ON CONFLICT(id) DO UPDATE SET
       theme = excluded.theme,
       selected_project_id = excluded.selected_project_id,
@@ -2229,7 +2238,8 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
       dark_mode = excluded.dark_mode,
       dark_mode_style = excluded.dark_mode_style,
       ai_timeout_seconds = excluded.ai_timeout_seconds,
-      theme_color_intensity = excluded.theme_color_intensity
+      theme_color_intensity = excluded.theme_color_intensity,
+      recycle_bin_settings_json = excluded.recycle_bin_settings_json
     `).run(
       payload.theme,
       payload.selectedProjectId,
@@ -2272,7 +2282,8 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
       normalizedAppSettings.darkMode ? 1 : 0,
       normalizedAppSettings.darkModeStyle,
       normalizedAppSettings.aiTimeoutSeconds,
-      normalizedAppSettings.themeColorIntensity ?? 0.5
+      normalizedAppSettings.themeColorIntensity ?? 0.5,
+      JSON.stringify(normalizedAppSettings.recycleBinSettings ?? {})
     )
 
     // 删除不再存在于 payload 中的孤儿行
@@ -2328,8 +2339,8 @@ export function writeAppSettingsRow(
 ): void {
   const normalized = normalizeAppSettings(settings)
   db.prepare(`
-    INSERT INTO app_settings (id, theme, selected_project_id, provider, model, api_key, base_url, proxy_url, temperature, top_p, ai_profiles_json, active_ai_profile_id, image_profiles_json, active_image_profile_id, image_provider, image_model, image_api_key, image_base_url, vision_profile_name, vision_profiles_json, active_vision_profile_id, vision_provider, vision_model, vision_api_key, vision_base_url, vision_saved_models_json, speech_profile_name, speech_profiles_json, active_speech_profile_id, speech_provider, speech_model, speech_api_key, speech_base_url, speech_saved_models_json, auto_save_interval, editor_font, editor_minimap, ui_scale, dark_mode, dark_mode_style, ai_timeout_seconds, theme_color_intensity)
-    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO app_settings (id, theme, selected_project_id, provider, model, api_key, base_url, proxy_url, temperature, top_p, ai_profiles_json, active_ai_profile_id, image_profiles_json, active_image_profile_id, image_provider, image_model, image_api_key, image_base_url, vision_profile_name, vision_profiles_json, active_vision_profile_id, vision_provider, vision_model, vision_api_key, vision_base_url, vision_saved_models_json, speech_profile_name, speech_profiles_json, active_speech_profile_id, speech_provider, speech_model, speech_api_key, speech_base_url, speech_saved_models_json, auto_save_interval, editor_font, editor_minimap, ui_scale, dark_mode, dark_mode_style, ai_timeout_seconds, theme_color_intensity, recycle_bin_settings_json)
+    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       theme = excluded.theme,
       selected_project_id = excluded.selected_project_id,
@@ -2371,7 +2382,8 @@ export function writeAppSettingsRow(
       dark_mode = excluded.dark_mode,
       dark_mode_style = excluded.dark_mode_style,
       ai_timeout_seconds = excluded.ai_timeout_seconds,
-      theme_color_intensity = excluded.theme_color_intensity
+      theme_color_intensity = excluded.theme_color_intensity,
+      recycle_bin_settings_json = excluded.recycle_bin_settings_json
   `).run(
     metadata.theme,
     metadata.selectedProjectId,
@@ -2413,6 +2425,7 @@ export function writeAppSettingsRow(
     normalized.darkMode ? 1 : 0,
     normalized.darkModeStyle,
     normalized.aiTimeoutSeconds,
-    normalized.themeColorIntensity ?? 0.5
+    normalized.themeColorIntensity ?? 0.5,
+    JSON.stringify(normalized.recycleBinSettings ?? {})
   )
 }
