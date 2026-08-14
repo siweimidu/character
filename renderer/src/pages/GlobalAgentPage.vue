@@ -18,16 +18,19 @@ import { useMessage } from 'naive-ui'
 import {
   ArrowLeft,
   Brain,
+  Check,
   ChevronDown,
+  ChevronRight,
   FolderTree,
-  MessagesSquare,
   Plug,
   Puzzle,
   Settings,
-  Package
+  Package,
+  Plus
 } from 'lucide-vue-next'
 import type { SurfaceDefinition, TurnTruncateResult } from '@shared/assistant-runtime'
 import AiProviderIcon from '@/components/assistantV2/AiProviderIcon.vue'
+import DeepSeekFishLogo from '@/components/assistantV2/DeepSeekFishLogo.vue'
 import { useAppStore } from '@/stores/app'
 import { useAssistant } from '@/composables/useAssistant'
 import AssistantSessionList from '@/components/assistantV2/AssistantSessionList.vue'
@@ -156,6 +159,50 @@ const activeProvider = computed(() => {
   return profile?.provider || appStore.appSettings.provider || ''
 })
 const activeModel = computed(() => appStore.appSettings.model || '未选模型')
+
+// ============================================================================
+// 模型选择菜单（DeepSeek Harness ModelSelect：Model / Effort 两级下拉）
+// ============================================================================
+type ModelPane = 'root' | 'model' | 'profile'
+const modelMenuOpen = ref(false)
+const modelPane = ref<ModelPane>('root')
+const modelMenuEl = ref<HTMLElement | null>(null)
+
+// 模型列表（与标题栏模型切换器共享同一数据源：当前接口配置下已保存的模型）
+const modelOptionsList = computed(() => {
+  const activeProfile = appStore.appSettings.aiProfiles.find(
+    (p) => p.id === appStore.appSettings.activeAiProfileId
+  )
+  const savedModels = activeProfile?.models?.filter(Boolean) ?? []
+  if (savedModels.length > 0) return savedModels
+  const current = appStore.appSettings.model
+  return current ? [current] : []
+})
+
+const profileOptionsList = computed(() =>
+  appStore.appSettings.aiProfiles.map((p) => ({ id: p.id, name: p.name }))
+)
+
+function toggleModelMenu(): void {
+  modelMenuOpen.value = !modelMenuOpen.value
+  modelPane.value = 'root'
+}
+function onModelMenuDocClick(event: MouseEvent): void {
+  if (!modelMenuOpen.value) return
+  if (modelMenuEl.value && !modelMenuEl.value.contains(event.target as Node)) {
+    modelMenuOpen.value = false
+  }
+}
+function chooseModel(model: string): void {
+  appStore.updateActiveAiProfileModel(model)
+  modelMenuOpen.value = false
+}
+function switchProfile(id: string): void {
+  appStore.switchAiProfile(id)
+  modelMenuOpen.value = false
+}
+
+// ============================================================================
 
 function sendWithMode(intentHint?: string): void {
   void assistant.send({
@@ -330,10 +377,12 @@ onMounted(() => {
   sessionWidth.value = readStoredWidth(SESSION_WIDTH_KEY, SESSION_DEFAULT_WIDTH, SESSION_MIN_WIDTH, SESSION_MAX_WIDTH)
   stageWidth.value = readStoredWidth(STAGE_WIDTH_KEY, STAGE_DEFAULT_WIDTH, STAGE_MIN_WIDTH, STAGE_MAX_WIDTH)
   document.addEventListener('click', onProjectPickerDocClick)
+  document.addEventListener('click', onModelMenuDocClick)
 })
 onBeforeUnmount(() => {
   activeResizeCleanup?.()
   document.removeEventListener('click', onProjectPickerDocClick)
+  document.removeEventListener('click', onModelMenuDocClick)
 })
 
 // 写回暂存变更
@@ -388,10 +437,11 @@ async function copyMessage(text: string): Promise<void> {
         <button type="button" class="ga-back" title="返回主页" @click="appStore.backToProjects()">
           <ArrowLeft :size="16" />
         </button>
-        <div class="ga-brand">
-          <AiProviderIcon :provider="activeProvider" :size="17" class="ga-brand-icon" />
-          <span>全局智能体</span>
-        </div>
+        <button type="button" class="ga-brand" title="新建会话" @click="assistant.createSession()">
+          <DeepSeekFishLogo :size="20" class="ga-brand-icon" />
+          <span class="ga-brand-name">全局智能体</span>
+          <span class="ga-brand-badge">HARNESS</span>
+        </button>
       </div>
 
       <!-- 新建会话（DeepSeek Harness New Session） -->
@@ -401,7 +451,7 @@ async function copyMessage(text: string): Promise<void> {
         title="新建会话"
         @click="assistant.createSession()"
       >
-        <MessagesSquare :size="14" />
+        <Plus :size="14" />
         <span>新建会话</span>
       </button>
 
@@ -478,12 +528,70 @@ async function copyMessage(text: string): Promise<void> {
           </div>
         </div>
 
-        <!-- AI 接口 / 模型指示（与标题栏模型切换器共享数据源） -->
-        <div class="ga-ai-indicator">
-          <AiProviderIcon :provider="activeProvider" :size="14" />
-          <span class="ga-ai-indicator-name">{{ activeProfileName }}</span>
-          <span class="ga-ai-indicator-sep">·</span>
-          <span class="ga-ai-indicator-model">{{ activeModel }}</span>
+        <!-- AI 接口 / 模型选择（DeepSeek Harness ModelSelect 风格，与标题栏共享数据源） -->
+        <div ref="modelMenuEl" class="ga-model-menu-wrap">
+          <button type="button" class="ga-ai-indicator" :class="{ open: modelMenuOpen }" @click="toggleModelMenu">
+            <AiProviderIcon :provider="activeProvider" :size="14" />
+            <span class="ga-ai-indicator-name">{{ activeProfileName }}</span>
+            <span class="ga-ai-indicator-sep">·</span>
+            <span class="ga-ai-indicator-model">{{ activeModel }}</span>
+            <ChevronDown :size="12" class="ga-model-caret" :class="{ open: modelMenuOpen }" />
+          </button>
+
+          <div v-if="modelMenuOpen" class="ga-model-menu" role="menu" @click.stop>
+            <template v-if="modelPane === 'root'">
+              <button type="button" role="menuitem" class="ga-model-cell" @click="modelPane = 'model'">
+                <span class="ga-model-cell-label">模型</span>
+                <span class="ga-model-cell-value">{{ activeModel }}</span>
+                <ChevronRight :size="13" class="ga-model-cell-chevron" />
+              </button>
+              <button type="button" role="menuitem" class="ga-model-cell" @click="modelPane = 'profile'">
+                <span class="ga-model-cell-label">接口</span>
+                <span class="ga-model-cell-value">{{ activeProfileName }}</span>
+                <ChevronRight :size="13" class="ga-model-cell-chevron" />
+              </button>
+            </template>
+
+            <template v-if="modelPane === 'model'">
+              <div class="ga-model-menu-head">选择模型</div>
+              <div class="ga-model-menu-list arc-scrollbar">
+                <button
+                  v-for="m in modelOptionsList"
+                  :key="m"
+                  type="button"
+                  role="menuitemradio"
+                  :aria-checked="activeModel === m"
+                  class="ga-model-option"
+                  :class="{ selected: activeModel === m }"
+                  @click="chooseModel(m)"
+                >
+                  <span class="ga-model-option-name">{{ m }}</span>
+                  <Check v-if="activeModel === m" :size="14" class="ga-model-check" />
+                </button>
+                <div v-if="modelOptionsList.length === 0" class="ga-model-menu-empty">暂无可选模型，请先在接口配置中添加。</div>
+              </div>
+            </template>
+
+            <template v-if="modelPane === 'profile'">
+              <div class="ga-model-menu-head">选择 AI 接口</div>
+              <div class="ga-model-menu-list arc-scrollbar">
+                <button
+                  v-for="p in profileOptionsList"
+                  :key="p.id"
+                  type="button"
+                  role="menuitemradio"
+                  :aria-checked="appStore.appSettings.activeAiProfileId === p.id"
+                  class="ga-model-option"
+                  :class="{ selected: appStore.appSettings.activeAiProfileId === p.id }"
+                  @click="switchProfile(p.id)"
+                >
+                  <span class="ga-model-option-name">{{ p.name }}</span>
+                  <Check v-if="appStore.appSettings.activeAiProfileId === p.id" :size="14" class="ga-model-check" />
+                </button>
+                <div v-if="profileOptionsList.length === 0" class="ga-model-menu-empty">暂无 AI 接口，请先在设置中配置。</div>
+              </div>
+            </template>
+          </div>
         </div>
       </div>
     </div>
@@ -551,12 +659,15 @@ async function copyMessage(text: string): Promise<void> {
       <div v-else class="ga-starter">
         <div class="ga-starter-inner">
           <div class="ga-starter-head">
-            <div class="ga-starter-kicker">全局智能体 · everything is a plugin</div>
-            <h2>需要我为你的创作做点什么？</h2>
+            <div class="ga-starter-hero">
+              <DeepSeekFishLogo :size="34" class="ga-starter-fish" />
+              <h2 class="ga-starter-headline">全局智能体</h2>
+              <span class="ga-starter-preview">Preview</span>
+            </div>
             <p class="ga-starter-sub">
-              我能读写任意文件、写代码、调用 MCP 工具、操作浏览器与桌面应用。
-              所有能力都可在左侧「能力与市场」面板中按插件独立启停，也可从
-              GitHub dsh-plugin 话题导入新插件。
+              需要我为你的创作做点什么？我可以读写任意文件、写代码、调用 MCP 工具、
+              操作浏览器与桌面应用。所有能力都遵循 everything-is-a-plugin 原则，可在
+              左侧「能力与市场」中按插件独立启停，也可从 GitHub dsh-plugin 话题导入新插件。
             </p>
           </div>
 
@@ -663,6 +774,15 @@ async function copyMessage(text: string): Promise<void> {
   --ga-danger: var(--arc-danger);
   --ga-add: var(--arc-success);
   --ga-mono: 'JetBrains Mono', 'Consolas', 'SF Mono', ui-monospace, Menlo, monospace;
+  /* DeepSeek Harness DeepSeek 蓝品牌色（dsh design-platform 提取） */
+  --ga-brand: #4176e6;
+  --ga-brand-soft: #edf3fe;
+  --ga-brand-strong: #284da3;
+  /* Doubao 设计 token（UI 设计 skill） */
+  --ga-radius: 19.2px;
+  --ga-radius-sm: 12px;
+  --ga-muted: #eff1f4;
+  --ga-border: #e7eaef;
   --session-col-width: 260px;
   --stage-col-width: 400px;
   display: grid;
@@ -713,16 +833,43 @@ async function copyMessage(text: string): Promise<void> {
   color: var(--arc-primary);
 }
 .ga-brand {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
+  border: none;
+  background: transparent;
+  padding: 2px 4px;
+  margin: 0;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--arc-text-primary);
+  border-radius: 10px;
+  transition: background 0.15s ease;
+}
+.ga-brand:hover {
+  background: var(--ga-brand-soft);
+}
+.ga-brand-icon {
+  color: var(--ga-brand);
+  flex-shrink: 0;
+}
+.ga-brand-name {
   font-size: 15px;
   font-weight: 700;
   color: var(--arc-text-primary);
   letter-spacing: -0.01em;
+  white-space: nowrap;
 }
-.ga-brand-icon {
-  color: var(--arc-primary);
+.ga-brand-badge {
+  font-family: var(--ga-mono);
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--ga-brand);
+  color: #fff;
+  line-height: 1.2;
 }
 .ga-new-session {
   display: flex;
@@ -731,9 +878,9 @@ async function copyMessage(text: string): Promise<void> {
   gap: 6px;
   margin: 2px 14px 10px;
   padding: 10px 12px;
-  border: 1px solid var(--arc-primary);
+  border: 1px solid var(--ga-brand);
   border-radius: 999px;
-  background: var(--arc-primary);
+  background: var(--ga-brand);
   color: #fff;
   font-size: 12.5px;
   font-weight: 650;
@@ -741,8 +888,9 @@ async function copyMessage(text: string): Promise<void> {
   transition: all 0.15s ease;
 }
 .ga-new-session:hover {
-  background: color-mix(in srgb, var(--arc-primary) 90%, var(--arc-text-primary));
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--arc-primary) 22%, transparent);
+  background: var(--ga-brand-strong);
+  border-color: var(--ga-brand-strong);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--ga-brand) 24%, transparent);
 }
 .ga-session-region {
   flex: 1;
@@ -947,6 +1095,9 @@ async function copyMessage(text: string): Promise<void> {
   color: var(--arc-text-hint);
   text-align: center;
 }
+.ga-model-menu-wrap {
+  position: relative;
+}
 .ga-ai-indicator {
   display: flex;
   align-items: center;
@@ -954,20 +1105,38 @@ async function copyMessage(text: string): Promise<void> {
   margin-top: 8px;
   padding: 6px 10px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--arc-primary) 6%, var(--arc-bg-surface));
-  border: 1px solid color-mix(in srgb, var(--arc-primary) 14%, var(--arc-border));
+  background: color-mix(in srgb, var(--ga-brand) 6%, var(--arc-bg-surface));
+  border: 1px solid color-mix(in srgb, var(--ga-brand) 16%, var(--arc-border));
   color: var(--arc-text-secondary);
   font-size: 11px;
   min-width: 0;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.ga-ai-indicator:hover,
+.ga-ai-indicator.open {
+  border-color: color-mix(in srgb, var(--ga-brand) 40%, var(--arc-border));
+  background: color-mix(in srgb, var(--ga-brand) 10%, var(--arc-bg-surface));
+}
+.ga-model-caret {
+  flex: 0 0 auto;
+  color: var(--arc-text-hint);
+  transition: transform 0.18s ease;
+}
+.ga-model-caret.open {
+  transform: rotate(180deg);
 }
 .ga-ai-indicator-name {
   flex: 0 0 auto;
   font-weight: 600;
-  color: var(--arc-primary);
+  color: var(--ga-brand);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 40%;
+  max-width: 38%;
 }
 .ga-ai-indicator-sep {
   flex: 0 0 auto;
@@ -979,6 +1148,114 @@ async function copyMessage(text: string): Promise<void> {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 模型选择菜单（DeepSeek Harness ModelSelect 风格） */
+.ga-model-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  min-width: 200px;
+  overflow: hidden;
+  border: 1px solid var(--arc-border-strong);
+  border-radius: 12px;
+  background: var(--arc-bg-surface);
+  box-shadow: var(--arc-shadow-md);
+}
+.ga-model-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 12px;
+  border: none;
+  border-bottom: 1px solid var(--arc-border);
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.ga-model-cell:hover {
+  background: var(--arc-bg-weak);
+}
+.ga-model-cell-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--arc-text-primary);
+}
+.ga-model-cell-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--arc-text-hint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+.ga-model-cell-chevron {
+  flex: 0 0 auto;
+  color: var(--arc-text-hint);
+}
+.ga-model-menu-head {
+  padding: 8px 12px;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--arc-text-hint);
+  border-bottom: 1px solid var(--arc-border);
+}
+.ga-model-menu-list {
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px;
+}
+.ga-model-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.ga-model-option:hover {
+  background: var(--arc-bg-weak);
+}
+.ga-model-option.selected {
+  background: var(--ga-brand-soft);
+}
+.ga-model-option-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--arc-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ga-model-option.selected .ga-model-option-name {
+  color: var(--ga-brand);
+}
+.ga-model-check {
+  flex: 0 0 auto;
+  color: var(--ga-brand);
+}
+.ga-model-menu-empty {
+  padding: 14px 12px;
+  font-size: 12px;
+  color: var(--arc-text-hint);
+  text-align: center;
 }
 
 /* ===== 折叠窄条 ===== */
@@ -1160,27 +1437,44 @@ async function copyMessage(text: string): Promise<void> {
 .ga-starter-head {
   text-align: center;
 }
-.ga-starter-kicker {
-  font-family: var(--ga-mono);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--arc-primary);
-  margin-bottom: 8px;
+.ga-starter-hero {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
 }
-.ga-starter-head h2 {
+.ga-starter-fish {
+  color: var(--ga-brand);
+  flex-shrink: 0;
+}
+.ga-starter-headline {
   margin: 0;
   color: var(--arc-text-primary);
-  font-size: 28px;
-  line-height: 1.15;
-  font-weight: 700;
+  font-size: 30px;
+  line-height: 1.1;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+.ga-starter-preview {
+  font-family: var(--ga-mono);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ga-brand);
+  border: 1px solid color-mix(in srgb, var(--ga-brand) 35%, transparent);
+  background: var(--ga-brand-soft);
+  padding: 3px 8px;
+  border-radius: 999px;
+  align-self: flex-start;
+  margin-top: 2px;
 }
 .ga-starter-sub {
-  margin: 8px auto 0;
-  max-width: 620px;
+  margin: 12px auto 0;
+  max-width: 640px;
   color: var(--arc-text-secondary);
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: 13.5px;
+  line-height: 1.7;
 }
 .ga-quick-title {
   font-size: 11px;
