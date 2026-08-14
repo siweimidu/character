@@ -152,13 +152,13 @@ function handleDismiss(run: AiTaskRun): void {
 }
 
 function handlePause(run: AiTaskRun): void {
-  // 真正中断底层任务：中止当前 LLM 请求，并标记暂停状态。
-  // 底层 LLM 请求被中断后无法真正恢复，暂停实质为停止执行。
+  // 仅冻结任务展示态（进度/耗时/「已暂停」徽标），不中断底层任务执行，
+  // 确保「暂停」不会把任务取消——真正的终止交给「退出」按钮。
   appStore.pauseAiTask(run.key)
 }
 
 function handleResume(run: AiTaskRun): void {
-  // 底层请求已中止无法恢复，仅取消暂停展示态
+  // 恢复任务展示态，继续跟踪进度与耗时
   appStore.resumeAiTask(run.key)
 }
 

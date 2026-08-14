@@ -5137,9 +5137,9 @@ export const useAppStore = defineStore('app', () => {
 
   /**
    * 暂停某条正在运行的任务：
-   * - 展示层：冻结进度与耗时计时，按钮图标切换为播放。
-   * - 底层：真正中断当前 LLM 请求（通过 onCancel 回调或 clientTaskId abort 通道）。
-   * 注：底层 LLM 请求被中断后无法真正恢复，暂停实质为停止执行。
+   * - 展示层：冻结进度与耗时计时，按钮图标切换为播放，面板显示「已暂停」。
+   * - 底层：仅冻结展示状态，不中断底层 LLM 请求，任务继续在后台执行，因此不会被取消。
+   * 注：真正的任务终止应使用「退出」按钮（cancelAiTask）；暂停仅用于让用户暂时移开视线而不丢失工作进度。
    */
   function pauseAiTask(key: string): void {
     const run = aiTaskRuns.value.get(key)
@@ -5147,11 +5147,9 @@ export const useAppStore = defineStore('app', () => {
     replaceTaskRuns((next) => {
       next.set(key, { ...run, paused: true, pausedAt: Date.now() })
     })
-    // 真正中断底层任务：中止当前 LLM 请求
-    cancelAiTask(key)
   }
 
-  /** 继续一条被暂停的任务（底层请求已中止无法真正恢复，仅恢复进度/耗时展示）。 */
+  /** 继续一条被暂停的任务：解除暂停态，恢复进度/耗时展示。 */
   function resumeAiTask(key: string): void {
     const run = aiTaskRuns.value.get(key)
     if (!run || !run.paused) return
@@ -5170,7 +5168,7 @@ export const useAppStore = defineStore('app', () => {
   /** 更新某条正在运行任务的实时进度（0-100），驱动进度面板进度条。 */
   function updateAiTaskProgress(key: string, progress: number): void {
     const run = aiTaskRuns.value.get(key)
-    if (!run || run.stage !== 'running') return
+    if (!run || run.stage !== 'running' || run.paused) return
     const clamped = Math.max(0, Math.min(100, Math.round(progress)))
     if (run.progress === clamped) return
     replaceTaskRuns((next) => {
