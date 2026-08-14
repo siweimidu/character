@@ -32,6 +32,7 @@ export function useChapterSummary(): {
         },
         () =>
           window.characterArc.generateAi(toIpcPayload({
+            clientTaskId: appStore.getClientTaskId(),
             task: 'chapter-summarize',
             settings: appStore.appSettings,
             context: {

@@ -394,6 +394,7 @@ async function handleAiEnhance(): Promise<void> {
       },
       () =>
         window.characterArc.generateAi(toIpcPayload({
+          clientTaskId: appStore.getClientTaskId(),
           task: 'worldview-enhance',
           settings: appStore.appSettings,
           context: {

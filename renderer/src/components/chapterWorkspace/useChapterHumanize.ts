@@ -95,6 +95,7 @@ export function useChapterHumanize(): {
             projectSkills
           })
           return window.characterArc.generateAi(toIpcPayload({
+            clientTaskId: appStore.getClientTaskId(),
             task: 'chapter-assistant',
             settings: appStore.appSettings,
             context

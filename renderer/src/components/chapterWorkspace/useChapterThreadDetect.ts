@@ -58,6 +58,7 @@ export function useChapterThreadDetect(): {
         },
         () =>
           window.characterArc.generateAi(toIpcPayload({
+            clientTaskId: appStore.getClientTaskId(),
             task: 'plot-thread-detect',
             settings: appStore.appSettings,
             context: {

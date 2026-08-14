@@ -5001,7 +5001,8 @@ export const useAppStore = defineStore('app', () => {
     const run: AiTaskRun = {
       ...input,
       startedAt: Date.now(),
-      stage: 'running'
+      stage: 'running',
+      clientTaskId
     }
 
     replaceTaskRuns((next) => {
@@ -5010,6 +5011,11 @@ export const useAppStore = defineStore('app', () => {
 
     try {
       const result = await executor()
+      // 用户点击"退出/暂停"已标记任务为 canceled，此时即使底层请求成功返回，
+      // 也不再把结果交回调用方继续处理（避免已取消任务仍写入业务数据）。
+      if (aiTaskRuns.value.get(input.key)?.stage === 'canceled') {
+        throw new Error('任务已被取消。')
+      }
       finalizeAiTask(input.key, 'done')
       return result
     } catch (error) {
@@ -5028,9 +5034,14 @@ export const useAppStore = defineStore('app', () => {
     return clientTaskIdStack.length ? clientTaskIdStack[clientTaskIdStack.length - 1] : undefined
   }
 
-  function finalizeAiTask(key: string, stage: 'done' | 'error', error?: string): void {
+  function finalizeAiTask(key: string, stage: 'done' | 'error' | 'canceled', error?: string): void {
     const existing = aiTaskRuns.value.get(key)
     if (!existing) {
+      return
+    }
+
+    // 任务已被用户明确取消/暂停，忽略迟到的终态覆盖（如 abort 后 executor 抛错触发的 error）。
+    if (existing.stage === 'canceled') {
       return
     }
 
@@ -5063,17 +5074,43 @@ export const useAppStore = defineStore('app', () => {
     })
   }
 
-  /** 触发某条任务的取消回调（如果提供了） */
+  /**
+   * 退出/停止某条运行中的任务：
+   * - 优先调用任务自带 onCancel 回调；
+   * - 若任务携带 clientTaskId，则通过主进程 abort 通道中断底层 IPC 请求；
+   * - 立即将任务标记为 canceled，让进度面板及时反映停止状态。
+   */
   function cancelAiTask(key: string): void {
     const run = aiTaskRuns.value.get(key)
-    if (!run || run.stage !== 'running' || !run.onCancel) {
+    if (!run || run.stage !== 'running') {
       return
     }
 
-    try {
-      run.onCancel()
-    } catch (error) {
-      console.error('[aiTasks] cancel handler failed:', error)
+    // 优先执行任务自带的 onCancel 回调（如章节初稿的内部中止逻辑）
+    if (run.onCancel) {
+      try {
+        run.onCancel()
+      } catch (error) {
+        console.error('[aiTasks] cancel handler failed:', error)
+      }
+    }
+
+    // 若无 onCancel 或同时携带了 clientTaskId，则通过主进程 abort 通道中断底层 IPC 请求，
+    // 确保退出/暂停按钮对未提供 onCancel 的任务也能真正停止底层执行。
+    if (run.clientTaskId) {
+      void window.characterArc.cancelAiTask(run.clientTaskId).catch((err) => {
+        console.error('[aiTasks] abort underlying IPC failed:', err)
+      })
+    }
+
+    // 立即将任务标记为已取消，让面板及时反映停止状态，
+    // 避免 executor 迟到的 error 终态把面板变成"失败"。
+    const current = aiTaskRuns.value.get(key)
+    if (current && current.stage === 'running') {
+      const finishedAt = Date.now()
+      replaceTaskRuns((next) => {
+        next.set(key, { ...current, stage: 'canceled', finishedAt, minimized: false })
+      })
     }
   }
 
@@ -5101,7 +5138,7 @@ export const useAppStore = defineStore('app', () => {
   /**
    * 暂停某条正在运行的任务：
    * - 展示层：冻结进度与耗时计时，按钮图标切换为播放。
-   * - 底层：真正中断当前 LLM 请求（若任务提供 onCancel 回调，则执行中止）。
+   * - 底层：真正中断当前 LLM 请求（通过 onCancel 回调或 clientTaskId abort 通道）。
    * 注：底层 LLM 请求被中断后无法真正恢复，暂停实质为停止执行。
    */
   function pauseAiTask(key: string): void {

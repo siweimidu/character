@@ -808,6 +808,7 @@ export function useChapterAi(): {
           label: 'AI 章节助手',
           description: '与智能体对话',
           panel: 'chapters',
+          onCancel: () => { void stop() }
         },
         async () => {
           const currentChapterIndex = appStore.chapters.findIndex((item) => item.id === chapter.id)

@@ -39,6 +39,8 @@ export interface AiTaskRun {
   onCancel?: () => void
   /** 主进程后台任务的运行版本，用于忽略上一轮迟到的终态事件。 */
   runId?: string
+  /** 前端发起 IPC 请求时携带的 clientTaskId，用于主进程按 id 中止底层请求。 */
+  clientTaskId?: string
   /** 实时进度 0-100；缺省时进度面板显示不确定进度（转圈）。 */
   progress?: number
   /** 是否被用户最小化到后台（隐藏任务行但继续执行，不取消）。 */
@@ -106,6 +108,10 @@ export function applyExternalAiTaskEvent(
   }
 
   const next = new Map(current)
+  // 任务已被用户明确取消/暂停，忽略迟到的主进程终态事件覆盖。
+  if (existing?.stage === 'canceled' && event.stage !== 'running') {
+    return next
+  }
   if (event.stage === 'running') {
     next.set(event.taskKey, {
       key: event.taskKey,

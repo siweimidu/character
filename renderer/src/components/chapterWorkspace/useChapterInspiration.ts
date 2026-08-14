@@ -43,6 +43,7 @@ export function useChapterInspiration(): {
         },
         () =>
           window.characterArc.generateAi(toIpcPayload({
+            clientTaskId: appStore.getClientTaskId(),
             task: 'inspiration-pack',
             settings: appStore.appSettings,
             context: {

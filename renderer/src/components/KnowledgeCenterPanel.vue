@@ -539,6 +539,7 @@ async function handleAiNovelGenerate(): Promise<void> {
       },
       () =>
         window.characterArc.generateAi(toIpcPayload({
+          clientTaskId: appStore.getClientTaskId(),
           task: 'ai-novel-from-reference',
           settings: appStore.appSettings,
           context: {

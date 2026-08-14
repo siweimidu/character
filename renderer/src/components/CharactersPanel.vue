@@ -625,6 +625,7 @@ async function handleFullGenerate(): Promise<void> {
       },
       () =>
         window.characterArc.generateAi(toIpcPayload({
+          clientTaskId: appStore.getClientTaskId(),
           task: 'character-card-full',
           settings: appStore.appSettings,
           context: {
@@ -695,6 +696,7 @@ async function handleAiEnhance(): Promise<void> {
       },
       () =>
         window.characterArc.generateAi(toIpcPayload({
+          clientTaskId: appStore.getClientTaskId(),
           task: 'character-enhance',
           settings: appStore.appSettings,
           context: {

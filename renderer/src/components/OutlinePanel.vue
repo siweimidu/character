@@ -67,6 +67,7 @@ async function handleAutoCreateOutline(): Promise<void> {
       },
       () =>
         window.characterArc.generateAi(toIpcPayload({
+          clientTaskId: appStore.getClientTaskId(),
           task: 'project-bootstrap',
           settings: appStore.appSettings,
           context: {
@@ -616,6 +617,7 @@ async function doExpandOutline(count: number): Promise<void> {
         },
         () =>
           window.characterArc.generateAi(toIpcPayload({
+            clientTaskId: appStore.getClientTaskId(),
             task: 'outline-enhance',
             settings: appStore.appSettings,
             context: {
@@ -695,6 +697,7 @@ async function doExpandVolumeOutline(volume: OutlineVolume, count = 5): Promise<
       },
       () =>
         window.characterArc.generateAi(toIpcPayload({
+            clientTaskId: appStore.getClientTaskId(),
             task: 'outline-batch',
             settings: appStore.appSettings,
             context: {
@@ -1782,6 +1785,7 @@ async function handleAiEnhanceItem(): Promise<void> {
       },
       () =>
         window.characterArc.generateAi(toIpcPayload({
+          clientTaskId: appStore.getClientTaskId(),
           task: 'outline-enhance',
           settings: appStore.appSettings,
           context: {
@@ -1860,6 +1864,7 @@ async function handleAiEnhanceVolume(): Promise<void> {
       },
       () =>
         window.characterArc.generateAi(toIpcPayload({
+          clientTaskId: appStore.getClientTaskId(),
           task: 'outline-enhance',
           settings: appStore.appSettings,
           context: {

@@ -243,6 +243,7 @@ async function generateAllDocuments(): Promise<void> {
       async () => {
         const projectSkills = await loadEnabledProjectSkillsContext(currentProject.value!)
         return window.characterArc.generateAi(toIpcPayload({
+          clientTaskId: appStore.getClientTaskId(),
           task: 'workflow-documents',
           settings: appStore.appSettings,
           context: {

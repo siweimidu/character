@@ -339,6 +339,7 @@ async function handleSeedGenerate(): Promise<void> {
       },
       () =>
         window.characterArc.generateAi(toIpcPayload({
+          clientTaskId: appStore.getClientTaskId(),
           task: 'fanqie-seed',
           settings: appStore.appSettings,
           context: buildSeedContext()

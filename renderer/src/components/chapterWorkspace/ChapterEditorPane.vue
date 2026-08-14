@@ -150,6 +150,7 @@ async function aiGenerateThread(): Promise<void> {
       },
       () =>
         window.characterArc.generateAi(toIpcPayload({
+          clientTaskId: appStore.getClientTaskId(),
           task: 'plot-thread-generate',
           settings: appStore.appSettings,
           context: {

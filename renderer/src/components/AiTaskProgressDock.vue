@@ -152,9 +152,8 @@ function handleDismiss(run: AiTaskRun): void {
 }
 
 function handlePause(run: AiTaskRun): void {
-  // 真正中断底层任务：中止当前 LLM 请求
-  appStore.cancelAiTask(run.key)
-  // 同时标记暂停状态，冻结展示
+  // 真正中断底层任务：中止当前 LLM 请求，并标记暂停状态。
+  // 底层 LLM 请求被中断后无法真正恢复，暂停实质为停止执行。
   appStore.pauseAiTask(run.key)
 }
 

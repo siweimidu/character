@@ -98,6 +98,7 @@ async function generateImportSummary(content: string, title: string): Promise<st
       },
       () =>
         window.characterArc.generateAi(toIpcPayload({
+          clientTaskId: appStore.getClientTaskId(),
           task: 'chapter-summarize',
           settings: appStore.appSettings,
           context: {
