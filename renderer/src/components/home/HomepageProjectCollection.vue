@@ -76,10 +76,10 @@ const displayProjects = computed<ProjectSummary[]>(() => {
   const mode = sortMode.value
   list.sort((a, b) => {
     if (mode === 'created') {
-      return (b.createdAt || '').localeCompare(a.createdAt || '')
+      return toTimestamp(b.createdAt) - toTimestamp(a.createdAt)
     }
     if (mode === 'edited') {
-      return (b.lastEdited || '').localeCompare(a.lastEdited || '')
+      return toTimestamp(b.lastEdited) - toTimestamp(a.lastEdited)
     }
     if (mode === 'wordCount') {
       return parseWordCount(b.wordCount) - parseWordCount(a.wordCount)
@@ -90,6 +90,15 @@ const displayProjects = computed<ProjectSummary[]>(() => {
   return list
 })
 
+/** 把 ISO 时间戳（或“刚刚更新”等占位文案）解析为可比较的毫秒数，非法值一律按 0 处理 */
+function toTimestamp(value?: string): number {
+  const raw = (value || '').trim()
+  if (!raw) return 0
+  const time = new Date(raw).getTime()
+  return Number.isNaN(time) ? 0 : time
+}
+
+/** 从“1,234 字”“待统计”等展示文本中解析出纯数字，用于按字数比较 */
 function parseWordCount(value?: string): number {
   const cleaned = (value || '').replace(/[^0-9]/g, '')
   return cleaned ? Number(cleaned) : 0
@@ -321,6 +330,8 @@ function isDragging(projectId: string): boolean {
         name="project-grid-move"
         tag="div"
         class="project-grid"
+        @dragover.prevent
+        @drop.prevent="handleDrop"
       >
         <HomepageProjectCard
           v-for="(project, index) in displayProjects"
@@ -510,9 +521,18 @@ function isDragging(projectId: string): boolean {
   gap: 14px;
 }
 
-/* transition-group 的弹性位移动画（FLIP），拖拽时卡片会弹性地让位 */
-.project-grid-move {
-  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+/* transition-group 的弹性位移动画（FLIP），拖拽时卡片会弹性地让位。
+   注意：transition-group 的 name="project-grid-move" 时，移动过渡应用的是
+   project-grid-move-move 这个类（Vue 会在 name 后拼 -move）。 */
+.project-grid-move-move {
+  transition: transform 0.3s cubic-bezier(0.34, 1.3, 0.4, 1);
+  will-change: transform;
+}
+
+/* 拖拽排序时卡片让位/归位都走 transform，避免触发昂贵的布局与重绘 */
+.project-grid-move-enter-active,
+.project-grid-move-leave-active {
+  transition: opacity 0.18s ease, transform 0.3s cubic-bezier(0.34, 1.3, 0.4, 1);
 }
 
 @media (max-width: 820px) {

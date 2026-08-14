@@ -302,9 +302,17 @@ const emit = defineEmits<{
 .homepage-project-card.is-draggable:hover .drag-handle {
   opacity: 1;
   transform: translateY(0) scale(1);
+  background: color-mix(in srgb, var(--arc-primary) 12%, var(--arc-bg-surface));
+  color: var(--arc-primary);
 }
 
 .drag-handle:active {
+  cursor: grabbing;
+}
+
+.homepage-project-card.is-dragging .drag-handle {
+  opacity: 1;
+  transform: translateY(0) scale(1.05);
   cursor: grabbing;
 }
 
@@ -314,11 +322,11 @@ const emit = defineEmits<{
 
 .homepage-project-card.is-dragging {
   cursor: grabbing;
-  opacity: 0.45;
+  opacity: 0.55;
   border-color: var(--arc-primary);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.14);
-  transform: scale(1.02) rotate(0.5deg);
-  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.18s;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.2);
+  transform: scale(1.04) rotate(1deg);
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.18s, box-shadow 0.2s;
   z-index: 3;
 }
 
