@@ -7,7 +7,7 @@ import { useAppStore } from '@/stores/app'
 
 const appStore = useAppStore()
 function backToProjectCenter(): void {
-  appStore.backToProjects()
+  appStore.navigateBack()
 }
 </script>
 

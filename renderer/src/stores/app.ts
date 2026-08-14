@@ -279,6 +279,8 @@ export const useAppStore = defineStore('app', () => {
   const windowVisible = ref(true)
   /** 当前视图：项目列表 / 新建向导 / 工作台 / 章节写作 / 独立能力页 */
   const currentView = ref<'projects' | 'wizard' | 'continuation-import' | 'workbench' | 'chapter-studio' | 'deconstruction-library' | 'skills' | 'cover-workbench' | 'fanqie-trends' | 'recycle-bin' | 'global-agent'>('projects')
+  /** 视图导航历史栈，用于“返回”按钮回到上一个页面（标题栏最左侧的返回主页按钮除外） */
+  const navHistory = ref<Array<'projects' | 'wizard' | 'continuation-import' | 'workbench' | 'chapter-studio' | 'deconstruction-library' | 'skills' | 'cover-workbench' | 'fanqie-trends' | 'recycle-bin' | 'global-agent'>>([])
   /** 从番茄风向标等入口携带初始数据进入新建向导时的预填内容 */
   const wizardPrefill = ref<WizardPrefill | null>(null)
   /** 工作台中当前激活的面板 */
@@ -1224,14 +1226,14 @@ export const useAppStore = defineStore('app', () => {
   /** 打开拆书知识库独立页面（全局库，不依赖项目） */
   function openDeconstructionLibrary(): void {
     pendingChapterInsertion.value = null
-    currentView.value = 'deconstruction-library'
+    navigate('deconstruction-library')
     schedulePersist('fast')
   }
 
   /** 打开番茄风向标独立页面（全局功能，不依赖项目） */
   function openFanqieTrends(): void {
     pendingChapterInsertion.value = null
-    currentView.value = 'fanqie-trends'
+    navigate('fanqie-trends')
   }
 
 
@@ -1246,7 +1248,7 @@ export const useAppStore = defineStore('app', () => {
       syncSelectedChapter(targetProject.id)
     }
 
-    currentView.value = 'skills'
+    navigate('skills')
     schedulePersist('fast')
   }
 
@@ -1261,7 +1263,7 @@ export const useAppStore = defineStore('app', () => {
       syncSelectedChapter(targetProject.id)
     }
 
-    currentView.value = 'cover-workbench'
+    navigate('cover-workbench')
     schedulePersist('fast')
   }
 
@@ -1303,23 +1305,37 @@ export const useAppStore = defineStore('app', () => {
   /** 打开全局智能体独立页面（全局功能，不依赖具体项目，可跨项目批量操作） */
   function openGlobalAgent(): void {
     pendingChapterInsertion.value = null
-    currentView.value = 'global-agent'
+    navigate('global-agent')
   }
 
   function backToProjects(): void {
     currentView.value = 'projects'
   }
 
+  /** 记录一次视图跳转：将当前视图压入导航历史栈后再切换，供“返回”回到上一个页面 */
+  function navigate(view: typeof currentView.value): void {
+    if (currentView.value !== view) {
+      navHistory.value.push(currentView.value)
+    }
+    currentView.value = view
+  }
+
+  /** 返回上一个页面；若没有历史记录则回落到项目主页 */
+  function navigateBack(): void {
+    const prev = navHistory.value.pop()
+    currentView.value = prev ?? 'projects'
+  }
+
   /** 打开新建项目向导 */
   function openWizard(): void {
     wizardPrefill.value = null
-    currentView.value = 'wizard'
+    navigate('wizard')
   }
 
   /** 携带预填数据打开新建项目向导（番茄风向标等入口使用） */
   function openWizardWithPrefill(prefill: WizardPrefill): void {
     wizardPrefill.value = prefill
-    currentView.value = 'wizard'
+    navigate('wizard')
   }
 
   /** 读取并清空向导预填数据，返回是否消费成功（供向导在挂载时调用） */
@@ -1334,9 +1350,9 @@ export const useAppStore = defineStore('app', () => {
     currentView.value = 'continuation-import'
   }
 
-  /** 关闭向导，返回项目列表 */
+  /** 关闭向导，返回上一个页面（若从全局智能体进入新建项目，则返回全局智能体） */
   function closeWizard(): void {
-    currentView.value = 'projects'
+    navigateBack()
   }
 
   // ── 项目 CRUD ──
@@ -5198,6 +5214,9 @@ export const useAppStore = defineStore('app', () => {
     openRecycleBin,
     backToProjects,
     openGlobalAgent,
+    navigate,
+    navigateBack,
+    navHistory,
     selectProject,
     backToWorkbench,
     chapterVersions,

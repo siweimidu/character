@@ -274,6 +274,9 @@ const grouped = computed(() => {
 
 <style scoped>
 .session-list {
+  /* 定义危险色变量，确保本组件在任意父级（含 GlobalAgentPage）下均可用，避免悬浮/删除按钮透明 */
+  --v2-danger: #b91c1c;
+  --v2-danger-soft: rgba(185, 28, 28, 0.06);
   display: flex;
   flex-direction: column;
   min-height: 0;

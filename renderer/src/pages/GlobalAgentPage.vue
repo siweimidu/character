@@ -29,8 +29,7 @@ import {
   PanelLeftOpen,
   Plug,
   Plus,
-  Puzzle,
-  Settings2
+  Puzzle
 } from 'lucide-vue-next'
 import type { SurfaceDefinition, TurnTruncateResult } from '@shared/assistant-runtime'
 import AiProviderIcon from '@/components/assistantV2/AiProviderIcon.vue'
@@ -97,10 +96,6 @@ const SETTINGS_TABS: Array<{ key: SettingsTab; label: string; icon: unknown }> =
   { key: 'mcp', label: 'MCP 市场', icon: Plug },
   { key: 'plugins', label: '插件市场', icon: Package }
 ]
-function openSettings(tab?: SettingsTab): void {
-  if (tab) settingsTab.value = tab
-}
-
 // 创作记忆 / 引用选择对话框
 const memoryDialogVisible = ref(false)
 const referencePickerVisible = ref(false)
@@ -402,7 +397,7 @@ function handleDeleteProject(projectId: string): void {
           <span class="ga-brand-name">全局智能体</span>
           <span class="ga-brand-badge">HARNESS</span>
         </button>
-        <button type="button" class="ga-back" title="返回主页" @click="appStore.backToProjects()">
+        <button type="button" class="ga-back" title="返回上一个页面" @click="appStore.navigateBack()">
           <ArrowLeft :size="16" />
         </button>
       </div>
@@ -436,9 +431,9 @@ function handleDeleteProject(projectId: string): void {
       <!-- 侧栏底部 -->
       <div class="ga-sidebar-foot">
         <!-- 项目上下文选择器 -->
-        <div ref="projectPickerEl" class="ga-ctx-card">
+        <div ref="projectPickerEl" class="ga-ctx-card" @click="toggleProjectPicker">
           <div class="ga-ctx-label">当前上下文 · 小说项目</div>
-          <button type="button" class="ga-ctx-select" @click="toggleProjectPicker">
+          <button type="button" class="ga-ctx-select">
             <span v-if="currentProject" class="ga-ctx-title">{{ currentProject.title || '未命名小说' }}</span>
             <span v-else class="ga-ctx-title muted">未选择小说</span>
             <ChevronDown :size="13" class="ga-ctx-caret" :class="{ open: projectPickerOpen }" />
@@ -447,7 +442,7 @@ function handleDeleteProject(projectId: string): void {
             {{ currentProject.genre || '未分类' }} · {{ currentProject.novelLength === 'short' ? '短篇' : '长篇' }}
           </div>
 
-          <div v-if="projectPickerOpen" class="ga-ctx-dropdown">
+          <div v-if="projectPickerOpen" class="ga-ctx-dropdown" @click.stop>
             <div class="ga-ctx-dropdown-head">选择小说项目</div>
             <div class="ga-ctx-dropdown-list arc-scrollbar">
               <button
@@ -532,11 +527,7 @@ function handleDeleteProject(projectId: string): void {
           </div>
         </div>
 
-        <!-- 能力与市场入口（打开右栏设置面板） -->
-        <button type="button" class="ga-settings-toggle" @click="openSettings()">
-          <Settings2 :size="15" />
-          <span>能力与市场</span>
-        </button>
+        <!-- 能力与市场入口按钮已按要求隐藏，右栏面板仍可通过右侧标签页访问 -->
       </div>
     </div>
 
@@ -858,27 +849,6 @@ function handleDeleteProject(projectId: string): void {
   gap: 8px;
   flex-shrink: 0;
 }
-.ga-settings-toggle {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 9px 12px;
-  border: 1px solid var(--arc-border);
-  border-radius: 10px;
-  background: var(--arc-bg-surface);
-  color: var(--arc-text-secondary);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  font-family: inherit;
-}
-.ga-settings-toggle:hover {
-  border-color: color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border));
-  color: var(--arc-primary);
-  background: var(--ga-primary-soft);
-}
-
 /* 项目上下文卡片 */
 .ga-ctx-card {
   position: relative;
@@ -886,7 +856,10 @@ function handleDeleteProject(projectId: string): void {
   border-radius: 12px;
   background: var(--arc-bg-weak);
   border: 1px solid var(--arc-border);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
+.ga-ctx-card:hover { border-color: color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border)); }
 .ga-ctx-label {
   font-size: 10.5px;
   letter-spacing: 0.08em;
