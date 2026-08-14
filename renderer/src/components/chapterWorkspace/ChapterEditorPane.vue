@@ -566,6 +566,8 @@ function handleCommandSelect(action: CommandPaletteAction): void {
 }
 
 function handleGlobalKeydown(e: KeyboardEvent): void {
+  // 组合输入（IME）期间不触发任何快捷键/拦截，避免打断中文输入（正文编辑输入文字概率失败）
+  if (e.isComposing) return
   const commandKey = e.ctrlKey || e.metaKey
   if (commandKey && e.shiftKey && e.key.toLowerCase() === 'p') {
     e.preventDefault()

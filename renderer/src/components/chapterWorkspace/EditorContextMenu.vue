@@ -50,6 +50,8 @@ function handleClickOutside(e: MouseEvent): void {
 }
 
 function handleKeydown(e: KeyboardEvent): void {
+  // 组合输入（IME）期间不拦截按键
+  if (e.isComposing) return
   if (e.key === 'Escape') {
     e.preventDefault()
     emit('close')

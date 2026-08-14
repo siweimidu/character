@@ -479,6 +479,9 @@ function handleDrop(event: DragEvent): void {
 }
 
 function handleKeydown(event: KeyboardEvent) {
+  // 中文输入法组合输入（IME）进行中：不做任何按键拦截，避免阻断候选字选择/上屏，
+  // 仅放行，否则方向键/回车被 preventDefault 会导致输入法选字失败（输入文字“概率失败”）。
+  if (event.isComposing) return
   // 斜杠菜单打开时的导航
   if (slashOpen.value && slashMatches.value.length > 0) {
     if (event.key === 'ArrowDown') {

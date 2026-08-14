@@ -279,6 +279,7 @@ function handleImportExportAction(key: string | number): void {
 
 // 清空选中（ESC 键）
 useEventListener('keydown', (e: KeyboardEvent) => {
+  if (e.isComposing) return
   if (e.key === 'Escape' && selectedOutlineIds.value.size > 0) {
     selectedOutlineIds.value.clear()
     isSelectionModeActive.value = false

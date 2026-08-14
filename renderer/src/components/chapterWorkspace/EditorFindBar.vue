@@ -135,6 +135,8 @@ function handleClose(): void {
 }
 
 function handleKeydown(e: KeyboardEvent): void {
+  // 组合输入（IME）期间不拦截按键，避免阻断输入法候选字选择/上屏
+  if (e.isComposing) return
   if (e.key === 'Escape') {
     e.preventDefault()
     handleClose()

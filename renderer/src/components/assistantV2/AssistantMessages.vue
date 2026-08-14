@@ -454,6 +454,8 @@ function handleEditInput(event: Event): void {
 }
 
 function handleEditKeydown(event: KeyboardEvent): void {
+  // 组合输入（IME）期间不拦截按键，避免阻断输入法选字
+  if (event.isComposing) return
   if (event.key === 'Escape') {
     event.preventDefault()
     emit('edit-cancel')

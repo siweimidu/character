@@ -309,6 +309,8 @@ function isEditableTarget(target: EventTarget | null): boolean {
 }
 
 function handleKeydown(event: KeyboardEvent): void {
+  // 组合输入（IME）期间不拦截按键，避免阻断输入法选字
+  if (event.isComposing) return
   // F 键进入/退出图谱全屏，避免在输入场景中触发
   if (event.key.toLowerCase() !== 'f' || event.ctrlKey || event.metaKey || event.altKey) {
     return

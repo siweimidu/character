@@ -196,6 +196,8 @@ function jumpToThread(threadId: string): void {
 }
 
 function handleKeydown(event: KeyboardEvent): void {
+  // 组合输入（IME）期间不触发 F11/Escape 等全局快捷键，避免打断中文输入
+  if (event.isComposing) return
   if (event.key === 'F11') {
     event.preventDefault()
     toggleFocus()

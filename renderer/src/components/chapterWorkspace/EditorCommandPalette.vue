@@ -49,6 +49,8 @@ function run(action: CommandPaletteAction | undefined): void {
 }
 
 function onKeydown(e: KeyboardEvent): void {
+  // 组合输入（IME）期间不拦截按键，避免阻断输入法候选字选择/上屏
+  if (e.isComposing) return
   if (e.key === 'ArrowDown') {
     e.preventDefault()
     move(1)

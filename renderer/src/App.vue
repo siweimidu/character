@@ -158,6 +158,8 @@ function toggleDarkMode(): void {
 
 // Ctrl+S 全局保存快捷键
 async function handleGlobalKeydown(e: KeyboardEvent) {
+  // 组合输入（IME）期间不触发 Ctrl+S 全局保存，避免打断中文输入
+  if (e.isComposing) return
   if ((e.ctrlKey || e.metaKey) && e.key === 's') {
     e.preventDefault()
     await appStore.persistWorkspace()
