@@ -948,7 +948,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
   gap: 6px;
   font-size: 11.5px;
   color: #b45309;
-  font-family: monospace;
+  font-family: var(--v2-mono);
   background: var(--arc-bg-surface);
   padding: 4px 10px;
   border-radius: 999px;

@@ -536,7 +536,7 @@ function bindTarget(changeId: string, entityId: string): void {
 .target-head {
   margin-bottom: 7px;
   color: var(--arc-text-hint);
-  font-family: var(--v2-mono, monospace);
+  font-family: var(--v2-mono);
   font-size: 10.5px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -585,7 +585,7 @@ function bindTarget(changeId: string, entityId: string): void {
 }
 .review-section-head,
 .compare-head {
-  font-family: var(--v2-mono, monospace);
+  font-family: var(--v2-mono);
   color: var(--arc-text-hint);
   font-size: 10.5px;
   letter-spacing: 0.06em;
@@ -600,7 +600,7 @@ function bindTarget(changeId: string, entityId: string): void {
 .review-diff-line {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr);
-  font-family: var(--v2-mono, monospace);
+  font-family: var(--v2-mono);
   font-size: 11.5px;
   line-height: 1.55;
   border-top: 1px solid var(--arc-border);
@@ -656,7 +656,7 @@ function bindTarget(changeId: string, entityId: string): void {
   color: var(--arc-text-secondary);
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: var(--v2-mono, monospace);
+  font-family: var(--v2-mono);
   font-size: 11.5px;
   line-height: 1.6;
 }
@@ -676,11 +676,12 @@ function bindTarget(changeId: string, entityId: string): void {
   gap: 8px;
 }
 .head {
-  padding: 16px 20px 12px;
+  padding: 18px 20px 14px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   border-bottom: 1px solid var(--arc-border);
+  background: linear-gradient(180deg, var(--arc-bg-surface) 0%, color-mix(in srgb, var(--arc-primary) 1.5%, var(--arc-bg-surface)) 100%);
 }
 .title-row {
   display: flex;
@@ -688,13 +689,16 @@ function bindTarget(changeId: string, entityId: string): void {
   justify-content: space-between;
 }
 .title {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 650;
   letter-spacing: -0.01em;
   color: var(--arc-text-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
 }
 .count {
-  font-family: monospace;
+  font-family: var(--v2-mono);
   color: var(--arc-text-hint);
   font-size: 12px;
 }
@@ -710,23 +714,28 @@ function bindTarget(changeId: string, entityId: string): void {
   gap: 4px;
   padding: 3px;
   background: var(--arc-bg-weak);
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid var(--arc-border);
 }
 .filter button {
   flex: 1;
   background: transparent;
   border: none;
-  padding: 5px 8px;
-  border-radius: 6px;
+  padding: 6px 8px;
+  border-radius: 7px;
   font-size: 12px;
+  font-weight: 500;
   color: var(--arc-text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
 }
+.filter button:hover {
+  color: var(--arc-text-primary);
+}
 .filter button.active {
   background: var(--arc-bg-surface);
-  color: var(--arc-text-primary);
+  color: var(--arc-primary);
+  font-weight: 600;
   box-shadow: var(--arc-shadow-sm);
 }
 .list {
@@ -755,14 +764,15 @@ function bindTarget(changeId: string, entityId: string): void {
 .change {
   border: 1px solid var(--arc-border);
   border-radius: var(--v2-radius-card, 16px);
-  padding: 13px 15px;
-  transition: border-color 0.18s ease, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease;
+  padding: 14px 16px;
+  transition: border-color 0.18s ease, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease, background 0.18s ease;
   background: var(--arc-bg-surface);
   animation: cardIn 0.32s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .change:hover {
-  border-color: color-mix(in srgb, var(--arc-primary) 25%, var(--arc-border));
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--arc-text-primary) 6%, transparent);
+  border-color: color-mix(in srgb, var(--arc-primary) 30%, var(--arc-border));
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--arc-text-primary) 7%, transparent);
+  transform: translateY(-1px);
 }
 @keyframes cardIn {
   from { opacity: 0; transform: translateY(4px); }
@@ -789,7 +799,7 @@ function bindTarget(changeId: string, entityId: string): void {
   margin-bottom: 6px;
 }
 .kind {
-  font-family: var(--v2-mono, monospace);
+  font-family: var(--v2-mono);
   font-size: 10px;
   letter-spacing: 0.04em;
   padding: 3px 8px;
@@ -809,7 +819,7 @@ function bindTarget(changeId: string, entityId: string): void {
 .action-line {
   font-size: 10.5px;
   color: var(--arc-text-hint);
-  font-family: var(--v2-mono, monospace);
+  font-family: var(--v2-mono);
   margin-bottom: 4px;
 }
 .action-line.action-delete {
@@ -828,7 +838,7 @@ strong.action-create {
 .status-pill {
   flex: 0 0 auto;
   font-size: 10px;
-  font-family: var(--v2-mono, monospace);
+  font-family: var(--v2-mono);
   padding: 2px 7px;
   border-radius: 999px;
   background: var(--arc-bg-weak);
@@ -859,7 +869,7 @@ strong.action-create {
   border: 1px solid var(--arc-border);
   border-radius: 8px;
   overflow: hidden;
-  font-family: monospace;
+  font-family: var(--v2-mono);
   font-size: 11.5px;
   line-height: 1.55;
 }
@@ -891,7 +901,7 @@ strong.action-create {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   margin-bottom: 4px;
-  font-family: monospace;
+  font-family: var(--v2-mono);
 }
 .side-body {
   padding: 6px 8px;
@@ -905,18 +915,20 @@ strong.action-create {
   overflow-y: auto;
 }
 .actions {
-  margin-top: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--arc-border);
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
 .foot {
-  padding: 12px 16px 16px;
+  padding: 14px 16px 16px;
   border-top: 1px solid var(--arc-border);
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: var(--arc-bg-surface);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--arc-primary) 1.5%, var(--arc-bg-surface)) 0%, var(--arc-bg-surface) 100%);
 }
 .foot-actions {
   display: flex;
@@ -934,5 +946,13 @@ strong.action-create {
 }
 .commit-btn {
   font-weight: 600;
+  border-radius: var(--v2-radius-btn, 10px);
+}
+.commit-btn:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--arc-primary) 25%, transparent);
+}
+.commit-btn:disabled {
+  opacity: 0.55;
 }
 </style>

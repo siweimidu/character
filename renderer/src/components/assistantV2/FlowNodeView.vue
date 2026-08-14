@@ -389,7 +389,7 @@ function isCollapsed(key: string): boolean {
   font-size: 12px;
   font-weight: 600;
   color: var(--arc-text-primary);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--v2-mono);
 }
 .fn-tool-title em {
   font-style: normal;
@@ -407,7 +407,7 @@ function isCollapsed(key: string): boolean {
   background: var(--arc-bg-weak);
   border-radius: 5px;
   padding: 4px 7px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--v2-mono);
   word-break: break-all;
 }
 .fn-staged {
@@ -427,13 +427,13 @@ function isCollapsed(key: string): boolean {
   padding: 10px 12px;
   overflow-x: auto;
   font-size: 12px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--v2-mono);
 }
 .fn-answer :deep(.markdown-body code) {
   background: var(--arc-bg-weak);
   border-radius: 4px;
   padding: 1px 4px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--v2-mono);
   font-size: 12px;
 }
 .fn-answer :deep(.markdown-body pre code) { background: transparent; padding: 0; }

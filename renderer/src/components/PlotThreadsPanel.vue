@@ -734,9 +734,12 @@ function ensurePriorityCount(value: number | null, key: 'high' | 'medium' | 'low
                 @change="toggleSelectThread(thread.id)"
               />
             </label>
-            <span class="priority-badge" :style="{ color: PRIORITY_MAP[thread.priority].color }">
-              <Flag :size="12" /> {{ PRIORITY_MAP[thread.priority].label }}
-            </span>
+            <div class="type-row">
+              <span class="priority-badge" :style="{ color: PRIORITY_MAP[thread.priority].color }">
+                <Flag :size="12" /> {{ PRIORITY_MAP[thread.priority].label }}
+              </span>
+              <span class="thread-status" :class="`status-${thread.status}`">{{ STATUS_MAP[thread.status].label }}</span>
+            </div>
             <n-dropdown :options="menuOptions" placement="bottom-end" @select="(key: string) => handleMenuSelect(key, thread)">
               <button class="more-button" type="button" title="更多操作" @click.stop>
                 <MoreVertical :size="16" />
@@ -783,9 +786,12 @@ function ensurePriorityCount(value: number | null, key: 'high' | 'medium' | 'low
                 @change="toggleSelectThread(thread.id)"
               />
             </label>
-            <span class="priority-badge" :style="{ color: PRIORITY_MAP[thread.priority].color }">
-              <Flag :size="12" /> {{ PRIORITY_MAP[thread.priority].label }}
-            </span>
+            <div class="type-row">
+              <span class="priority-badge" :style="{ color: PRIORITY_MAP[thread.priority].color }">
+                <Flag :size="12" /> {{ PRIORITY_MAP[thread.priority].label }}
+              </span>
+              <span class="thread-status" :class="`status-${thread.status}`">{{ STATUS_MAP[thread.status].label }}</span>
+            </div>
             <n-dropdown :options="menuOptions" placement="bottom-end" @select="(key: string) => handleMenuSelect(key, thread)">
               <button class="more-button" type="button" title="更多操作" @click.stop>
                 <MoreVertical :size="16" />
@@ -832,6 +838,12 @@ function ensurePriorityCount(value: number | null, key: 'high' | 'medium' | 'low
                 @change="toggleSelectThread(thread.id)"
               />
             </label>
+            <div class="type-row">
+              <span class="priority-badge" :style="{ color: PRIORITY_MAP[thread.priority].color }">
+                <Flag :size="12" /> {{ PRIORITY_MAP[thread.priority].label }}
+              </span>
+              <span class="thread-status" :class="`status-${thread.status}`">{{ STATUS_MAP[thread.status].label }}</span>
+            </div>
             <n-dropdown :options="menuOptions" placement="bottom-end" @select="(key: string) => handleMenuSelect(key, thread)">
               <button class="more-button" type="button" title="更多操作" @click.stop>
                 <MoreVertical :size="16" />
@@ -1223,7 +1235,7 @@ function ensurePriorityCount(value: number | null, key: 'high' | 'medium' | 'low
 
 .thread-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
   gap: 12px;
 }
 
@@ -1284,11 +1296,17 @@ function ensurePriorityCount(value: number | null, key: 'high' | 'medium' | 'low
   background: var(--arc-bg-body);
 }
 
-.card-top {
+.card-top,
+.card-footer,
+.type-row,
+.tag-row {
   display: flex;
+}
+
+.card-top {
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
 }
 
 .card-check {
@@ -1325,14 +1343,45 @@ function ensurePriorityCount(value: number | null, key: 'high' | 'medium' | 'low
   color: var(--arc-text-hint);
 }
 
-.priority-badge {
+.type-row {
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.priority-badge,
+.thread-status {
   display: inline-flex;
   align-items: center;
+  border-radius: 4px;
+  padding: 4px 7px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.priority-badge {
   gap: 3px;
-  font-size: 11px;
-  font-weight: 600;
-  flex-shrink: 0;
-  padding-top: 2px;
+  background: color-mix(in srgb, var(--arc-primary) 8%, var(--arc-bg-mix));
+}
+
+.thread-status {
+  background: var(--arc-bg-mix);
+  color: var(--arc-text-secondary);
+}
+
+.thread-status.status-pending {
+  background: color-mix(in srgb, #eab308 14%, var(--arc-bg-surface));
+  color: color-mix(in srgb, #eab308 70%, var(--arc-text-primary));
+}
+
+.thread-status.status-resolved {
+  background: color-mix(in srgb, #22c55e 14%, var(--arc-bg-surface));
+  color: color-mix(in srgb, #22c55e 70%, var(--arc-text-primary));
+}
+
+.thread-status.status-abandoned {
+  background: var(--arc-bg-mix);
+  color: var(--arc-text-hint);
 }
 
 .more-button {
@@ -1396,12 +1445,12 @@ function ensurePriorityCount(value: number | null, key: 'high' | 'medium' | 'low
 }
 
 .card-footer {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
   margin-top: auto;
   padding-top: 12px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
   color: var(--arc-text-hint);
   font-size: 12px;
 }
@@ -1421,7 +1470,6 @@ function ensurePriorityCount(value: number | null, key: 'high' | 'medium' | 'low
 .meta-time {
   font-size: 11px;
   color: var(--arc-text-hint);
-  margin-left: auto;
 }
 
 .thread-remark {
