@@ -262,9 +262,11 @@ watch(isDarkMode, () => {
 onMounted(async () => {
   await nextTick()
   scheduleGraphRender()
+  window.addEventListener('keydown', handleKeydown)
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleKeydown)
   if (renderFrameId !== null) {
     window.cancelAnimationFrame(renderFrameId)
     renderFrameId = null
@@ -291,6 +293,31 @@ function scheduleGraphRender(): void {
 
 function toggleHighIntensityOnly(): void {
   highIntensityOnly.value = !highIntensityOnly.value
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+  const tagName = target.tagName
+  return (
+    tagName === 'INPUT' ||
+    tagName === 'TEXTAREA' ||
+    tagName === 'SELECT' ||
+    target.isContentEditable
+  )
+}
+
+function handleKeydown(event: KeyboardEvent): void {
+  // F 键进入/退出图谱全屏，避免在输入场景中触发
+  if (event.key.toLowerCase() !== 'f' || event.ctrlKey || event.metaKey || event.altKey) {
+    return
+  }
+  if (isEditableTarget(event.target)) {
+    return
+  }
+  event.preventDefault()
+  toggleFullscreen()
 }
 
 function toggleFullscreen(): void {
@@ -935,7 +962,7 @@ function syncNodeLabels(): void {
             <button class="graph-control-btn" type="button" title="保存为图片" aria-label="保存为图片" @click="saveGraphImage">
               <Camera :size="16" />
             </button>
-            <button class="graph-control-btn" type="button" :title="isFullscreen ? '退出全屏' : '进入全屏'" :aria-label="isFullscreen ? '退出全屏' : '进入全屏'" @click="toggleFullscreen">
+            <button class="graph-control-btn" type="button" :title="isFullscreen ? '退出全屏 (F)' : '进入全屏 (F)'" :aria-label="isFullscreen ? '退出全屏' : '进入全屏'" @click="toggleFullscreen">
               <component :is="isFullscreen ? Minimize2 : Maximize2" :size="16" />
             </button>
           </div>
