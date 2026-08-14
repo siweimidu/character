@@ -2,7 +2,7 @@
 import { computed, h, ref, watch } from 'vue'
 import { NButton, NEmpty } from 'naive-ui'
 import type { DropdownOption } from 'naive-ui'
-import { Check, CheckSquare, ChevronsUpDown, GripHorizontal, Square, Trash2, Wand2, X } from 'lucide-vue-next'
+import { Check, CheckSquare, ChevronsUpDown, Square, Trash2, Wand2, X } from 'lucide-vue-next'
 import type { ProjectSummary } from '@/types/app'
 import { useAppStore } from '@/stores/app'
 import HomepageProjectCard from './HomepageProjectCard.vue'
@@ -181,83 +181,106 @@ function handleBatchDelete(): void {
   emit('batchDelete', Array.from(selectedIds.value))
 }
 
-// ---------- 手动拖拽排序 ----------
-function handleDragStart(event: DragEvent, projectId: string): void {
-  // 批量管理模式下禁止拖拽；其余情况下允许拖拽，拖拽即自动进入手动排序
-  if (selectMode.value) {
-    event.preventDefault()
-    return
+// ---------- 手动拖拽排序（基于 Pointer Events，比原生 HTML5 拖拽更可靠） ----------
+interface DragState {
+  active: boolean
+  pointerId: number
+  id: string
+  startX: number
+  startY: number
+  moved: boolean
+}
+
+const dragState = ref<DragState | null>(null)
+/** 拖拽结束抬起后，是否要吞掉随之而来的 click，避免误打开项目 */
+const suppressClick = ref(false)
+
+function handlePointerDown(event: PointerEvent, projectId: string): void {
+  // 批量管理模式下禁止拖拽；仅左键
+  if (selectMode.value || event.button !== 0) return
+  // 阻止默认行为，避免触发文本选择 / 原生 HTML5 拖拽 / 图像拖拽
+  event.preventDefault()
+  dragState.value = {
+    active: true,
+    pointerId: event.pointerId,
+    id: projectId,
+    startX: event.clientX,
+    startY: event.clientY,
+    moved: false
   }
-  if (sortMode.value !== 'manual') {
-    // 以当前展示顺序作为手动排序的初始基准，避免切换瞬间列表跳动
+  // 在 window 上监听移动与抬起，保证拖出卡片边界后仍能持续响应
+  window.addEventListener('pointermove', handleWindowPointerMove)
+  window.addEventListener('pointerup', handleWindowPointerUp)
+  window.addEventListener('pointercancel', handleWindowPointerUp)
+}
+
+function handleWindowPointerMove(event: PointerEvent): void {
+  const ds = dragState.value
+  if (!ds || !ds.active || event.pointerId !== ds.pointerId) return
+  const dx = event.clientX - ds.startX
+  const dy = event.clientY - ds.startY
+  // 小于阈值视为点击，不启动拖拽，避免误进入手动排序
+  if (!ds.moved && Math.hypot(dx, dy) < 6) return
+  if (!ds.moved) {
+    ds.moved = true
+    // 首次移动即进入手动排序：以当前展示顺序作为基准，避免切换瞬间列表跳动
     isDragInit = true
     manualList.value = [...displayProjects.value]
     appStore.setProjectSortMode('manual')
+    draggingId.value = ds.id
   }
-  draggingId.value = projectId
-  event.dataTransfer?.setData('text/plain', projectId)
-  event.dataTransfer!.effectAllowed = 'move'
-  // 让拖拽快照更轻量
-  if (event.dataTransfer?.setDragImage && event.currentTarget instanceof HTMLElement) {
-    const ghost = event.currentTarget.cloneNode(true) as HTMLElement
-    ghost.style.opacity = '0.4'
-    ghost.style.width = '240px'
-    document.body.appendChild(ghost)
-    event.dataTransfer.setDragImage(ghost, 120, 20)
-    // 动画结束后移除幽灵元素，避免残留
-    requestAnimationFrame(() => {
-      if (ghost.parentNode) {
-        ghost.parentNode.removeChild(ghost)
-      }
-    })
-  }
+  reorderOnMove(event.clientX, event.clientY)
 }
 
-function handleDragOver(event: DragEvent, targetId: string): void {
-  if (sortMode.value !== 'manual' || !draggingId.value || draggingId.value === targetId) {
-    return
-  }
-  event.preventDefault()
-  event.dataTransfer!.dropEffect = 'move'
+/** 根据指针当前所在的卡片，实时重排 manualList */
+function reorderOnMove(x: number, y: number): void {
+  const ds = dragState.value
+  if (!ds || !ds.active || !ds.moved) return
+  const el = document.elementFromPoint(x, y) as HTMLElement | null
+  const card = el?.closest('.homepage-project-card') as HTMLElement | null
+  const targetId = card?.dataset.projectId
+  if (!targetId || targetId === ds.id) return
 
-  const fromIndex = manualList.value.findIndex((p) => p.id === draggingId.value)
+  const fromIndex = manualList.value.findIndex((p) => p.id === ds.id)
   const toIndex = manualList.value.findIndex((p) => p.id === targetId)
   if (fromIndex < 0 || toIndex < 0) return
 
-  // 根据鼠标落在目标卡片的上/下半，决定插入到目标之前还是之后
-  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  const belowMid = event.clientY > rect.top + rect.height / 2
-  let insertAt = toIndex
-  if (belowMid) {
-    insertAt = toIndex + 1
-  }
+  const rect = card.getBoundingClientRect()
+  const belowMid = y > rect.top + rect.height / 2
+  let insertAt = belowMid ? toIndex + 1 : toIndex
   if (fromIndex < toIndex) {
     insertAt -= 1
   }
-  if (insertAt === fromIndex || insertAt === fromIndex + 1) {
-    return
-  }
+  if (insertAt === fromIndex || insertAt === fromIndex + 1) return
+
   const next = [...manualList.value]
   const [moved] = next.splice(fromIndex, 1)
   next.splice(Math.max(0, Math.min(insertAt, next.length)), 0, moved)
   manualList.value = next
 }
 
-function handleDrop(event: DragEvent): void {
-  event.preventDefault()
-  commitManualOrder()
+function handleWindowPointerUp(event: PointerEvent): void {
+  const ds = dragState.value
+  if (!ds || event.pointerId !== ds.pointerId) return
+  window.removeEventListener('pointermove', handleWindowPointerMove)
+  window.removeEventListener('pointerup', handleWindowPointerUp)
+  window.removeEventListener('pointercancel', handleWindowPointerUp)
+  // 真正发生了拖拽：吞掉紧随其后的 click，并提交最终顺序
+  suppressClick.value = ds.moved
+  if (ds.moved && draggingId.value) {
+    const orderedIds = manualList.value.map((p) => p.id)
+    emit('reorder', orderedIds)
+  }
+  draggingId.value = null
+  dragState.value = null
+  // click 事件随后触发，处理完后再复位抑制标记
+  requestAnimationFrame(() => {
+    suppressClick.value = false
+  })
 }
 
-function handleDragEnd(): void {
-  draggingId.value = null
-}
-
-/** 拖拽结束后把最终顺序持久化到 store */
-function commitManualOrder(): void {
-  if (!draggingId.value) return
-  const orderedIds = manualList.value.map((p) => p.id)
-  emit('reorder', orderedIds)
-  draggingId.value = null
+function handleClickConsumed(): void {
+  suppressClick.value = false
 }
 
 function isDragging(projectId: string): boolean {
@@ -330,8 +353,6 @@ function isDragging(projectId: string): boolean {
         name="project-grid-move"
         tag="div"
         class="project-grid"
-        @dragover.prevent
-        @drop.prevent="handleDrop"
       >
         <HomepageProjectCard
           v-for="(project, index) in displayProjects"
@@ -343,19 +364,14 @@ function isDragging(projectId: string): boolean {
           :selected="selectedIds.has(project.id)"
           :draggable="!selectMode"
           :is-dragging="isDragging(project.id)"
+          :suppress-click="suppressClick"
           @open="emit('open', $event)"
           @menu-select="(action, projectId) => emit('menuSelect', action, projectId)"
           @toggle-select="toggleSelect"
-          @drag-start="handleDragStart"
-          @drag-over="handleDragOver"
-          @drop="handleDrop"
-          @drag-end="handleDragEnd"
+          @pointer-down="handlePointerDown"
+          @click-consumed="handleClickConsumed"
         />
       </transition-group>
-      <p v-if="sortMode === 'manual'" class="manual-sort-hint">
-        <GripHorizontal :size="13" />
-        手动排序已开启：鼠标悬浮在作品卡片上，拖动即可调整顺序
-      </p>
     </template>
   </section>
 </template>
@@ -487,15 +503,6 @@ function isDragging(projectId: string): boolean {
   color: var(--arc-text-hint);
   font-size: 12px;
   padding: 0 4px;
-}
-
-.manual-sort-hint {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 10px 0 0;
-  color: var(--arc-text-hint);
-  font-size: 12px;
 }
 
 .homepage-empty-state {

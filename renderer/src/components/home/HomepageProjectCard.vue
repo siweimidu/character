@@ -16,17 +16,29 @@ const props = defineProps<{
   selected?: boolean
   draggable?: boolean
   isDragging?: boolean
+  suppressClick?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'open', projectId: string): void
   (e: 'menuSelect', action: string | number, projectId: string): void
   (e: 'toggleSelect', projectId: string): void
-  (e: 'dragStart', payload: DragEvent, projectId: string): void
-  (e: 'dragOver', payload: DragEvent, projectId: string): void
-  (e: 'drop', payload: DragEvent): void
-  (e: 'dragEnd', payload: DragEvent): void
+  (e: 'pointerDown', payload: PointerEvent, projectId: string): void
+  (e: 'clickConsumed'): void
 }>()
+
+/** 卡片点击：若正处于拖拽后抬起，则忽略本次点击，避免误打开项目 */
+function handleCardClick(): void {
+  if (props.suppressClick) {
+    emit('clickConsumed')
+    return
+  }
+  if (props.selectMode) {
+    emit('toggleSelect', props.project.id)
+  } else {
+    emit('open', props.project.id)
+  }
+}
 </script>
 
 <template>
@@ -34,12 +46,9 @@ const emit = defineEmits<{
     class="homepage-project-card"
     :class="{ 'is-select-mode': selectMode, 'is-selected': selected, 'is-dragging': isDragging, 'is-draggable': draggable }"
     :style="animationDelay ? { animationDelay } : undefined"
-    :draggable="draggable || undefined"
-    @click="selectMode ? emit('toggleSelect', project.id) : emit('open', project.id)"
-    @dragstart="(e) => emit('dragStart', e, project.id)"
-    @dragover="(e) => emit('dragOver', e, project.id)"
-    @drop="(e) => emit('drop', e)"
-    @dragend="(e) => emit('dragEnd', e)"
+    :data-project-id="project.id"
+    @click="handleCardClick"
+    @pointerdown="(e) => emit('pointerDown', e, project.id)"
   >
     <div class="drag-handle" title="拖动调整顺序" @click.stop @mousedown.stop>
       <GripHorizontal :size="14" />
