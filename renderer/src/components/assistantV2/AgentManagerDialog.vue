@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { Upload, X } from 'lucide-vue-next'
 import { NButton, NDrawer, NDrawerContent, NInput, NForm, NFormItem, NCheckboxGroup, NCheckbox } from 'naive-ui'
 import type { AgentProfile } from '@shared/assistant-runtime'
-import { PRESET_AGENT_AVATARS } from '@shared/agent-avatars'
+import { PRESET_AGENT_AVATARS, randomRobotAvatarSvg } from '@shared/agent-avatars'
 import type { ProjectSkillItem } from '@/types/app'
 import { useMessage } from 'naive-ui'
 
@@ -28,6 +28,8 @@ const systemPrompt = ref('')
 const avatarType = ref<'svg' | 'image' | 'none'>('svg')
 const presetIndex = ref(0)
 const avatarDataUri = ref('')
+/** 随机生成的机器人默认头像（完整 SVG 字符串）。新建时自动生成，颜色随机。 */
+const robotSvgAvatar = ref('')
 const scope = ref<'local' | 'global'>('global')
 const selectedSkillIds = ref<string[]>([])
 const availableSkills = ref<ProjectSkillItem[]>([])
@@ -102,12 +104,14 @@ function handleAvatarUpload(event: Event): void {
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
           avatarDataUri.value = canvas.toDataURL(file.type || 'image/png')
           avatarType.value = 'image'
+          robotSvgAvatar.value = ''
           message.info(`图片已压缩到 ${canvas.width}×${canvas.height}`)
           return
         }
       }
       avatarDataUri.value = reader.result as string
       avatarType.value = 'image'
+      robotSvgAvatar.value = ''
     }
     img.src = reader.result as string
   }
@@ -119,11 +123,14 @@ function selectPresetAvatar(index: number): void {
   presetIndex.value = index
   avatarType.value = 'svg'
   avatarDataUri.value = ''
+  robotSvgAvatar.value = ''
 }
 
 // ============ 保存 ============
 function buildAvatarData(): string {
   if (avatarType.value === 'svg') {
+    // 优先使用随机生成的机器人默认头像
+    if (robotSvgAvatar.value) return robotSvgAvatar.value
     const preset = PRESET_AGENT_AVATARS.find((p) => p.index === presetIndex.value)
     return preset
       ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">${preset.inner}</svg>`
@@ -221,23 +228,33 @@ function fillForm(agent: AgentProfile | null): void {
     selectedSkillIds.value = [...(agent.skillIds ?? [])]
     if (agent.avatarType === 'svg') {
       avatarType.value = 'svg'
-      presetIndex.value = agent.presetIndex ?? 0
       avatarDataUri.value = ''
+      // 有 presetIndex 时是预设 SVG 头像；否则是自定义 SVG（如随机机器人默认头像），直接展示存储内容
+      if (agent.presetIndex !== undefined && agent.presetIndex >= 0) {
+        robotSvgAvatar.value = ''
+        presetIndex.value = agent.presetIndex
+      } else {
+        robotSvgAvatar.value = agent.avatar || ''
+        presetIndex.value = -1
+      }
     } else if (agent.avatarType === 'image') {
       avatarType.value = 'image'
       avatarDataUri.value = agent.avatar
+      robotSvgAvatar.value = ''
     } else {
       avatarType.value = 'none'
       avatarDataUri.value = ''
+      robotSvgAvatar.value = ''
     }
   } else {
-    // 新建模式
+    // 新建模式：自动分配一个随机颜色的机器人默认头像
     name.value = ''
     description.value = ''
     systemPrompt.value = ''
     avatarType.value = 'svg'
-    presetIndex.value = 0
+    presetIndex.value = -1
     avatarDataUri.value = ''
+    robotSvgAvatar.value = randomRobotAvatarSvg()
     scope.value = 'global'
     selectedSkillIds.value = []
   }
@@ -346,7 +363,8 @@ watch(
         <NFormItem label="头像">
           <div class="avatar-section">
             <div class="avatar-preview">
-              <div v-if="avatarType === 'svg' && PRESET_AGENT_AVATARS[presetIndex]" class="avatar-preset-show">
+              <div v-if="avatarType === 'svg' && robotSvgAvatar" class="avatar-robot-show" v-html="robotSvgAvatar" />
+              <div v-else-if="avatarType === 'svg' && PRESET_AGENT_AVATARS[presetIndex]" class="avatar-preset-show">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" v-html="PRESET_AGENT_AVATARS[presetIndex].inner" />
               </div>
               <div v-else-if="avatarType === 'image' && avatarDataUri" class="avatar-img-show">
@@ -382,7 +400,7 @@ watch(
                 v-if="avatarType === 'image'"
                 type="button"
                 class="clear-avatar"
-                @click="avatarType = 'svg'; presetIndex = 0; avatarDataUri = ''"
+                @click="avatarType = 'svg'; presetIndex = -1; avatarDataUri = ''; robotSvgAvatar = randomRobotAvatarSvg()"
               >
                 <X :size="13" />
                 清除
@@ -514,6 +532,7 @@ watch(
   gap: 12px;
 }
 .avatar-preset-show,
+.avatar-robot-show,
 .avatar-img-show {
   width: 64px;
   height: 64px;
@@ -521,6 +540,11 @@ watch(
   overflow: hidden;
   border: 1px solid var(--arc-border-strong);
   flex-shrink: 0;
+}
+.avatar-robot-show :deep(svg) {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 .avatar-img-show img {
   width: 100%;

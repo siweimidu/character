@@ -150,6 +150,80 @@ export const PRESET_AGENT_AVATARS: PresetAgentAvatar[] = [
   }
 ]
 
+/**
+ * 随机机器人 SVG 头像的颜色主题。
+ * 每次创建新智能体时取一个随机主题，保证每个智能体颜色都不一样。
+ */
+export interface RobotAvatarTheme {
+  /** 主色。 */
+  color: string
+  /** 深色（描边/阴影）。 */
+  dark: string
+  /** 浅色（高光/衬底）。 */
+  light: string
+}
+
+/** 预置的机器人配色主题，随机选用保证颜色各不相同。 */
+export const ROBOT_AVATAR_THEMES: RobotAvatarTheme[] = [
+  { color: '#38bdf8', dark: '#0284c7', light: '#bae6fd' }, // 天蓝
+  { color: '#f472b6', dark: '#db2777', light: '#fbcfe8' }, // 粉红
+  { color: '#a78bfa', dark: '#7c3aed', light: '#ddd6fe' }, // 紫
+  { color: '#34d399', dark: '#059669', light: '#a7f3d0' }, // 翠绿
+  { color: '#fb923c', dark: '#ea580c', light: '#fed7aa' }, // 橙
+  { color: '#fbbf24', dark: '#d97706', light: '#fde68a' }, // 金
+  { color: '#f87171', dark: '#dc2626', light: '#fecaca' }, // 红
+  { color: '#2dd4bf', dark: '#0d9488', light: '#99f6e4' }, // 青
+  { color: '#818cf8', dark: '#4f46e5', light: '#c7d2fe' }, // 靛
+  { color: '#94a3b8', dark: '#64748b', light: '#e2e8f0' }, // 灰蓝
+  { color: '#c084fc', dark: '#9333ea', light: '#e9d5ff' }, // 亮紫
+  { color: '#f97316', dark: '#c2410c', light: '#fed7aa' }, // 焦橙
+  { color: '#22c55e', dark: '#16a34a', light: '#bbf7d0' }, // 草绿
+  { color: '#06b6d4', dark: '#0891b2', light: '#a5f3fc' }, // 水蓝
+  { color: '#e879f9', dark: '#c026d3', light: '#f5d0fe' }, // 品红
+  { color: '#64748b', dark: '#475569', light: '#cbd5e1' }, // 石板
+]
+
+/** 随机取一个机器人配色主题。 */
+export function randomRobotAvatarTheme(): RobotAvatarTheme {
+  return ROBOT_AVATAR_THEMES[Math.floor(Math.random() * ROBOT_AVATAR_THEMES.length)]
+}
+
+/**
+ * 生成随机颜色的机器人 SVG 头像（完整 SVG 字符串）。
+ * 用于新智能体默认头像，颜色每次随机，保证每个智能体都不同。
+ */
+export function randomRobotAvatarSvg(): string {
+  return robotAvatarSvg(randomRobotAvatarTheme())
+}
+
+/**
+ * 生成指定配色的机器人 SVG 头像（完整 SVG 字符串）。
+ * viewBox 为 1:1 正方形 0 0 64 64。
+ */
+export function robotAvatarSvg(theme: RobotAvatarTheme): string {
+  const { color, dark, light } = theme
+  const inner = `
+    <rect width="64" height="64" rx="14" fill="${light}"/>
+    <!-- 天线 -->
+    <rect x="30" y="6" width="4" height="10" rx="2" fill="${dark}"/>
+    <circle cx="32" cy="6" r="4" fill="${color}"/>
+    <!-- 左传感器 -->
+    <rect x="8" y="22" width="7" height="10" rx="3" fill="${dark}"/>
+    <!-- 右传感器 -->
+    <rect x="49" y="22" width="7" height="10" rx="3" fill="${dark}"/>
+    <!-- 机身 -->
+    <rect x="12" y="16" width="40" height="42" rx="12" fill="${color}"/>
+    <!-- 眼睛 -->
+    <circle cx="25" cy="32" r="6" fill="#fff"/>
+    <circle cx="39" cy="32" r="6" fill="#fff"/>
+    <circle cx="25" cy="32" r="3" fill="${dark}"/>
+    <circle cx="39" cy="32" r="3" fill="${dark}"/>
+    <!-- 嘴 -->
+    <rect x="25" y="44" width="14" height="4" rx="2" fill="${dark}"/>
+  `
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">${inner}</svg>`
+}
+
 /** 生成完整的 SVG 字符串。 */
 export function presetAvatarSvg(index: number): string {
   const preset = PRESET_AGENT_AVATARS.find((p) => p.index === index)
