@@ -322,11 +322,6 @@ const emit = defineEmits<{
   z-index: 3;
 }
 
-.homepage-project-card.is-draggable .card-menu {
-  opacity: 1;
-  transform: translateY(0);
-}
-
 .card-footer {
   display: flex;
   align-items: center;

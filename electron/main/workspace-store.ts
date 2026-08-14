@@ -327,6 +327,7 @@ export async function ensureWorkspaceDb(): Promise<DatabaseSync> {
       id INTEGER PRIMARY KEY CHECK (id = 1),
       theme TEXT NOT NULL,
       selected_project_id TEXT NOT NULL,
+      project_sort_mode TEXT NOT NULL DEFAULT 'created',
       provider TEXT NOT NULL,
       model TEXT NOT NULL,
       api_key TEXT NOT NULL,
@@ -564,6 +565,10 @@ function ensureAppSettingsColumns(db: DatabaseSync): void {
 
   if (!columnNames.has('deleted_builtin_agent_ids_json')) {
     db.exec(`ALTER TABLE app_settings ADD COLUMN deleted_builtin_agent_ids_json TEXT NOT NULL DEFAULT '[]';`)
+  }
+
+  if (!columnNames.has('project_sort_mode')) {
+    db.exec(`ALTER TABLE app_settings ADD COLUMN project_sort_mode TEXT NOT NULL DEFAULT 'created';`)
   }
 }
 
@@ -871,7 +876,7 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
 
   if (projects.length === 0) {
     const settings = db.prepare(`
-      SELECT theme, selected_project_id AS selectedProjectId, provider, api_key AS apiKey, base_url AS baseUrl, proxy_url AS proxyUrl, temperature, top_p AS topP, auto_save_interval AS autoSaveInterval, editor_font AS editorFont
+      SELECT theme, selected_project_id AS selectedProjectId, project_sort_mode AS projectSortMode, provider, api_key AS apiKey, base_url AS baseUrl, proxy_url AS proxyUrl, temperature, top_p AS topP, auto_save_interval AS autoSaveInterval, editor_font AS editorFont
       , editor_minimap AS editorMinimap, ai_timeout_seconds AS aiTimeoutSeconds, model, ai_profiles_json AS aiProfilesJson, active_ai_profile_id AS activeAiProfileId, image_profiles_json AS imageProfilesJson, active_image_profile_id AS activeImageProfileId, image_provider AS imageProvider, image_model AS imageModel, image_api_key AS imageApiKey, image_base_url AS imageBaseUrl, vision_profile_name AS visionProfileName, vision_profiles_json AS visionProfilesJson, active_vision_profile_id AS activeVisionProfileId, vision_provider AS visionProvider, vision_model AS visionModel, vision_api_key AS visionApiKey, vision_base_url AS visionBaseUrl, vision_saved_models_json AS visionSavedModelsJson, ui_scale AS uiScale, dark_mode AS darkMode, dark_mode_style AS darkModeStyle, theme_color_intensity AS themeColorIntensity
       FROM app_settings
       WHERE id = 1
@@ -879,6 +884,7 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
       | {
           theme: string
           selectedProjectId: string
+          projectSortMode?: string
           provider: string
           model: string
           apiKey: string
@@ -998,6 +1004,7 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
     return {
       theme: settings?.theme ?? 'ocean',
       selectedProjectId: '',
+      projectSortMode: settings?.projectSortMode || 'created',
       knowledgeDocuments,
       referenceWorks,
       aiRuns,
@@ -1359,7 +1366,7 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
     }))
 
   const settings = db.prepare(`
-    SELECT theme, selected_project_id AS selectedProjectId, provider, api_key AS apiKey, base_url AS baseUrl, proxy_url AS proxyUrl, temperature, top_p AS topP, auto_save_interval AS autoSaveInterval, editor_font AS editorFont
+    SELECT theme, selected_project_id AS selectedProjectId, project_sort_mode AS projectSortMode, provider, api_key AS apiKey, base_url AS baseUrl, proxy_url AS proxyUrl, temperature, top_p AS topP, auto_save_interval AS autoSaveInterval, editor_font AS editorFont
     , editor_minimap AS editorMinimap, ai_timeout_seconds AS aiTimeoutSeconds, model, ai_profiles_json AS aiProfilesJson, active_ai_profile_id AS activeAiProfileId, image_profiles_json AS imageProfilesJson, active_image_profile_id AS activeImageProfileId, image_provider AS imageProvider, image_model AS imageModel, image_api_key AS imageApiKey, image_base_url AS imageBaseUrl, vision_profile_name AS visionProfileName, vision_profiles_json AS visionProfilesJson, active_vision_profile_id AS activeVisionProfileId, vision_provider AS visionProvider, vision_model AS visionModel, vision_api_key AS visionApiKey, vision_base_url AS visionBaseUrl, vision_saved_models_json AS visionSavedModelsJson, ui_scale AS uiScale, dark_mode AS darkMode, dark_mode_style AS darkModeStyle, theme_color_intensity AS themeColorIntensity
     FROM app_settings
     WHERE id = 1
@@ -1367,6 +1374,7 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
     | {
         theme: string
         selectedProjectId: string
+        projectSortMode?: string
         provider: string
         model: string
         apiKey: string
@@ -1512,6 +1520,7 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
   return {
     theme: settings.theme,
     selectedProjectId: settings.selectedProjectId,
+    projectSortMode: settings.projectSortMode || 'created',
     knowledgeDocuments,
     referenceWorks,
     aiRuns,
@@ -2104,11 +2113,12 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
     }
 
     db.prepare(`
-    INSERT INTO app_settings (id, theme, selected_project_id, provider, model, api_key, base_url, proxy_url, temperature, top_p, ai_profiles_json, active_ai_profile_id, image_profiles_json, active_image_profile_id, image_provider, image_model, image_api_key, image_base_url, vision_profile_name, vision_profiles_json, active_vision_profile_id, vision_provider, vision_model, vision_api_key, vision_base_url, vision_saved_models_json, auto_save_interval, editor_font, editor_minimap, ui_scale, dark_mode, dark_mode_style, ai_timeout_seconds, theme_color_intensity, deleted_builtin_agent_ids_json)
-    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT deleted_builtin_agent_ids_json FROM app_settings WHERE id = 1), '[]'))
+    INSERT INTO app_settings (id, theme, selected_project_id, project_sort_mode, provider, model, api_key, base_url, proxy_url, temperature, top_p, ai_profiles_json, active_ai_profile_id, image_profiles_json, active_image_profile_id, image_provider, image_model, image_api_key, image_base_url, vision_profile_name, vision_profiles_json, active_vision_profile_id, vision_provider, vision_model, vision_api_key, vision_base_url, vision_saved_models_json, auto_save_interval, editor_font, editor_minimap, ui_scale, dark_mode, dark_mode_style, ai_timeout_seconds, theme_color_intensity, deleted_builtin_agent_ids_json)
+    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT deleted_builtin_agent_ids_json FROM app_settings WHERE id = 1), '[]'))
     ON CONFLICT(id) DO UPDATE SET
       theme = excluded.theme,
       selected_project_id = excluded.selected_project_id,
+      project_sort_mode = excluded.project_sort_mode,
       provider = excluded.provider,
       model = excluded.model,
       api_key = excluded.api_key,
@@ -2143,6 +2153,7 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
     `).run(
       payload.theme,
       payload.selectedProjectId,
+      payload.projectSortMode || 'created',
       normalizedAppSettings.provider,
       normalizedAppSettings.model,
       normalizedAppSettings.apiKey,

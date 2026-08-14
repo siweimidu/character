@@ -46,6 +46,8 @@ const sortVisible = ref(false)
 const manualList = ref<ProjectSummary[]>([])
 /** 当前被拖拽的作品 ID */
 const draggingId = ref<string | null>(null)
+/** 是否正在通过拖拽首次初始化手动列表（拖拽时以当前展示顺序为基准，防止被 watch 用 store 原始顺序覆盖） */
+let isDragInit = false
 
 /** 排序下拉菜单选项：当前生效的排序方式带勾选标记 */
 const sortMenuOptions = computed<DropdownOption[]>(() =>
@@ -93,13 +95,16 @@ function parseWordCount(value?: string): number {
   return cleaned ? Number(cleaned) : 0
 }
 
-// 手动排序开始时，以 store 原始顺序作为基准
+// 手动排序开始时，以 store 原始顺序作为基准（通过下拉菜单切换时）；拖拽自动进入时保留拖拽前的展示顺序
 watch(
   () => sortMode.value,
   () => {
     if (sortMode.value === 'manual') {
-      manualList.value = [...props.projects]
+      if (!isDragInit) {
+        manualList.value = [...props.projects]
+      }
     }
+    isDragInit = false
   },
   { immediate: true }
 )
@@ -169,9 +174,16 @@ function handleBatchDelete(): void {
 
 // ---------- 手动拖拽排序 ----------
 function handleDragStart(event: DragEvent, projectId: string): void {
-  if (sortMode.value !== 'manual' || selectMode.value) {
+  // 批量管理模式下禁止拖拽；其余情况下允许拖拽，拖拽即自动进入手动排序
+  if (selectMode.value) {
     event.preventDefault()
     return
+  }
+  if (sortMode.value !== 'manual') {
+    // 以当前展示顺序作为手动排序的初始基准，避免切换瞬间列表跳动
+    isDragInit = true
+    manualList.value = [...displayProjects.value]
+    appStore.setProjectSortMode('manual')
   }
   draggingId.value = projectId
   event.dataTransfer?.setData('text/plain', projectId)
@@ -270,13 +282,13 @@ function isDragging(projectId: string): boolean {
                 <span class="sort-btn-label">排序</span>
               </button>
             </n-dropdown>
-            <button class="batch-create-btn" title="批量生成作品" @click="emit('batchCreate')">
-              <Wand2 :size="14" />
-              批量生成作品
-            </button>
             <button class="batch-mode-btn" title="批量管理" @click="enterSelectMode">
               <CheckSquare :size="14" />
               批量管理
+            </button>
+            <button class="batch-create-btn" title="批量生成作品" @click="emit('batchCreate')">
+              <Wand2 :size="14" />
+              批量生成作品
             </button>
           </template>
           <template v-else>
@@ -318,7 +330,7 @@ function isDragging(projectId: string): boolean {
           :animation-delay="`${index * 35}ms`"
           :select-mode="selectMode"
           :selected="selectedIds.has(project.id)"
-          :draggable="sortMode === 'manual' && !selectMode"
+          :draggable="!selectMode"
           :is-dragging="isDragging(project.id)"
           @open="emit('open', $event)"
           @menu-select="(action, projectId) => emit('menuSelect', action, projectId)"

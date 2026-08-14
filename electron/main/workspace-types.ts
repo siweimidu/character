@@ -126,6 +126,8 @@ export type WorkflowDocumentKey =
 export type WorkspacePayload = {
   theme: string
   selectedProjectId: string
+  /** 首页“我的作品”当前选中的排序方式 */
+  projectSortMode?: string
   knowledgeDocuments: WorkspaceKnowledgeDocument[]
   referenceWorks: WorkspaceReferenceWork[]
   /** 应用级 AI 调用历史；projectId 为空时表示不关联具体项目。 */
