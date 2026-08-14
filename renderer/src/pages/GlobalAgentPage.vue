@@ -18,7 +18,6 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import {
-  ArrowLeft,
   Brain,
   Check,
   ChevronDown,
@@ -518,8 +517,8 @@ function handleDeleteProject(projectId: string): void {
           <span class="ga-brand-name">全局智能体</span>
           <span class="ga-brand-badge">HARNESS</span>
         </button>
-        <button type="button" class="ga-back" title="返回上一个页面" @click="appStore.navigateBack()">
-          <ArrowLeft :size="16" />
+        <button type="button" class="ga-back" title="收起左侧" @click="sessionCollapsed = true">
+          <PanelLeftClose :size="16" />
         </button>
       </div>
 
