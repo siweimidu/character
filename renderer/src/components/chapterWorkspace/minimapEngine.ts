@@ -76,6 +76,34 @@ const BLOCK_MAX_WIDTH_RATIO = 0.94
 /** 色块在行内的最小高度（px），太小的行统一画成 1px 细线。 */
 const BLOCK_MIN_HEIGHT_PX = 1
 
+/** 把 hex/rgba 颜色解析为 {r,g,b}，用于生成带透明度的变体。 */
+function parseColor(color: string): { r: number; g: number; b: number } | null {
+  const trimmed = color.trim()
+  const hex = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(trimmed)
+  if (hex) {
+    let h = hex[1]
+    if (h.length === 3) h = h.split('').map((c) => c + c).join('')
+    return {
+      r: parseInt(h.slice(0, 2), 16),
+      g: parseInt(h.slice(2, 4), 16),
+      b: parseInt(h.slice(4, 6), 16)
+    }
+  }
+  const rgba = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i.exec(trimmed)
+  if (rgba) {
+    return { r: +rgba[1], g: +rgba[2], b: +rgba[3] }
+  }
+  return null
+}
+
+/** 给颜色附加透明度的辅助函数（hex/rgba 均支持）。 */
+function withAlpha(color: string, alpha: number): string {
+  const rgb = parseColor(color)
+  if (rgb) return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`
+  if (/^rgba?\(/i.test(color)) return color
+  return `rgba(128, 128, 128, ${alpha})`
+}
+
 // ── 内部状态 ──────────────────────────────────────────────────
 
 interface BlockLayerState {
@@ -163,20 +191,34 @@ export interface MinimapLayout {
  * 计算布局，核心是「超长文档采样降级」：
  *   目标是把全部行压缩到高度为 cssHeight 的 canvas 内。若每行能分到
  *   >= BLOCK_LINE_MIN_PX 的高度，则逐行渲染（linesPerPixelRow=1）；
- *   否则按比例合并行（每像素行 = ceil(1 / lineHeight) 行），确保 canvas
- *   高度恒定、行数再多也不会卡顿。
+ *   否则把多行合并为像素行（采样降级），保证内容高度恒等于 cssHeight。
+ *
+ * 注意：必须保证 `pixelRowCount * lineHeight` 严格等于 cssHeight，否则
+ * 内容高度小于 canvas 高度会在底部留出大片空白（缩略图滑到底部却看不到
+ * 末尾内容）。因此超长文档时直接令像素行数 = cssHeight / lineHeight，
+ * 由每个像素行按比例代表若干正文行，从根上消除取整造成的空白。
  */
 export function computeLayout(
   lineCount: number,
   cssHeight: number
 ): MinimapLayout {
   const total = Math.max(1, lineCount)
-  const base = cssHeight / total
-  // 若每行能分到至少 BLOCK_LINE_MIN_PX 的像素高度，则逐行渲染；
-  // 否则把多行合并为 1px 的像素行（采样降级），canvas 高度恒定。
-  const lineHeight = Math.max(BLOCK_LINE_MIN_PX, base)
-  const linesPerPixelRow = Math.max(1, Math.ceil(lineHeight / base))
-  const pixelRowCount = Math.max(1, Math.ceil(total / linesPerPixelRow))
+  const cssH = Math.max(1, cssHeight)
+  // 若每行能分到至少 BLOCK_LINE_MIN_PX 的像素高度，则逐行渲染，
+  // 内容高度 = total * (cssH / total) = cssH，天然铺满。
+  if (cssH / total >= BLOCK_LINE_MIN_PX) {
+    return {
+      lineHeight: cssH / total,
+      linesPerPixelRow: 1,
+      pixelRowCount: total
+    }
+  }
+  // 超长文档：像素行高固定为 BLOCK_LINE_MIN_PX，像素行数按比例铺满画布，
+  // 每个像素行代表的小数行数在 renderBlockLayer 内用 floor/ceil 精确分配，
+  // 保证内容高度恒等于 cssHeight、且所有正文行都被覆盖（无底部空白）。
+  const lineHeight = BLOCK_LINE_MIN_PX
+  const pixelRowCount = Math.max(1, Math.round(cssH / lineHeight))
+  const linesPerPixelRow = total / pixelRowCount
   return { lineHeight, linesPerPixelRow, pixelRowCount }
 }
 
@@ -211,7 +253,73 @@ export function computeViewport(
   return { top, height: boxHeight }
 }
 
-// ── 色块层渲染（核心，按行采样渲染色块）───────────────────────
+// ── 色块层渲染（核心，按行采样渲染色块 + VSCode 式小字）───────
+
+/**
+ * 放大离屏渲染的可读字号（CSS px）。直接以 lineHeight（可能仅 1~2px）
+ * 作为字号逐行 fillText 会把中文压成像素团而成乱码；改为先用这个较大的
+ * 字号在高分辨率离屏 canvas 上绘制，再整体 drawImage 缩小，缩放抗锯齿
+ * 会保留字形轮廓，呈现 VSCode 式可辨认的「小字」。
+ */
+const MIN_RENDER_FONT = 8
+/** 放大系数上限，防止超长文档把离屏 canvas 撑得过大。 */
+const MAX_ZOOM = 24
+
+/** 计算放大系数：让放大 canvas 上的渲染字号达到可读大小。 */
+function computeZoom(lineHeight: number): number {
+  if (lineHeight >= MIN_RENDER_FONT) return 1
+  return Math.min(MAX_ZOOM, Math.max(1, Math.ceil(MIN_RENDER_FONT / Math.max(0.5, lineHeight))))
+}
+
+/**
+ * 在目标 canvas 上渲染整篇文档的可辨认小字。
+ * 采用 VSCode 式「放大渲染后整体缩小」：先在放大分辨率的离屏 canvas 上
+ * 逐行以可读字号绘制文字，再 drawImage 缩小到目标尺寸，从而在任意行高下
+ * 都保留中文字形轮廓。
+ */
+function renderTextLayer(
+  target: CanvasRenderingContext2D,
+  lines: string[],
+  layout: MinimapLayout,
+  cssWidth: number,
+  cssHeight: number,
+  theme: MinimapThemeColors
+): void {
+  const { lineHeight } = layout
+  const zoom = computeZoom(lineHeight)
+
+  // 放大离屏 canvas：分辨率放大 zoom 倍，用可读字号绘制后整体缩小。
+  const layer = document.createElement('canvas')
+  layer.width = Math.max(1, Math.round(cssWidth * zoom))
+  layer.height = Math.max(1, Math.round(cssHeight * zoom))
+  const lctx = layer.getContext('2d')
+  if (!lctx) return
+
+  // 以 CSS 坐标绘制，字号 / 行距按 zoom 放大。
+  lctx.setTransform(zoom, 0, 0, zoom, 0, 0)
+  lctx.clearRect(0, 0, cssWidth, cssHeight)
+
+  const fg = theme.foreground
+  const renderFont = Math.max(1, lineHeight * zoom)
+  lctx.font = `${renderFont}px "Segoe UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif`
+  lctx.textBaseline = 'middle'
+  lctx.textAlign = 'left'
+  lctx.fillStyle = fg
+  lctx.textRendering = 'optimizeLegibility'
+
+  // 逐行绘制（逐行渲染模式）。裁剪过长的行避免横向溢出。
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (!line) continue
+    const y = i * lineHeight + lineHeight / 2
+    lctx.fillText(line, 0, y, cssWidth)
+  }
+
+  // 整体缩小到目标尺寸（VSCode 式小字）。
+  target.imageSmoothingEnabled = true
+  target.imageSmoothingQuality = 'high'
+  target.drawImage(layer, 0, 0, layer.width, layer.height, 0, 0, cssWidth, cssHeight)
+}
 
 function renderBlockLayer(
   lines: string[],
@@ -237,10 +345,19 @@ function renderBlockLayer(
   const faint = theme.faint
   const { lineHeight, linesPerPixelRow, pixelRowCount } = layout
 
+  // 逐行渲染模式：每行高度充足、逐行绘制文字。此时色块仅作极淡底衬；
+  // 超长文档降级模式（linesPerPixelRow>1）无法逐字绘制，用清晰色块呈现密度。
+  const textMode = linesPerPixelRow <= 1 && lines.length <= pixelRowCount
+  // 文字底衬色：比纯 faint 更淡，避免喧宾夺主；降级模式用清晰的纯色。
+  const blockDense = textMode ? withAlpha(theme.foreground, 0.14) : fg
+
   // 逐「像素行」采样：一个像素行可能代表 1 行或多行（降级）。
+  // 降级时 linesPerPixelRow 可能是小数，用浮点边界 + 取整精确分配，
+  // 确保所有正文行恰好被覆盖一遍、且内容高度铺满 canvas（无底部空白）。
   for (let r = 0; r < pixelRowCount; r++) {
-    const startLine = r * linesPerPixelRow
-    const endLine = Math.min(lines.length, startLine + linesPerPixelRow)
+    const startLine = Math.floor(r * linesPerPixelRow)
+    const endLine = Math.min(lines.length, Math.floor((r + 1) * linesPerPixelRow))
+    if (endLine <= startLine) continue
 
     // 汇总该像素行覆盖的所有正文行的平均密度。
     let sum = 0
@@ -250,15 +367,23 @@ function renderBlockLayer(
       sum += d
       if (d > 0) nonEmpty++
     }
-    const avg = nonEmpty > 0 ? sum / Math.max(1, endLine - startLine) : 0
+    const avg = nonEmpty > 0 ? sum / (endLine - startLine) : 0
     if (avg <= 0) continue // 该像素行无内容，跳过
 
     const y = r * lineHeight
     const h = Math.max(BLOCK_MIN_HEIGHT_PX, lineHeight - 0.15)
     const w = Math.max(1.5, Math.min(cssWidth * BLOCK_MAX_WIDTH_RATIO, cssWidth * avg))
 
-    ctx.fillStyle = avg > 0.35 ? fg : faint
+    // 先铺一层半透明色块作为内容密度底衬（文字模式取淡色，文字仍清晰可见；
+    // 降级模式取纯色以保证内容可见）。
+    ctx.fillStyle = avg > 0.35 ? blockDense : faint
     ctx.fillRect(0, y, w, h)
+  }
+
+  // 逐行渲染模式下叠加可辨认小字，满足「缩略图能看到文字」的诉求；
+  // 超长文档降级时保留纯色块渲染，避免逐字绘制造成的卡顿。
+  if (textMode) {
+    renderTextLayer(ctx, lines, layout, cssWidth, cssHeight, theme)
   }
 
   return canvas
