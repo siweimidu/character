@@ -38,6 +38,7 @@ import type { DropdownOption } from 'naive-ui'
 import type { PromptCategory, PromptEntry } from '@/types/app'
 import { BUILTIN_PROMPT_TEMPLATES } from '@/features/prompts/templates'
 import { useIncrementalList } from '@/composables/useIncrementalList'
+import { toIpcPayload } from '@/utils/ipcPayload'
 
 const props = defineProps<{
   searchQuery?: string // 全局搜索关键词
@@ -345,7 +346,7 @@ async function handleAiGenerate(): Promise<void> {
         panel: 'prompts'
       },
       () =>
-        window.characterArc.generateAi({
+        window.characterArc.generateAi(toIpcPayload({
           task: 'prompt-generate',
           settings: appStore.appSettings,
           clientTaskId: appStore.getClientTaskId(),
@@ -357,7 +358,7 @@ async function handleAiGenerate(): Promise<void> {
             projectTitle: project?.title,
             projectGenre: project?.genre
           }
-        })
+        }))
     )
 
     if (!result.success || !result.result) {
