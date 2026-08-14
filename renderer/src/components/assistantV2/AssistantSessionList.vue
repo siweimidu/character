@@ -157,17 +157,6 @@ const grouped = computed(() => {
         </button>
       </div>
     </div>
-    <!-- 外部页面（GlobalAgentPage）隐藏新建按钮时，仍保留批量删除的多选入口 -->
-    <div v-if="props.hideNewButton && !selectionMode && props.sessions.length > 0" class="batch-entry">
-      <button
-        class="multi-btn"
-        title="多选批量删除"
-        @click="toggleSelectionMode"
-      >
-        多选删除
-      </button>
-    </div>
-
     <button v-if="!props.hideNewButton" class="new-btn" @click="emit('create')">
       <span class="plus">+</span>
       <span>新建对话</span>
@@ -202,8 +191,19 @@ const grouped = computed(() => {
         <div class="empty-hint">点击上方"新建对话"开始一段。</div>
       </div>
 
-      <template v-for="group in grouped" :key="group.key">
-        <div class="group-label">{{ group.label }}</div>
+      <template v-for="(group, gi) in grouped" :key="group.key">
+        <div class="group-label-row">
+          <div class="group-label">{{ group.label }}</div>
+          <!-- 外部页面（GlobalAgentPage）隐藏新建按钮时，将多选删除入口放在与"今天"同一行的右上角 -->
+          <button
+            v-if="gi === 0 && props.hideNewButton && !selectionMode && props.sessions.length > 0"
+            class="multi-btn group-multi"
+            title="多选批量删除"
+            @click="toggleSelectionMode"
+          >
+            多选删除
+          </button>
+        </div>
         <div
           v-for="s in group.items"
           :key="s.id"
@@ -312,14 +312,6 @@ const grouped = computed(() => {
   background: var(--arc-primary-soft);
   color: var(--arc-primary);
   border-color: var(--arc-primary);
-}
-.batch-entry {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 6px;
-  margin: 0 12px 10px;
-  flex-shrink: 0;
 }
 .batch-bar {
   position: relative;
@@ -512,6 +504,13 @@ const grouped = computed(() => {
   flex-direction: column;
   gap: 8px;
 }
+.group-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding-right: 2px;
+}
 .group-label {
   padding: 12px 6px 2px;
   font-size: 11px;
@@ -519,6 +518,10 @@ const grouped = computed(() => {
   letter-spacing: 0.06em;
   font-weight: 600;
   font-family: inherit;
+}
+.group-multi {
+  flex-shrink: 0;
+  margin-top: 6px;
 }
 .empty {
   padding: 24px 12px;
