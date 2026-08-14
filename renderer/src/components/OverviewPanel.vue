@@ -142,6 +142,9 @@ const premiseDraft = ref('')
 
 const projectPremise = computed(() => currentProject.value?.premise?.trim() || '')
 
+// 简介字数实时统计（用于替代输入框内置 show-count，避免与文字重叠）
+const premiseCharCount = computed(() => premiseDraft.value.length)
+
 // 进入简介编辑模式，回填当前值
 function startEditPremise(): void {
   premiseDraft.value = currentProject.value?.premise ?? ''
@@ -290,25 +293,27 @@ function openEntry(type: string, title: string): void {
               :autosize="{ minRows: 5, maxRows: 10 }"
               placeholder="用一段话介绍你的作品：主角、冲突与目标……"
               maxlength="2000"
-              show-count
               class="premise-input"
             />
             <div class="premise-actions">
-              <n-button size="small" secondary :loading="isGeneratingPremise" :disabled="isGeneratingPremise" @click="generatePremise">
-                <template #icon>
-                  <Loader2 v-if="isGeneratingPremise" class="spin" :size="14" />
-                  <Sparkles v-else :size="14" />
-                </template>
-                {{ isGeneratingPremise ? '生成中…' : 'AI 生成简介' }}
-              </n-button>
-              <n-button size="small" secondary @click="cancelEditPremise">
-                <template #icon><X :size="14" /></template>
-                取消
-              </n-button>
-              <n-button size="small" type="primary" @click="savePremise">
-                <template #icon><Check :size="14" /></template>
-                保存
-              </n-button>
+              <span class="premise-count" aria-live="polite">{{ premiseCharCount }} / 2000</span>
+              <div class="premise-btns">
+                <n-button size="small" secondary :loading="isGeneratingPremise" :disabled="isGeneratingPremise" @click="generatePremise">
+                  <template #icon>
+                    <Loader2 v-if="isGeneratingPremise" class="spin" :size="14" />
+                    <Sparkles v-else :size="14" />
+                  </template>
+                  {{ isGeneratingPremise ? '生成中…' : 'AI 生成简介' }}
+                </n-button>
+                <n-button size="small" secondary @click="cancelEditPremise">
+                  <template #icon><X :size="14" /></template>
+                  取消
+                </n-button>
+                <n-button size="small" type="primary" @click="savePremise">
+                  <template #icon><Check :size="14" /></template>
+                  保存
+                </n-button>
+              </div>
             </div>
           </div>
 
@@ -516,9 +521,24 @@ function openEntry(type: string, title: string): void {
 
 .premise-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   gap: 8px;
   margin-top: 8px;
+}
+
+.premise-count {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--arc-text-secondary, #999);
+  user-select: none;
+}
+
+.premise-btns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .spin {
