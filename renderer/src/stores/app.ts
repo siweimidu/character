@@ -4862,6 +4862,9 @@ export const useAppStore = defineStore('app', () => {
     return aiTaskRuns.value.get(key)
   }
 
+  /** 当前正在执行的 `runTrackedAiTask` 的 clientTaskId 调用栈（支持并发任务隔离）。 */
+  const clientTaskIdStack: string[] = []
+
   /**
    * 执行一次被跟踪的 AI 任务。
    *
@@ -4910,13 +4913,6 @@ export const useAppStore = defineStore('app', () => {
       if (idx >= 0) clientTaskIdStack.splice(idx, 1)
     }
   }
-
-  /**
-   * 当前正在执行的 `runTrackedAiTask` 的 clientTaskId。
-   * 组件在 executor 闭包里构造 IPC payload 时可以通过 `getClientTaskId()` 取到，
-   * 注入到 `payload.clientTaskId` 字段，让主进程能按此 id 做 abort。
-   */
-  const clientTaskIdStack: string[] = []
 
   /** 获取当前正在执行的任务的 clientTaskId（供 executor 闭包内使用） */
   function getClientTaskId(): string | undefined {

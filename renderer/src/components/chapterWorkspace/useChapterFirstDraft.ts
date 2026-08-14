@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { onBeforeUnmount, ref } from 'vue'
 import type { Ref } from 'vue'
 import { buildChapterFirstDraftContext, buildOutlineItemContext, type ChapterFirstDraftContextInput } from '@/features/ai/chapterAssistantContext'
 import {
@@ -288,6 +288,12 @@ export function useChapterFirstDraft(): {
   function stopElapsedTimer(): void {
     if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null }
   }
+
+  // 组件卸载时清理耗时计时器与 AI 流事件监听，避免生成中途切换/关闭页面导致泄漏
+  onBeforeUnmount(() => {
+    stopElapsedTimer()
+    unregisterStreamListener()
+  })
 
   function recompute(): void {
     const target = Math.max(activeTargetWordCount.value || parseChapterWordTarget(appStore.selectedChapter?.wordTarget), 1)
