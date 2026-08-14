@@ -1,13 +1,18 @@
 <script setup lang="ts">
-import { computed, ref, toRef, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { History, Plus, Search, X } from 'lucide-vue-next'
-import { NButton, NInput, NInputGroup, NModal } from 'naive-ui'
-import { usePromptStore, type SavedPrompt } from '@/composables/usePromptStore'
+import { NButton, NInput, NInputGroup, NModal, NSelect } from 'naive-ui'
+import { useAppStore } from '@/stores/app'
+import type { PromptEntry } from '@/types/app'
 
 /**
  * 智能体常用提示词库：管理对话框（弹窗）。
  * 不再渲染常驻按钮，改由斜杠 / 命令唤出，供所有"含智能体"的地方复用。
  * 支持：选用（onUse 回填）、新建、编辑、删除。
+ *
+ * 数据源：与创作模块「提示词库」（PromptLibraryPanel）共用同一套 workspace 数据
+ * （appStore.promptEntries / promptCategories），从而保证两个入口的内容完全同步：
+ * 智能体对话框里新建/编辑/删除的提示词，会同步反映到创作模块；反之亦然。
  */
 const props = withDefaults(defineProps<{
   projectId: string | null | undefined
@@ -24,8 +29,7 @@ const emit = defineEmits<{
   (e: 'update:open', value: boolean): void
 }>()
 
-const projectIdRef = toRef(props, 'projectId')
-const promptStore = usePromptStore(projectIdRef)
+const appStore = useAppStore()
 
 // ── 管理对话框状态 ──
 const managerOpen = ref(false)
@@ -33,13 +37,20 @@ const editOpen = ref(false)
 const search = ref('')
 const draftLabel = ref('')
 const draftText = ref('')
+const draftCategoryId = ref('')
 const editingId = ref<string | null>(null)
+
+/** 分类选项：默认归类到第一个分类 */
+const categoryOptions = computed(() =>
+  appStore.promptCategories.map((c) => ({ label: c.name, value: c.id }))
+)
 
 const filteredPrompts = computed(() => {
   const q = search.value.trim().toLowerCase()
-  if (!q) return promptStore.prompts.value
-  return promptStore.prompts.value.filter(
-    (p) => p.label.toLowerCase().includes(q) || p.prompt.toLowerCase().includes(q)
+  const list = appStore.promptEntries
+  if (!q) return list
+  return list.filter(
+    (p) => p.title.toLowerCase().includes(q) || p.content.toLowerCase().includes(q)
   )
 })
 
@@ -62,13 +73,15 @@ function openNew(): void {
   editingId.value = null
   draftLabel.value = ''
   draftText.value = ''
+  draftCategoryId.value = appStore.promptCategories[0]?.id ?? ''
   editOpen.value = true
 }
 
-function openEdit(item: SavedPrompt): void {
+function openEdit(item: PromptEntry): void {
   editingId.value = item.id
-  draftLabel.value = item.label
-  draftText.value = item.prompt
+  draftLabel.value = item.title
+  draftText.value = item.content
+  draftCategoryId.value = item.categoryId
   editOpen.value = true
 }
 
@@ -81,22 +94,32 @@ function save(): void {
   }
   const finalLabel = label || text.slice(0, 16)
   if (editingId.value) {
-    promptStore.updatePrompt(editingId.value, finalLabel, text)
+    appStore.updatePromptEntry(editingId.value, {
+      title: finalLabel,
+      content: text,
+      categoryId: draftCategoryId.value
+    })
   } else {
-    promptStore.addPrompt(finalLabel, text)
+    appStore.createPromptEntry({
+      title: finalLabel,
+      content: text,
+      categoryId: draftCategoryId.value
+    })
   }
   editOpen.value = false
 }
 
-function remove(item: SavedPrompt): void {
-  if (!window.confirm(`确定删除提示词「${item.label}」吗？`)) return
-  promptStore.deletePrompt(item.id)
+function remove(item: PromptEntry): void {
+  if (!window.confirm(`确定删除提示词「${item.title}」吗？`)) return
+  appStore.deletePromptEntry(item.id)
 }
 
-function usePrompt(prompt: string): void {
+function usePrompt(entry: PromptEntry): void {
+  // 记录一次使用次数（与创作模块保持一致）
+  appStore.incrementPromptUsage(entry.id)
   managerOpen.value = false
   emit('update:open', false)
-  props.onUse(prompt)
+  props.onUse(entry.content)
 }
 </script>
 
@@ -128,9 +151,9 @@ function usePrompt(prompt: string): void {
             暂无提示词，点击右上角「新建」添加一条常用提示词。
           </div>
           <div v-for="item in filteredPrompts" :key="item.id" class="prompt-manager-item">
-            <button type="button" class="prompt-item-main" title="点击使用" @click="usePrompt(item.prompt)">
-              <strong>{{ item.label }}</strong>
-              <span>{{ item.prompt }}</span>
+            <button type="button" class="prompt-item-main" title="点击使用" @click="usePrompt(item)">
+              <strong>{{ item.title }}</strong>
+              <span>{{ item.content }}</span>
             </button>
             <div class="prompt-item-actions">
               <button type="button" title="编辑" @click="openEdit(item)">
@@ -162,6 +185,15 @@ function usePrompt(prompt: string): void {
         <label class="prompt-field">
           <span>名称（可选）</span>
           <NInput v-model:value="draftLabel" placeholder="给提示词起个名字，便于识别" maxlength="40" />
+        </label>
+        <label class="prompt-field">
+          <span>所属分类</span>
+          <NSelect
+            v-model:value="draftCategoryId"
+            :options="categoryOptions"
+            placeholder="选择分类（默认归入第一个分类）"
+            :disabled="categoryOptions.length === 0"
+          />
         </label>
         <label class="prompt-field">
           <span>提示词内容</span>
