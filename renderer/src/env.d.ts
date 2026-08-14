@@ -923,6 +923,8 @@ declare global {
           name: string
           description: string
           content: string
+          scope?: 'builtin' | 'project'
+          group?: string
         }>
         error?: string
       }>

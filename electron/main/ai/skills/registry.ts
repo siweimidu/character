@@ -99,15 +99,28 @@ export function toScanEntries(projectId?: string): SkillScanEntry[] {
 }
 
 /**
+ * 从 skill 相对路径解析其所属分组名
+ * - 内置 skill 路径形如 skills/<group>/<skill>，分组取第 2 段；
+ * - 项目 skill 路径形如 project-skills/<skill>（未分组）或 project-skills/<group>/<skill>（已分组）。
+ */
+export function resolveSkillGroup(path: string): string {
+  const segments = path.split('/')
+  // 去掉前缀段后，若仍有多段，则第 2 段即为分组名
+  return segments.length > 2 ? segments[1] : ''
+}
+
+/**
  * 将所有 skill 转换为可注入 prompt 的上下文条目
  * @param projectId - 项目标识
- * @returns 包含 id、名称、描述和内容的上下文条目数组
+ * @returns 包含 id、名称、描述、内容、作用域与分组名的上下文条目数组
  */
-export function toContextEntries(projectId?: string): Array<{ id: string; name: string; description: string; content: string }> {
+export function toContextEntries(projectId?: string): Array<{ id: string; name: string; description: string; content: string; scope: 'builtin' | 'project'; group: string }> {
   return getAllSkills(projectId).map((s) => ({
     id: s.id,
     name: s.name,
     description: s.description,
-    content: s.content
+    content: s.content,
+    scope: s.scope,
+    group: resolveSkillGroup(s.path)
   }))
 }

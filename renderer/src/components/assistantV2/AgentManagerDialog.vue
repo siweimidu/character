@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Upload, X } from 'lucide-vue-next'
 import { NButton, NDrawer, NDrawerContent, NInput, NForm, NFormItem, NCheckboxGroup, NCheckbox } from 'naive-ui'
 import type { AgentProfile } from '@shared/assistant-runtime'
@@ -33,6 +33,39 @@ const selectedSkillIds = ref<string[]>([])
 const availableSkills = ref<ProjectSkillItem[]>([])
 const skillsLoading = ref(false)
 const isSaving = ref(false)
+
+/** 将已导入的 skill 按分组聚合，供绑定面板按分组展示 */
+const groupedAvailableSkills = computed(() => {
+  const groups = new Map<string, ProjectSkillItem[]>()
+  for (const skill of availableSkills.value) {
+    // 内置 skill 路径形如 skills/<group>/<skill>，按来源子目录分组；
+    // 项目 skill 路径形如 project-skills/<skill>（未分组）或 project-skills/<group>/<skill>（已分组）。
+    const segments = skill.path.split('/')
+    const isBuiltin = skill.scope === 'builtin'
+    // 内置分组带作用域前缀，避免与项目同名分组混合
+    const groupKey = segments.length > 2
+      ? (isBuiltin ? `__builtin__${segments[1]}` : segments[1])
+      : (isBuiltin ? '_builtin_root' : '_ungrouped')
+    if (!groups.has(groupKey)) groups.set(groupKey, [])
+    groups.get(groupKey)!.push(skill)
+  }
+  return Array.from(groups.entries())
+    .map(([groupKey, skills]) => {
+      // 显示用分组名：内置分组带"内置·"前缀
+      let label: string
+      if (groupKey.startsWith('__builtin__')) {
+        label = `内置 · ${groupKey.slice('__builtin__'.length)}`
+      } else if (groupKey === '_ungrouped') {
+        label = '项目 Skills · 未分组'
+      } else if (groupKey === '_builtin_root') {
+        label = '内置 Skills'
+      } else {
+        label = groupKey
+      }
+      return { groupKey, skills, label }
+    })
+    .sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'))
+})
 
 // ============ 头像上传 ============
 const MAX_AVATAR_DIMENSION = 512
@@ -293,8 +326,18 @@ watch(
               暂无已导入的 Skill。可先在「内置 Skills 与项目扩展」页面导入后再绑定。
             </div>
             <div v-else class="skill-scroll">
-              <NCheckboxGroup v-model:value="selectedSkillIds" class="skill-grid">
-                <NCheckbox v-for="skill in availableSkills" :key="skill.id" :value="skill.id" :label="skill.name" />
+              <NCheckboxGroup v-model:value="selectedSkillIds">
+                <template v-for="group in groupedAvailableSkills" :key="group.groupKey">
+                  <div class="skill-group-title">{{ group.label }}</div>
+                  <div class="skill-grid">
+                    <NCheckbox
+                      v-for="skill in group.skills"
+                      :key="skill.id"
+                      :value="skill.id"
+                      :label="skill.name"
+                    />
+                  </div>
+                </template>
               </NCheckboxGroup>
             </div>
           </div>
@@ -447,6 +490,17 @@ watch(
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px 12px;
   width: 100%;
+}
+.skill-group-title {
+  margin: 8px 0 4px;
+  padding-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--arc-text-hint);
+  border-bottom: 1px dashed var(--arc-border);
+}
+.skill-group-title:first-child {
+  margin-top: 0;
 }
 .avatar-section {
   display: flex;

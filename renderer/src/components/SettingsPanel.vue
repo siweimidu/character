@@ -124,13 +124,28 @@ const styleForm = reactive({
 })
 
 // 当前项目已导入的可用 skill（用于自定义风格卡片绑定选择）
-const availableSkills = ref<Array<{ id: string; name: string; description: string }>>([])
+const availableSkills = ref<Array<{ id: string; name: string; description: string; scope?: 'builtin' | 'project'; group?: string }>>([])
 const isLoadingSkills = ref(false)
 
-/** 供 NSelect 使用的 skill 选项 */
-const availableSkillOptions = computed(() =>
-  availableSkills.value.map((s) => ({ label: s.name, value: s.id }))
-)
+/** 按分组名分组后的 skill，用于下拉展示分组标题 */
+const groupedAvailableSkills = computed(() => {
+  const groups = new Map<string, Array<{ label: string; value: string }>>()
+  for (const s of availableSkills.value) {
+    // 分组名：已分组的 skill 用其分组名，未分组的归入"未分组"
+    const isBuiltin = s.scope === 'builtin'
+    const groupName = isBuiltin
+      ? `内置 · ${s.group || '其他'}`
+      : (s.group || '项目 Skills · 未分组')
+    if (!groups.has(groupName)) groups.set(groupName, [])
+    groups.get(groupName)!.push({ label: s.name, value: s.id })
+  }
+  return Array.from(groups.entries())
+    .map(([label, children]) => ({ type: 'group', label, children }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'))
+})
+
+/** 供 NSelect 使用的 skill 选项（按分组展示） */
+const availableSkillOptions = computed(() => groupedAvailableSkills.value)
 
 async function loadAvailableSkills(): Promise<void> {
   const projectId = appStore.currentProject?.id ?? ''
@@ -139,7 +154,13 @@ async function loadAvailableSkills(): Promise<void> {
   try {
     const result = await window.characterArc.getProjectSkillsContext(projectId)
     availableSkills.value = result.success && Array.isArray(result.skills)
-      ? result.skills.map((s) => ({ id: s.id, name: s.name, description: s.description }))
+      ? result.skills.map((s) => ({
+          id: s.id,
+          name: s.name,
+          description: s.description,
+          scope: s.scope,
+          group: s.group
+        }))
       : []
   } catch {
     availableSkills.value = []
