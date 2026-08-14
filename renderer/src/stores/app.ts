@@ -397,6 +397,8 @@ export const useAppStore = defineStore('app', () => {
   const referenceWorks = ref<ReferenceWorkItem[]>(stored.referenceWorks ?? [])
   /** 全局回收站：存放 AI 接口配置、参考作品等全局数据的删除快照 */
   const globalRecycleBin = ref<import('@/types/app').RecycleBinEntry[]>(stored.globalRecycleBin ?? [])
+  /** 首页“我的作品”当前选中的排序方式 */
+  const projectSortMode = ref<string>(stored.projectSortMode ?? 'created')
   /** 当前项目的回收站条目（项目级删除内容） */
   const projectRecycleBin = computed(() => currentWorkspace.value.recycleBin)
   /** 回收站当前查看范围：'global' 显示全局回收站，'all' 显示当前项目 + 全局，其余为指定项目 ID */
@@ -772,6 +774,7 @@ export const useAppStore = defineStore('app', () => {
     globalRecycleBin.value = Array.isArray((payload as Partial<StoredState>).globalRecycleBin)
       ? (payload as Partial<StoredState>).globalRecycleBin!
       : []
+    projectSortMode.value = (payload as Partial<StoredState>).projectSortMode ?? 'created'
     const workspaceAiRuns = Object.entries(projectWorkspaces.value).flatMap(([projectId, workspace]) =>
       (workspace.aiRuns ?? []).map((run) => ({ ...run, projectId: run.projectId || projectId }))
     )
@@ -802,7 +805,8 @@ export const useAppStore = defineStore('app', () => {
       aiRuns: toSerializable(globalAiRuns.value),
       appSettings: toSerializable(appSettings.value),
       coverWorkbenchHistory: toSerializable(coverWorkbenchHistory.value),
-      globalRecycleBin: toSerializable(globalRecycleBin.value)
+      globalRecycleBin: toSerializable(globalRecycleBin.value),
+      projectSortMode: projectSortMode.value
     }
   }
 
@@ -2030,6 +2034,27 @@ export const useAppStore = defineStore('app', () => {
       syncSelectedChapter()
     }
 
+    schedulePersist('fast')
+  }
+
+  /** 手动排序：按传入的项目 ID 顺序重排项目列表并持久化（首页“我的作品”手动拖拽排序用） */
+  function reorderProjects(projectIds: string[]): void {
+    const orderIndex = new Map(projectIds.map((id, index) => [id, index]))
+    const nextProjects = [...projects.value].sort((a, b) => {
+      const aIndex = orderIndex.get(a.id)
+      const bIndex = orderIndex.get(b.id)
+      if (aIndex === undefined && bIndex === undefined) return 0
+      if (aIndex === undefined) return 1
+      if (bIndex === undefined) return -1
+      return aIndex - bIndex
+    })
+    projects.value = nextProjects
+    schedulePersist('fast')
+  }
+
+  /** 设置首页“我的作品”的排序方式并持久化 */
+  function setProjectSortMode(mode: string): void {
+    projectSortMode.value = mode || 'created'
     schedulePersist('fast')
   }
 
@@ -5100,6 +5125,8 @@ export const useAppStore = defineStore('app', () => {
     recycleBinScopeLabel,
     recycleBinReturnView,
     globalRecycleBinEntries,
+    projectSortMode,
+    setProjectSortMode,
     emptyRecycleBin,
     permanentlyDeleteRecycleEntry,
     purgeExpiredRecycleBin,
@@ -5199,6 +5226,7 @@ export const useAppStore = defineStore('app', () => {
     addInspirationType,
     deleteInspirationType,
     deleteProject,
+    reorderProjects,
     deleteWorldviewEntry,
     deleteWorldviewEntries,
     updateWorldviewEntriesTags,

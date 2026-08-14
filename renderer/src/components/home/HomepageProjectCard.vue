@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, Clock4, MoreHorizontal } from 'lucide-vue-next'
+import { Check, Clock4, GripHorizontal, MoreHorizontal } from 'lucide-vue-next'
 import type { DropdownOption } from 'naive-ui'
 import { NDropdown } from 'naive-ui'
 import { isImageCover, resolveCoverStyle } from '@/features/cover/display'
@@ -14,22 +14,36 @@ const props = defineProps<{
   animationDelay?: string
   selectMode?: boolean
   selected?: boolean
+  draggable?: boolean
+  isDragging?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'open', projectId: string): void
   (e: 'menuSelect', action: string | number, projectId: string): void
   (e: 'toggleSelect', projectId: string): void
+  (e: 'dragStart', payload: DragEvent, projectId: string): void
+  (e: 'dragOver', payload: DragEvent, projectId: string): void
+  (e: 'drop', payload: DragEvent): void
+  (e: 'dragEnd', payload: DragEvent): void
 }>()
 </script>
 
 <template>
   <article
     class="homepage-project-card"
-    :class="{ 'is-select-mode': selectMode, 'is-selected': selected }"
+    :class="{ 'is-select-mode': selectMode, 'is-selected': selected, 'is-dragging': isDragging, 'is-draggable': draggable }"
     :style="animationDelay ? { animationDelay } : undefined"
+    :draggable="draggable || undefined"
     @click="selectMode ? emit('toggleSelect', project.id) : emit('open', project.id)"
+    @dragstart="(e) => emit('dragStart', e, project.id)"
+    @dragover="(e) => emit('dragOver', e, project.id)"
+    @drop="(e) => emit('drop', e)"
+    @dragend="(e) => emit('dragEnd', e)"
   >
+    <div class="drag-handle" title="拖动调整顺序" @click.stop @mousedown.stop>
+      <GripHorizontal :size="14" />
+    </div>
     <div class="card-main">
       <button
         v-if="selectMode"
@@ -75,6 +89,7 @@ const emit = defineEmits<{
 
 <style scoped>
 .homepage-project-card {
+  position: relative;
   display: flex;
   min-height: 116px;
   flex-direction: column;
@@ -254,6 +269,62 @@ const emit = defineEmits<{
   background: var(--arc-bg-surface);
   color: var(--arc-text-secondary);
   border-color: var(--arc-border-strong);
+}
+
+.drag-handle {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--arc-bg-surface) 92%, var(--arc-text-primary));
+  color: var(--arc-text-hint);
+  cursor: grab;
+  opacity: 0;
+  transform: translateY(-3px) scale(0.8);
+  transition:
+    opacity 0.2s,
+    transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+    color 0.15s,
+    background 0.15s;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.homepage-project-card.is-draggable .drag-handle {
+  pointer-events: auto;
+}
+
+.homepage-project-card.is-draggable:hover .drag-handle {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.homepage-project-card.is-draggable {
+  cursor: grab;
+}
+
+.homepage-project-card.is-dragging {
+  cursor: grabbing;
+  opacity: 0.45;
+  border-color: var(--arc-primary);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.14);
+  transform: scale(1.02) rotate(0.5deg);
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.18s;
+  z-index: 3;
+}
+
+.homepage-project-card.is-draggable .card-menu {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .card-footer {

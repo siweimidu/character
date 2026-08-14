@@ -49,6 +49,8 @@ export interface StoredState {
   coverWorkbenchHistory: import('@/types/app').CoverWorkbenchHistoryItem[]
   /** 全局回收站：存放 AI 接口配置、参考作品等全局数据的删除快照 */
   globalRecycleBin: import('@/types/app').RecycleBinEntry[]
+  /** 首页“我的作品”当前选中的排序方式 */
+  projectSortMode?: string
 }
 
 // 旧版存储结构：所有字段可选，用于从旧格式迁移数据

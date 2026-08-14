@@ -1,10 +1,22 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, h, ref, watch } from 'vue'
 import { NButton, NEmpty } from 'naive-ui'
-import { CheckSquare, Square, Trash2, Wand2, X } from 'lucide-vue-next'
 import type { DropdownOption } from 'naive-ui'
+import { Check, CheckSquare, ChevronsUpDown, GripHorizontal, Square, Trash2, Wand2, X } from 'lucide-vue-next'
 import type { ProjectSummary } from '@/types/app'
+import { useAppStore } from '@/stores/app'
 import HomepageProjectCard from './HomepageProjectCard.vue'
+
+/** 首页“我的作品”的排序方式 */
+type SortMode = 'created' | 'edited' | 'wordCount' | 'titleLength' | 'manual'
+
+const SORT_OPTIONS: { key: SortMode; label: string }[] = [
+  { key: 'created', label: '按建立时间排序' },
+  { key: 'edited', label: '按最近编辑排序' },
+  { key: 'wordCount', label: '按作品字数排序' },
+  { key: 'titleLength', label: '按书名长度排序' },
+  { key: 'manual', label: '手动排序' }
+]
 
 const props = defineProps<{
   projects: ProjectSummary[]
@@ -16,10 +28,36 @@ const emit = defineEmits<{
   (e: 'menuSelect', action: string | number, projectId: string): void
   (e: 'batchDelete', projectIds: string[]): void
   (e: 'batchCreate'): void
+  (e: 'reorder', projectIds: string[]): void
 }>()
+
+const appStore = useAppStore()
 
 const selectMode = ref(false)
 const selectedIds = ref<Set<string>>(new Set())
+/** 当前排序方式，默认按建立时间（与新建作品置顶的默认行为一致），持久化在 store */
+const sortMode = computed<SortMode>(() => {
+  const stored = appStore.projectSortMode
+  return SORT_OPTIONS.some((o) => o.key === stored) ? (stored as SortMode) : 'created'
+})
+const sortVisible = ref(false)
+
+/** 手动排序时的本地列表（用于拖拽过程中的实时重排，落盘后同步给 store） */
+const manualList = ref<ProjectSummary[]>([])
+/** 当前被拖拽的作品 ID */
+const draggingId = ref<string | null>(null)
+
+/** 排序下拉菜单选项：当前生效的排序方式带勾选标记 */
+const sortMenuOptions = computed<DropdownOption[]>(() =>
+  SORT_OPTIONS.map((opt) => {
+    const isActive = sortMode.value === opt.key
+    return {
+      key: opt.key,
+      label: opt.label,
+      icon: isActive ? () => h(Check, { size: 14 }) : undefined
+    }
+  })
+)
 
 const allSelected = computed(() =>
   props.projects.length > 0 && selectedIds.value.size === props.projects.length
@@ -27,10 +65,52 @@ const allSelected = computed(() =>
 
 const selectedCount = computed(() => selectedIds.value.size)
 
-// Clean up stale selections when projects are removed
+/** 展示用作品列表：手动模式走本地拖拽列表，其余按所选方式实时排序 */
+const displayProjects = computed<ProjectSummary[]>(() => {
+  if (sortMode.value === 'manual') {
+    return manualList.value
+  }
+  const list = [...props.projects]
+  const mode = sortMode.value
+  list.sort((a, b) => {
+    if (mode === 'created') {
+      return (b.createdAt || '').localeCompare(a.createdAt || '')
+    }
+    if (mode === 'edited') {
+      return (b.lastEdited || '').localeCompare(a.lastEdited || '')
+    }
+    if (mode === 'wordCount') {
+      return parseWordCount(b.wordCount) - parseWordCount(a.wordCount)
+    }
+    // titleLength：书名越长越靠前
+    return (b.title?.length ?? 0) - (a.title?.length ?? 0)
+  })
+  return list
+})
+
+function parseWordCount(value?: string): number {
+  const cleaned = (value || '').replace(/[^0-9]/g, '')
+  return cleaned ? Number(cleaned) : 0
+}
+
+// 手动排序开始时，以 store 原始顺序作为基准
+watch(
+  () => sortMode.value,
+  () => {
+    if (sortMode.value === 'manual') {
+      manualList.value = [...props.projects]
+    }
+  },
+  { immediate: true }
+)
+
+// 项目增删时同步手动列表
 watch(
   () => props.projects.map((p) => p.id).join(','),
   () => {
+    if (sortMode.value === 'manual') {
+      manualList.value = [...props.projects]
+    }
     const validIds = new Set(props.projects.map((p) => p.id))
     const next = new Set(Array.from(selectedIds.value).filter((id) => validIds.has(id)))
     if (next.size !== selectedIds.value.size) {
@@ -41,6 +121,14 @@ watch(
     }
   }
 )
+
+function selectSort(key: string | number): void {
+  appStore.setProjectSortMode(String(key))
+  sortVisible.value = false
+  if (sortMode.value !== 'manual') {
+    draggingId.value = null
+  }
+}
 
 function toggleSelect(projectId: string): void {
   const next = new Set(selectedIds.value)
@@ -78,6 +166,82 @@ function handleBatchDelete(): void {
   }
   emit('batchDelete', Array.from(selectedIds.value))
 }
+
+// ---------- 手动拖拽排序 ----------
+function handleDragStart(event: DragEvent, projectId: string): void {
+  if (sortMode.value !== 'manual' || selectMode.value) {
+    event.preventDefault()
+    return
+  }
+  draggingId.value = projectId
+  event.dataTransfer?.setData('text/plain', projectId)
+  event.dataTransfer!.effectAllowed = 'move'
+  // 让拖拽快照更轻量
+  if (event.dataTransfer?.setDragImage && event.currentTarget instanceof HTMLElement) {
+    const ghost = event.currentTarget.cloneNode(true) as HTMLElement
+    ghost.style.opacity = '0.4'
+    ghost.style.width = '240px'
+    document.body.appendChild(ghost)
+    event.dataTransfer.setDragImage(ghost, 120, 20)
+    // 动画结束后移除幽灵元素，避免残留
+    requestAnimationFrame(() => {
+      if (ghost.parentNode) {
+        ghost.parentNode.removeChild(ghost)
+      }
+    })
+  }
+}
+
+function handleDragOver(event: DragEvent, targetId: string): void {
+  if (sortMode.value !== 'manual' || !draggingId.value || draggingId.value === targetId) {
+    return
+  }
+  event.preventDefault()
+  event.dataTransfer!.dropEffect = 'move'
+
+  const fromIndex = manualList.value.findIndex((p) => p.id === draggingId.value)
+  const toIndex = manualList.value.findIndex((p) => p.id === targetId)
+  if (fromIndex < 0 || toIndex < 0) return
+
+  // 根据鼠标落在目标卡片的上/下半，决定插入到目标之前还是之后
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  const belowMid = event.clientY > rect.top + rect.height / 2
+  let insertAt = toIndex
+  if (belowMid) {
+    insertAt = toIndex + 1
+  }
+  if (fromIndex < toIndex) {
+    insertAt -= 1
+  }
+  if (insertAt === fromIndex || insertAt === fromIndex + 1) {
+    return
+  }
+  const next = [...manualList.value]
+  const [moved] = next.splice(fromIndex, 1)
+  next.splice(Math.max(0, Math.min(insertAt, next.length)), 0, moved)
+  manualList.value = next
+}
+
+function handleDrop(event: DragEvent): void {
+  event.preventDefault()
+  commitManualOrder()
+}
+
+function handleDragEnd(): void {
+  draggingId.value = null
+}
+
+/** 拖拽结束后把最终顺序持久化到 store */
+function commitManualOrder(): void {
+  if (!draggingId.value) return
+  const orderedIds = manualList.value.map((p) => p.id)
+  emit('reorder', orderedIds)
+  draggingId.value = null
+}
+
+function isDragging(projectId: string): boolean {
+  return draggingId.value === projectId
+}
 </script>
 
 <template>
@@ -94,6 +258,18 @@ function handleBatchDelete(): void {
       <div class="project-collection-header">
         <div class="project-collection-tools">
           <template v-if="!selectMode">
+            <n-dropdown
+              v-model:show="sortVisible"
+              trigger="click"
+              placement="bottom-start"
+              :options="sortMenuOptions"
+              @select="selectSort"
+            >
+              <button class="sort-btn" :title="`排序：${SORT_OPTIONS.find((o) => o.key === sortMode)?.label ?? ''}`">
+                <ChevronsUpDown :size="14" />
+                <span class="sort-btn-label">排序</span>
+              </button>
+            </n-dropdown>
             <button class="batch-create-btn" title="批量生成作品" @click="emit('batchCreate')">
               <Wand2 :size="14" />
               批量生成作品
@@ -129,20 +305,34 @@ function handleBatchDelete(): void {
         </div>
       </div>
 
-      <div class="project-grid">
+      <transition-group
+        name="project-grid-move"
+        tag="div"
+        class="project-grid"
+      >
         <HomepageProjectCard
-          v-for="(project, index) in projects"
+          v-for="(project, index) in displayProjects"
           :key="project.id"
           :project="project"
           :menu-options="menuOptions"
           :animation-delay="`${index * 35}ms`"
           :select-mode="selectMode"
           :selected="selectedIds.has(project.id)"
+          :draggable="sortMode === 'manual' && !selectMode"
+          :is-dragging="isDragging(project.id)"
           @open="emit('open', $event)"
           @menu-select="(action, projectId) => emit('menuSelect', action, projectId)"
           @toggle-select="toggleSelect"
+          @drag-start="handleDragStart"
+          @drag-over="handleDragOver"
+          @drop="handleDrop"
+          @drag-end="handleDragEnd"
         />
-      </div>
+      </transition-group>
+      <p v-if="sortMode === 'manual'" class="manual-sort-hint">
+        <GripHorizontal :size="13" />
+        手动排序已开启：鼠标悬浮在作品卡片上，拖动即可调整顺序
+      </p>
     </template>
   </section>
 </template>
@@ -163,6 +353,36 @@ function handleBatchDelete(): void {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 12px;
+  transition: border-color 0.2s, color 0.2s, background 0.2s, transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.sort-btn:hover {
+  border-color: var(--arc-primary);
+  color: var(--arc-primary);
+  background: color-mix(in srgb, var(--arc-primary) 6%, var(--arc-bg-surface));
+  transform: translateY(-1px);
+}
+
+.sort-btn:active {
+  transform: translateY(0) scale(0.97);
+}
+
+.sort-btn-label {
+  white-space: nowrap;
 }
 
 .batch-create-btn {
@@ -246,6 +466,15 @@ function handleBatchDelete(): void {
   padding: 0 4px;
 }
 
+.manual-sort-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 0;
+  color: var(--arc-text-hint);
+  font-size: 12px;
+}
+
 .homepage-empty-state {
   display: flex;
   min-height: 280px;
@@ -267,6 +496,11 @@ function handleBatchDelete(): void {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+/* transition-group 的弹性位移动画（FLIP），拖拽时卡片会弹性地让位 */
+.project-grid-move {
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @media (max-width: 820px) {
