@@ -443,6 +443,7 @@ async function copyMessage(text: string): Promise<void> {
           :project-id="selectedProjectId"
           @update:model-value="persistAgentSelection"
         />
+
         <button class="ga-memory-toggle" title="创作记忆（学习闭环）" @click="memoryDialogVisible = true">
           <Brain :size="14" />
         </button>
@@ -587,9 +588,9 @@ async function copyMessage(text: string): Promise<void> {
 
 <style scoped>
 .ga-page {
-  --ga-warn: #b45309;
-  --ga-danger: #b91c1c;
-  --ga-add: #047857;
+  --ga-warn: var(--arc-warning);
+  --ga-danger: var(--arc-danger);
+  --ga-add: var(--arc-success);
   --ga-mono: 'JetBrains Mono', 'Consolas', 'SF Mono', ui-monospace, Menlo, monospace;
   --session-col-width: 260px;
   --stage-col-width: 400px;
@@ -881,18 +882,18 @@ async function copyMessage(text: string): Promise<void> {
   align-items: center;
   gap: 6px;
   font-size: 11.5px;
-  color: #b45309;
+  color: var(--arc-warning);
   font-family: var(--ga-mono);
   background: var(--arc-bg-surface);
   padding: 4px 10px;
   border-radius: 999px;
-  border: 1px solid rgba(180, 83, 9, 0.2);
+  border: 1px solid color-mix(in srgb, var(--arc-warning) 24%, transparent);
 }
 .stream-strip .dot {
   width: 6px;
   height: 6px;
   border-radius: 999px;
-  background: #b45309;
+  background: var(--arc-warning);
   animation: ga-pulse 1.4s ease-in-out infinite;
 }
 @keyframes ga-pulse {
@@ -926,8 +927,9 @@ async function copyMessage(text: string): Promise<void> {
   box-sizing: border-box;
 }
 .ga-memory-toggle:hover {
-  background: rgba(127, 127, 127, 0.1);
+  background: var(--arc-bg-weak);
 }
+
 .ga-flow {
   flex: 1;
   min-height: 0;
@@ -1011,9 +1013,9 @@ async function copyMessage(text: string): Promise<void> {
   margin: 0 32px 8px;
   padding: 8px 12px;
   border-radius: 8px;
-  background: rgba(185, 28, 28, 0.06);
-  border: 1px solid rgba(185, 28, 28, 0.2);
-  color: #b91c1c;
+  background: color-mix(in srgb, var(--arc-danger) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--arc-danger) 24%, transparent);
+  color: var(--arc-danger);
   font-size: 12.5px;
 }
 
