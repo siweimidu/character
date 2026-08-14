@@ -113,8 +113,8 @@ contextBridge.exposeInMainWorld('characterArc', {
   deleteProjectSkillGroup: (projectId: string, groupName: string) => ipcRenderer.invoke('characterarc:project-skills-delete-group', projectId, groupName),
   /** 批量删除项目级 skills（仅项目导入，内置不可删），入参为 skill path 列表 */
   deleteProjectSkills: (projectId: string, paths: string[]) => ipcRenderer.invoke('characterarc:project-skills-delete', projectId, paths),
-  /** 批量导出 skills（内置 + 项目导入）为 zip，入参为 skill path 列表 */
-  exportProjectSkills: (projectId: string, paths: string[]) => ipcRenderer.invoke('characterarc:project-skills-export', projectId, paths),
+  /** 批量导出 skills（内置 + 项目导入），format='zip' 每个 skill 导出为单个 .zip，format='dir' 导出为独立目录 */
+  exportProjectSkills: (projectId: string, paths: string[], format?: 'zip' | 'dir') => ipcRenderer.invoke('characterarc:project-skills-export', projectId, paths, format),
   /** 从回收站恢复一个被删除的项目级 skill（按暂存标识把暂存文件移回原目录） */
   restoreProjectSkill: (projectId: string, stashId: string) => ipcRenderer.invoke('characterarc:project-skills-restore', projectId, stashId),
   /** 从回收站彻底删除一个被删除的项目级 skill（清理暂存区文件） */

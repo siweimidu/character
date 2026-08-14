@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
-import { existsSync } from 'node:fs'
+import { createWriteStream, existsSync } from 'node:fs'
 import { cp, mkdir, readFile, readdir, rm, stat, unlink, writeFile } from 'node:fs/promises'
+import { pipeline } from 'node:stream/promises'
 import { homedir } from 'node:os'
 import { basename, isAbsolute, join, relative } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
@@ -3387,57 +3388,84 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
   })
 
   // ── 批量导出 skills（内置 + 项目导入）为 zip 压缩包 ──
-  // 入参：要导出的 skill path 列表（形如 skills/xxx、skills/group/xxx、project-skills/xxx …），
-  // 按 SKILL.md 目录结构打包成 .zip 并弹出保存对话框。
-  ipcMain.handle('characterarc:project-skills-export', async (_event, projectId: unknown, paths: unknown) => {
+  // 入参：要导出的 skill path 列表（形如 skills/xxx、skills/group/xxx、project-skills/xxx …）。
+  // format：'zip' 表示每个 skill 导出为单个 .zip 压缩包；'dir' 表示每个 skill 导出为独立目录。
+  // 先弹出目录选择器选定输出目录，再逐个 skill 写入；返回导出的数量与输出目录。
+  ipcMain.handle('characterarc:project-skills-export', async (_event, projectId: unknown, paths: unknown, format: unknown) => {
     try {
       const resolvedProjectId = String(projectId ?? '').trim()
       const targets = Array.isArray(paths) ? paths.map((p) => String(p ?? '').trim()).filter(Boolean) : []
       if (!targets.length) {
         return { success: false, error: '未选择要导出的 skills' }
       }
+      const exportFormat = format === 'dir' ? 'dir' : 'zip'
 
       const builtinRoot = getBuiltinSkillsDirPath()
       const projectRoot = getSkillsDirPath(resolvedProjectId || undefined)
 
-      // 将 skill path 解析为磁盘目录，并计算 zip 内的相对目录名
-      const resolveSourceDir = (skillPath: string): { abs: string; zipDir: string } | null => {
+      // 将 skill path 解析为磁盘目录，并计算导出时使用的目录名
+      const resolveSourceDir = (skillPath: string): { abs: string; exportName: string } | null => {
         if (skillPath.startsWith('skills/')) {
           const rel = skillPath.slice('skills/'.length)
           if (!rel || rel.includes('..')) return null
           const abs = join(builtinRoot, rel)
-          return existsSync(join(abs, 'SKILL.md')) ? { abs, zipDir: basename(rel) } : null
+          return existsSync(join(abs, 'SKILL.md')) ? { abs, exportName: basename(rel) } : null
         }
         if (skillPath.startsWith('project-skills/')) {
           const rel = skillPath.slice('project-skills/'.length)
           if (!rel || rel.includes('..')) return null
           const abs = join(projectRoot, rel)
-          return existsSync(join(abs, 'SKILL.md')) ? { abs, zipDir: basename(rel) } : null
+          return existsSync(join(abs, 'SKILL.md')) ? { abs, exportName: basename(rel) } : null
         }
         return null
       }
 
-      const JSZip = (await import('jszip')).default
-      const zip = new JSZip()
+      const ownerWindow = deps.windowManager.getMainWindow() ?? BrowserWindow.getFocusedWindow()
+      const pickResult = ownerWindow
+        ? await dialog.showOpenDialog(ownerWindow, {
+            title: exportFormat === 'dir' ? '选择 Skills 导出目录' : '选择 Skills 压缩包保存目录',
+            properties: ['openDirectory', 'createDirectory']
+          })
+        : { canceled: true, filePaths: [] }
+      if (pickResult.canceled || !pickResult.filePaths[0]) {
+        return { success: true, canceled: true, exportedCount: 0 }
+      }
+      const outputDir = pickResult.filePaths[0]
+
+      // 递归收集 skill 目录下所有文件（相对目录），含 references/ 等
+      const collectFiles = async (dir: string, prefix: string, out: string[]): Promise<void> => {
+        const entries = await readdir(dir, { withFileTypes: true })
+        for (const entry of entries) {
+          const rel = prefix ? `${prefix}/${entry.name}` : entry.name
+          const abs = join(dir, entry.name)
+          if (entry.isDirectory()) {
+            await collectFiles(abs, rel, out)
+          } else {
+            out.push(rel)
+          }
+        }
+      }
+
       let count = 0
       for (const skillPath of targets) {
         const resolved = resolveSourceDir(skillPath)
         if (!resolved) continue
-        // 递归收集 skill 目录下所有文件（相对目录），含 references/ 等
-        const collectFiles = async (dir: string, prefix: string, out: string[]): Promise<void> => {
-          const entries = await readdir(dir, { withFileTypes: true })
-          for (const entry of entries) {
-            const rel = prefix ? `${prefix}/${entry.name}` : entry.name
-            const abs = join(dir, entry.name)
-            if (entry.isDirectory()) {
-              await collectFiles(abs, rel, out)
-            } else {
-              out.push(rel)
-            }
-          }
+
+        if (exportFormat === 'dir') {
+          // 目录导出：直接把整个 skill 目录复制到 <outputDir>/<skillName>/
+          const dest = join(outputDir, resolved.exportName)
+          await cp(resolved.abs, dest, { recursive: true, force: true })
+          count++
+          continue
         }
+
+        // zip 导出：为每个 skill 单独生成一个压缩包 <outputDir>/<skillName>.zip
         const files: string[] = []
         await collectFiles(resolved.abs, '', files)
+        if (!files.length) continue
+
+        const JSZip = (await import('jszip')).default
+        const zip = new JSZip()
         for (const file of files.sort()) {
           // 统一复制为独立的 Uint8Array 再写入 zip。
           // 注意：不能用 new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength) 做视图引用，
@@ -3445,38 +3473,28 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
           // 时仍会报 “An object could not be cloned”。这里用 new Uint8Array(raw) 拷贝成全新
           // ArrayBuffer，彻底避免跨进程序列化不兼容。
           const raw = await readFile(join(resolved.abs, file))
-          zip.file(`${resolved.zipDir}/${file}`, new Uint8Array(raw))
+          zip.file(file, new Uint8Array(raw))
         }
+        // 用 generateNodeStream 流式写入磁盘，避免在内存中一次性拼出大 Buffer，
+        // 从而绕开 Electron 主进程对 JSZip 内部数据块做 structured clone 时
+        // “An object could not be cloned” 的问题。
+        const outPath = join(outputDir, `${resolved.exportName}.zip`)
+        const stream = zip.generateNodeStream({
+          type: 'nodebuffer',
+          compression: 'DEFLATE',
+          streamFiles: true
+        })
+        await pipeline(stream, createWriteStream(outPath))
         count++
       }
 
-      if (!count) {
-        return { success: false, error: '未找到可导出的 skill 目录' }
-      }
-
-      // streamFiles: false 禁用 JSZip 的异步 stream/worker 处理路径（该路径会通过
-      // postMessage/structuredClone 传递数据块，在 Electron 主进程的 Node 环境下可能抛出
-      // “An object could not be cloned”）。改为主线程同步压缩，彻底规避该问题。
-      const buffer = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', streamFiles: false })
-      const ownerWindow = deps.windowManager.getMainWindow() ?? BrowserWindow.getFocusedWindow()
-      const saveResult = ownerWindow
-        ? await dialog.showSaveDialog(ownerWindow, {
-            title: '导出 Skills',
-            defaultPath: `skills-${Date.now()}.zip`,
-            filters: [{ name: 'Skill 压缩包', extensions: ['zip'] }]
-          })
-        : { canceled: true, filePath: '' }
-      if (saveResult.canceled || !saveResult.filePath) {
-        return { success: true, canceled: true, exportedCount: count }
-      }
-      await writeFile(saveResult.filePath, buffer)
-      return { success: true, exportedCount: count, filePath: saveResult.filePath }
+      return { success: true, exportedCount: count, outputDir }
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error ?? '')
       // 过滤掉 Electron 结构化克隆的干扰报错，给出更友好的提示
       return {
         success: false,
-        error: msg && /could not be cloned|structured.?clone/i.test(msg) ? 'skills 导出失败：存在无法序列化的文件内容，已转换为安全格式后重试' : (msg || 'skills 导出失败')
+        error: msg && /could not be cloned|structured.?clone/i.test(msg) ? 'skills 导出失败：存在无法序列化的文件内容，已改用流式写入重试' : (msg || 'skills 导出失败')
       }
     }
   })

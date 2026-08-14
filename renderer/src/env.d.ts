@@ -899,11 +899,11 @@ declare global {
         }>
         error?: string
       }>
-      exportProjectSkills: (projectId: string, paths: string[]) => Promise<{
+      exportProjectSkills: (projectId: string, paths: string[], format?: 'zip' | 'dir') => Promise<{
         success: boolean
         canceled?: boolean
         exportedCount?: number
-        filePath?: string
+        outputDir?: string
         error?: string
       }>
       restoreProjectSkill: (projectId: string, stashId: string) => Promise<{

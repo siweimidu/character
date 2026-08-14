@@ -513,11 +513,27 @@ function deleteGroup(group: {
   })
 }
 
-async function exportSelectedSkills(): Promise<void> {
+// 导出格式选择弹窗：zip = 每个 skill 导出为单个 .zip，dir = 每个 skill 导出为独立目录
+const isExportDialogOpen = ref(false)
+const exportFormat = ref<'zip' | 'dir'>('zip')
+
+// 点击“批量导出”：先弹出格式选择，再执行导出
+function exportSelectedSkills(): void {
   if (selectedSkillPaths.value.length === 0) return
+  exportFormat.value = 'zip'
+  isExportDialogOpen.value = true
+}
+
+async function runExportSelectedSkills(): Promise<void> {
+  if (selectedSkillPaths.value.length === 0) return
+  isExportDialogOpen.value = false
   isExportingSkills.value = true
   try {
-    const result = await window.characterArc.exportProjectSkills(currentProject.value?.id ?? '', selectedSkillPaths.value)
+    const result = await window.characterArc.exportProjectSkills(
+      currentProject.value?.id ?? '',
+      selectedSkillPaths.value,
+      exportFormat.value
+    )
     if (!result.success) {
       throw new Error(result.error ?? 'skills 导出失败')
     }
@@ -844,6 +860,37 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
               <n-button round strong secondary @click="isImportGroupDialogOpen = false; runImportPackage('dir')">导入 Skill 目录</n-button>
               <n-button round strong type="primary" @click="isImportGroupDialogOpen = false; runImportPackage('zip')">导入 .zip 压缩包</n-button>
             </template>
+          </div>
+        </template>
+      </n-modal>
+
+      <!-- 批量导出格式选择弹窗 -->
+      <n-modal
+        v-model:show="isExportDialogOpen"
+        preset="card"
+        title="选择导出方式"
+        :bordered="false"
+        style="max-width: 480px"
+      >
+        <div class="skill-group-dialog-body">
+          <p class="skill-group-dialog-tip">将选中的 {{ selectedSkillPaths.length }} 个 skills 导出到本地。请选择导出格式：</p>
+          <div class="skill-import-group-options">
+            <label class="skill-import-group-option" :class="{ active: exportFormat === 'zip' }">
+              <input type="radio" v-model="exportFormat" value="zip" />
+              <span class="skill-import-group-radio"></span>
+              <span class="skill-import-group-name">每个 Skill 导出为单个 .zip 压缩包</span>
+            </label>
+            <label class="skill-import-group-option" :class="{ active: exportFormat === 'dir' }">
+              <input type="radio" v-model="exportFormat" value="dir" />
+              <span class="skill-import-group-radio"></span>
+              <span class="skill-import-group-name">每个 Skill 导出为独立目录</span>
+            </label>
+          </div>
+        </div>
+        <template #footer>
+          <div class="skill-group-dialog-actions">
+            <n-button round secondary @click="isExportDialogOpen = false">取消</n-button>
+            <n-button round strong type="primary" :loading="isExportingSkills" @click="runExportSelectedSkills">选择输出目录并导出</n-button>
           </div>
         </template>
       </n-modal>
