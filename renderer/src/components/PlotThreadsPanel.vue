@@ -515,12 +515,8 @@ async function handleAiBatchGenerate(): Promise<void> {
   }
 
   const total = batchTotal.value
-  if (total < 10 || total > 50) {
-    message.warning('三个优先级合计数量需在 10~50 条之间')
-    return
-  }
-  if (total === 0) {
-    message.warning('请至少填写一个优先级的生成数量')
+  if (total < 1 || total > 50) {
+    message.warning('三个优先级合计数量需在 1~50 条之间')
     return
   }
 
@@ -625,6 +621,14 @@ function openBatchGenerate(): void {
   batchLowCount.value = 4
   generatedThreads.value = []
   batchFocusModalVisible.value = true
+}
+
+// 输入框被清空(值为 null/undefined/NaN)时,按回车/失焦自动回填为 1,
+// 避免出现空值导致合计计算异常;值为 0 时保留(表示跳过该优先级)。
+function ensurePriorityCount(value: number | null, current: typeof batchHighCount): void {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    current.value = 1
+  }
 }
 
 function toggleGeneratedThread(index: number): void {
@@ -1043,25 +1047,52 @@ function confirmAddGeneratedThreads(): void {
         :rows="3"
         placeholder="如:围绕主角身世 / 反派势力的阴谋 / 下一卷的冲突重点(可留空)"
       />
-      <div class="ai-modal-count-row" style="margin-top: 14px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap">
-        <div class="ai-priority-count">
-          <span class="ai-priority-dot" style="background:#ef4444"></span>
-          <span class="ai-modal-count-label">高优先级</span>
-          <n-input-number v-model:value="batchHighCount" :min="0" :max="50" :step="1" style="width: 90px" />
+      <div class="ai-modal-count-row">
+        <div class="ai-priority-count" style="--pri-color:#ef4444">
+          <div class="ai-priority-header">
+            <span class="ai-priority-dot"></span>
+            <span class="ai-modal-count-label">高优先级</span>
+          </div>
+          <n-input-number
+            v-model:value="batchHighCount"
+            :min="0"
+            :max="50"
+            :step="1"
+            placeholder="请输入"
+            @update:value="(v) => ensurePriorityCount(v, batchHighCount)"
+          />
         </div>
-        <div class="ai-priority-count">
-          <span class="ai-priority-dot" style="background:#eab308"></span>
-          <span class="ai-modal-count-label">中优先级</span>
-          <n-input-number v-model:value="batchMediumCount" :min="0" :max="50" :step="1" style="width: 90px" />
+        <div class="ai-priority-count" style="--pri-color:#eab308">
+          <div class="ai-priority-header">
+            <span class="ai-priority-dot"></span>
+            <span class="ai-modal-count-label">中优先级</span>
+          </div>
+          <n-input-number
+            v-model:value="batchMediumCount"
+            :min="0"
+            :max="50"
+            :step="1"
+            placeholder="请输入"
+            @update:value="(v) => ensurePriorityCount(v, batchMediumCount)"
+          />
         </div>
-        <div class="ai-priority-count">
-          <span class="ai-priority-dot" style="background:#94a3b8"></span>
-          <span class="ai-modal-count-label">低优先级</span>
-          <n-input-number v-model:value="batchLowCount" :min="0" :max="50" :step="1" style="width: 90px" />
+        <div class="ai-priority-count" style="--pri-color:#94a3b8">
+          <div class="ai-priority-header">
+            <span class="ai-priority-dot"></span>
+            <span class="ai-modal-count-label">低优先级</span>
+          </div>
+          <n-input-number
+            v-model:value="batchLowCount"
+            :min="0"
+            :max="50"
+            :step="1"
+            placeholder="请输入"
+            @update:value="(v) => ensurePriorityCount(v, batchLowCount)"
+          />
         </div>
       </div>
-      <div class="ai-modal-count-hint" style="color: var(--arc-text-hint); font-size: 12px; margin-top: 8px">
-        合计 <b style="color: var(--arc-text-1)">{{ batchTotal }}</b> 条（建议 10~50 条，三个优先级可分别设为 0 以跳过该优先级）
+      <div class="ai-modal-count-hint">
+        合计 <b style="color: var(--arc-text-1)">{{ batchTotal }}</b> 条（三个优先级合计需在 1~50 条之间，可设为 0 跳过该优先级）
       </div>
       <div v-if="batchLoading" class="ai-modal-progress" style="margin-top: 12px">
         <n-progress type="line" :percentage="batchProgress" :show-indicator="false" />
@@ -1524,8 +1555,36 @@ function confirmAddGeneratedThreads(): void {
   color: var(--arc-text-hint);
 }
 
+.ai-modal-count-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 14px;
+}
+
 .ai-priority-count {
-  display: inline-flex;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--pri-color) 32%, var(--arc-border));
+  border-radius: var(--arc-radius-md);
+  background: color-mix(in srgb, var(--pri-color) 5%, var(--arc-bg-surface));
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.ai-priority-count:hover {
+  border-color: color-mix(in srgb, var(--pri-color) 55%, var(--arc-border));
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--pri-color) 14%, transparent);
+}
+
+.ai-priority-count :deep(.n-input-number) {
+  width: 100%;
+}
+
+.ai-priority-header {
+  display: flex;
   align-items: center;
   gap: 6px;
 }
@@ -1535,6 +1594,19 @@ function confirmAddGeneratedThreads(): void {
   height: 8px;
   border-radius: 50%;
   flex: none;
+  background: var(--pri-color);
+}
+
+.ai-modal-count-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--arc-text-1);
+}
+
+.ai-modal-count-hint {
+  color: var(--arc-text-hint);
+  font-size: 12px;
+  margin-top: 8px;
 }
 
 .ai-result-list {
