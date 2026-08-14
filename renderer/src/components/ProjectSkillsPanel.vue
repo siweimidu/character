@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { BookOpenText, ChevronDown, ChevronsDownUp, ChevronsUpDown, Trash2 } from 'lucide-vue-next'
+import { BookOpenText, ChevronDown, ChevronsDownUp, ChevronsUpDown, Search, Trash2 } from 'lucide-vue-next'
 import { NButton, NInput, NModal, NTag, NTooltip, useDialog, useMessage } from 'naive-ui'
 import { novelWorkflowStageDefinitions } from '@/features/novelWorkflow/stages'
 import { useAppStore } from '@/stores/app'
@@ -16,6 +16,37 @@ const isImportingCcSwitchSkills = ref(false)
 const projectSkillItems = ref<ProjectSkillItem[]>([])
 const builtinSkillsDir = ref('')
 const projectSkillsDir = ref('')
+
+// ── 搜索：在内置 skills 与项目扩展中按关键词过滤所有 skills ──
+const searchQuery = ref('')
+
+/** 关键词匹配单个 skill：命中名称、描述、分类、来源、ID 或路径即视为匹配 */
+function matchesSearch(skill: ProjectSkillItem, keyword: string): boolean {
+  if (!keyword) return true
+  const text = [
+    skill.name,
+    skill.description,
+    skill.category,
+    skill.source,
+    skill.id,
+    skill.path,
+    skill.version
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+  return keyword.split(/\s+/).every((part) => text.includes(part))
+}
+
+/** 过滤后的 skills 列表：搜索为空时返回全部，否则仅返回命中的 skills */
+const filteredResolvedSkills = computed(() => {
+  const keyword = searchQuery.value.trim().toLowerCase()
+  if (!keyword) return resolvedProjectSkills.value
+  return resolvedProjectSkills.value.filter((skill) => matchesSearch(skill, keyword))
+})
+
+/** 命中关键词的 skill 数量（用于搜索无结果时的提示与计数展示） */
+const searchResultCount = computed(() => filteredResolvedSkills.value.length)
 
 const currentProject = computed(() => appStore.currentProject)
 const workflowStages = computed(() => novelWorkflowStageDefinitions)
@@ -49,7 +80,7 @@ const groupedSkills = computed(() => {
   const groups: Array<{ name: string; label: string; scope?: 'builtin' | 'project'; skills: typeof resolvedProjectSkills.value }> = []
   const groupMap = new Map<string, typeof resolvedProjectSkills.value>()
 
-  for (const skill of resolvedProjectSkills.value) {
+  for (const skill of filteredResolvedSkills.value) {
     const segments = skill.path.split('/')
     // 内置 skill 路径形如 skills/<group>/<skill>，按来源子目录分组；
     // 项目 skill 路径形如 project-skills/<skill>（未分组）或 project-skills/<group>/<skill>（已分组）。
@@ -84,20 +115,22 @@ const groupedSkills = computed(() => {
   }
 
   // 把「已创建但还没有 skill」的空分组也补进来，保证新建分组能在列表顶部看到。
-  // skillGroups 来自主进程扫描 project-skills/<group>/，count=0 表示空分组；
-  // 仅补项目分组，避免与内置分组重复。
+  // 搜索状态下不补充空分组，仅展示包含匹配 skill 的分组，避免搜索结果被空分组干扰。
+  const isSearching = searchQuery.value.trim().length > 0
   const existingProjectNames = new Set(
     groups.filter((g) => g.scope === 'project').map((g) => g.name)
   )
-  for (const g of skillGroups.value) {
-    if (g.name === '_ungrouped' || g.name.startsWith('__builtin__')) continue
-    if (existingProjectNames.has(g.name)) continue
-    groups.push({
-      name: g.name,
-      label: g.name,
-      scope: 'project',
-      skills: []
-    })
+  if (!isSearching) {
+    for (const g of skillGroups.value) {
+      if (g.name === '_ungrouped' || g.name.startsWith('__builtin__')) continue
+      if (existingProjectNames.has(g.name)) continue
+      groups.push({
+        name: g.name,
+        label: g.name,
+        scope: 'project',
+        skills: []
+      })
+    }
   }
 
   // 内置分组排前，未分组与自定义分组按名称排序在后
@@ -685,6 +718,22 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
         </div>
       </div>
 
+      <div v-if="resolvedProjectSkills.length > 0" class="project-skill-searchbar">
+        <n-input
+          v-model:value="searchQuery"
+          clearable
+          placeholder="搜索所有 skills（名称 / 描述 / 分类 / 来源）…"
+          class="project-skill-search-input"
+        >
+          <template #prefix>
+            <Search :size="15" class="project-skill-search-icon" />
+          </template>
+        </n-input>
+        <span v-if="searchQuery.trim()" class="project-skill-search-count">
+          {{ searchResultCount > 0 ? `命中 ${searchResultCount} 个 skills` : '无匹配结果' }}
+        </span>
+      </div>
+
       <div v-if="resolvedProjectSkills.length > 0" class="project-skill-groups">
         <div class="project-skill-groups-toolbar">
           <span class="project-skill-groups-title">分组（{{ groupedSkills.length }}）</span>
@@ -701,6 +750,11 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
             />
             <span>{{ hasCollapsedGroup ? '全部展开' : '全部收起' }}</span>
           </button>
+        </div>
+        <div v-if="searchQuery.trim() && groupedSkills.length === 0" class="project-skill-search-empty">
+          <Search :size="18" />
+          <strong>未找到匹配的 skills</strong>
+          <p>没有与「{{ searchQuery.trim() }}」匹配的内置或项目扩展 skill，请尝试更换关键词。</p>
         </div>
         <div v-for="group in groupedSkills" :key="group.name" class="skill-group">
           <div class="skill-group-header">
@@ -969,6 +1023,56 @@ function toggleProjectSkillStage(skillId: string, stageId: NovelWorkflowStageId)
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* ── 搜索栏：内置 skills 与项目扩展的统一搜索 ── */
+.project-skill-searchbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.project-skill-search-input {
+  max-width: 420px;
+}
+
+.project-skill-search-icon {
+  color: var(--arc-text-hint);
+}
+
+.project-skill-search-count {
+  color: var(--arc-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* 搜索无结果时的空状态 */
+.project-skill-search-empty {
+  display: flex;
+  min-height: 120px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px dashed var(--arc-border);
+  border-radius: 10px;
+  background: var(--arc-bg-body);
+  color: var(--arc-text-secondary);
+  text-align: center;
+  padding: 20px;
+}
+
+.project-skill-search-empty strong {
+  color: var(--arc-text-primary);
+  font-size: 14px;
+}
+
+.project-skill-search-empty p {
+  max-width: 30rem;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
 }
 
 .project-skill-groups-toolbar {
