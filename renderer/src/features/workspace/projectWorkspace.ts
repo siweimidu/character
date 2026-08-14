@@ -424,7 +424,11 @@ function cloneCharacters(characters?: CharacterCard[]): CharacterCard[] {
   return characters?.length
     ? characters.map((character) => ({
         ...character,
-        tags: character.tags.map((tag) => ({ ...tag }))
+        // 旧版本数据可能缺少数组字段，防御性兜底避免运行时崩溃
+        tags: Array.isArray(character.tags) ? character.tags.map((tag) => ({ ...tag })) : [],
+        customTags: Array.isArray(character.customTags) ? [...character.customTags] : [],
+        relatedChapterIds: Array.isArray(character.relatedChapterIds) ? [...character.relatedChapterIds] : [],
+        versions: Array.isArray(character.versions) ? character.versions.map((version) => ({ ...version })) : []
       }))
     : []
 }

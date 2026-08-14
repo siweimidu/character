@@ -87,7 +87,7 @@ export function buildRelationsGraphData(payload: {
       subtitle: character.role || '角色',
       description: character.description,
       accent: resolveAccentColor(character.avatar, character.name),
-      searchText: `${character.name} ${character.role} ${character.description} ${character.tags.map((tag) => tag.label).join(' ')}`.toLowerCase()
+      searchText: `${character.name} ${character.role} ${character.description} ${(character.tags ?? []).map((tag) => tag.label).join(' ')}`.toLowerCase()
     }))
   ]
 

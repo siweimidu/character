@@ -27,7 +27,7 @@ export const speechProviderPresets: SpeechProviderPreset[] = [
     value: 'speech-groq',
     model: 'whisper-large-v3-turbo',
     baseUrl: 'https://api.groq.com/openai/v1',
-    hint: 'Groq Whisper 语音转写，走 OpenAI 兼容的 /audio/transcriptions 接口，需 Groq API Key。'
+    hint: 'Groq Whisper 语音转写，走 OpenAI 兼容的 /audio/transcriptions 接口，需 Groq API Key。',
     website: 'https://groq.com'
   },
 
@@ -198,7 +198,6 @@ const SPEECH_PROVIDER_WEBSITES: Record<string, string> = {
   'speech-faster-whisper': 'https://github.com/speaches-ai/speaches',
   'speech-whisper-cpp': 'https://github.com/ggerganov/whisper.cpp',
   'speech-sensevoice': 'https://github.com/FunAudioLLM/SenseVoice',
-  'speech-groq': 'https://groq.com',
   'speech-tokendance': 'https://tokendance.com',
   'speech-custom': 'https://platform.openai.com/docs/api-reference/audio'
 }
