@@ -1569,3 +1569,14 @@ input {
   padding: 22px;
   text-align: center;
 }
+
+/* ── 窗口隐藏/最小化时降低渲染开销 ──
+ * 窗口被最小化或完全遮挡时，暂停所有 CSS 动画与过渡，
+ * 显著减少后台时 GPU/CPU 的动画合成开销。
+ * （配合 App.vue 的 visibilitychange 监听，动态切换 .window-hidden） */
+html.window-hidden *,
+html.window-hidden *::before,
+html.window-hidden *::after {
+  animation-play-state: paused !important;
+  transition: none !important;
+}

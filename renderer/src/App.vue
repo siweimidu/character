@@ -176,9 +176,17 @@ function handleBeforeUnload() {
   appStore.flushWorkspaceSync()
 }
 
+// 窗口隐藏/最小化时给 <html> 打上 .window-hidden 标记，配合全局 CSS 暂停
+// 无必要的 CSS 动画与过渡；恢复可见后移除。降低空闲时的 GPU/CPU 占用。
+function syncVisibilityClass() {
+  const hidden = document.hidden
+  document.documentElement.classList.toggle('window-hidden', hidden)
+}
+
 onMounted(() => {
   window.addEventListener('keydown', handleGlobalKeydown)
   window.addEventListener('beforeunload', handleBeforeUnload)
+  document.addEventListener('visibilitychange', syncVisibilityClass)
 })
 onBeforeUnmount(() => {
   if (themeTransitionFrame !== null) {
@@ -187,6 +195,7 @@ onBeforeUnmount(() => {
   }
   window.removeEventListener('keydown', handleGlobalKeydown)
   window.removeEventListener('beforeunload', handleBeforeUnload)
+  document.removeEventListener('visibilitychange', syncVisibilityClass)
 })
 </script>
 

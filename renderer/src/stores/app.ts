@@ -275,6 +275,8 @@ export const useAppStore = defineStore('app', () => {
   const stored = loadStoredState()
   /** 是否已完成初始化水合（从 SQLite 加载数据） */
   const hasHydrated = ref(false)
+  /** 窗口是否可见（未最小化/未遮挡）。隐藏时用于暂停非必要后台任务，降低 CPU/内存占用。 */
+  const windowVisible = ref(true)
   /** 当前视图：项目列表 / 新建向导 / 工作台 / 章节写作 / 独立能力页 */
   const currentView = ref<'projects' | 'wizard' | 'continuation-import' | 'workbench' | 'chapter-studio' | 'deconstruction-library' | 'skills' | 'cover-workbench' | 'fanqie-trends' | 'recycle-bin' | 'global-agent'>('projects')
   /** 从番茄风向标等入口携带初始数据进入新建向导时的预填内容 */
@@ -5054,6 +5056,15 @@ export const useAppStore = defineStore('app', () => {
   window.characterArc.onChapterPostGenerationIssues(handleChapterPostGenerationIssues)
   window.characterArc.onChapterPostGenerationTask(handleChapterPostGenerationTask)
 
+  // ── 窗口可见性跟踪 ──
+  // 窗口被最小化/隐藏/遮挡时 document.hidden 变为 true，各后台组件据此暂停
+  // 非必要定时器与动画，降低空闲 CPU/内存占用（Electron 对隐藏窗口的渲染
+  // 进程已做后台节流，这里让业务层定时器也能感知并主动让路）。
+  function syncWindowVisibility(): void {
+    windowVisible.value = !document.hidden
+  }
+  document.addEventListener('visibilitychange', syncWindowVisibility)
+
   // ── 响应式监听器 ──
   // 切换章节时清空选中文本
   watch(
@@ -5159,6 +5170,7 @@ export const useAppStore = defineStore('app', () => {
     isLiveAutoSave,
     isPersisting,
     isPersistencePending,
+    windowVisible,
     deleteChapter,
     deleteCharacter,
     deleteCharacterVersion,

@@ -101,7 +101,10 @@ export function createWindowManager() {
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
         contextIsolation: true,
-        nodeIntegration: false
+        nodeIntegration: false,
+        // 显式开启后台节流：窗口隐藏/最小化/失焦时，Electron 会降低渲染进程的
+        // 定时器频率与绘制频率，显著减少空闲 CPU 占用（默认开启，此处显式声明防回归）。
+        backgroundThrottling: true
       }
     })
 
@@ -116,6 +119,29 @@ export function createWindowManager() {
       void shell.openExternal(url)
       return { action: 'deny' }
     })
+
+    // 后台/失焦时进一步降低渲染帧率，减少空闲 GPU/CPU 占用；
+    // 窗口重新可见或获得焦点后恢复 60fps。
+    const applyVisibilityThrottle = (): void => {
+      const hidden = window.isMinimized() || !window.isVisible() || !window.isFocused()
+      const webContents = window.webContents
+      if (webContents.isDestroyed()) {
+        return
+      }
+      // setBackgroundThrottling 在窗口隐藏时已由 Electron 默认处理；
+      // 这里额外在失焦/最小化时把合成帧率降到 12fps，进一步压低空闲开销。
+      webContents.setFrameRate(hidden ? 12 : 60)
+      if (hidden) {
+        webContents.invalidate()
+      }
+    }
+
+    window.on('minimize', applyVisibilityThrottle)
+    window.on('restore', applyVisibilityThrottle)
+    window.on('show', applyVisibilityThrottle)
+    window.on('hide', applyVisibilityThrottle)
+    window.on('blur', applyVisibilityThrottle)
+    window.on('focus', applyVisibilityThrottle)
 
     window.on('closed', () => {
       if (mainWindow === window) {
