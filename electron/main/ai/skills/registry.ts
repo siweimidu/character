@@ -1,5 +1,5 @@
 import type { SkillDefinition, SkillScanEntry } from './types'
-import { scanSkillsFromDisk } from './discovery'
+import { scanSkillsFromDisk, pickBetterSkill } from './discovery'
 
 /** 按项目 ID 存储的 skill 注册表，每个项目有独立的 skill Map */
 const skillMaps = new Map<string, Map<string, SkillDefinition>>()
@@ -48,8 +48,12 @@ export function getAllSkills(projectId?: string): SkillDefinition[] {
   const sharedMap = key !== '_shared' ? skillMaps.get('_shared') : undefined
   if (!sharedMap) return Array.from(projectMap?.values() ?? [])
   if (!projectMap) return Array.from(sharedMap.values())
+  // 合并时同样遵循“项目优先、带分组优先”的规则，避免全局导入与项目内同名 skill 互相覆盖时丢失分组信息
   const merged = new Map(sharedMap)
-  for (const [k, v] of projectMap) merged.set(k, v)
+  for (const [k, v] of projectMap) {
+    const existing = merged.get(k)
+    merged.set(k, existing ? pickBetterSkill(existing, v) : v)
+  }
   return Array.from(merged.values())
 }
 

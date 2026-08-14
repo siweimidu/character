@@ -28,6 +28,34 @@ export function getProjectSkillsDirPath(projectId?: string): string {
 }
 
 /**
+ * 在多个同名（同 id）skill 中挑选更优的一份进行保留。
+ *
+ * 磁盘上可能因为重复导入等原因，同一个 skill id 同时出现在多个位置（例如未分组的
+ * project-skills/<skill> 与分组的 project-skills/<group>/<skill>）。此时若用 Map 按 id
+ * 直接覆盖，会依赖 readdir 的文件系统遍历顺序，导致分组信息被未分组条目覆盖，
+ * 进而让“导入到目标分组”的 skill 显示在“未分组”里。
+ *
+ * 因此这里采用稳定且合理的优先级：
+ * 1. 项目作用域优先于内置作用域（保持“项目导入覆盖内置同名”的既有语义）；
+ * 2. 同作用域下，路径分段更多（即带分组目录的）优先，保证分组信息不丢失。
+ */
+export function pickBetterSkill(existing: SkillDefinition, incoming: SkillDefinition): SkillDefinition {
+  const scopeRank = (scope: 'builtin' | 'project'): number => (scope === 'project' ? 1 : 0)
+  const existingRank = scopeRank(existing.scope)
+  const incomingRank = scopeRank(incoming.scope)
+  if (incomingRank !== existingRank) {
+    return incomingRank > existingRank ? incoming : existing
+  }
+  // 同作用域：路径分段越多（带分组）越优先，避免未分组覆盖分组
+  const existingDepth = existing.path.split('/').length
+  const incomingDepth = incoming.path.split('/').length
+  if (incomingDepth === existingDepth) {
+    return existing
+  }
+  return incomingDepth > existingDepth ? incoming : existing
+}
+
+/**
  * 扫描磁盘上的内置和项目 skill，合并后按名称排序返回
  * @param projectId - 项目标识
  * @returns 合并后的 skill 定义列表
@@ -37,8 +65,14 @@ export async function scanSkillsFromDisk(projectId?: string): Promise<SkillDefin
   const projectSkills = await scanSkillsUnderRoot(getProjectSkillsDirPath(projectId), 'project')
   const mergedMap = new Map<string, SkillDefinition>()
 
-  for (const skill of builtinSkills) mergedMap.set(skill.id, skill)
-  for (const skill of projectSkills) mergedMap.set(skill.id, skill)
+  for (const skill of builtinSkills) {
+    const existing = mergedMap.get(skill.id)
+    mergedMap.set(skill.id, existing ? pickBetterSkill(existing, skill) : skill)
+  }
+  for (const skill of projectSkills) {
+    const existing = mergedMap.get(skill.id)
+    mergedMap.set(skill.id, existing ? pickBetterSkill(existing, skill) : skill)
+  }
 
   return Array.from(mergedMap.values()).sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
 }
