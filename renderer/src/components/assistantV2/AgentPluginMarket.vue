@@ -230,9 +230,8 @@ defineExpose({ loadPlugins, loadInstalled })
   flex-shrink: 0;
 }
 .apm-sub {
-  font-size: 10px;
-  font-family: var(--ga-mono, ui-monospace, monospace);
-  color: var(--arc-primary);
+  font-size: 11px;
+  color: var(--arc-text-hint);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
