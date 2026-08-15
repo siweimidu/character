@@ -699,6 +699,51 @@ export function useAssistant(options: UseAssistantOptions) {
     }
   }
 
+  /**
+   * 退出全局智能体页面时清理「空会话」：没有任何对话内容（没有任何 turn）的会话。
+   * 这些会话会被自动永久删除，且不记入回收站（直接调用后端批量删除，不写回收站快照）。
+   * @returns 被删除的空会话数量
+   */
+  async function deleteEmptySessionsPermanent(): Promise<number> {
+    const ids: string[] = []
+    for (const s of sessions.value) {
+      try {
+        const loaded = await A.sessionLoad({ sessionId: s.id })
+        const turns = (loaded?.turns ?? []) as Array<{
+          userMessage?: string
+          assistantMessage?: string
+        }>
+        // 没有任何 turn，或 turn 均无实际内容（用户/助手消息均为空白）视为空会话
+        const isEmpty =
+          turns.length === 0 ||
+          turns.every(
+            (t) =>
+              !(t.userMessage && t.userMessage.trim()) &&
+              !(t.assistantMessage && t.assistantMessage.trim())
+          )
+        if (isEmpty) ids.push(s.id)
+      } catch (e) {
+        // 单个会话检测失败不阻断整体清理，仅记录日志
+        console.error('[useAssistant] 检测空会话失败:', e)
+      }
+    }
+
+    if (ids.length === 0) return 0
+
+    // 直接调用后端批量删除（级联删除 turns / events / 暂存变更），不写回收站快照。
+    await A.sessionDeleteBatch({ sessionIds: ids })
+    sessions.value = sessions.value.filter((s) => !ids.includes(s.id))
+    if (activeSessionId.value && ids.includes(activeSessionId.value)) {
+      activeSessionId.value = null
+      turns.value = []
+      eventsByTurn.value = new Map()
+      stagedChanges.value = []
+      cancelEditing()
+      restoredDraftLabel.value = ''
+    }
+    return ids.length
+  }
+
   async function renameSession(sessionId: string, title: string): Promise<void> {
     await A.sessionRename({ sessionId, title })
     sessions.value = sessions.value.map((s) =>
@@ -1121,6 +1166,7 @@ export function useAssistant(options: UseAssistantOptions) {
     switchSession,
     deleteSession,
     deleteSessions,
+    deleteEmptySessionsPermanent,
     renameSession,
     send,
     continueWithPrompt,
