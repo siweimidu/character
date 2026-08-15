@@ -24,10 +24,12 @@ const props = withDefaults(defineProps<{
   streamingCharCount?: number
   isEditing?: boolean
   restoredLabel?: string
+  /** 撤回/回退后需要恢复的模式意图（含自增序号，保证每次撤回都能 watch 到）。 */
+  restoredIntent?: { intent: string; nonce: number } | null
   /** 待发送的引用附件芯片列表 */
   attachments?: TurnAttachment[]
   /** 可被 / 快捷指令选择的 skills（命令菜单第二类） */
-  skills?: Array<{ id: string; name: string; description?: string; category?: string }>
+  skills?: Array<{ id: string; name: string; description?: string; category?: string; scope?: 'builtin' | 'project' }>
   /** 项目 ID：用于斜杠唤起提示词库（按项目隔离持久化）。 */
   projectId?: string | null | undefined
   /** 已启用的能力模块列表（用于展示能力快捷按钮） */
@@ -177,7 +179,7 @@ const slashIdxByTab = { command: ref(0), skill: ref(0) }
 type SlashEntry =
   | { kind: 'command'; key: string; label: string; description: string; template: string; intentHint: string; builtin?: boolean }
   | { kind: 'promptlib'; key: string; label: string; description: string }
-  | { kind: 'skill'; id: string; label: string; name: string; description: string; category?: string }
+  | { kind: 'skill'; id: string; label: string; name: string; description: string; category?: string; scope?: 'builtin' | 'project' }
 
 /** 提示词库入口：始终位于斜杠命令首位，点击唤起提示词库管理弹窗。 */
 const PROMPT_LIB_ENTRY: Extract<SlashEntry, { kind: 'promptlib' }> = {
@@ -200,7 +202,8 @@ const slashSkillEntries = computed<Array<Extract<SlashEntry, { kind: 'skill' }>>
     name: s.name,
     label: `/skill:${s.name}`, 
     description: s.description || '绑定智能体技能',
-    category: s.category
+    category: s.category,
+    scope: s.scope
   }))
 )
 
@@ -229,16 +232,28 @@ const slashGroups = computed(() => {
   const groups: Array<{ title: string; items: SlashEntry[] }> = []
   if (commands.length) groups.push({ title: '命令', items: commands })
   if (skills.length) {
-    // 将 skills 按分类分组展示
-    const byCat = new Map<string, Extract<SlashEntry, { kind: 'skill' }>[]>()
+    // 将 skills 先按「来源范围」分组展示：内置 Skills / 项目扩展 Skills
+    const builtin: Extract<SlashEntry, { kind: 'skill' }>[] = []
+    const project: Extract<SlashEntry, { kind: 'skill' }>[] = []
     for (const s of skills) {
-      const cat = skillCategoryLabel(s.category)
-      if (!byCat.has(cat)) byCat.set(cat, [])
-      byCat.get(cat)!.push(s)
+      if (s.scope === 'builtin') builtin.push(s)
+      else project.push(s)
     }
-    for (const [cat, items] of byCat) {
-      groups.push({ title: `Skills · ${cat}`, items })
+    const pushScopeGroup = (title: string, list: Extract<SlashEntry, { kind: 'skill' }>[]) => {
+      if (list.length === 0) return
+      // 组内按分类二次分组，让来源分组内层级更清晰
+      const byCat = new Map<string, Extract<SlashEntry, { kind: 'skill' }>[]>()
+      for (const s of list) {
+        const cat = skillCategoryLabel(s.category)
+        if (!byCat.has(cat)) byCat.set(cat, [])
+        byCat.get(cat)!.push(s)
+      }
+      for (const [cat, items] of byCat) {
+        groups.push({ title: `${title} · ${cat}`, items })
+      }
     }
+    pushScopeGroup('内置 Skills', builtin)
+    pushScopeGroup('项目扩展 Skills', project)
   }
   return groups
 })
@@ -666,6 +681,24 @@ watch(
     if (!textareaRef.value) return
     textareaRef.value.focus()
     autosize(textareaRef.value)
+  }
+)
+
+/** 根据撤回/回退携带的意图，还原对应的「模式」芯片（如 /standard 标准模式）。 */
+function restoreModeFromIntent(intent: string): void {
+  // 仅恢复模式类命令（内置模式芯片）；其它意图（slash:* 等）会写入模板文本，无需恢复芯片
+  if (!intent.startsWith('global-assistant-v2:')) return
+  const entry = BUILTIN_COMMANDS.find((c) => c.intentHint === intent)
+  if (!entry) return
+  selectedMode.value = { key: entry.key, label: entry.label, intentHint: entry.intentHint }
+  pendingIntent.value = entry.intentHint
+}
+
+watch(
+  () => props.restoredIntent,
+  (restored) => {
+    if (!restored?.intent) return
+    restoreModeFromIntent(restored.intent)
   }
 )
 </script>

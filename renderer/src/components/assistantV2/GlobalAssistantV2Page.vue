@@ -46,6 +46,9 @@ const composerValue = computed({
   set: (v) => { assistant.composerValue.value = v }
 })
 
+/** 撤回/回退后需要恢复的模式意图（含自增序号，保证 Composer 每次都 watch 到）。 */
+const composerRestoredIntent = ref<{ intent: string; nonce: number } | null>(null)
+
 // 已启用能力模块（供输入框展示能力提示）
 const enabledModules = ref<AgentModuleRuntime[]>([])
 async function refreshEnabledModules(): Promise<void> {
@@ -229,7 +232,7 @@ const quickActions: Array<{ label: string; prompt: string }> = [
 const availableSkills = computed(() =>
   (appStore.currentProject?.projectSkills ?? [])
     .filter((s) => s.enabled)
-    .map((s) => ({ id: s.id, name: s.name, description: s.description, category: s.category }))
+    .map((s) => ({ id: s.id, name: s.name, description: s.description, category: s.category, scope: s.scope }))
 )
 
 const assetLinks = computed(() => [
@@ -309,9 +312,21 @@ function notifyTruncate(result: TurnTruncateResult, action: '撤回' | '重新�
   }
 }
 
+function applyRestoredIntent(): void {
+  const intent = assistant.consumeRestoredIntent()
+  if (!intent) return
+  composerRestoredIntent.value = { intent, nonce: (composerRestoredIntent.value?.nonce ?? 0) + 1 }
+}
+
 async function handleUndoTurn(turnId: string): Promise<void> {
   const result = await assistant.undoTurn(turnId)
   if (result) notifyTruncate(result, '撤回')
+  applyRestoredIntent()
+}
+
+async function handleRollbackTurn(turnId: string, prompt?: string): Promise<void> {
+  await assistant.rollbackTurn(turnId, prompt)
+  applyRestoredIntent()
 }
 
 async function handleResendTurn(): Promise<void> {
@@ -601,7 +616,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
         @open-knowledge="openKnowledgeDocument"
         @continue="assistant.continueWithPrompt"
         @open-staged="reopenStagePanel"
-        @rollback="assistant.rollbackTurn"
+        @rollback="handleRollbackTurn"
         @edit-start="assistant.startEditingTurn"
         @edit-cancel="assistant.cancelEditing"
         @edit-draft="assistant.updateEditingDraft"
@@ -658,6 +673,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
         :is-canceling="assistant.isCanceling.value"
         :is-editing="Boolean(assistant.editingTurnId.value)"
         :restored-label="assistant.restoredDraftLabel.value"
+        :restored-intent="composerRestoredIntent"
         :attachments="assistant.pendingAttachments.value"
         :skills="availableSkills"
         :enabled-modules="enabledModules"

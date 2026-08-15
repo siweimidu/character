@@ -135,6 +135,10 @@ export function useAssistant(options: UseAssistantOptions) {
   // === Streaming 状态 ===
   const streamingTurnId = ref<string | null>(null)
   const isStreaming = computed(() => streamingTurnId.value !== null)
+  /** 是否存在真实活跃的流式生成（streamingTurnId 残留但 turns 里无 streaming 轮次时视为已结束）。 */
+  function hasLiveStreaming(): boolean {
+    return isStreaming.value && turns.value.some((t) => t.status === 'streaming')
+  }
   const isCanceling = ref(false)
 
   // 流式生成时已累积的 assistant 文字数（用于 Composer 进度提示）
@@ -162,6 +166,10 @@ export function useAssistant(options: UseAssistantOptions) {
   const editingDraft = ref('')
   const restoredDraftLabel = ref('')
   const isTruncating = ref(false)
+  /** 每个 turn 发送时所携带的意图（如 global-assistant-v2:standard），用于撤回/回退时恢复对话框模式状态。 */
+  const turnIntentMap = new Map<string, string>()
+  /** 撤回/回退后需要恢复的意图（供 Composer 还原「标准模式」等模式芯片）。 */
+  const restoredIntentHint = ref<string | null>(null)
 
   // === 待发送的引用附件（章节/分卷/Skill），以可叉掉的芯片显示在输入框内 ===
   const pendingAttachments = ref<TurnAttachment[]>([])
@@ -401,7 +409,13 @@ export function useAssistant(options: UseAssistantOptions) {
     const knownTurn = turns.value.find((t) => t.id === push.turnId)
     if (!knownTurn) {
       const optimisticIdx = turns.value.findIndex((t) => t.id.startsWith('optimistic-'))
+      const optimisticTurnId = optimisticIdx >= 0 ? turns.value[optimisticIdx].id : null
       const userMessage = optimisticIdx >= 0 ? turns.value[optimisticIdx].userMessage : ''
+      // 乐观 turn 已确认为真实 turnId：把记录的意图一并转移，供后续撤回时恢复模式
+      if (optimisticTurnId && turnIntentMap.has(optimisticTurnId)) {
+        turnIntentMap.set(push.turnId, turnIntentMap.get(optimisticTurnId)!)
+        turnIntentMap.delete(optimisticTurnId)
+      }
       const placeholder: AssistantTurn = {
         id: push.turnId,
         sessionId: push.sessionId,
@@ -469,6 +483,8 @@ export function useAssistant(options: UseAssistantOptions) {
       streamingTurnId.value = null
       cancelEditing()
       restoredDraftLabel.value = ''
+      restoredIntentHint.value = null
+      turnIntentMap.clear()
       isInitializing.value = false
       return
     }
@@ -777,7 +793,7 @@ export function useAssistant(options: UseAssistantOptions) {
     const trimmedText = text.trim()
     const hasAttachments = (sendOptions.attachments ?? []).length > 0
     // 允许仅携带附件（如上传文件）而正文为空的发送。
-    if ((!trimmedText && !hasAttachments) || isStreaming.value) return
+    if ((!trimmedText && !hasAttachments) || hasLiveStreaming()) return
     const effectiveText = trimmedText || (hasAttachments ? '请处理我上传/引用的文件。' : '')
     let sessionId = activeSessionId.value
     const derivedTitle = deriveSessionTitle(effectiveText)
@@ -829,6 +845,9 @@ export function useAssistant(options: UseAssistantOptions) {
     ]
     streamingTurnId.value = optimisticTurnId
     isCanceling.value = false
+    if (sendOptions.intentHint) {
+      turnIntentMap.set(optimisticTurnId, sendOptions.intentHint)
+    }
 
     try {
       // 附件可能以 Vue reactive proxy 形式存在；Electron IPC 无法结构化克隆
@@ -857,11 +876,13 @@ export function useAssistant(options: UseAssistantOptions) {
         turns.value = turns.value.filter((t) => t.id !== optimisticTurnId)
         if (streamingTurnId.value === optimisticTurnId) streamingTurnId.value = null
       }
+      turnIntentMap.delete(optimisticTurnId)
       if (result.error) lastError.value = result.error
     } catch (e) {
       streamingTurnId.value = null
       isCanceling.value = false
       turns.value = turns.value.filter((t) => t.id !== optimisticTurnId)
+      turnIntentMap.delete(optimisticTurnId)
       if (!composerValue.value.trim()) composerValue.value = trimmedText
       lastError.value = e instanceof Error ? e.message : String(e)
     }
@@ -885,13 +906,21 @@ export function useAssistant(options: UseAssistantOptions) {
    * 用于"回退到本轮对话之前"的撤销操作。
    */
   async function rollbackTurn(turnId: string, prompt?: string): Promise<void> {
-    if (!activeSessionId.value || isStreaming.value) return
+    if (!activeSessionId.value || hasLiveStreaming()) return
+    // 被回退的这轮若曾携带模式/命令意图，回退后需连带恢复该模式状态（如“标准模式”芯片）
+    const rollbackIntent = turnIntentMap.get(turnId)
     await A.turnDelete({ sessionId: activeSessionId.value, turnId })
+    // 清理已被删除轮次（该轮及之后）的意图记录
+    const order = turns.value.map((t) => t.id)
+    const removedIdx = order.indexOf(turnId)
+    const removedIds = removedIdx >= 0 ? order.slice(removedIdx) : [turnId]
+    for (const rid of removedIds) turnIntentMap.delete(rid)
     // 回退后把被回退的那轮对话提示词自动填入问答框，并标记为“已回填”，方便继续基于它调整
     if (typeof prompt === 'string' && prompt.trim()) {
       composerValue.value = prompt
       restoredDraftLabel.value = '已回填 · 回退的对话原文'
     }
+    restoredIntentHint.value = rollbackIntent ?? null
     // 重拉本轮之后的对话与暂存区，保持一致
     await reloadTurns()
     await reloadStaged()
@@ -904,12 +933,15 @@ export function useAssistant(options: UseAssistantOptions) {
    * 因此批量删除时取“最早被选中”的那一轮作为删除起点，一次级联删除即可覆盖全部选中轮次。
    */
   async function deleteTurns(turnIds: string[]): Promise<void> {
-    if (!activeSessionId.value || isStreaming.value || turnIds.length === 0) return
+    if (!activeSessionId.value || hasLiveStreaming() || turnIds.length === 0) return
     const order = turns.value.map((t) => t.id)
     const valid = turnIds.filter((id) => order.includes(id))
     if (valid.length === 0) return
     const earliest = valid.sort((a, b) => order.indexOf(a) - order.indexOf(b))[0]
     await A.turnDelete({ sessionId: activeSessionId.value, turnId: earliest })
+    // 清理被删除轮次的意图记录
+    const removedIdx = order.indexOf(earliest)
+    for (const rid of order.slice(removedIdx)) turnIntentMap.delete(rid)
     await reloadTurns()
     await reloadStaged()
   }
@@ -933,12 +965,15 @@ export function useAssistant(options: UseAssistantOptions) {
   }
 
   function startEditingTurn(turnId: string): void {
-    if (isStreaming.value || isTruncating.value) {
+    if (hasLiveStreaming() || isTruncating.value) {
       lastError.value = '请先停止当前生成，再编辑历史对话。'
       return
     }
+    // streamingTurnId 若残留（无真实 streaming 轮次）先复位，避免编辑被误拦截
+    if (isStreaming.value && !hasLiveStreaming()) streamingTurnId.value = null
     const turn = turns.value.find((item) => item.id === turnId)
     if (!turn) return
+    // 编辑对象始终是用户发送的提示词，而不是 AI 的回复
     editingTurnId.value = turnId
     editingDraft.value = turn.userMessage
     restoredDraftLabel.value = ''
@@ -962,20 +997,31 @@ export function useAssistant(options: UseAssistantOptions) {
   function clearRestoredDraft(): void {
     composerValue.value = ''
     restoredDraftLabel.value = ''
+    restoredIntentHint.value = null
+  }
+
+  /** 供 Composer 消费撤回/回退后需要恢复的模式意图，消费后立即清空，避免重复触发。 */
+  function consumeRestoredIntent(): string | null {
+    const v = restoredIntentHint.value
+    restoredIntentHint.value = null
+    return v
   }
 
   async function truncateTurn(turnId: string): Promise<TurnTruncateResult | null> {
     const sessionId = activeSessionId.value
-    if (!sessionId || isStreaming.value || isTruncating.value) {
-      if (isStreaming.value) lastError.value = '请先停止当前生成，再撤回或编辑历史对话。'
+    if (!sessionId || hasLiveStreaming() || isTruncating.value) {
+      if (hasLiveStreaming()) lastError.value = '请先停止当前生成，再撤回或编辑历史对话。'
       return null
     }
+    // streamingTurnId 若残留（无真实 streaming 轮次）先复位，避免截断被误拦截
+    if (isStreaming.value && !hasLiveStreaming()) streamingTurnId.value = null
 
     isTruncating.value = true
     try {
       const result = await A.turnTruncate({ sessionId, fromTurnId: turnId })
       const removed = new Set(result.removedTurnIds)
       turns.value = turns.value.filter((turn) => !removed.has(turn.id))
+      for (const rid of removed) turnIntentMap.delete(rid)
 
       const nextEvents = new Map(eventsByTurn.value)
       for (const removedTurnId of removed) nextEvents.delete(removedTurnId)
@@ -998,11 +1044,15 @@ export function useAssistant(options: UseAssistantOptions) {
       lastError.value = '只能撤回最后一轮对话。'
       return null
     }
+    // 记录被撤回这轮携带的模式/命令意图，撤回后连带恢复（如“标准模式”芯片）
+    const undoIntent = turnIntentMap.get(turnId)
     const result = await truncateTurn(turnId)
     if (!result) return null
+    for (const rid of result.removedTurnIds) turnIntentMap.delete(rid)
     cancelEditing()
     composerValue.value = result.restoredUserMessage
     restoredDraftLabel.value = `已回填 · 撤回的第 ${index + 1} 轮原文`
+    restoredIntentHint.value = undoIntent ?? null
     return result
   }
 
@@ -1010,8 +1060,8 @@ export function useAssistant(options: UseAssistantOptions) {
    * 重新生成某一轮的 AI 回复：截断该轮及其后的对话，并用该轮的用户提问重新发起请求。
    */
   async function regenerateTurn(turnId: string): Promise<TurnTruncateResult | null> {
-    if (!activeSessionId.value || isStreaming.value || isTruncating.value) {
-      if (isStreaming.value) lastError.value = '请先停止当前生成，再重新生成回复。'
+    if (!activeSessionId.value || hasLiveStreaming() || isTruncating.value) {
+      if (hasLiveStreaming()) lastError.value = '请先停止当前生成，再重新生成回复。'
       return null
     }
     const msg = turns.value.find((t) => t.id === turnId)
@@ -1162,6 +1212,8 @@ export function useAssistant(options: UseAssistantOptions) {
     editingTurnId,
     editingDraft,
     restoredDraftLabel,
+    restoredIntentHint,
+    consumeRestoredIntent,
     isTruncating,
     lastError,
     // actions

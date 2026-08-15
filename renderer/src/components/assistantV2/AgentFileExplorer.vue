@@ -239,7 +239,7 @@ defineExpose({ navigate, isEnabled })
   padding: 2px 14px 8px;
   font-size: 10.5px;
   color: var(--arc-text-hint);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--ga-mono, ui-monospace, monospace);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -357,7 +357,7 @@ defineExpose({ navigate, isEnabled })
   margin: 0;
   padding: 12px 14px;
   font-size: 12px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--ga-mono, ui-monospace, monospace);
   color: var(--arc-text-primary);
   white-space: pre-wrap;
   word-break: break-all;
