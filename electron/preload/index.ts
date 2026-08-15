@@ -406,6 +406,8 @@ contextBridge.exposeInMainWorld('characterArc', {
       ipcRenderer.invoke('characterarc:assistant:agent:set-default', toIpcPayload(payload)),
     agentClearDefault: (payload: { id: string }) =>
       ipcRenderer.invoke('characterarc:assistant:agent:clear-default', toIpcPayload(payload)),
+    agentRestoreBuiltin: (payload?: { projectId?: string }) =>
+      ipcRenderer.invoke('characterarc:assistant:agent:restore-builtin', toIpcPayload(payload ?? {})),
     // 创作记忆（Agent Memory / 学习闭环）
     memoryList: (payload: { projectId: string; limit?: number }) =>
       ipcRenderer.invoke('characterarc:assistant:memory:list', toIpcPayload(payload)),

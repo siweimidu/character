@@ -1187,6 +1187,8 @@ declare global {
           Promise<{ ok: boolean; agent: import('@shared/assistant-runtime').AgentProfile | null }>
         agentClearDefault: (payload: { id: string }) =>
           Promise<{ ok: boolean; agent: import('@shared/assistant-runtime').AgentProfile | null }>
+        agentRestoreBuiltin: (payload?: { projectId?: string }) =>
+          Promise<{ ok: boolean; restored: number }>
         // 创作记忆（Agent Memory / 学习闭环）
         memoryList: (payload: import('@shared/assistant-runtime').MemoryListRequest) =>
           Promise<import('@shared/assistant-runtime').AgentMemory[]>

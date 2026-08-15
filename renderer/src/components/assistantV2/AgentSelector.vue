@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ChevronDown, Pencil, Plus, Settings2, Trash2 } from 'lucide-vue-next'
+import { ChevronDown, Pencil, Plus, RotateCcw, Settings2, Trash2 } from 'lucide-vue-next'
 import { useMessage } from 'naive-ui'
 import type { AgentProfile } from '@shared/assistant-runtime'
 import { PRESET_AGENT_AVATARS, defaultRobotAvatarSvg } from '@shared/agent-avatars'
+import { useAppStore } from '@/stores/app'
 import AgentManagerDialog from './AgentManagerDialog.vue'
 
 const props = defineProps<{
@@ -26,6 +27,7 @@ const emit = defineEmits<{
 const DEFAULT_AGENT_ID = ''
 
 const message = useMessage()
+const appStore = useAppStore()
 const agents = ref<AgentProfile[]>([])
 const isOpen = ref(false)
 const isLoaded = ref(false)
@@ -140,18 +142,38 @@ function handleEdit(agent: AgentProfile): void {
 }
 
 async function handleDelete(agent: AgentProfile): Promise<void> {
-  if (!confirm(`确定删除智能体"${agent.name}"吗？此操作不可恢复。`)) return
+  if (!confirm(`确定删除智能体"${agent.name}"吗？删除后可到回收站恢复。`)) return
   try {
     const A = window.characterArc.assistant
     const result = await A.agentDelete({ id: agent.id })
     if (result.ok) {
-      message.success('智能体已删除')
+      // 记录到回收站，用户可在回收站中找回
+      appStore.recordDeletedAgent(agent)
+      message.success('智能体已删除（可在回收站中恢复）')
       // loadAgents 内部会在当前选中项不在列表内时自动选中第一个并同步其作用范围，
       // 因此删除后无需在此重复 emit，避免 scope 同步不一致。
       await loadAgents()
     }
   } catch (err) {
     message.error(err instanceof Error ? err.message : '删除失败')
+  }
+}
+
+/** 恢复当前作用域下已删除的内置智能体（本小说内置 / 全局 Solo）。 */
+async function handleRestoreBuiltin(): Promise<void> {
+  try {
+    const A = window.characterArc.assistant
+    const result = await A.agentRestoreBuiltin({
+      projectId: activeScope.value === 'local' ? props.projectId : undefined
+    })
+    if (result.ok && result.restored > 0) {
+      message.success(`已恢复 ${result.restored} 个内置智能体`)
+      await loadAgents()
+    } else {
+      message.info('当前没有已删除的内置智能体需要恢复')
+    }
+  } catch (err) {
+    message.error(err instanceof Error ? err.message : '恢复内置智能体失败')
   }
 }
 
@@ -179,10 +201,16 @@ onMounted(() => {
       <div v-if="isOpen" class="dropdown">
         <div class="dropdown-header">
           <span>选择智能体</span>
-          <button class="manage-btn" @click="editingAgent = null; showManager = true">
-            <Settings2 :size="13" />
-            新建
-          </button>
+          <div class="header-actions">
+            <button class="manage-btn restore-btn" title="恢复已删除的内置智能体" @click="handleRestoreBuiltin">
+              <RotateCcw :size="13" />
+              恢复内置
+            </button>
+            <button class="manage-btn" @click="editingAgent = null; showManager = true">
+              <Settings2 :size="13" />
+              新建
+            </button>
+          </div>
         </div>
         <div v-if="projectId" class="scope-tabs">
           <button
@@ -364,6 +392,11 @@ onMounted(() => {
   font-weight: 600;
   color: var(--arc-text-secondary);
 }
+.header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 .manage-btn {
   display: inline-flex;
   align-items: center;
@@ -378,6 +411,12 @@ onMounted(() => {
 }
 .manage-btn:hover {
   background: var(--arc-primary-soft);
+}
+.restore-btn {
+  color: var(--arc-text-secondary);
+}
+.restore-btn:hover {
+  color: var(--arc-primary);
 }
 .scope-tabs {
   display: grid;

@@ -923,6 +923,33 @@ export class AgentProfileStore {
     return true
   }
 
+  /**
+   * 恢复指定项目下已删除的内置智能体（本小说智能体）。
+   * 清除该项目内置智能体的删除标记并重新 seed，返回恢复数量。
+   */
+  restoreDeletedBuiltinsForProject(projectId: string): number {
+    const prefix = `:${projectId}`
+    const toRestore = [...deletedBuiltinIds].filter((id) => id.endsWith(prefix))
+    if (!toRestore.length) return 0
+    toRestore.forEach((id) => deletedBuiltinIds.delete(id))
+    saveDeletedBuiltinIds(this.db, deletedBuiltinIds)
+    seedBuiltinAgentsForProject(this.db, projectId)
+    return toRestore.length
+  }
+
+  /**
+   * 恢复全局已删除的内置智能体（全局作用域仅内置 Solo）。
+   * 清除全局内置智能体的删除标记并重新 seed，返回恢复数量。
+   */
+  restoreDeletedGlobalBuiltins(): number {
+    const toRestore = [...deletedBuiltinIds].filter((id) => !id.includes(':'))
+    if (!toRestore.length) return 0
+    toRestore.forEach((id) => deletedBuiltinIds.delete(id))
+    saveDeletedBuiltinIds(this.db, deletedBuiltinIds)
+    seedBuiltinAgents(this.db)
+    return toRestore.length
+  }
+
   /** 设置全局作用域下的默认智能体（设为默认后，其它全局智能体会被取消默认标记）。 */
   setDefaultGlobalAgent(id: string): AgentProfile | null {
     const target = this.get(id)

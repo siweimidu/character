@@ -991,6 +991,7 @@ export type RecycleBinCategory =
   | 'reference-work'
   | 'skill'
   | 'ai-run'
+  | 'agent'
 
 /** 回收站中的单条删除记录，保存被删除实体的完整快照用于恢复 */
 export interface RecycleBinEntry {

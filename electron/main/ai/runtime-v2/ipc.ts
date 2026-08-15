@@ -738,6 +738,18 @@ function registerAgentHandlers(): void {
       return { ok: !!updated, agent: updated }
     }
   )
+
+  ipcMain.handle(
+    ASSISTANT_IPC_CHANNELS.AGENT_RESTORE_BUILTIN,
+    async (_event, payload: { projectId?: string } = {}) => {
+      const store = await getSharedAgentStore()
+      // 有 projectId 时恢复该项目的本小说内置智能体；否则恢复全局内置智能体（Solo）。
+      const restored = payload?.projectId
+        ? store.restoreDeletedBuiltinsForProject(payload.projectId)
+        : store.restoreDeletedGlobalBuiltins()
+      return { ok: restored > 0, restored }
+    }
+  )
 }
 
 // ============================================================================

@@ -482,15 +482,24 @@ function handleEditInput(event: Event): void {
   autosizeEdit(textarea)
 }
 
+/** 中文输入法组合输入进行中（手动标记，避免确认候选字的回车被拦截导致无法上屏）。 */
+let imeComposingEdit = false
+function handleEditCompositionStart(): void {
+  imeComposingEdit = true
+}
+function handleEditCompositionEnd(): void {
+  imeComposingEdit = false
+}
+
 function handleEditKeydown(event: KeyboardEvent): void {
-  // 组合输入（IME）期间不拦截按键，避免阻断输入法选字
-  if (event.isComposing) return
+  // 组合输入（IME）期间不拦截按键，避免阻断输入法选字；叠加手动标记兜底浏览器差异。
+  if (event.isComposing || imeComposingEdit) return
   if (event.key === 'Escape') {
     event.preventDefault()
     emit('edit-cancel')
     return
   }
-  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+  if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault()
     if (props.editingDraft.trim() && !props.isMutating) emit('resend')
   }
@@ -566,6 +575,8 @@ const hasContent = computed(() => props.messages.length > 0)
           rows="3"
           @input="handleEditInput"
           @keydown="handleEditKeydown"
+          @compositionstart="handleEditCompositionStart"
+          @compositionend="handleEditCompositionEnd"
         />
         <div class="edit-impact">
           <div class="edit-impact-head">

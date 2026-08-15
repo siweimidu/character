@@ -46,7 +46,8 @@ const CATEGORY_META: Record<RecycleBinCategory, { label: string; color: string }
   'ai-profile': { label: 'AI 接口配置', color: '#8b5cf6' },
   'reference-work': { label: '参考作品', color: '#06b6d4' },
   'skill': { label: '项目 Skills', color: '#a855f7' },
-  'ai-run': { label: 'AI 调用日志', color: '#3b82f6' }
+  'ai-run': { label: 'AI 调用日志', color: '#3b82f6' },
+  'agent': { label: '智能体', color: '#0d7d5a' }
 }
 
 /** 是否处于全局视图（用于展示“所有项目”提示） */
@@ -85,7 +86,8 @@ const CATEGORY_ICON: Record<RecycleBinCategory, unknown> = {
   'ai-profile': Settings2,
   'reference-work': FileCheck2,
   'skill': Sparkles,
-  'ai-run': FileCheck2
+  'ai-run': FileCheck2,
+  'agent': Users
 }
 
 /** 当前选中的类别筛选；'all' 表示全部 */

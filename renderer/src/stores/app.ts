@@ -1618,11 +1618,11 @@ export const useAppStore = defineStore('app', () => {
     category: import('@/types/app').RecycleBinCategory,
     title: string,
     data: Record<string, unknown>,
-    options: { projectId?: string; summary?: string } = {}
+    options: { projectId?: string; summary?: string; global?: boolean } = {}
   ): void {
     const now = new Date().toISOString()
     // 全局类别的 projectId 固定为空字符串，确保在全局回收站中可被所有项目找到
-    const isGlobal = GLOBAL_RECYCLE_CATEGORIES.has(category)
+    const isGlobal = GLOBAL_RECYCLE_CATEGORIES.has(category) || options.global === true
     const entry: import('@/types/app').RecycleBinEntry = {
       id: `recycle-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       category,
@@ -1683,6 +1683,22 @@ export const useAppStore = defineStore('app', () => {
         }
       )
     }
+  }
+
+  /** 记录一个被删除的智能体到回收站（本小说智能体 / 全局智能体）。 */
+  function recordDeletedAgent(profile: import('@shared/assistant-runtime').AgentProfile): void {
+    const isLocal = profile.scope === 'local'
+    pushRecycleEntry(
+      'agent',
+      profile.name,
+      { profile },
+      {
+        projectId: isLocal ? (profile.projectId ?? selectedProjectId.value) : undefined,
+        summary: `${isLocal ? '本小说' : '全局'}智能体 · ${profile.isBuiltin ? '内置' : '自定义'}`,
+        // 全局智能体跨项目共享，删除后放入全局回收站，便于任意项目视图找回
+        global: !isLocal
+      }
+    )
   }
 
   /** 移除过期回收站条目（到期自动删除），并返回移除数量 */
@@ -2089,6 +2105,32 @@ export const useAppStore = defineStore('app', () => {
           globalAiRuns.value = normalizeAiRuns([...globalAiRuns.value, run])
         }
         schedulePersist('fast')
+        break
+      }
+      case 'agent': {
+        // 恢复已删除的智能体：用完整快照重新创建。
+        const profile = (data as Record<string, unknown>)?.profile as
+          | import('@shared/assistant-runtime').AgentProfile
+          | undefined
+        if (!profile || !profile.name) return false
+        const A = window.characterArc?.assistant
+        if (!A) return false
+        try {
+          await A.agentCreate({
+            name: profile.name,
+            description: profile.description,
+            systemPrompt: profile.systemPrompt,
+            avatar: profile.avatar,
+            avatarType: profile.avatarType,
+            presetIndex: profile.presetIndex,
+            scope: profile.scope,
+            projectId: profile.scope === 'local' ? (profile.projectId || selectedProjectId.value) : undefined,
+            skillIds: profile.skillIds
+          })
+        } catch (e) {
+          console.error('[recycle] 恢复智能体失败:', e)
+          return false
+        }
         break
       }
       default:
@@ -5451,6 +5493,7 @@ export const useAppStore = defineStore('app', () => {
     restoreRecycleEntry,
     recordDeletedAssistantSessionV2,
     recordDeletedSkills,
+    recordDeletedAgent,
     setRecycleBinRetentionDays,
     setRecycleBinScope,
     openCurrentProjectRecycleBin,

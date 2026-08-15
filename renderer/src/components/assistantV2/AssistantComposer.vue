@@ -70,6 +70,13 @@ const emit = defineEmits<{
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 let lastEscapeAt = 0
+/**
+ * 中文输入法（IME）组合输入进行中的标记。
+ * 部分浏览器在“用回车确认候选字”的那一刻 event.isComposing 已为 false，
+ * 若仅依赖它判断，回车会被下方拦截发送逻辑 preventDefault，导致候选字无法上屏、
+ * 输入文字“有概率失败”。故用 compositionstart/end 手动跟踪，保证确认候选字的回车不被拦截。
+ */
+let imeComposing = false
 
 /** 是否有语音转文字能力。 */
 const hasSpeech = computed(() =>
@@ -350,6 +357,16 @@ function handleInput(event: Event) {
   emit('update:modelValue', target.value)
   autosize(target)
   updateSlashMenu(target.value)
+}
+
+/** 中文输入法开始组合输入。 */
+function handleCompositionStart(): void {
+  imeComposing = true
+}
+
+/** 中文输入法结束组合输入。 */
+function handleCompositionEnd(): void {
+  imeComposing = false
 }
 
 function autosize(el: HTMLTextAreaElement) {
@@ -692,7 +709,8 @@ function handleDrop(event: DragEvent): void {
 function handleKeydown(event: KeyboardEvent) {
   // 中文输入法组合输入（IME）进行中：不做任何按键拦截，避免阻断候选字选择/上屏，
   // 仅放行，否则方向键/回车被 preventDefault 会导致输入法选字失败（输入文字“概率失败”）。
-  if (event.isComposing) return
+  // 部分浏览器确认候选字的回车那一刻 event.isComposing 已为 false，故叠加手动标记 imeComposing。
+  if (event.isComposing || imeComposing) return
   // 斜杠菜单打开时的导航
   if (slashOpen.value && slashMatches.value.length > 0) {
     if (event.key === 'ArrowDown') {
@@ -980,6 +998,8 @@ watch(
         @input="handleInput"
         @keydown="handleKeydown"
         @blur="handleSlashBlur"
+        @compositionstart="handleCompositionStart"
+        @compositionend="handleCompositionEnd"
       />
       <div class="foot">
         <div class="hint">
