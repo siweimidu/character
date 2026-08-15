@@ -435,8 +435,8 @@ function handleUndoRollback(): void {
   const chapter = currentChapter.value
   if (!chapter || !rollbackSnapshot) return
   appStore.updateChapterContent(rollbackSnapshot.content, chapter.id)
-  if (rollbackSnapshot.title) appStore.updateChapterTitle(rollbackSnapshot.title)
-  if (rollbackSnapshot.summary) appStore.updateChapterSummary(rollbackSnapshot.summary)
+  appStore.updateChapterTitle(rollbackSnapshot.title)
+  appStore.updateChapterSummary(rollbackSnapshot.summary)
   message.success('已撤销回退')
 }
 

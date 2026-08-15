@@ -532,7 +532,11 @@ export function normalizeAppSettings(settings?: Partial<AppSettings> | null): Ap
         ? Math.min(1.75, Math.max(0.75, source.uiScale))
         : defaultAppSettings.uiScale,
     workspaceMenuOrder: normalizeWorkbenchMenuOrder(source.workspaceMenuOrder),
-    homeProjectSortMode: source.homeProjectSortMode === 'edited' || source.homeProjectSortMode === 'title'
+    homeProjectSortMode: source.homeProjectSortMode === 'edited'
+      || source.homeProjectSortMode === 'created'
+      || source.homeProjectSortMode === 'wordCount'
+      || source.homeProjectSortMode === 'titleLength'
+      || source.homeProjectSortMode === 'manual'
       ? source.homeProjectSortMode
       : 'manual',
     homeProjectOrder: Array.isArray(source.homeProjectOrder)

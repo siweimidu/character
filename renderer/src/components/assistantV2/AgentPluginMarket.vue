@@ -59,9 +59,6 @@ async function loadPlugins(search?: string): Promise<void> {
     plugins.value = result.items ?? []
     hasMore.value = Boolean(result.hasMore)
     page.value = 1
-    if (plugins.value.length === 0 && !offline.value && !search) {
-      // 空结果但未标记离线时也视为无插件
-    }
   } catch {
     plugins.value = []
     offline.value = true

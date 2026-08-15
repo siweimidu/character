@@ -476,7 +476,7 @@ contextBridge.exposeInMainWorld('characterArc', {
     mcpServerTest: (payload: { id: string }) =>
       ipcRenderer.invoke('characterarc:agent-module:mcp:server:test', toIpcPayload(payload)),
     // dsh-plugin 插件市场
-    pluginList: (payload?: { query?: string }) =>
+    pluginList: (payload?: { query?: string; page?: number; perPage?: number; loadMore?: boolean }) =>
       ipcRenderer.invoke('characterarc:agent-module:plugin:list', toIpcPayload(payload ?? {})),
     pluginImport: (payload: { repo: string; name: string; description: string }) =>
       ipcRenderer.invoke('characterarc:agent-module:plugin:import', toIpcPayload(payload)),

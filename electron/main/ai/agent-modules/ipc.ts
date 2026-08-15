@@ -97,7 +97,16 @@ export function registerAgentModuleIpcHandlers(): void {
   })
 
   // ==================== 系统全目录文件访问 ====================
+  // 这些操作风险为 critical，必须先确保 filesystem.system 模块已启用才允许执行。
+  function assertSystemFsEnabled(): void {
+    const registry = getAgentModuleRegistry()
+    if (!registry.isEnabled('filesystem.system')) {
+      fail('系统全目录访问模块未启用。请先在「能力模块」中启用「系统全目录访问」。')
+    }
+  }
+
   ipcMain.handle(CH.FS_LIST, async (_evt, payload: AgentFsListRequest) => {
+    assertSystemFsEnabled()
     if (!payload?.path) fail('缺少路径参数 path。')
     const abs = resolve(payload.path)
     const entries = await readdir(abs, { withFileTypes: true })
@@ -126,6 +135,7 @@ export function registerAgentModuleIpcHandlers(): void {
   })
 
   ipcMain.handle(CH.FS_READ, async (_evt, payload: AgentFsReadRequest) => {
+    assertSystemFsEnabled()
     if (!payload?.path) fail('缺少路径参数 path。')
     const abs = resolve(payload.path)
     const st = await stat(abs)
@@ -142,6 +152,7 @@ export function registerAgentModuleIpcHandlers(): void {
   })
 
   ipcMain.handle(CH.FS_WRITE, async (_evt, payload: AgentFsWriteRequest) => {
+    assertSystemFsEnabled()
     if (!payload?.path) fail('缺少路径参数 path。')
     if (Buffer.byteLength(payload.content ?? '', 'utf8') > MAX_WRITE_BYTES) {
       fail('内容过大（超过 4MB）。')
@@ -152,6 +163,7 @@ export function registerAgentModuleIpcHandlers(): void {
   })
 
   ipcMain.handle(CH.FS_DELETE, async (_evt, payload: AgentFsDeleteRequest) => {
+    assertSystemFsEnabled()
     if (!payload?.path) fail('缺少路径参数 path。')
     const abs = resolve(payload.path)
     const st = await stat(abs)
@@ -163,6 +175,7 @@ export function registerAgentModuleIpcHandlers(): void {
   })
 
   ipcMain.handle(CH.FS_MKDIR, async (_evt, payload: AgentFsMkdirRequest) => {
+    assertSystemFsEnabled()
     if (!payload?.path) fail('缺少路径参数 path。')
     const abs = resolve(payload.path)
     await mkdir(abs, { recursive: true })
@@ -170,6 +183,7 @@ export function registerAgentModuleIpcHandlers(): void {
   })
 
   ipcMain.handle(CH.FS_INFO, async (_evt, payload: AgentFsInfoRequest) => {
+    assertSystemFsEnabled()
     if (!payload?.path) fail('缺少路径参数 path。')
     const abs = resolve(payload.path)
     try {

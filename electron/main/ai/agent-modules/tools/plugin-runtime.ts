@@ -90,46 +90,88 @@ export async function transpileTypeScript(source: string, filename: string): Pro
  */
 function minimalTranspile(source: string): string {
   let code = source
-  // 去掉 import 语句（类型导入在 CJS 场景多为类型，运行期不需要；值导入转 require）
+
+  // 1. 先移除纯类型导入（import type ... from），避免被下面的值导入逻辑误处理
+  code = code.replace(/^\s*import\s+type[\s\S]*?from\s+['"][^'"]+['"]\s*;?/gm, '')
+
+  // 2. 值导入 → require（仅顶层行级别，避免破坏字符串内容）
   code = code.replace(
-    /import\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"]/g,
-    (_m, _names, mod) => {
-      return `const __m = require('${mod}'); /* import from ${mod} */`
-    }
+    /^\s*import\s+(?:([\w${}*\s,]+?)\s+from\s+)?['"]([^'"]+)['"]\s*;?/gm,
+    (_m, _names, mod) => `const __imported_${sanitizeModuleName(mod)} = require('${mod}');`
   )
-  // 仅类型导入（import type ... from）
-  code = code.replace(/import\s+type[\s\S]*?from\s+['"][^'"]+['"];?/g, '')
-  // interface / type 声明移除
+
+  // 3. 移除 interface / type 声明（支持多行）
   code = code.replace(/export\s+interface\s+[\s\S]*?\n}/g, '')
-  code = code.replace(/export\s+type\s+[^=;]+=[\s\S]*?;/g, '')
+  code = code.replace(/export\s+type\s+[\s\S]*?;/g, '')
   code = code.replace(/\binterface\s+\w+[\s\S]*?\n}/g, '')
-  code = code.replace(/\btype\s+\w+\s*=[^;]+;/g, '')
-  // 命名导出函数 → 定义 + 挂到 exports
+  code = code.replace(/\btype\s+\w+\s*=[\s\S]*?;/g, '')
+
+  // 4. 命名导出函数 → 定义（同时标记为导出）
+  const exportedNames = new Set<string>()
   code = code.replace(
-    /export\s+(async\s+)?function\s+(\w+)/g,
-    (_m, _isAsync, name) => {
+    /export\s+(?:async\s+)?function\s+(\w+)/g,
+    (_m, name) => {
+      exportedNames.add(name)
       return `function ${name}`
     }
   )
-  // export const → const + exports
-  code = code.replace(/export\s+const\s+(\w+)/g, 'const $1')
-  code = code.replace(/export\s+let\s+(\w+)/g, 'let $1')
-  code = code.replace(/export\s+var\s+(\w+)/g, 'var $1')
-  // 默认导出
-  code = code.replace(/export\s+default\s+([\s\S]*?);?$/, 'module.exports = $1;')
-  // 剥离参数/变量类型注解（粗略，处理常见 `: type`）
-  code = code.replace(/(\b[\w$]+)\s*:\s*([A-Z][\w<>[\]|&?.,\s]*)/g, '$1')
-  // 标记导出对象（供下方拼接）
-  const exported = new Set<string>()
-  for (const m of code.matchAll(/const\s+(\w+)|function\s+(\w+)/g)) {
-    const n = m[1] || m[2]
-    if (n) exported.add(n)
+  // export const / let / var → 普通定义（同时标记为导出）
+  code = code.replace(/export\s+const\s+(\w+)/g, (_m, name) => {
+    exportedNames.add(name)
+    return `const ${name}`
+  })
+  code = code.replace(/export\s+let\s+(\w+)/g, (_m, name) => {
+    exportedNames.add(name)
+    return `let ${name}`
+  })
+  code = code.replace(/export\s+var\s+(\w+)/g, (_m, name) => {
+    exportedNames.add(name)
+    return `var ${name}`
+  })
+
+  // 5. 默认导出（单表达式或对象）
+  let hasDefaultExport = false
+  const defaultMatch = code.match(/export\s+default\s+([\s\S]*?)\s*;?\s*$/)
+  if (defaultMatch && defaultMatch[1] && defaultMatch[1].trim()) {
+    code = code.slice(0, defaultMatch.index) + `module.exports = ${defaultMatch[1].trim()};`
+    hasDefaultExport = true
   }
-  const tail = [...exported]
+
+  // 6. 剥离参数/变量类型注解（仅匹配函数参数/变量的类型标注，避免误伤对象字面量）
+  code = stripTypeAnnotations(code)
+
+  // 7. 拼接导出对象（仅导出显式标记的名称；有默认导出时不追加，避免覆盖）
+  if (hasDefaultExport) {
+    return code
+  }
+  const tail = [...exportedNames]
     .filter((n) => /^[A-Za-z_$]/.test(n))
     .map((n) => `  ${n},`)
     .join('\n')
   return `${code}\nmodule.exports = {\n${tail}\n};`
+}
+
+/** 模块名安全化（用于生成 require 变量名）。 */
+function sanitizeModuleName(mod: string): string {
+  return mod.replace(/[^a-zA-Z0-9_]/g, '_')
+}
+
+/**
+ * 剥离常见 TypeScript 类型注解：函数参数、变量声明后的类型标注。
+ * 避免匹配对象字面量 `{ key: value }` 中的冒号（保守策略，只处理以字母开头、后跟类型关键词或大写字母开头的类型）。
+ */
+function stripTypeAnnotations(code: string): string {
+  // 函数参数：`(name: string, age?: number)` 或 `(ctx: { projectId: string })`
+  // 只剥离紧跟在参数名后、以大写字母或 type/interface 关键词开头的类型
+  return code
+    .replace(
+      /(\b[a-zA-Z_$][\w$]*)\s*:\s*([A-Z][\w<>[\]|&?.,\s]*)/g,
+      '$1'
+    )
+    .replace(
+      /(\b[a-zA-Z_$][\w$]*)\s*:\s*(type|interface)\s+[\w$]+/g,
+      '$1'
+    )
 }
 
 // ============================================================================

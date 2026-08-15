@@ -11,7 +11,7 @@ import { createSystemFileTools } from './tools/system-filesystem'
 import { createExecTools } from './tools/exec'
 import { createMcpTools } from './tools/mcp'
 import { SqliteNovelAccessor } from './mcp-novel-server'
-import { buildPluginModuleDefinition, BUILTIN_PLUGINS, listInstalledPluginsSync, ensureBuiltinPluginsPersisted } from './tools/plugin'
+import { buildPluginModuleDefinition, listInstalledPluginsSync, ensureBuiltinPluginsPersisted } from './tools/plugin'
 import { createPluginTools } from './tools/plugin'
 import { createPluginMarketTools, setPluginCodeDir, preloadPluginCode } from './tools/plugin-runtime'
 import type { Tool } from '../../agent/tools/types'
@@ -46,7 +46,7 @@ export function initAgentModuleRegistry(): AgentModuleRegistry {
       kind: 'filesystem',
       source: 'builtin',
       scope: 'global',
-      enabledByDefault: true,
+      enabledByDefault: false,
       risk: 'critical',
       toolNames: ['sysfs_list', 'sysfs_read', 'sysfs_write', 'sysfs_delete', 'sysfs_mkdir', 'sysfs_info'],
       icon: 'FolderTree',
@@ -145,13 +145,7 @@ export function ensurePluginsRebuilt(): Promise<void> {
 async function rebuildInstalledPlugins(reg: AgentModuleRegistry): Promise<void> {
   try {
     // 先把内置 dsh 预设持久化（使其在插件市场显示为「已导入」并默认启用）。
-    let installed = await ensureBuiltinPluginsPersisted()
-    const repos = new Set(installed.map((p) => p.repo.toLowerCase()))
-    for (const bp of BUILTIN_PLUGINS) {
-      if (!repos.has(bp.repo.toLowerCase())) {
-        installed = [...installed, bp]
-      }
-    }
+    const installed = await ensureBuiltinPluginsPersisted()
     for (const plugin of installed) {
       reg.register({
         definition: buildPluginModuleDefinition(plugin),

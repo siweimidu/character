@@ -928,8 +928,11 @@ export class AgentProfileStore {
    * 清除该项目内置智能体的删除标记并重新 seed，返回恢复数量。
    */
   restoreDeletedBuiltinsForProject(projectId: string): number {
-    const prefix = `:${projectId}`
-    const toRestore = [...deletedBuiltinIds].filter((id) => id.endsWith(prefix))
+    // 精确匹配内置智能体 ID 末尾的 `:项目ID` 段，避免因 ID 前缀重叠而误删（如 'solo:ab' vs 'solo:a'）
+    const toRestore = [...deletedBuiltinIds].filter((id) => {
+      const sepIdx = id.lastIndexOf(':')
+      return sepIdx !== -1 && id.slice(sepIdx + 1) === projectId
+    })
     if (!toRestore.length) return 0
     toRestore.forEach((id) => deletedBuiltinIds.delete(id))
     saveDeletedBuiltinIds(this.db, deletedBuiltinIds)
