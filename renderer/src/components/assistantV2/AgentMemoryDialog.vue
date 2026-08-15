@@ -165,7 +165,11 @@ watch(
       </div>
 
       <!-- 记忆列表 -->
-      <div v-if="loading" class="loading">加载中…</div>
+      <div v-if="!projectId" class="empty">
+        <BookMarked :size="18" />
+        请先选择一个小说项目，再使用创作记忆（记忆按项目隔离，跟随当前上下文）。
+      </div>
+      <div v-else-if="loading" class="loading">加载中…</div>
       <div v-else-if="memories.length === 0" class="empty">
         <BookMarked :size="18" />
         还没有创作记忆。添加偏好后，智能体会越用越懂你的创作习惯。

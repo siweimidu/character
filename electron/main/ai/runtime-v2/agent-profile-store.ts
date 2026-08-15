@@ -74,9 +74,56 @@ export interface BuiltinAgentSeed {
   description: string
   systemPrompt: string
   presetIndex: number
+  /** 自定义 SVG 头像（可选，优先级高于 presetIndex）。 */
+  avatar?: string
   /** 绑定的 skill id 列表（内置 skill，每次调用自动注入）。 */
   skillIds: string[]
 }
+
+/**
+ * Solo 默认智能体系统提示词。
+ *
+ * 深度适配 CharacterArc（弧光）小说编辑器：围绕世界观 / 角色 / 组织 / 关系 / 大纲 /
+ * 章节 / 伏笔 / 知识库 / 创作记忆等结构化项目资产展开，遵循 stage_* 暂存变更机制，
+ * 强调「读档 → 结构化方案 → 可审阅产出」的工程化创作闭环。
+ */
+export const SOLO_SYSTEM_PROMPT = `# 角色
+你是 Solo，CharacterArc（弧光）小说编辑器的默认智能体。你是一位全栈小说创作引擎，深度理解本编辑器的项目数据结构与创作工作流，擅长把零散的构思整理成结构清晰、可持续演进的创作资产，并产出可直接落地、经得住长期维护的正文与设定。
+
+你服务的是使用弧光小说编辑器进行创作的作者。你的价值在于：能读懂项目里的世界观、角色卡、组织关系、大纲、章节正文、伏笔线索、知识库与创作记忆，理解作者的长期创作意图，并在每一轮对话中给出既符合本项目事实基线、又有创作价值的输出。
+
+# 职责
+- 先读档再动手：每次涉及项目数据的操作，先用 read_project_data / search_project / list_chapters / read_chapter 等工具读取目标实体的现有内容，建立事实基线，禁止凭空虚构或凭记忆臆测项目设定。
+- 结构化输出：给方案先给结论再给理由，用「选项 + 理由 + 风险」的方式供作者决策，避免泛泛而谈。
+- 产出可审阅的改动：需要新增或修改正文、人物、大纲、伏笔等实际数据时，一律调用对应的 stage_* 工具产出**暂存变更**，等用户在暂存区逐条审阅确认后落库，绝不把工具调用描述成「已完成修改」。
+- 维护一致性：时刻对照世界观、人物卡、时间线与力量体系，防止设定前后矛盾；发现冲突要主动指出并给出修正建议。
+- 主动遵守创作记忆：上下文中若提供了「创作记忆」（跨会话记住的用户偏好与教训），应作为长期约定主动遵守；当用户表达出稳定的新偏好或你总结出有长期价值的经验时，用 memory_save 把它存进去。
+
+# 你熟悉的本项目核心资产
+- **世界观 / 角色 / 组织 / 关系**：项目的设定基石。阅读、新建、修改用 stage_worldview / stage_character / stage_organization / stage_relationship / stage_organization_membership。
+- **剧情大纲**：按分卷组织的剧情节点。创建大纲用 stage_outline(create) 时必须先 list_outline_volumes 并把目标分卷 ID 填入 volume_id；新增/修改大纲时，把剧情明确涉及的已有实体 ID 填进 related_character_ids / related_organization_ids / related_worldview_ids。
+- **章节正文**：用 stage_chapter_edit 改正文、stage_chapter_create 新建、stage_chapter_delete 删除、stage_chapter_update 改元数据（标题/摘要/状态/分卷/字数目标）。改正文前先读取原文，用 replace 重写或 merge 追加。
+- **伏笔 / 剧情线索**：用 stage_plot_thread 管理伏笔埋设与回收，确保挖坑必填、主线不落空。
+- **灵感 / 知识库 / 创作记忆**：用 stage_inspiration 沉淀灵感，stage_knowledge_document 归档项目事实与参考资料，memory_save 保存长期创作偏好与教训。
+- **创作记忆面板**：可按分卷维护计划、进度、伏笔与素材，辅助作者掌控全书节奏。
+
+# 工作流程
+1. **读档**：用索引/摘要优先的渐进式检索读取所需项目资产，建立事实基线。不要一次读全项目，除非用户明确要求。
+2. **诊断**：定位目标实体与本次需求的关系，识别矛盾、缺口或可优化点。
+3. **设计**：给出结构化方案（选项 + 理由 + 风险）或直接产出可审阅的暂存变更。
+4. **交付**：按绑定 skill 的模板交付，正文用可直接粘贴的完整段落。
+
+# 风格与边界
+- 用中文回复，简洁清晰，引用具体实体时用【】括起便于作者识别。
+- 只改用户指向的对象，不擅自扩大修改范围；每次动手前自问「这个改动是作者这次要的吗？」。
+- 用户意图不明确时先澄清，不要抢跑；但用户已给出明确方向时，基于项目框架补足合理细节，不要过度追问。
+- 修改必须有明确理由并写进 stage_* 的 reason 字段。作者设定优先，不擅自颠覆既有设定。`
+
+/**
+ * Solo 默认智能体的自定义 SVG 头像（data URI 兼容的裸 SVG 字符串）。
+ * 采用「孤星 + 笔尖」主题：象征默认的独立创作助手，主色用弧光品牌蓝。
+ */
+export const SOLO_AVATAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"><rect width="64" height="64" rx="14" fill="#e0f2fe"/><path d="M32 8 L35.5 22 L50 22 L38 32 L43 47 L32 38 L21 47 L26 32 L14 22 L28.5 22 Z" fill="#0ea5e9" stroke="#0284c7" stroke-width="1.5" stroke-linejoin="round"/><path d="M23 50 L32 42 L41 50" fill="none" stroke="#0284c7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="32" cy="33" r="3" fill="#f0f9ff"/></svg>`
 
 export const BUILTIN_AGENTS: BuiltinAgentSeed[] = [
   {
@@ -278,6 +325,15 @@ export const BUILTIN_AGENTS: BuiltinAgentSeed[] = [
 
 # 输出契约
 使用绑定 skill「plot-thread」的模板（伏笔清单/遗漏预警/回收建议/新埋建议）。`
+  },
+  {
+    id: 'builtin-solo',
+    name: 'Solo',
+    description: '默认智能体，深度适配本小说编辑器的全能创作助手',
+    presetIndex: 10,
+    avatar: SOLO_AVATAR_SVG,
+    skillIds: ['novelist-craft', 'chapter-craft', 'outline-architecture', 'setting-consistency', 'plot-thread'],
+    systemPrompt: SOLO_SYSTEM_PROMPT
   }
 ]
 
@@ -405,6 +461,7 @@ export function seedBuiltinAgentsForProject(db: DatabaseSync, projectId: string)
       name = ?,
       description = ?,
       system_prompt = ?,
+      avatar = ?,
       preset_index = ?,
       scope = 'local',
       project_id = ?,
@@ -422,7 +479,7 @@ export function seedBuiltinAgentsForProject(db: DatabaseSync, projectId: string)
       agent.name,
       agent.description,
       agent.systemPrompt,
-      '',
+      agent.avatar ?? '',
       'svg',
       1,
       agent.presetIndex,
@@ -436,6 +493,7 @@ export function seedBuiltinAgentsForProject(db: DatabaseSync, projectId: string)
       agent.name,
       agent.description,
       agent.systemPrompt,
+      agent.avatar ?? '',
       agent.presetIndex,
       projectId,
       JSON.stringify(agent.skillIds ?? []),
@@ -474,13 +532,56 @@ export function seedBuiltinAgents(db: DatabaseSync): void {
     seedBuiltinAgentsForProject(db, project.id)
   }
 
-  // 3. 删除历史遗留的全局内置智能体，确保它们不再显示在「全局智能体」中。
+  // 3. 删除历史遗留的全局内置智能体（除 Solo 外），确保它们不再显示在「全局智能体」中。
   //    仅当该全局内置确实属于内置预设时才删除；用户自定义的全局智能体不受影响。
   const builtinPresetIds = new Set(BUILTIN_AGENTS.map((a) => a.id))
   for (const row of legacyGlobal) {
+    // Solo 作为全局默认智能体保留（用最新定义 upsert），其余内置迁移为局部后从全局删除。
+    if (row.id === 'builtin-solo') continue
     if (builtinPresetIds.has(row.id)) {
       db.prepare(`DELETE FROM agent_profiles WHERE id = ? AND scope = 'global' AND is_builtin = 1`).run(row.id)
     }
+  }
+
+  // 4. 为全局作用域 seed 默认智能体 Solo（全局共享，跨项目可见、默认选中）。
+  const solo = BUILTIN_AGENTS.find((a) => a.id === 'builtin-solo')
+  if (solo) {
+    const now = new Date().toISOString()
+    db.prepare(`
+      INSERT OR IGNORE INTO agent_profiles
+        (id, name, description, system_prompt, avatar, avatar_type, is_builtin, preset_index, scope, project_id, skill_ids, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'svg', 1, ?, 'global', NULL, ?, ?, ?)
+    `).run(
+      'builtin-solo',
+      solo.name,
+      solo.description,
+      solo.systemPrompt,
+      solo.avatar ?? '',
+      solo.presetIndex,
+      JSON.stringify(solo.skillIds ?? []),
+      now,
+      now
+    )
+    // 同步最新系统提示词 / skill 绑定到已存在的全局 Solo（幂等升级）。
+    db.prepare(`
+      UPDATE agent_profiles SET
+        name = ?,
+        description = ?,
+        system_prompt = ?,
+        avatar = ?,
+        preset_index = ?,
+        skill_ids = ?,
+        updated_at = ?
+      WHERE id = 'builtin-solo' AND is_builtin = 1 AND scope = 'global'
+    `).run(
+      solo.name,
+      solo.description,
+      solo.systemPrompt,
+      solo.avatar ?? '',
+      solo.presetIndex,
+      JSON.stringify(solo.skillIds ?? []),
+      now
+    )
   }
 }
 
@@ -663,14 +764,16 @@ export class AgentProfileStore {
     if (scope === 'local' && projectId) {
       const local = this.list({ scope: 'local', projectId })
       if (!local.length) {
-        // 项目无本小说智能体时回落到全局（此时 local 必为空，local[0] 恒为 undefined，无需兜底）
-        return this.list({ scope: 'global' })[0]
+        // 项目无本小说智能体时回落到全局默认（此时 local 必为空，local[0] 恒为 undefined，无需兜底）
+        return this.getDefaultAgent('global')
       }
-      // 默认选择本小说智能体中的「创作大师」（若存在）
-      const novelist = local.find((a) => a.id === builtinProjectId('builtin-novelist', projectId))
-      return novelist ?? local[0]
+      // 默认选择本小说智能体中的「Solo」（若存在，未被删除）
+      const solo = local.find((a) => a.id === builtinProjectId('builtin-solo', projectId))
+      return solo ?? local[0]
     }
-    // 全局作用域不再包含内置智能体（内置已按项目隔离）
-    return this.list({ scope: 'global' })[0]
+    // 全局默认智能体：优先选择 Solo（若存在，未被删除），否则取第一个全局智能体。
+    const globals = this.list({ scope: 'global' })
+    const solo = globals.find((a) => a.id === 'builtin-solo')
+    return solo ?? globals[0]
   }
 }

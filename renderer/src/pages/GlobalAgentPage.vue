@@ -610,6 +610,7 @@ function handleVoiceInput(): void {
         <AgentSelector
           v-model="selectedAgentId"
           :project-id="selectedProjectId"
+          default-scope="global"
           @update:model-value="persistAgentSelection"
           @update:scope="(s) => { selectedAgentScope = s }"
         />

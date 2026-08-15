@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ChevronDown, Pencil, Plus, Settings2, Trash2 } from 'lucide-vue-next'
 import { useMessage } from 'naive-ui'
 import type { AgentProfile } from '@shared/assistant-runtime'
@@ -11,6 +11,8 @@ const props = defineProps<{
   modelValue?: string
   /** 当前项目 ID（局部智能体归属）。 */
   projectId?: string
+  /** 初始展示的作用范围：'local' 本小说 / 'global' 全局。缺省 'local'。 */
+  defaultScope?: 'local' | 'global'
 }>()
 
 const emit = defineEmits<{
@@ -19,6 +21,10 @@ const emit = defineEmits<{
   (e: 'update:scope', scope?: 'local' | 'global'): void
 }>()
 
+/** 默认智能体的空串 ID：选中「默认」时 modelValue 为空串，调用方以 undefined 传给后端，
+ *  由后端 getDefaultAgent 解析为默认全局/局部智能体（当前为 Solo）。 */
+const DEFAULT_AGENT_ID = ''
+
 const message = useMessage()
 const agents = ref<AgentProfile[]>([])
 const isOpen = ref(false)
@@ -26,8 +32,16 @@ const isLoaded = ref(false)
 const showManager = ref(false)
 const editingAgent = ref<AgentProfile | null>(null)
 /** 当前查看的作用范围：'local' 只显示本项目局部智能体，'global' 只显示全局智能体。 */
-// 默认展示「本小说智能体」（内置智能体已迁移到本小说智能体，全局不再包含内置）。
-const activeScope = ref<'local' | 'global'>('local')
+// 默认展示「本小说智能体」（内置智能体已迁移到本小说智能体，全局默认含 Solo）。
+const activeScope = ref<'local' | 'global'>(props.defaultScope ?? 'local')
+
+/** 作用域内默认智能体（Solo，若被删除则回落到第一个）。 */
+const defaultAgent = computed<AgentProfile | null>(
+  () => agents.value.find((a) => a.id === 'builtin-solo') ?? agents.value[0] ?? null
+)
+
+/** 是否选中了「默认」智能体。 */
+const isDefaultSelected = computed(() => !props.modelValue)
 
 async function loadAgents(scope?: 'local' | 'global'): Promise<void> {
   try {
@@ -38,12 +52,12 @@ async function loadAgents(scope?: 'local' | 'global'): Promise<void> {
     })
     agents.value = list as unknown as AgentProfile[]
     isLoaded.value = true
-    // 若当前选中不在本作用域列表内（如切换 scope、删除选中项或首次进入），
-    // 默认选中第一个并同步其作用范围，保证「界面显示的智能体」与「实际调用的智能体」一致。
-    if (agents.value.length > 0 && !agents.value.some((a) => a.id === props.modelValue)) {
-      const first = agents.value[0]
-      emit('update:modelValue', first.id)
-      emit('update:scope', first.scope)
+    // 若当前选中项在当前列表不存在（且不是默认项），则重置为「默认」，避免选中一个不属于当前作用域的智能体。
+    const currentExists = props.modelValue
+      ? agents.value.some((a) => a.id === props.modelValue)
+      : true
+    if (props.modelValue && !currentExists) {
+      emit('update:modelValue', DEFAULT_AGENT_ID)
     }
   } catch (err) {
     console.error('加载智能体失败:', err)
@@ -57,7 +71,9 @@ function switchScope(scope: 'local' | 'global'): void {
 }
 
 const currentAgent = computed(() =>
-  agents.value.find((a) => a.id === props.modelValue) ?? agents.value[0] ?? null
+  props.modelValue
+    ? agents.value.find((a) => a.id === props.modelValue) ?? agents.value[0] ?? null
+    : defaultAgent.value
 )
 
 function avatarUrl(agent: AgentProfile): string {
@@ -91,6 +107,12 @@ function avatarUrl(agent: AgentProfile): string {
 function handleSelect(agent: AgentProfile): void {
   emit('update:modelValue', agent.id)
   emit('update:scope', agent.scope)
+  isOpen.value = false
+}
+
+/** 选择「默认」智能体（空串，由后端解析为默认 Solo）。 */
+function selectDefault(): void {
+  emit('update:modelValue', DEFAULT_AGENT_ID)
   isOpen.value = false
 }
 
@@ -133,13 +155,6 @@ onMounted(() => {
   void loadAgents()
 })
 
-watch(() => props.modelValue, () => {
-  if (!props.modelValue && agents.value.length > 0) {
-    const first = agents.value[0]
-    emit('update:modelValue', first.id)
-    emit('update:scope', first.scope)
-  }
-})
 </script>
 
 <template>
@@ -150,7 +165,7 @@ watch(() => props.modelValue, () => {
         <span v-else class="avatar-placeholder">✦</span>
       </div>
       <div class="agent-info">
-        <div class="agent-name">{{ currentAgent?.name ?? '智能体' }}</div>
+        <div class="agent-name">{{ isDefaultSelected ? '默认 · ' : '' }}{{ currentAgent?.name ?? '智能体' }}</div>
         <div class="agent-desc">{{ currentAgent?.description || '选择创作助手' }}</div>
       </div>
       <ChevronDown :size="14" class="chevron" :class="{ open: isOpen }" />
@@ -182,6 +197,25 @@ watch(() => props.modelValue, () => {
           </button>
         </div>
         <div class="agent-list">
+          <div
+            class="agent-row"
+            :class="{ active: isDefaultSelected }"
+          >
+            <button type="button" class="agent-item" @click="selectDefault">
+              <div class="item-avatar default-avatar">
+                <img v-if="defaultAgent && avatarUrl(defaultAgent)" :src="avatarUrl(defaultAgent)" alt="头像" />
+                <span v-else class="item-avatar-ph">✦</span>
+              </div>
+              <div class="item-info">
+                <div class="item-name">
+                  默认
+                  <span class="builtin-tag">默认</span>
+                </div>
+                <div class="item-desc">{{ defaultAgent ? `跟随${activeScope === 'global' ? '全局' : '本小说'}默认（${defaultAgent.name}）` : '默认智能体' }}</div>
+              </div>
+            </button>
+          </div>
+          <div class="agent-divider" />
           <div
             v-for="agent in agents"
             :key="agent.id"
@@ -372,6 +406,11 @@ watch(() => props.modelValue, () => {
   overflow-y: auto;
   flex: 1;
   padding: 8px;
+}
+.agent-divider {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--arc-border);
 }
 .agent-row {
   display: flex;
