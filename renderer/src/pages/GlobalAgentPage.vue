@@ -361,6 +361,15 @@ async function handleResendTurn(): Promise<void> {
   if (result) notifyTruncate(result, '重新分叉')
 }
 
+/**
+ * 点击消息上的「编辑」按钮：直接把该条用户消息复制粘贴到智能体对话框（Composer）中，
+ * 不再进入内联编辑模式，避免 Composer 被置为禁用、无法输入文字。
+ */
+function handleEditStart(message: { userMessage: string }): void {
+  assistant.cancelEditing()
+  composerValue.value = message.userMessage ?? ''
+}
+
 // ============================================================================
 // 语音输入（语音转文字）
 // ============================================================================
@@ -600,10 +609,6 @@ function handleVoiceInput(): void {
 
     <!-- ============ 中间：智能体对话 ============ -->
     <div class="ga-main">
-      <div v-if="assistant.isStreaming.value" class="stream-strip">
-        <span class="dot" /> 生成中…
-      </div>
-
       <div class="ga-agent-toolbar">
         <AgentSelector
           v-model="selectedAgentId"
@@ -638,7 +643,7 @@ function handleVoiceInput(): void {
           :key="msg.turnId"
           :message="msg"
           :auto-collapse="true"
-          @edit-start="() => assistant.startEditingTurn(msg.turnId)"
+          @edit-start="() => handleEditStart(msg)"
           @undo="() => handleUndoTurn(msg.turnId)"
           @resend="() => handleResendTurn()"
           @copy="() => copyMessage(msg.assistantMessage)"
@@ -1129,30 +1134,6 @@ function handleVoiceInput(): void {
   min-width: 0;
   position: relative;
 }
-.stream-strip {
-  position: absolute;
-  top: 12px;
-  right: 20px;
-  z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
-  color: var(--arc-warning);
-  font-family: var(--ga-mono);
-  background: var(--arc-bg-surface);
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--arc-warning) 24%, transparent);
-}
-.stream-strip .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--arc-warning);
-  animation: ga-pulse 1.4s ease-in-out infinite;
-}
-@keyframes ga-pulse { 50% { opacity: 0.35; } }
 .ga-agent-toolbar {
   padding: 14px 36px 4px;
   display: flex;
