@@ -215,9 +215,13 @@ function handleBatchDelete(): void {
               class="sort-popover"
             >
               <template #trigger>
-                <button class="sort-btn" title="选择排序方式" aria-label="选择排序方式">
-                  <ArrowUpDown :size="14" />
-                  <span class="sort-btn-label">排序</span>
+                <button
+                  class="sort-btn"
+                  :class="{ 'is-active': sortVisible }"
+                  title="排序"
+                  aria-label="排序"
+                >
+                  <ArrowUpDown :size="16" />
                 </button>
               </template>
               <div class="sort-panel">
@@ -329,22 +333,20 @@ function handleBatchDelete(): void {
   gap: 8px;
 }
 
-/* 排序按钮：胶囊形轮廓按钮，仅展示 SVG 图标 + “排序” 二字 */
+/* 排序按钮：纯 SVG 图标按钮，仅展示箭头图标，不显示任何文字 */
 .sort-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  width: 32px;
   height: 32px;
-  padding: 0 14px;
+  padding: 0;
   border: 1px solid var(--arc-border);
-  border-radius: 999px;
+  border-radius: 8px;
   background: var(--arc-bg-surface);
   color: var(--arc-text-secondary);
   cursor: pointer;
   flex-shrink: 0;
-  font-size: 12.5px;
-  font-weight: 600;
   transition: border-color 0.16s, color 0.16s, background 0.16s;
 }
 
@@ -358,9 +360,10 @@ function handleBatchDelete(): void {
   transform: scale(0.96);
 }
 
-.sort-btn-label {
-  white-space: nowrap;
-  line-height: 1;
+.sort-btn.is-active {
+  border-color: var(--arc-primary);
+  color: var(--arc-primary);
+  background: color-mix(in srgb, var(--arc-primary) 7%, var(--arc-bg-surface));
 }
 
 /* 排序悬浮窗面板：border-led 分层，冷色调背景跟随主题 */

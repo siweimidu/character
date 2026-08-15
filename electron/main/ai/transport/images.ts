@@ -21,6 +21,54 @@ function normalizeImageSettings(settings: AppSettings): AppSettings {
   }
 }
 
+/** 已知的 Google Gemini 原生图像生成模型（native image generation）前缀。
+ * 这类模型只能通过 Gemini 原生 generateContent（v1beta）调用，
+ * 不支持 OpenAI 兼容的 /images/generations 接口。 */
+const GEMINI_NATIVE_IMAGE_MODEL_PATTERNS = [
+  /^gemini-2\.5-flash-image$/i,
+  /^imagen-/
+]
+
+/** 判断模型是否为 Google Gemini 原生图像生成模型。 */
+export function isGeminiNativeImageModel(model: string): boolean {
+  const m = (model || '').trim()
+  return GEMINI_NATIVE_IMAGE_MODEL_PATTERNS.some((p) => p.test(m))
+}
+
+/**
+ * 当模型为 Google 原生图像模型时，确保走正确的 Gemini 原生端点：
+ * 即使 baseUrl 配置成了 OpenAI 兼容入口（如 .../v1beta/openai）或 /v1 版本，
+ * 也会自动剥离 /openai 后缀、并补全为原生图像模型要求的 /v1beta。
+ */
+export function resolveGeminiNativeSettings(settings: AppSettings): AppSettings {
+  const base = (settings.baseUrl || '').trim().replace(/\/+$/, '')
+  if (!base) return settings
+  // 仅当确实是 Google Gemini 官方域名时才做修正，避免误伤自建/中转地址。
+  let origin = ''
+  let pathname = ''
+  try {
+    const url = new URL(base)
+    origin = url.origin
+    pathname = url.pathname
+  } catch {
+    return settings
+  }
+  if (!/(^|\.)generativelanguage\.googleapis\.com$/i.test(origin.replace(/^https?:\/\//i, ''))) return settings
+
+  // 剥离 OpenAI 兼容入口后缀（.../v1beta/openai）得到原生根路径。
+  let path = pathname.replace(/(\/openai)\/?$/i, '').replace(/\/+$/, '')
+  // 原生图像模型（imagen / gemini-*-image）要求 /v1beta，若配置成 /v1 则补全为 /v1beta。
+  if (!/\/v\d+beta(?:\/|$)/i.test(path)) {
+    const versionMatch = path.match(/(\/v\d+)/i)
+    path = versionMatch ? path.replace(versionMatch[1], '/v1beta') : '/v1beta'
+  }
+
+  return {
+    ...settings,
+    baseUrl: `${origin}${path}`
+  }
+}
+
 /** 根据 base64 数据的头部特征推断图片 MIME 类型 */
 function inferMimeType(base64: string): string {
   if (base64.startsWith('/9j/')) {
@@ -66,8 +114,8 @@ export async function generateImage(settings: AppSettings, prompt: string): Prom
 
   // Google Gemini 原生 REST API（如 https://generativelanguage.googleapis.com/v1beta）
   // 使用 generateContent 端点与 x-goog-api-key 鉴权，而非 OpenAI 兼容的 /images/generations。
-  if (isGeminiNativeBaseUrl(normalized.baseUrl)) {
-    return generateImageGeminiNative(normalized, prompt)
+  if (isGeminiNativeBaseUrl(normalized.baseUrl) || isGeminiNativeImageModel(normalized.model)) {
+    return generateImageGeminiNative(resolveGeminiNativeSettings(normalized), prompt)
   }
 
   const url = `${normalized.baseUrl.replace(/\/$/, '')}/images/generations`
