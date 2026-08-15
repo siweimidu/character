@@ -1,11 +1,22 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { Clipboard, ClipboardPaste, Copy, FileText, Scissors, Search, TextCursor, PanelRight, Undo2 } from 'lucide-vue-next'
+import {
+  Clipboard,
+  ClipboardPaste,
+  Copy,
+  FileText,
+  PanelRight,
+  RotateCcw,
+  Scissors,
+  Search,
+  TextCursor,
+  Undo2,
+} from 'lucide-vue-next'
 
 export interface EditorContextMenuItem {
   id: string
   label: string
-  icon: 'copy' | 'cut' | 'paste' | 'paste-plain' | 'select-all' | 'find' | 'minimap' | 'float-undo'
+  icon: 'copy' | 'cut' | 'paste' | 'paste-plain' | 'select-all' | 'find' | 'minimap' | 'rollback' | 'float-undo'
   disabled?: boolean
   separatorBefore?: boolean
 }
@@ -45,6 +56,12 @@ const items = computed<EditorContextMenuItem[]>(() => [
     id: 'float-undo',
     label: props.floatUndoActive ? '关闭回退悬浮按钮' : '启用回退悬浮按钮',
     icon: 'float-undo',
+    separatorBefore: true,
+  },
+  {
+    id: 'rollback',
+    label: '回退到历史版本',
+    icon: 'rollback',
     separatorBefore: true,
   },
 ])
@@ -115,6 +132,7 @@ const iconMap = {
   find: Search,
   minimap: PanelRight,
   'float-undo': Undo2,
+  rollback: RotateCcw,
   document: FileText,
 } as const
 </script>

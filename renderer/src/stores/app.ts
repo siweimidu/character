@@ -4653,6 +4653,33 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
+  /** 批量删除章节历史版本，删除后写入项目回收站 */
+  function deleteChapterVersions(versionIds: string[]): { success: boolean; error?: string } {
+    if (!versionIds.length) {
+      return { success: false, error: '未选择要删除的历史版本' }
+    }
+    const idSet = new Set(versionIds)
+    const targetVersions = chapterVersions.value.filter((v) => idSet.has(v.id))
+    if (targetVersions.length === 0) {
+      return { success: false, error: '未找到要删除的历史版本' }
+    }
+
+    // 将删除的版本快照写入项目回收站
+    for (const version of targetVersions) {
+      pushRecycleEntry('chapter-version', `历史版本：${version.title || '未命名章节'}`, {
+        ...version
+      })
+    }
+
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      chapterVersions: workspace.chapterVersions.filter((v) => !idSet.has(v.id))
+    }))
+
+    schedulePersist('fast')
+    return { success: true }
+  }
+
   /** 更新单个应用设置项并触发快速持久化（仅写入 app_settings 行） */
   function updateAppSetting<K extends keyof AppSettings>(
     key: K,
@@ -5697,6 +5724,7 @@ export const useAppStore = defineStore('app', () => {
     pushStreamingAssistantMessage,
     pushUserMessage,
     restoreChapterVersion,
+    deleteChapterVersions,
     saveCurrentChapterVersion,
     selectChapter,
     selectedChapter,

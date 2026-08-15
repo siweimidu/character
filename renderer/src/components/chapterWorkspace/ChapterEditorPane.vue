@@ -377,6 +377,69 @@ const ctxMenuX = ref(0)
 const ctxMenuY = ref(0)
 const ctxMenuHasSelection = ref(false)
 
+// ── 回退 / 撤销回退悬浮按钮 ──
+// 通过右键菜单「回退」开启，在正文左下角显示两个圆形悬浮按钮
+const rollbackVisible = ref(false)
+// 回退前的正文快照（用于撤销回退时恢复）
+let rollbackSnapshot: { content: string; title: string; summary: string } | null = null
+
+function showRollbackButtons(): void {
+  const chapter = currentChapter.value
+  if (!chapter) return
+  // 若还没有回退过，先记录当前正文为回退快照
+  if (!rollbackSnapshot) {
+    rollbackSnapshot = {
+      content: chapter.content ?? '',
+      title: chapter.title ?? '',
+      summary: chapter.summary ?? ''
+    }
+  }
+  rollbackVisible.value = true
+}
+
+function hideRollbackButtons(): void {
+  rollbackVisible.value = false
+  rollbackSnapshot = null
+}
+
+/** 执行回退：将当前正文恢复到最近一次保存的历史版本 */
+function handleRollback(): void {
+  const chapter = currentChapter.value
+  if (!chapter) return
+  const versions = appStore.getChapterVersions(chapter.id)
+  if (versions.length === 0) {
+    message.warning('当前章节没有可回退的历史版本')
+    return
+  }
+  // 保存当前内容作为撤销回退的快照
+  if (!rollbackSnapshot) {
+    rollbackSnapshot = {
+      content: chapter.content ?? '',
+      title: chapter.title ?? '',
+      summary: chapter.summary ?? ''
+    }
+  }
+  // 取最近一次历史版本并恢复
+  const latestVersion = versions[0]
+  void appStore.restoreChapterVersion(latestVersion.id).then((res) => {
+    if (!res.success) {
+      message.error(res.error ?? '回退失败')
+      return
+    }
+    message.success('已回退到最近的历史版本')
+  })
+}
+
+/** 撤销回退：恢复回退前的正文 */
+function handleUndoRollback(): void {
+  const chapter = currentChapter.value
+  if (!chapter || !rollbackSnapshot) return
+  appStore.updateChapterContent(rollbackSnapshot.content, chapter.id)
+  if (rollbackSnapshot.title) appStore.updateChapterTitle(rollbackSnapshot.title)
+  if (rollbackSnapshot.summary) appStore.updateChapterSummary(rollbackSnapshot.summary)
+  message.success('已撤销回退')
+}
+
 function handleEditorContextMenu(e: MouseEvent): void {
   const target = e.target as HTMLElement | null
   // 扩大右键范围：整个正文编辑区（含 .ProseMirror 及其两侧留白、标题、摘要等）都弹出菜单
@@ -457,6 +520,9 @@ async function handleCtxAction(id: string): Promise<void> {
   } else if (id === 'float-undo') {
     // 切换正文左下角回退悬浮按钮开关，持久化到应用设置（软件重启后保持上次设置）
     appStore.updateAppSetting('editorFloatUndo', !appStore.appSettings.editorFloatUndo)
+  } else if (id === 'rollback') {
+    // 在正文左下角显示回退/撤销回退悬浮按钮
+    showRollbackButtons()
   }
 }
 
@@ -689,6 +755,8 @@ watch(
   () => currentChapter.value?.id,
   () => {
     nextTick(() => quickScrollRef.value?.redraw())
+    // 切换章节时收起回退/撤销回退悬浮按钮并重置快照
+    hideRollbackButtons()
   }
 )
 
@@ -990,6 +1058,28 @@ onBeforeUnmount(() => {
         <span class="progress-pct">{{ progressPercent }}%</span>
       </div>
     </footer>
+
+    <!-- 回退 / 撤销回退悬浮按钮：正文左下角，字数上方，固定位置不随正文滑动 -->
+    <Teleport to="body">
+      <Transition name="rollback-fade">
+        <div v-if="rollbackVisible" class="arc-rollback-bar">
+          <button
+            class="arc-rollback-btn"
+            title="回退"
+            @click="handleRollback"
+          >
+            <Undo2 :size="16" />
+          </button>
+          <button
+            class="arc-rollback-btn"
+            title="撤销回退"
+            @click="handleUndoRollback"
+          >
+            <Redo2 :size="16" />
+          </button>
+        </div>
+      </Transition>
+    </Teleport>
 
     <ChapterVersionDialog
       v-model:show="versionDialogVisible"
@@ -1651,5 +1741,48 @@ onBeforeUnmount(() => {
 .arc-sel-fade-leave-to {
   opacity: 0;
   transform: translateX(-50%) translateY(4px);
+}
+
+/* 回退 / 撤销回退悬浮按钮 */
+.arc-rollback-bar {
+  position: fixed;
+  left: 24px;
+  bottom: 44px;
+  z-index: 9998;
+  display: flex;
+  gap: 10px;
+}
+
+.arc-rollback-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--arc-border);
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+  transition: background 0.15s, color 0.15s, transform 0.15s;
+  padding: 0;
+}
+
+.arc-rollback-btn:hover {
+  background: var(--arc-primary);
+  color: white;
+  transform: translateY(-1px);
+}
+
+.rollback-fade-enter-active,
+.rollback-fade-leave-active {
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.rollback-fade-enter-from,
+.rollback-fade-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
 }
 </style>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { GitCompare, RotateCcw } from 'lucide-vue-next'
-import { NButton, NModal, useDialog, useMessage } from 'naive-ui'
+import { GitCompare, RotateCcw, Trash2 } from 'lucide-vue-next'
+import { NButton, NCheckbox, NModal, useDialog, useMessage } from 'naive-ui'
 import { getChapterCharacterCount, getPlainTextFromEditorContent } from '@/features/chapters/editorContent'
 import { formatChapterWordTargetLabel } from '@/features/chapters/wordTarget'
 import { useAppStore } from '@/stores/app'
@@ -20,6 +20,9 @@ const appStore = useAppStore()
 const dialog = useDialog()
 const message = useMessage()
 const selectedVersionId = ref('')
+// 批量删除选择状态
+const selectedVersionIds = ref<Set<string>>(new Set())
+const batchSelectMode = ref(false)
 
 const versions = computed<ChapterVersion[]>(() =>
   props.chapter ? appStore.getChapterVersions(props.chapter.id) : []
@@ -141,10 +144,68 @@ function restore(version: ChapterVersion): void {
   })
 }
 
+function toggleSelection(versionId: string): void {
+  const next = new Set(selectedVersionIds.value)
+  if (next.has(versionId)) {
+    next.delete(versionId)
+  } else {
+    next.add(versionId)
+  }
+  selectedVersionIds.value = next
+}
+
+function toggleSelectAll(): void {
+  if (selectedVersionIds.value.size === versions.value.length) {
+    selectedVersionIds.value = new Set()
+  } else {
+    selectedVersionIds.value = new Set(versions.value.map((v) => v.id))
+  }
+}
+
+function toggleBatchMode(): void {
+  batchSelectMode.value = !batchSelectMode.value
+  selectedVersionIds.value = new Set()
+}
+
+/** 批量删除选中的历史版本，删除后进入回收站 */
+function batchDelete(): void {
+  const ids = [...selectedVersionIds.value]
+  if (ids.length === 0) {
+    message.warning('请先勾选要删除的历史版本')
+    return
+  }
+  dialog.warning({
+    title: '批量删除历史版本',
+    content: `确定删除选中的 ${ids.length} 个历史版本吗？删除后可在回收站中找到。`,
+    positiveText: '确认删除',
+    negativeText: '取消',
+    autoFocus: false,
+    closable: false,
+    onPositiveClick: () => {
+      const result = appStore.deleteChapterVersions(ids)
+      if (!result.success) {
+        message.error(result.error ?? '批量删除失败')
+        return
+      }
+      selectedVersionIds.value = new Set()
+      batchSelectMode.value = false
+      // 如果当前选中的版本被删除了，重置选中项
+      if (!versions.value.some((v) => v.id === selectedVersionId.value)) {
+        selectedVersionId.value = versions.value[0]?.id ?? ''
+      }
+      message.success(`已删除 ${ids.length} 个历史版本，可在回收站中找到`)
+    }
+  })
+}
+
 watch(
   [() => props.show, versions],
   ([show, list]) => {
-    if (!show) return
+    if (!show) {
+      selectedVersionIds.value = new Set()
+      batchSelectMode.value = false
+      return
+    }
     if (!list.some((version) => version.id === selectedVersionId.value)) {
       selectedVersionId.value = list[0]?.id ?? ''
     }
@@ -164,19 +225,59 @@ watch(
   >
     <template #header-extra>
       <n-button size="small" type="primary" secondary @click="saveVersion">保存当前版本</n-button>
+      <n-button
+        v-if="!batchSelectMode"
+        size="small"
+        type="error"
+        secondary
+        :disabled="!versions.length"
+        @click="toggleBatchMode"
+      >
+        <template #icon><Trash2 :size="13" /></template>
+        批量删除
+      </n-button>
+      <template v-else>
+        <n-button size="small" secondary @click="toggleBatchMode">取消</n-button>
+        <n-button
+          size="small"
+          type="error"
+          secondary
+          :disabled="selectedVersionIds.size === 0"
+          @click="batchDelete"
+        >
+          <template #icon><Trash2 :size="13" /></template>
+          删除所选 ({{ selectedVersionIds.size }})
+        </n-button>
+      </template>
     </template>
 
     <div v-if="versions.length" class="version-workspace">
       <aside class="version-list arc-scrollbar">
+        <div v-if="batchSelectMode" class="version-select-bar">
+          <n-checkbox
+            :checked="selectedVersionIds.size === versions.length"
+            @update:checked="toggleSelectAll"
+          >
+            全选
+          </n-checkbox>
+          <span class="select-count">已选 {{ selectedVersionIds.size }}</span>
+        </div>
         <button
           v-for="version in versions"
           :key="version.id"
           type="button"
           class="version-item"
-          :class="{ active: selectedVersion?.id === version.id }"
-          @click="selectedVersionId = version.id"
+          :class="{ active: !batchSelectMode && selectedVersion?.id === version.id, selected: selectedVersionIds.has(version.id) }"
+          @click="batchSelectMode ? toggleSelection(version.id) : (selectedVersionId = version.id)"
         >
           <div class="version-item-head">
+            <span v-if="batchSelectMode" class="version-check">
+              <n-checkbox
+                :checked="selectedVersionIds.has(version.id)"
+                @update:checked="() => toggleSelection(version.id)"
+                @click.stop
+              />
+            </span>
             <strong>{{ formatTime(version.createdAt) }}</strong>
             <span>{{ getChapterCharacterCount(version.content).toLocaleString() }} 字</span>
           </div>
@@ -249,6 +350,29 @@ watch(
   min-height: 420px;
 }
 
+:deep(.n-card-header__extra) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.version-select-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  margin-bottom: 4px;
+  background: var(--arc-bg-surface-hover);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--arc-text-secondary);
+}
+
+.select-count {
+  font-size: 11px;
+  color: var(--arc-text-hint);
+}
+
 .version-item {
   width: 100%;
   border: 0;
@@ -263,6 +387,11 @@ watch(
   color: var(--arc-text-primary);
 }
 
+.version-item.selected {
+  border-left-color: var(--arc-danger);
+  background: color-mix(in srgb, var(--arc-danger) 8%, var(--arc-bg-surface));
+}
+
 .version-item:hover {
   background: var(--arc-bg-surface-hover);
 }
@@ -274,7 +403,7 @@ watch(
 
 .version-item-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
@@ -282,11 +411,19 @@ watch(
 .version-item-head strong {
   font-size: 12px;
   color: var(--arc-text-primary);
+  flex: 1;
 }
 
-.version-item-head span {
+.version-item-head span:not(.version-check) {
   font-size: 10px;
   color: var(--arc-text-hint);
+  flex-shrink: 0;
+}
+
+.version-check {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .version-title {
