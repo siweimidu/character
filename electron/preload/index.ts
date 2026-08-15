@@ -35,6 +35,18 @@ contextBridge.exposeInMainWorld('characterArc', {
   pickAssistantTextFile: () => ipcRenderer.invoke('characterarc:pick-assistant-text-file'),
   /** 智能体上传任意格式文件：保存到工作区上传目录并返回相对路径 */
   saveAssistantUpload: (payload: unknown) => ipcRenderer.invoke('characterarc:assistant:upload:save', toIpcPayload(payload)),
+  /** 项目资源区域：列举目录 */
+  projectResourceList: (payload: unknown) => ipcRenderer.invoke('characterarc:project-resource:list', toIpcPayload(payload)),
+  /** 项目资源区域：读取文件 */
+  projectResourceRead: (payload: unknown) => ipcRenderer.invoke('characterarc:project-resource:read', toIpcPayload(payload)),
+  /** 项目资源区域：新建文件 */
+  projectResourceCreateFile: (payload: unknown) => ipcRenderer.invoke('characterarc:project-resource:create-file', toIpcPayload(payload)),
+  /** 项目资源区域：新建文件夹 */
+  projectResourceCreateFolder: (payload: unknown) => ipcRenderer.invoke('characterarc:project-resource:create-folder', toIpcPayload(payload)),
+  /** 项目资源区域：删除 */
+  projectResourceDelete: (payload: unknown) => ipcRenderer.invoke('characterarc:project-resource:delete', toIpcPayload(payload)),
+  /** 项目资源区域：重命名 */
+  projectResourceRename: (payload: unknown) => ipcRenderer.invoke('characterarc:project-resource:rename', toIpcPayload(payload)),
   /** 将当前项目导出为 JSON 文件 */
   exportJson: (payload: unknown) => ipcRenderer.invoke('characterarc:export-json', toIpcPayload(payload)),
   /** 将当前项目导出为 .carc 项目归档包 */

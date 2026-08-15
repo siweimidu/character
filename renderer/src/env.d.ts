@@ -290,6 +290,72 @@ declare global {
         result?: unknown
         error?: string
       }>
+      /** 项目资源区域：列举目录 */
+      projectResourceList: (payload: {
+        projectId?: string
+        path?: string
+      }) => Promise<{
+        success: boolean
+        path?: string
+        entries?: Array<{
+          name: string
+          path: string
+          isDirectory: boolean
+          isFile: boolean
+          size: number
+          modifiedAt?: string
+        }>
+        error?: string
+      }>
+      /** 项目资源区域：读取文件 */
+      projectResourceRead: (payload: {
+        projectId?: string
+        path?: string
+      }) => Promise<{
+        success: boolean
+        content?: string
+        size?: number
+        error?: string
+      }>
+      /** 项目资源区域：新建文件 */
+      projectResourceCreateFile: (payload: {
+        projectId?: string
+        dir?: string
+        name?: string
+        content?: string
+      }) => Promise<{
+        success: boolean
+        path?: string
+        error?: string
+      }>
+      /** 项目资源区域：新建文件夹 */
+      projectResourceCreateFolder: (payload: {
+        projectId?: string
+        dir?: string
+        name?: string
+      }) => Promise<{
+        success: boolean
+        path?: string
+        error?: string
+      }>
+      /** 项目资源区域：删除 */
+      projectResourceDelete: (payload: {
+        projectId?: string
+        path?: string
+      }) => Promise<{
+        success: boolean
+        error?: string
+      }>
+      /** 项目资源区域：重命名 */
+      projectResourceRename: (payload: {
+        projectId?: string
+        path?: string
+        newName?: string
+      }) => Promise<{
+        success: boolean
+        path?: string
+        error?: string
+      }>
       cancelAiTask: (clientTaskId: string) => Promise<{
         success: boolean
         error?: string

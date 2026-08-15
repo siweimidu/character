@@ -1,9 +1,9 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { createWriteStream, existsSync } from 'node:fs'
-import { cp, mkdir, readFile, readdir, rm, stat, unlink, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, readdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { pipeline } from 'node:stream/promises'
 import { homedir } from 'node:os'
-import { basename, isAbsolute, join, relative } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import * as XLSX from 'xlsx'
 
@@ -1827,6 +1827,143 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
         success: false,
         error: error instanceof Error ? error.message : '保存上传文件失败'
       }
+    }
+  })
+
+  // ── 项目资源区域（project resources）：项目级文件/文件夹资源管理 ──
+  // 资源根目录：<userData>/project-resources/<projectId>/，按项目隔离。
+  function projectResourceRoot(projectId: string): string {
+    const normalized = String(projectId ?? '').trim().replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || '_default'
+    return join(app.getPath('userData'), 'project-resources', normalized)
+  }
+
+  // 把用户传入的相对路径安全地解析到资源根目录内，阻止路径穿越。
+  function resolveProjectResourcePath(projectId: string, relPath: string): string {
+    const root = projectResourceRoot(projectId)
+    const clean = String(relPath ?? '').replace(/[\\/]+/g, '/').replace(/^\/+|^\/*/g, '')
+    const abs = join(root, clean)
+    const rel = relative(root, abs)
+    if (rel.startsWith('..') || isAbsolute(rel)) {
+      throw new Error('非法路径')
+    }
+    return abs
+  }
+
+  // 列举项目资源目录下某个文件夹（默认根目录）的条目。
+  ipcMain.handle('characterarc:project-resource:list', async (_event, payload: unknown) => {
+    try {
+      const request = (payload ?? {}) as { projectId?: string; path?: string }
+      const root = projectResourceRoot(String(request.projectId ?? ''))
+      await mkdir(root, { recursive: true })
+      const dirAbs = request.path ? resolveProjectResourcePath(String(request.projectId ?? ''), request.path) : root
+      const st = await stat(dirAbs).catch(() => null)
+      if (!st || !st.isDirectory()) return { success: false, error: '目录不存在' }
+      const entries = await readdir(dirAbs, { withFileTypes: true })
+      const items = []
+      for (const entry of entries) {
+        let size = 0
+        let modifiedAt: string | undefined
+        try {
+          const s = await stat(join(dirAbs, entry.name))
+          size = s.size
+          modifiedAt = s.mtime.toISOString()
+        } catch {
+          // ignore
+        }
+        const rel = relative(root, join(dirAbs, entry.name)).split('\\').join('/')
+        items.push({
+          name: entry.name,
+          path: rel,
+          isDirectory: entry.isDirectory(),
+          isFile: entry.isFile(),
+          size,
+          modifiedAt
+        })
+      }
+      return { success: true, path: relative(root, dirAbs).split('\\').join('/') || '', entries: items }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : '读取资源失败' }
+    }
+  })
+
+  // 读取项目资源文件内容（文本）。
+  ipcMain.handle('characterarc:project-resource:read', async (_event, payload: unknown) => {
+    try {
+      const request = (payload ?? {}) as { projectId?: string; path?: string }
+      const abs = resolveProjectResourcePath(String(request.projectId ?? ''), String(request.path ?? ''))
+      const st = await stat(abs)
+      if (st.isDirectory()) return { success: false, error: '目标是一个文件夹' }
+      const buf = await readFile(abs)
+      return { success: true, content: buf.toString('utf8'), size: st.size }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : '读取文件失败' }
+    }
+  })
+
+  // 新建文件。
+  ipcMain.handle('characterarc:project-resource:create-file', async (_event, payload: unknown) => {
+    try {
+      const request = (payload ?? {}) as { projectId?: string; dir?: string; name?: string; content?: string }
+      const dir = String(request.dir ?? '').trim()
+      const rawName = String(request.name ?? '').trim()
+      const safeName = rawName.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').trim()
+      if (!safeName) throw new Error('缺少文件名')
+      const abs = resolveProjectResourcePath(String(request.projectId ?? ''), dir ? `${dir}/${safeName}` : safeName)
+      await mkdir(dirname(abs), { recursive: true })
+      await writeFile(abs, String(request.content ?? ''), 'utf8')
+      return { success: true, path: relative(projectResourceRoot(String(request.projectId ?? '')), abs).split('\\').join('/') }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : '新建文件失败' }
+    }
+  })
+
+  // 新建文件夹。
+  ipcMain.handle('characterarc:project-resource:create-folder', async (_event, payload: unknown) => {
+    try {
+      const request = (payload ?? {}) as { projectId?: string; dir?: string; name?: string }
+      const dir = String(request.dir ?? '').trim()
+      const rawName = String(request.name ?? '').trim()
+      const safeName = rawName.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').trim()
+      if (!safeName) throw new Error('缺少文件夹名')
+      const abs = resolveProjectResourcePath(String(request.projectId ?? ''), dir ? `${dir}/${safeName}` : safeName)
+      await mkdir(abs, { recursive: true })
+      return { success: true, path: relative(projectResourceRoot(String(request.projectId ?? '')), abs).split('\\').join('/') }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : '新建文件夹失败' }
+    }
+  })
+
+  // 删除文件/文件夹（文件夹递归删除）。
+  ipcMain.handle('characterarc:project-resource:delete', async (_event, payload: unknown) => {
+    try {
+      const request = (payload ?? {}) as { projectId?: string; path?: string }
+      const abs = resolveProjectResourcePath(String(request.projectId ?? ''), String(request.path ?? ''))
+      const st = await stat(abs).catch(() => null)
+      if (!st) throw new Error('目标不存在')
+      await rm(abs, { recursive: st.isDirectory(), force: true })
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : '删除失败' }
+    }
+  })
+
+  // 重命名文件/文件夹。
+  ipcMain.handle('characterarc:project-resource:rename', async (_event, payload: unknown) => {
+    try {
+      const request = (payload ?? {}) as { projectId?: string; path?: string; newName?: string }
+      const abs = resolveProjectResourcePath(String(request.projectId ?? ''), String(request.path ?? ''))
+      const rawName = String(request.newName ?? '').trim()
+      const safeName = rawName.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').trim()
+      if (!safeName) throw new Error('缺少新名称')
+      const dirAbs = dirname(abs)
+      const newAbs = join(dirAbs, safeName)
+      const st = await stat(abs).catch(() => null)
+      if (!st) throw new Error('目标不存在')
+      if (await stat(newAbs).catch(() => null)) throw new Error('同名目标已存在')
+      await rename(abs, newAbs)
+      return { success: true, path: relative(projectResourceRoot(String(request.projectId ?? '')), newAbs).split('\\').join('/') }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : '重命名失败' }
     }
   })
 

@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   FileCheck2,
   FileText,
+  FolderTree,
   Globe2,
   LayoutDashboard,
   Lightbulb,
@@ -38,6 +39,7 @@ import OutlinePanel from '@/components/OutlinePanel.vue'
 import PlotThreadsPanel from '@/components/PlotThreadsPanel.vue'
 import SettingsPanel from '@/components/SettingsPanel.vue'
 import SearchResultsPanel from '@/components/SearchResultsPanel.vue'
+import ProjectResourcesPanel from '@/components/ProjectResourcesPanel.vue'
 import type { PanelName } from '@/types/app'
 
 const appStore = useAppStore()
@@ -69,6 +71,7 @@ const panelSearch = reactive<Record<string, string>>({
   outline: '',
   threads: '',
   chapters: '',
+  'project-resources': '',
   settings: ''
 })
 
@@ -87,6 +90,7 @@ const sidebarItems = [
   { id: 'inspiration', label: '灵感模块', description: '收集标题、桥段、转折与人物动机', icon: Lightbulb, color: '#f59e0b' },
   { id: 'project-knowledge', label: '项目知识库', description: '一致性审计与从已有章节补录状态', icon: FileCheck2, color: '#14b8a6' },
   { id: 'prompt-library', label: '提示词库', description: '管理写作提示词模板与一键套用', icon: MessageSquareText, color: '#f97316' },
+  { id: 'project-resources', label: '项目资源', description: '管理项目文件夹与文件资源', icon: FolderTree, color: '#f59e0b' },
   { id: 'global-assistant-v2', label: '智能体', description: '多角色创作助手 + 暂存变更审阅', icon: Sparkles, color: '#0d7d5a' }
 ] as const
 
@@ -440,6 +444,7 @@ watch(searchKeyword, (value) => {
             <InspirationPanel v-else-if="appStore.activePanel === 'inspiration'" key="inspiration" :search-query="normalizedSearch" />
             <OutlinePanel v-else-if="appStore.activePanel === 'outline'" key="outline" :search-query="normalizedSearch" />
             <PlotThreadsPanel v-else-if="appStore.activePanel === 'threads'" key="threads" :search-query="normalizedSearch" />
+            <ProjectResourcesPanel v-else-if="appStore.activePanel === 'project-resources'" key="project-resources" />
             <GlobalAssistantPage v-else-if="appStore.activePanel === 'global-assistant'" key="global-assistant" />
             <GlobalAssistantV2Page v-else-if="appStore.activePanel === 'global-assistant-v2'" key="global-assistant-v2" />
             <SettingsPanel v-else key="settings" />
