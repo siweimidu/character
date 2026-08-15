@@ -48,24 +48,6 @@ function handleCardClick(): void {
     :data-project-id="project.id"
     @click="handleCardClick"
   >
-    <div v-if="manualSort" class="move-controls">
-      <button
-        class="move-btn"
-        title="上移一位"
-        :disabled="moveUpDisabled"
-        @click.stop="emit('moveUp', project.id)"
-      >
-        <ArrowUp :size="13" />
-      </button>
-      <button
-        class="move-btn"
-        title="下移一位"
-        :disabled="moveDownDisabled"
-        @click.stop="emit('moveDown', project.id)"
-      >
-        <ArrowDown :size="13" />
-      </button>
-    </div>
     <div class="card-main">
       <button
         v-if="selectMode"
@@ -87,6 +69,25 @@ function handleCardClick(): void {
         </div>
         <p class="card-meta">最近编辑：{{ formatProjectEditedAt(project.lastEdited) }}</p>
         <p v-if="project.createdAt" class="card-meta card-meta-created">建立时间：{{ formatProjectEditedAt(project.createdAt) }}</p>
+      </div>
+
+      <div v-if="manualSort" class="move-controls">
+        <button
+          class="move-btn"
+          title="上移一位"
+          :disabled="moveUpDisabled"
+          @click.stop="emit('moveUp', project.id)"
+        >
+          <ArrowUp :size="15" />
+        </button>
+        <button
+          class="move-btn"
+          title="下移一位"
+          :disabled="moveDownDisabled"
+          @click.stop="emit('moveDown', project.id)"
+        >
+          <ArrowDown :size="15" />
+        </button>
       </div>
 
       <n-dropdown
@@ -295,15 +296,13 @@ function handleCardClick(): void {
 
 /* 手动排序时的上/下移动按钮：默认隐藏，悬停卡片时才淡入显示 */
 .move-controls {
-  position: absolute;
-  top: 50%;
-  right: 8px;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  z-index: 3;
+  flex-shrink: 0;
+  align-self: flex-start;
   opacity: 0;
-  transform: translateY(-50%) translateX(6px) scale(0.92);
+  transform: translateX(6px) scale(0.92);
   transition:
     opacity 0.2s,
     transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -311,17 +310,17 @@ function handleCardClick(): void {
 
 .homepage-project-card.is-manual-sort:hover .move-controls {
   opacity: 1;
-  transform: translateY(-50%) translateX(0) scale(1);
+  transform: translateX(0) scale(1);
 }
 
 .move-btn {
   display: inline-flex;
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--arc-border);
-  border-radius: 7px;
+  border-radius: 8px;
   background: var(--arc-bg-surface);
   color: var(--arc-text-secondary);
   cursor: pointer;

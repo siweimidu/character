@@ -16,10 +16,10 @@ type SortMode = SortDimension | 'manual'
 
 /** 各排序维度的展示名与用户首选方向 */
 const SORT_OPTIONS: { key: SortDimension; label: string; defaultDirection: SortDirection }[] = [
-  { key: 'created', label: '按建立时间', defaultDirection: 'asc' }, // 最早在前
-  { key: 'edited', label: '按最近编辑', defaultDirection: 'desc' }, // 最新编辑在前
-  { key: 'wordCount', label: '按作品字数', defaultDirection: 'desc' }, // 字数最多在前
-  { key: 'titleLength', label: '按作品名称', defaultDirection: 'desc' } // 名称最长在前
+  { key: 'created', label: '按建立时间排序', defaultDirection: 'asc' }, // 最早在前
+  { key: 'edited', label: '按最近编辑排序', defaultDirection: 'desc' }, // 最新编辑在前
+  { key: 'wordCount', label: '按作品字数排序', defaultDirection: 'desc' }, // 字数最多在前
+  { key: 'titleLength', label: '按作品名称排序', defaultDirection: 'desc' } // 名称最长在前
 ]
 
 /** 每个维度的方向文案（用于悬浮窗中的方向切换） */
@@ -215,8 +215,8 @@ function handleBatchDelete(): void {
               class="sort-popover"
             >
               <template #trigger>
-                <button class="sort-btn" :title="`排序：${SORT_OPTIONS.find((o) => o.key === sortMode)?.label ?? ''}（${sortMode === 'manual' ? '手动排序' : (sortDirection === 'asc' ? '最早/最短/最少/最早编辑' : '最晚/最长/最多/最新编辑')}）`" aria-label="选择排序方式">
-                  <ArrowUpDown :size="15" />
+                <button class="sort-btn" title="选择排序方式" aria-label="选择排序方式">
+                  <ArrowUpDown :size="16" />
                 </button>
               </template>
               <div class="sort-popover-body">
@@ -244,17 +244,12 @@ function handleBatchDelete(): void {
                   @click="enableManualSort"
                 >
                   <span class="sort-option-label">手动排序</span>
-                  <span class="sort-option-dir manual-dir">箭头调整</span>
                 </div>
               </div>
             </n-popover>
             <button class="batch-mode-btn" title="批量管理" @click="enterSelectMode">
               <CheckSquare :size="14" />
               批量管理
-            </button>
-            <button class="batch-create-btn" title="批量生成作品" @click="emit('batchCreate')">
-              <Wand2 :size="14" />
-              批量生成作品
             </button>
           </template>
           <template v-else>
@@ -267,6 +262,10 @@ function handleBatchDelete(): void {
               <button class="batch-tool-btn" @click="exitSelectMode">
                 <X :size="14" />
                 退出
+              </button>
+              <button class="batch-tool-btn" title="批量生成作品" @click="emit('batchCreate')">
+                <Wand2 :size="14" />
+                批量生成
               </button>
               <span class="batch-count">已选 {{ selectedCount }} 个</span>
               <n-button
@@ -340,6 +339,7 @@ function handleBatchDelete(): void {
   color: var(--arc-text-secondary);
   cursor: pointer;
   padding: 0;
+  flex-shrink: 0;
   transition: border-color 0.2s, color 0.2s, background 0.2s, transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -356,7 +356,7 @@ function handleBatchDelete(): void {
 
 /* 排序悬浮窗 */
 .sort-popover-body {
-  min-width: 210px;
+  min-width: 220px;
   padding: 4px;
 }
 
@@ -420,35 +420,6 @@ function handleBatchDelete(): void {
 .sort-option.active .sort-option-dir {
   color: var(--arc-primary);
   border-color: color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border));
-}
-
-.manual-dir {
-  width: auto;
-  padding: 0 6px;
-  border: none;
-  font-size: 11px;
-  color: var(--arc-text-hint);
-  cursor: default;
-}
-
-.batch-create-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid color-mix(in srgb, var(--arc-primary) 35%, var(--arc-border));
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--arc-primary) 8%, var(--arc-bg-surface));
-  color: var(--arc-primary);
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 6px 12px;
-  transition: border-color 0.2s, color 0.2s, background 0.2s;
-}
-
-.batch-create-btn:hover {
-  border-color: var(--arc-primary);
-  background: color-mix(in srgb, var(--arc-primary) 14%, var(--arc-bg-surface));
 }
 
 .batch-mode-btn {
