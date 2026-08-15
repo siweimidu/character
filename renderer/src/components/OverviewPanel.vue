@@ -221,7 +221,8 @@ function goToPanel(panel: PanelName): void {
 }
 
 // 点击快速入口卡片后，根据类型导航到对应面板或选中具体章节
-function openEntry(type: string, title: string): void {
+function openEntry(entry: { type: string; title: string; id: string }): void {
+  const { type, title } = entry
   if (type === '章节') {
     const chapter = appStore.chapters.find((item) => item.title === title)
     if (chapter) {
@@ -250,7 +251,12 @@ function openEntry(type: string, title: string): void {
     return
   }
 
+  // 世界观：跳转到世界观设定面板，并聚焦定位到刚才点击的那条世界观词条
+  const worldEntryId = entry.id.startsWith('world-')
+    ? entry.id.slice('world-'.length)
+    : entry.id
   appStore.setPanel('world')
+  appStore.setAssistantFocusTarget('world', worldEntryId)
 }
 </script>
 
@@ -366,7 +372,7 @@ function openEntry(type: string, title: string): void {
           :key="entry.id"
           type="button"
           class="focus-row"
-          @click="openEntry(entry.type, entry.title)"
+          @click="openEntry(entry)"
         >
           <span class="focus-type">{{ entry.type }}</span>
           <span class="focus-copy">
