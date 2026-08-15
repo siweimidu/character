@@ -2471,16 +2471,6 @@ async function saveSettings(): Promise<void> {
     <template #header>
       <div class="cc-switch-header">
         <span class="cc-switch-header-title">从 CC Switch 导入</span>
-        <n-button
-          v-if="ccSwitchProfiles.length"
-          size="tiny"
-          secondary
-          round
-          class="cc-switch-select-all-btn"
-          @click="toggleCcSwitchSelectAll"
-        >
-          {{ ccSwitchAllSelected ? '取消全选' : '多选' }}
-        </n-button>
       </div>
     </template>
     <div class="cc-switch-intro">
@@ -2490,20 +2480,20 @@ async function saveSettings(): Promise<void> {
       </p>
     </div>
 
-    <div class="cc-switch-section-title">AI 接口配置</div>
-    <div v-if="ccSwitchProfiles.length" class="cc-switch-profile-list-wrap">
-      <button
+    <div class="cc-switch-section-title-row">
+      <span class="cc-switch-section-title">AI 接口配置</span>
+      <n-button
         v-if="ccSwitchProfiles.length"
-        type="button"
-        class="cc-switch-select-all-svg"
-        :title="ccSwitchAllSelected ? '取消全选' : '全选'"
+        size="tiny"
+        secondary
+        round
+        class="cc-switch-select-all-btn"
         @click="toggleCcSwitchSelectAll"
       >
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="3" y="3" width="18" height="18" rx="3" :fill="ccSwitchAllSelected ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.6" />
-          <path v-if="ccSwitchAllSelected" d="M7 12.2l3.2 3.2L17 8.4" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none" />
-        </svg>
-      </button>
+        {{ ccSwitchAllSelected ? '取消全选' : '多选' }}
+      </n-button>
+    </div>
+    <div v-if="ccSwitchProfiles.length" class="cc-switch-profile-list-wrap">
       <div class="cc-switch-profile-list">
         <label
           v-for="profile in ccSwitchProfiles"
@@ -3608,8 +3598,16 @@ async function saveSettings(): Promise<void> {
   color: var(--arc-danger);
 }
 
-.cc-switch-section-title {
+.cc-switch-section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   margin: 16px 0 10px;
+}
+
+.cc-switch-section-title {
+  margin: 0;
   font-size: 14px;
   font-weight: 700;
   color: var(--arc-text-primary);
@@ -3625,30 +3623,6 @@ async function saveSettings(): Promise<void> {
   gap: 8px;
   max-height: 260px;
   overflow-y: auto;
-}
-
-.cc-switch-select-all-svg {
-  position: absolute;
-  top: 6px;
-  right: 8px;
-  z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: 1px solid var(--arc-border);
-  border-radius: 6px;
-  background: var(--arc-bg-surface);
-  color: var(--arc-text-secondary);
-  cursor: pointer;
-  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
-}
-
-.cc-switch-select-all-svg:hover {
-  color: var(--arc-primary);
-  border-color: var(--arc-primary);
 }
 
 .cc-switch-profile-item {
