@@ -26,7 +26,7 @@ main:
         - name: upload-artifact
           image: cnbcool/attachments:latest
           settings:
-            commit: $CNB_BRANCH_SHA
+            commit: $CNB_COMMIT
             attachments:
               - dist/*.exe
 
@@ -52,7 +52,7 @@ $:
         - name: upload-artifact
           image: cnbcool/attachments:latest
           settings:
-            commit: $CNB_BRANCH_SHA
+            commit: $CNB_COMMIT
             attachments:
               - dist/*.exe
   api_trigger:
@@ -76,6 +76,6 @@ $:
         - name: upload-artifact
           image: cnbcool/attachments:latest
           settings:
-            commit: $CNB_BRANCH_SHA
+            commit: $CNB_COMMIT
             attachments:
               - dist/*.exe
