@@ -5,24 +5,31 @@
  * IPC 层与智能体工具装配使用。这是「全局智能体的一切都模块化」的入口。
  */
 
-import { AgentModuleRegistry, InMemoryModuleStore } from './registry'
+import { AgentModuleRegistry } from './registry'
+import { LazySqliteModuleStore } from './sqlite-store'
 import { createSystemFileTools } from './tools/system-filesystem'
 import { createExecTools } from './tools/exec'
 import { createMcpTools } from './tools/mcp'
 import { SqliteNovelAccessor } from './mcp-novel-server'
+import type { DatabaseSync } from 'node:sqlite'
 
 /** 全局唯一模块注册表实例。 */
 let registry: AgentModuleRegistry | null = null
+/** 惰性 SQLite 存储（启动早期内存承接，DB 就绪后落库）。 */
+let moduleStore: LazySqliteModuleStore | null = null
 
 /**
  * 初始化模块注册中心（幂等）。
  * 在应用启动时调用一次。
+ *
+ * 启停开关默认先落在内存，等 SQLite 就绪后调用 attachAgentModuleStore()
+ * 合并持久化状态并实时落库，实现「能力模块开关跨重启持久」。
  */
 export function initAgentModuleRegistry(): AgentModuleRegistry {
   if (registry) return registry
 
-  const store = new InMemoryModuleStore()
-  registry = new AgentModuleRegistry(store)
+  moduleStore = new LazySqliteModuleStore()
+  registry = new AgentModuleRegistry(moduleStore)
 
   // 注册内置能力模块 → 工具工厂
   registry.register({
@@ -106,7 +113,17 @@ export function getAgentModuleRegistry(): AgentModuleRegistry {
   return registry!
 }
 
+/**
+ * 将能力模块启停状态挂接到 SQLite 持久化存储。
+ * 在 workspace SQLite 就绪后调用一次，之后模块开关实时落库、跨重启保留。
+ */
+export function attachAgentModuleStore(db: DatabaseSync): void {
+  initAgentModuleRegistry()
+  moduleStore?.attach(db)
+}
+
 /** 供测试重置。 */
 export function resetAgentModuleRegistryForTest(): void {
   registry = null
+  moduleStore = null
 }

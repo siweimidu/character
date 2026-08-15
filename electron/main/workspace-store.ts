@@ -19,6 +19,7 @@ import { initAgentProfilesSchema, seedBuiltinAgents, seedBuiltinAgentsForProject
 import { initAgentMemoriesSchema } from './ai/runtime-v2/agent-memory-store'
 import { initChapterProcessingSchema } from './ai/runtime/chapter-processing-store'
 import { initStateBackfillSchema } from './ai/state-backfill-store'
+import { attachAgentModuleStore } from './ai/agent-modules'
 import { migrateKnowledgeDocumentScopes } from './knowledge-document-schema'
 
 const WORKSPACE_DB = 'workspace.db'
@@ -447,6 +448,9 @@ export async function ensureWorkspaceDb(): Promise<DatabaseSync> {
   initAgentMemoriesSchema(db)
   initChapterProcessingSchema(db)
   initStateBackfillSchema(db)
+
+  // 能力模块启停开关持久化到 SQLite（跨重启保留）
+  attachAgentModuleStore(db)
 
   await migrateLegacyWorkspaceFile(db)
   workspaceDb = db

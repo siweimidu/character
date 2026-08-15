@@ -204,7 +204,7 @@ contextBridge.exposeInMainWorld('characterArc', {
   /** 测试图片识别模型性能 */
   benchmarkVisionModel: (settings: unknown) => ipcRenderer.invoke('characterarc:ai-benchmark-vision-model', toIpcPayload(settings)),
   /** 语音识别（语音 → 文字） */
-  transcribeSpeech: (payload: { settings: unknown; audioData: Uint8Array; audioType: string }) => ipcRenderer.invoke('characterarc:ai-transcribe-speech', { settings: toIpcPayload(payload.settings), audioData: payload.audioData, audioType: payload.audioType }),
+  transcribeSpeech: (payload: { settings: unknown; audioData: Uint8Array | string; audioType: string }) => ipcRenderer.invoke('characterarc:ai-transcribe-speech', { settings: toIpcPayload(payload.settings), audioData: payload.audioData, audioType: payload.audioType }),
   /** 读取当前项目的结构化世界状态（角色状态、伏笔、关系、时间线、世界规则、倒计时） */
   readStoryState: (projectId: string) => ipcRenderer.invoke('characterarc:ai-read-story-state', projectId),
   /** 删除世界状态库中的某个区块，返回被删快照供回收站恢复 */

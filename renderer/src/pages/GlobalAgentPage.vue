@@ -35,7 +35,7 @@ import type { AgentModuleRuntime } from '@shared/agent-modules'
 import DeepSeekFishLogo from '@/components/assistantV2/DeepSeekFishLogo.vue'
 import { useAppStore } from '@/stores/app'
 import { useAssistant } from '@/composables/useAssistant'
-import { createSpeechRecorder, startBrowserSpeech } from '@/features/settings/speechInput'
+import { createSpeechRecorder, startBrowserSpeech, uint8ArrayToBase64 } from '@/features/settings/speechInput'
 import AssistantSessionList from '@/components/assistantV2/AssistantSessionList.vue'
 import AssistantComposer from '@/components/assistantV2/AssistantComposer.vue'
 import AgentSelector from '@/components/assistantV2/AgentSelector.vue'
@@ -408,7 +408,7 @@ function startProviderSpeechRecognition(): void {
     try {
       const res = await window.characterArc.transcribeSpeech({
         settings,
-        audioData,
+        audioData: uint8ArrayToBase64(audioData),
         audioType: mimeType
       })
       if (!res.success) throw new Error(res.error ?? '语音识别失败')

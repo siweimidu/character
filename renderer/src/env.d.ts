@@ -523,7 +523,7 @@ declare global {
         result?: { provider?: string; model?: string; protocol?: string }
         error?: string
       }>
-      transcribeSpeech: (payload: { settings: unknown; audioData: Uint8Array; audioType: string }) => Promise<{
+      transcribeSpeech: (payload: { settings: unknown; audioData: Uint8Array | string; audioType: string }) => Promise<{
         success: boolean
         result?: { text: string; model?: string }
         error?: string

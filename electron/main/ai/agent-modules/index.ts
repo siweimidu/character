@@ -16,6 +16,7 @@ export type {
 export {
   initAgentModuleRegistry,
   getAgentModuleRegistry,
+  attachAgentModuleStore,
   resetAgentModuleRegistryForTest
 } from './bootstrap'
 export { registerAgentModuleIpcHandlers } from './ipc'

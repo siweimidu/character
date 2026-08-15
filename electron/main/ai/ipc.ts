@@ -83,6 +83,22 @@ function updateBackfillTask(
 }
 
 /**
+ * 将语音识别音频数据还原为 Uint8Array。
+ *
+ * 渲染进程在跨 IPC 传输二进制时，直接传 Uint8Array 会触发
+ * Electron「An object could not be cloned」结构化克隆报错，因此改为
+ * 先转 base64 字符串再传输；这里统一把 Uint8Array / base64 字符串
+ * 归一化为 Uint8Array 供识别模块使用。
+ */
+function decodeSpeechAudio(audioData?: Uint8Array | string): Uint8Array {
+  if (!audioData) return new Uint8Array(0)
+  if (typeof audioData === 'string') {
+    return Uint8Array.from(Buffer.from(audioData, 'base64'))
+  }
+  return audioData
+}
+
+/**
  * 注册所有 AI 相关的 IPC handler。
  * 包括非流式生成、流式生成、Agent 生成、连接测试、模型列表、图片生成、
  * 世界状态读取、章节版本读取、螺旋生成、状态补录等。
@@ -533,12 +549,12 @@ export function registerAiIpcHandlers(injectedDeps: AiIpcDeps): void {
   // ── 语音识别（语音 → 文字）：调用 OpenAI 兼容音频转写接口 ──
   ipcMain.handle('characterarc:ai-transcribe-speech', async (_event, payload: unknown) => {
     try {
-      const req = payload as { settings?: AppSettings; audioData?: Uint8Array; audioType?: string }
+      const req = payload as { settings?: AppSettings; audioData?: Uint8Array | string; audioType?: string }
       const normalized = normalizeSpeechSettings(req?.settings as AppSettings)
       if (!normalized.baseUrl.trim()) throw new Error('请先在设置中填写语音识别 Base URL。')
       if (!normalized.apiKey.trim()) throw new Error('请先在设置中填写语音识别 API Key。')
       if (!normalized.model.trim()) throw new Error('请先在设置中填写语音识别模型。')
-      const audio = req?.audioData
+      const audio = decodeSpeechAudio(req?.audioData)
       if (!audio || audio.length === 0) throw new Error('缺少待识别的音频数据。')
       const result = await transcribeSpeech(req.settings as AppSettings, audio, req.audioType || 'audio/webm')
       return { success: true, result }

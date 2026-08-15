@@ -16,7 +16,7 @@ import type { SurfaceDefinition, TurnTruncateResult } from '@shared/assistant-ru
 import type { AgentModuleRuntime } from '@shared/agent-modules'
 import { useAppStore } from '@/stores/app'
 import { useAssistant } from '@/composables/useAssistant'
-import { createSpeechRecorder, startBrowserSpeech } from '@/features/settings/speechInput'
+import { createSpeechRecorder, startBrowserSpeech, uint8ArrayToBase64 } from '@/features/settings/speechInput'
 import AssistantSessionList from './AssistantSessionList.vue'
 import AssistantMessages from './AssistantMessages.vue'
 import AssistantComposer from './AssistantComposer.vue'
@@ -101,7 +101,7 @@ function startProviderSpeechRecognition(): void {
   speechRecorder = createSpeechRecorder(async (audioData, mimeType) => {
     isTranscribing.value = true
     try {
-      const res = await window.characterArc.transcribeSpeech({ settings, audioData, audioType: mimeType })
+      const res = await window.characterArc.transcribeSpeech({ settings, audioData: uint8ArrayToBase64(audioData), audioType: mimeType })
       if (!res.success) throw new Error(res.error ?? '语音识别失败')
       const text = res.result?.text?.trim()
       if (text) {

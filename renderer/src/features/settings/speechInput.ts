@@ -12,6 +12,22 @@ export interface SpeechInputHandle {
 }
 
 /**
+ * 将 Uint8Array 编码为 base64 字符串。
+ *
+ * Electron 的 ipcRenderer 在跨进程传输二进制数据时，直接传 Uint8Array 会
+ * 触发「An object could not be cloned」结构化克隆报错。这里把录音字节统一
+ * 编码为 base64 字符串再传输，彻底规避该问题（主进程侧再解码回 Uint8Array）。
+ */
+export function uint8ArrayToBase64(data: Uint8Array): string {
+  let binary = ''
+  const chunkSize = 0x8000
+  for (let i = 0; i < data.length; i += chunkSize) {
+    binary += String.fromCharCode(...data.subarray(i, i + chunkSize))
+  }
+  return btoa(binary)
+}
+
+/**
  * 使用浏览器原生 Web Speech API 进行语音识别。
  * @returns 返回取消控制器，调用方可通过它停止识别。
  */
