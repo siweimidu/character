@@ -300,35 +300,41 @@ function backToProjectCenter(): void {
         </button>
       </div>
 
-      <!-- 条目列表 -->
-      <div v-if="filteredEntries.length" class="recycle-list">
-        <div
+      <!-- 条目卡片列表（网格布局，参考灵感模块风格） -->
+      <div v-if="filteredEntries.length" class="recycle-grid">
+        <article
           v-for="entry in filteredEntries"
           :key="entry.id"
-          class="recycle-item"
+          class="recycle-card"
         >
-          <span
-            class="recycle-item-icon"
-            :style="{ color: categoryColor(entry.category), background: `color-mix(in srgb, ${categoryColor(entry.category)} 12%, transparent)` }"
-          >
-            <component :is="CATEGORY_ICON[entry.category]" :size="18" />
-          </span>
-          <div class="recycle-item-main">
-            <div class="recycle-item-title">
-              <span class="recycle-item-name">{{ entry.title }}</span>
-              <n-tag size="small" :bordered="false" :color="{ color: `color-mix(in srgb, ${categoryColor(entry.category)} 14%, transparent)`, textColor: categoryColor(entry.category) }">
-                {{ categoryLabel(entry.category) }}
-              </n-tag>
-            </div>
-            <div class="recycle-item-meta">
-              <span>删除于 {{ formatDateTime(entry.deletedAt) }}</span>
-              <span class="meta-dot">·</span>
-              <span :class="{ 'meta-expiring': new Date(entry.expiresAt).getTime() <= Date.now() + 24 * 3600 * 1000 }">
-                将于 {{ formatRelative(entry.expiresAt) }}自动删除
-              </span>
-            </div>
+          <div class="card-top">
+            <span
+              class="recycle-card-icon"
+              :style="{ color: categoryColor(entry.category), background: `color-mix(in srgb, ${categoryColor(entry.category)} 12%, transparent)` }"
+            >
+              <component :is="CATEGORY_ICON[entry.category]" :size="17" />
+            </span>
+            <n-tag size="small" :bordered="false" :color="{ color: `color-mix(in srgb, ${categoryColor(entry.category)} 14%, transparent)`, textColor: categoryColor(entry.category) }">
+              {{ categoryLabel(entry.category) }}
+            </n-tag>
           </div>
-          <div class="recycle-item-actions">
+
+          <h4 class="recycle-card-title" :title="entry.title">{{ entry.title }}</h4>
+          <p v-if="entry.summary" class="recycle-card-summary" :title="entry.summary">{{ entry.summary }}</p>
+          <p v-else class="recycle-card-summary recycle-card-summary-muted">暂无摘要</p>
+
+          <div class="recycle-card-meta">
+            <span>删除于 {{ formatDateTime(entry.deletedAt) }}</span>
+            <span
+              class="expire-text"
+              :class="{ 'meta-expiring': new Date(entry.expiresAt).getTime() <= Date.now() + 24 * 3600 * 1000 }"
+              :title="`将于 ${formatDateTime(entry.expiresAt)} 自动删除`"
+            >
+              将于 {{ formatRelative(entry.expiresAt) }}自动删除
+            </span>
+          </div>
+
+          <div class="card-actions">
             <n-button size="small" type="primary" quaternary @click="restoreEntry(entry.id)">
               <template #icon><RotateCcw :size="14" /></template>
               恢复
@@ -347,7 +353,7 @@ function backToProjectCenter(): void {
               确定要彻底删除这条内容吗？此操作不可撤销。
             </n-popconfirm>
           </div>
-        </div>
+        </article>
       </div>
 
       <n-empty
@@ -547,72 +553,92 @@ function backToProjectCenter(): void {
   padding: 0 6px;
 }
 
-.recycle-list {
+/* 卡片网格布局：参考灵感模块，一行四列 */
+.recycle-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  gap: 12px;
+}
+
+.recycle-card {
+  position: relative;
   display: flex;
+  min-height: 208px;
   flex-direction: column;
-  gap: 10px;
-}
-
-.recycle-item {
-  display: flex;
-  align-items: center;
-  gap: 14px;
   border: 1px solid var(--arc-border);
-  border-radius: var(--arc-radius-lg);
+  border-radius: 6px;
   background: var(--arc-bg-surface);
-  padding: 12px 16px;
-  transition: border-color 0.14s ease, box-shadow 0.14s ease;
+  padding: 14px;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
-.recycle-item:hover {
-  border-color: var(--arc-border-strong);
+.recycle-card:hover {
+  border-color: color-mix(in srgb, var(--arc-primary) 28%, var(--arc-border));
+  background: color-mix(in srgb, var(--arc-primary) 2%, var(--arc-bg-surface));
   box-shadow: var(--arc-shadow-sm);
 }
 
-.recycle-item-icon {
+.card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.recycle-card-icon {
   display: inline-flex;
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  border-radius: var(--arc-radius-md);
+  border-radius: 6px;
 }
 
-.recycle-item-main {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.recycle-item-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.recycle-item-name {
+.recycle-card-title {
+  margin: 12px 0 7px;
   overflow: hidden;
+  color: var(--arc-text-primary);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--arc-text-primary);
-  font-size: 14px;
-  font-weight: 600;
 }
 
-.recycle-item-meta {
+.recycle-card-summary {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--arc-text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.recycle-card-summary-muted {
+  color: var(--arc-text-hint);
+  font-style: italic;
+}
+
+.recycle-card-meta {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: auto;
+  padding-top: 12px;
   color: var(--arc-text-hint);
   font-size: 12px;
 }
 
-.meta-dot {
-  opacity: 0.5;
+.expire-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .meta-expiring {
@@ -620,11 +646,14 @@ function backToProjectCenter(): void {
   font-weight: 600;
 }
 
-.recycle-item-actions {
+.card-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--arc-border);
 }
 
 .recycle-empty {
@@ -647,13 +676,14 @@ function backToProjectCenter(): void {
     align-items: flex-start;
   }
 
-  .recycle-item {
-    flex-wrap: wrap;
+  .recycle-grid {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
   }
+}
 
-  .recycle-item-actions {
-    width: 100%;
-    justify-content: flex-end;
+@media (max-width: 720px) {
+  .recycle-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>
