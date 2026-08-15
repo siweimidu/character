@@ -94,7 +94,7 @@ const sidebarItemPresentation = {
   inspiration: { description: '收集标题、桥段、转折与人物动机', icon: Lightbulb, color: '#f59e0b' },
   'project-knowledge': { description: '一致性审计与从已有章节补录状态', icon: FileCheck2, color: '#14b8a6' },
   'prompt-library': { description: '管理写作提示词模板与一键套用', icon: MessageSquareText, color: '#f97316' },
-  'global-assistant-v2': { description: 'Runtime v2 · 多轮对话 + 暂存变更审阅', icon: Sparkles, color: '#0d7d5a' }
+  'global-assistant-v2': { description: '多轮对话 + 暂存变更审阅', icon: Sparkles, color: '#0d7d5a' }
 } satisfies Record<WorkbenchMenuId, { description: string; icon: Component; color: string }>
 
 const sidebarItemCatalog = WORKBENCH_MENU_DEFINITIONS.map((item) => ({

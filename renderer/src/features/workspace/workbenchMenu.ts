@@ -1,15 +1,14 @@
 export const WORKBENCH_MENU_DEFINITIONS = [
+  { id: 'chapters', label: '章节创作' },
   { id: 'overview', label: '作品概览' },
   { id: 'characters', label: '角色图鉴' },
   { id: 'relations', label: '关系组织' },
   { id: 'world', label: '世界观设定' },
   { id: 'outline', label: '剧情大纲' },
-  { id: 'threads', label: '剧情线索' },
-  { id: 'chapters', label: '章节创作' },
+  { id: 'threads', label: '伏笔线索' },
   { id: 'inspiration', label: '灵感模块' },
-  { id: 'project-knowledge', label: '项目知识库' },
   { id: 'prompt-library', label: '提示词库' },
-  { id: 'global-assistant-v2', label: '全局助手 v2' }
+  { id: 'global-assistant-v2', label: '智能体' }
 ] as const
 
 export type WorkbenchMenuId = typeof WORKBENCH_MENU_DEFINITIONS[number]['id']

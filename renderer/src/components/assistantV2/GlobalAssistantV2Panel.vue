@@ -508,7 +508,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
 
       <div v-else class="starter">
         <div class="starter-head">
-          <div class="starter-kicker">Runtime v2</div>
+          <div class="starter-kicker">智能体</div>
           <h3>从哪里开始？</h3>
           <p>沉淀设定、修正跑偏、审计一致性——所有能力都汇聚在此。</p>
         </div>

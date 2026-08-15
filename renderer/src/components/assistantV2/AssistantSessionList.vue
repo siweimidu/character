@@ -141,7 +141,6 @@ const grouped = computed(() => {
       <div class="brand">
         <span class="dot" />
         <span>智能体</span>
-        <span class="ver">v2</span>
       </div>
       <div class="head-actions">
         <button
@@ -461,16 +460,6 @@ const grouped = computed(() => {
   border-radius: 999px;
   background: var(--arc-primary);
   box-shadow: 0 0 0 3px var(--arc-primary-soft);
-}
-.brand .ver {
-  font-family: var(--v2-mono);
-  font-size: 10.5px;
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: var(--arc-bg-weak);
-  color: var(--arc-text-hint);
-  font-weight: 500;
-  letter-spacing: 0;
 }
 .new-btn {
   margin: 4px 14px 14px;

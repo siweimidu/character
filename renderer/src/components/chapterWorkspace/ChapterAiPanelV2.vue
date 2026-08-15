@@ -582,7 +582,7 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
 
       <div v-else class="starter">
         <div class="starter-head">
-          <div class="starter-kicker">Chapter Assistant v2</div>
+          <div class="starter-kicker">Chapter Assistant</div>
           <h3>从哪里开始？</h3>
           <p>{{ currentMode.description }}</p>
         </div>
