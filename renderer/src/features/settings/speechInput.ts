@@ -19,12 +19,31 @@ export interface SpeechInputHandle {
  * 编码为 base64 字符串再传输，彻底规避该问题（主进程侧再解码回 Uint8Array）。
  */
 export function uint8ArrayToBase64(data: Uint8Array): string {
+  if (!data || data.length === 0) return ''
   let binary = ''
   const chunkSize = 0x8000
   for (let i = 0; i < data.length; i += chunkSize) {
     binary += String.fromCharCode(...data.subarray(i, i + chunkSize))
   }
   return btoa(binary)
+}
+
+/**
+ * 将应用设置收敛为纯 JSON 普通对象，供跨 IPC 传输。
+ *
+ * appStore.appSettings 是 Vue 响应式 Proxy，直接作为 ipcRenderer.invoke 的
+ * 载荷会导致 Electron 结构化克隆失败，抛「An object could not be cloned」。
+ * 这里在渲染进程侧先把设置深拷贝为纯 JSON，保证到达 IPC 边界时一定是可克隆的
+ * 普通对象（preload 侧同样做了净化，此处作为双层兜底）。
+ */
+export function toPlainSpeechSettings<T>(settings: T): T {
+  if (settings == null) return settings
+  try {
+    return JSON.parse(JSON.stringify(settings)) as T
+  } catch {
+    // 极端情况下序列化失败时，退回浅拷贝，避免把异常抛到语音识别流程里。
+    return { ...(settings as Record<string, unknown>) } as unknown as T
+  }
 }
 
 /**

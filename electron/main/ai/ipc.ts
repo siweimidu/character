@@ -99,6 +99,20 @@ function decodeSpeechAudio(audioData?: Uint8Array | string): Uint8Array {
 }
 
 /**
+ * 将任意值收敛为纯 JSON 普通对象，确保跨 IPC 回传渲染进程时可结构化克隆。
+ * 部分语音厂商可能在识别结果里夹带非标准对象/字段，深拷贝后即可彻底规避
+ * Electron「An object could not be cloned」报错。
+ */
+function toPlainJson<T>(value: T): T {
+  if (value == null) return value
+  try {
+    return JSON.parse(JSON.stringify(value)) as T
+  } catch {
+    return value
+  }
+}
+
+/**
  * 注册所有 AI 相关的 IPC handler。
  * 包括非流式生成、流式生成、Agent 生成、连接测试、模型列表、图片生成、
  * 世界状态读取、章节版本读取、螺旋生成、状态补录等。
@@ -557,7 +571,9 @@ export function registerAiIpcHandlers(injectedDeps: AiIpcDeps): void {
       const audio = decodeSpeechAudio(req?.audioData)
       if (!audio || audio.length === 0) throw new Error('缺少待识别的音频数据。')
       const result = await transcribeSpeech(req.settings as AppSettings, audio, req.audioType || 'audio/webm')
-      return { success: true, result }
+      // 收敛为纯 JSON，确保回传渲染进程的 result 永远是结构化可克隆的普通对象，
+      // 避免个别厂商返回带非标准字段的对象时触发「An object could not be cloned」。
+      return { success: true, result: toPlainJson(result) }
     } catch (error) {
       return { success: false, error: formatAiErrorMessage(error, '语音识别失败') }
     }
