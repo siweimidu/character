@@ -529,7 +529,6 @@ const hasContent = computed(() => props.messages.length > 0)
       <div v-if="props.editingTurnId === msg.turnId" class="turn-editor">
         <header class="turn-editor-head">
           <GitFork :size="14" />
-          <span>从这里重新分叉</span>
           <em>第 {{ index + 1 }} 轮及之后重写</em>
         </header>
         <textarea
@@ -952,30 +951,12 @@ const hasContent = computed(() => props.messages.length > 0)
   border-color: var(--arc-primary);
   color: var(--arc-primary);
 }
-/* ── 回退按钮（与复制按钮同排） ── */
+/* ── 回退按钮（与同排按钮对齐） ── */
 .rollback-prompt-btn {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  margin-top: 2px;
-  border: 1px solid var(--arc-border);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--arc-text-hint);
-  cursor: pointer;
-  padding: 0;
-  opacity: 0;
-  transition: color 0.16s ease, border-color 0.16s ease, opacity 0.16s ease;
-}
-.user-entry:hover .rollback-prompt-btn,
-.rollback-prompt-btn:focus-visible {
-  opacity: 1;
+  color: var(--arc-text-secondary);
 }
 .rollback-prompt-btn:hover {
-  border-color: var(--v2-danger);
+  background: var(--v2-danger-soft);
   color: var(--v2-danger);
 }
 /* ── 多选批量删除 ── */
