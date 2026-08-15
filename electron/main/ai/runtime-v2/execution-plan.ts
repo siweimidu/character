@@ -38,7 +38,7 @@ import { createDelegateTools } from './tools/delegate-tools'
 import { type ToolFactory } from './agent-loop'
 import type { ResolveTurnExecutionPlan } from './ipc'
 import { getProjectView, type SnapshotAccessor } from './providers/shared'
-import { getSharedMemoryStore } from './state'
+import { getSharedAgentStore, getSharedMemoryStore } from './state'
 import { saveRuntimeKnowledgeDocument } from './knowledge-writer'
 import { getWorkspaceDirPath } from '../../workspace-store'
 import { getAgentModuleRegistry } from '../agent-modules'
@@ -87,7 +87,6 @@ export function createExecutionPlanner(
     let agentName = ''
     let agentBoundSkills: string[] = []
     try {
-      const { getSharedAgentStore } = await import('./state')
       const store = await getSharedAgentStore()
       const projectId = request.agentProjectId ?? session.projectId
       // 章节默认切到局部智能体；全局页面默认全局

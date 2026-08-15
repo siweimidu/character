@@ -65,7 +65,8 @@ test('记忆格式化为注入块', () => {
   const block = formatMemoriesBlock(store.list('p1', 10))
   assert.match(block, /创作记忆/)
   assert.match(block, /用户拒绝过整章改写/)
-  assert.match(block, /\[教训\]/)
+  // 教训类型会带来源标注，如 `[教训（系统）]` 或 `[教训]`
+  assert.match(block, /\[教训/)
 })
 
 test('跨项目隔离', () => {

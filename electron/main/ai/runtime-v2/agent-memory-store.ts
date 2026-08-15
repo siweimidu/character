@@ -93,7 +93,7 @@ export class AgentMemoryStore {
     countByProject: StatementSync
   }
 
-  constructor(private readonly db: DatabaseSync) {
+  constructor(db: DatabaseSync) {
     this.stmts = {
       insert: db.prepare(
         `INSERT INTO assistant_memories
