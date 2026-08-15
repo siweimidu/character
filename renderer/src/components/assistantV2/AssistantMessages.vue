@@ -22,7 +22,7 @@ import {
   Undo2,
   UserRound
 } from 'lucide-vue-next'
-import type { AssistantMessageView, AssistantToolCallView } from '@/composables/useAssistant'
+import type { AssistantMessageBlock, AssistantMessageView, AssistantToolCallView } from '@/composables/useAssistant'
 import type { StagedChange } from '@shared/assistant-runtime'
 
 const MD_ALLOWED_TAGS = [
@@ -120,6 +120,12 @@ const copiedTurnId = ref<string | null>(null)
 const notification = useMessage()
 const shouldFollowOutput = ref(true)
 const BOTTOM_THRESHOLD_PX = 72
+/**
+ * 记录用户对某个 section（reasoning/commands）手动展开/收起的最终状态，
+ * 键为 `${turnId}:${blockId}`。一旦用户手动 toggle 过，就不再被自动逻辑覆盖，
+ * 避免思考过程 / 工具调用在点击展开后被自动收回。
+ */
+const userOpenState = ref<Record<string, boolean>>({})
 
 watch(
   () => props.messages[0]?.turnId,
@@ -412,6 +418,29 @@ function isActiveReasoningBlock(message: AssistantMessageView, blockId: string):
     && message.flowBlocks[message.flowBlocks.length - 1]?.id === blockId
 }
 
+/** 计算某个 section 的“自动”展开状态（无用户手动干预时的默认值） */
+function autoSectionOpen(message: AssistantMessageView, block: AssistantMessageBlock): boolean {
+  if (block.kind === 'reasoning') return isActiveReasoningBlock(message, block.id)
+  if (block.kind === 'commands') return shouldExpandCommands(block.commands)
+  return false
+}
+
+/** 读取用户手动设置的展开状态；未设置时返回 undefined */
+function userSectionOpen(message: AssistantMessageView, block: AssistantMessageBlock): boolean | undefined {
+  return userOpenState.value[`${message.turnId}:${block.id}`]
+}
+
+/** section 的最终展开状态：优先用户手动选择，其次自动逻辑 */
+function effectiveSectionOpen(message: AssistantMessageView, block: AssistantMessageBlock): boolean {
+  const user = userSectionOpen(message, block)
+  return user !== undefined ? user : autoSectionOpen(message, block)
+}
+
+/** 用户 toggle 时记录其选择，之后不再被自动逻辑覆盖 */
+function onSectionToggle(message: AssistantMessageView, block: AssistantMessageBlock, open: boolean): void {
+  userOpenState.value = { ...userOpenState.value, [`${message.turnId}:${block.id}`]: open }
+}
+
 const editingIndex = computed(() =>
   props.editingTurnId
     ? props.messages.findIndex((message) => message.turnId === props.editingTurnId)
@@ -644,7 +673,8 @@ const hasContent = computed(() => props.messages.length > 0)
           <details
             v-if="block.kind === 'reasoning'"
             class="message-section reasoning-section"
-            :open="isActiveReasoningBlock(msg, block.id)"
+            :open="effectiveSectionOpen(msg, block)"
+            @toggle="onSectionToggle(msg, block, ($event.target as HTMLDetailsElement).open)"
           >
             <summary class="section-summary">
               <Brain :size="14" />
@@ -657,7 +687,8 @@ const hasContent = computed(() => props.messages.length > 0)
           <details
             v-else-if="block.kind === 'commands'"
             class="message-section command-block"
-            :open="shouldExpandCommands(block.commands)"
+            :open="effectiveSectionOpen(msg, block)"
+            @toggle="onSectionToggle(msg, block, ($event.target as HTMLDetailsElement).open)"
           >
             <summary class="section-summary command-summary">
               <component :is="commandSectionIcon(block.commands)" class="summary-icon" :size="15" :stroke-width="1.75" />

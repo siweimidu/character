@@ -90,15 +90,18 @@ function copyMessage(): void {
 
 /** 节点是否折叠。推理与工具节点默认折叠。 */
 const collapsed = ref<Record<string, boolean>>({})
+/** 记录已做过初始折叠的 turn，避免每次消息更新都重置用户的展开/收起选择 */
+let initializedTurnId: string | null = null
 
 watch(
-  () => props.message,
-  () => {
-    if (props.autoCollapse) {
-      collapsed.value = {
-        reasoning: true,
-        tools: true
-      }
+  () => props.message.turnId,
+  (turnId) => {
+    if (initializedTurnId === turnId) return
+    initializedTurnId = turnId
+    collapsed.value = {
+      reasoning: props.autoCollapse,
+      tools: props.autoCollapse,
+      staged: props.autoCollapse
     }
   },
   { immediate: true }
@@ -242,6 +245,28 @@ function isCollapsed(key: string): boolean {
         </span>
       </div>
       <div class="fn-body fn-answer markdown-body" v-html="renderMarkdown(message.assistantMessage, `${message.turnId}:answer`)" />
+    </div>
+
+    <!-- 操作按钮：对话终止（含工具报错、无回复文本）时仍可用 -->
+    <div v-else-if="!isStreaming && (message.status === 'error' || message.status === 'canceled')" class="fn-block fn-assistant">
+      <div class="fn-head-static">
+        <Sparkles :size="13" class="fn-head-icon" />
+        <span class="fn-head-label">智能体</span>
+        <span class="fn-actions">
+          <button type="button" class="fn-action" title="重新生成" @click="emit('resend')">
+            <RefreshCw :size="12" />
+          </button>
+          <button type="button" class="fn-action" title="复制" @click="copyMessage">
+            <Copy :size="12" />
+          </button>
+          <button type="button" class="fn-action" title="编辑" @click="emit('edit-start')">
+            <Pencil :size="12" />
+          </button>
+          <button type="button" class="fn-action" title="撤回" @click="emit('undo')">
+            <Undo2 :size="12" />
+          </button>
+        </span>
+      </div>
     </div>
 
     <!-- 错误 -->

@@ -85,11 +85,16 @@ export function createSkillTools(opts: SkillToolFactoryOptions): Tool[] {
   const maxGlobEntries = opts.maxGlobEntries ?? DEFAULT_GLOB_ENTRY_CAP
   const scriptTimeoutMs = opts.scriptTimeoutMs ?? DEFAULT_SCRIPT_TIMEOUT_MS
 
-  /** 根据 id 解析 skill，未找到时返回错误对象 */
+  /**
+   * 根据 id 解析 skill；精确命中失败时退化为模糊匹配（按 id/名称/路径/描述打分取最高）。
+   * 避免模型对 skill 名称记忆不精确（如把“mingli-master”说成“mingli”）时直接报“未找到”。
+   */
   function resolveSkillOrError(skillId: string): SkillDefinition | { error: string } {
-    const skill = opts.resolveSkill(skillId)
-    if (!skill) return { error: `skill 未找到：${skillId}` }
-    return skill
+    const exact = opts.resolveSkill(skillId)
+    if (exact) return exact
+    const fuzzy = fuzzyResolveSkill(skillId, opts.listSkills?.() ?? [])
+    if (fuzzy) return fuzzy
+    return { error: `skill 未找到：${skillId}` }
   }
 
   const skillList: Tool = {
@@ -288,6 +293,87 @@ export function createSkillTools(opts: SkillToolFactoryOptions): Tool[] {
   }
 
   return [skillList, skillLoad, skillReadReference, skillGlob, skillRunScript]
+}
+
+/**
+ * 归一化文本用于模糊匹配：转小写、去空白、拆分中英文与连字符下划线，统一去除非字母数字字符。
+ */
+function normalizeForMatch(text: string): string {
+  return String(text ?? '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * 计算两个字符串的相似度（0-1），基于最长公共子序列长度，简单稳健。
+ */
+function sequenceSimilarity(a: string, b: string): number {
+  const la = a.length
+  const lb = b.length
+  if (la === 0 || lb === 0) return 0
+  // 动态规划求最长公共子序列长度
+  let prev = new Array(lb + 1).fill(0)
+  let cur = new Array(lb + 1).fill(0)
+  for (let i = 1; i <= la; i++) {
+    for (let j = 1; j <= lb; j++) {
+      cur[j] = a[i - 1] === b[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1])
+    }
+    ;[prev, cur] = [cur, prev]
+    cur.fill(0)
+  }
+  return prev[lb] / Math.max(la, lb)
+}
+
+/**
+ * 在给定 skill 列表中按“最接近输入名”模糊匹配，返回最佳命中（或 undefined）。
+ *
+ * 打分策略：
+ * - 以 id/name 为主字段，path/description 为辅字段；
+ * - 子串包含权重高于顺序相似度；
+ * - 全等（除大小写/分隔符）权重最高，避免误选。
+ * 只有得分超过阈值才返回，否则返回 undefined 保持原“未找到”语义。
+ */
+export function fuzzyResolveSkill(query: string, skills: SkillDefinition[]): SkillDefinition | undefined {
+  const q = normalizeForMatch(query)
+  if (!q) return undefined
+
+  let best: SkillDefinition | undefined
+  let bestScore = 0
+  for (const skill of skills) {
+    const fields = [
+      { value: normalizeForMatch(skill.id), weight: 1 },
+      { value: normalizeForMatch(skill.name), weight: 1 },
+      { value: normalizeForMatch(skill.path), weight: 0.5 },
+      { value: normalizeForMatch(skill.description), weight: 0.5 }
+    ]
+    let score = 0
+    for (const field of fields) {
+      const v = field.value
+      if (!v) continue
+      // 全等（去除分隔符/大小写差异后）→ 最高分
+      if (v === q) {
+        score = Math.max(score, 1.2 * field.weight)
+        continue
+      }
+      if (v.includes(q)) {
+        score = Math.max(score, 0.9 * field.weight)
+        continue
+      }
+      if (q.includes(v) && v.length >= 2) {
+        score = Math.max(score, 0.6 * field.weight)
+        continue
+      }
+      const sim = sequenceSimilarity(v, q)
+      if (sim > 0.5) {
+        score = Math.max(score, sim * field.weight)
+      }
+    }
+    if (score > bestScore) {
+      bestScore = score
+      best = skill
+    }
+  }
+
+  // 阈值：至少达到主字段 0.6 的相似度才算“近似命中”，避免把无关 skill 误配出去
+  return bestScore >= 0.6 ? best : undefined
 }
 
 /**
