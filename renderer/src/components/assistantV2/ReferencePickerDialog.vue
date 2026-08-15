@@ -38,19 +38,23 @@ watch(
       selected.value = {}
       tab.value = 'volume'
       expandedVolumes.value = new Set(appStore.outlineVolumes.map((vol) => vol.id))
+      // 重置资源区缓存，切到「资源」tab 时重新读取当前工作区根目录
+      resourceTree.value = []
+      resourceChildren.value = {}
+      expandedResourceDirs.value = new Set([''])
+      resourceError.value = ''
     }
   }
 )
 
-// ── 资源区（文件/文件夹）引用 ──
+// ── 资源区（文件/文件夹）引用：基于智能体资源区（工作区根目录），与资源区面板保持一致 ──
 interface ResourceEntry {
   name: string
   path: string
   isDirectory: boolean
   isFile: boolean
 }
-const projectId = computed(() => appStore.currentProject?.id ?? '')
-// 当前展开的资源目录路径集合（'' 表示资源根目录）
+// 当前展开的资源目录路径集合（绝对路径）
 const expandedResourceDirs = ref<Set<string>>(new Set(['']))
 // 资源区根目录条目
 const resourceTree = ref<ResourceEntry[]>([])
@@ -59,14 +63,13 @@ const resourceChildren = ref<Record<string, ResourceEntry[]>>({})
 const resourceLoading = ref(false)
 const resourceError = ref('')
 
-/** 加载某个资源目录的条目列表（相对资源根目录路径，'' 表示根）。 */
+/** 加载某个资源目录的条目列表（path 为绝对路径）。 */
 async function loadResourceDir(path: string): Promise<ResourceEntry[]> {
-  if (!projectId.value) return []
-  const res = await window.characterArc.projectResourceList({ projectId: projectId.value, path })
-  if (!res?.success) {
-    throw new Error(res?.error ?? '读取资源失败')
+  const res = await window.characterArc.agentModules.fsList({ path })
+  if (!res?.entries) {
+    throw new Error('读取资源失败')
   }
-  return (res.entries ?? []).map((e) => ({
+  return res.entries.map((e) => ({
     name: e.name,
     path: e.path,
     isDirectory: e.isDirectory,
@@ -74,13 +77,18 @@ async function loadResourceDir(path: string): Promise<ResourceEntry[]> {
   }))
 }
 
-/** 加载资源区根目录。 */
+/** 加载资源区根目录（工作区根）。 */
 async function loadResourceRoot(): Promise<void> {
-  if (!projectId.value) return
   resourceLoading.value = true
   resourceError.value = ''
   try {
-    resourceTree.value = await loadResourceDir('')
+    const root = await window.characterArc.agentModules.workspaceGetRoot()
+    if (!root?.path) {
+      resourceTree.value = []
+      resourceError.value = '尚未打开工作区，请先点击「打开工作区」选择文件夹。'
+      return
+    }
+    resourceTree.value = await loadResourceDir(root.path)
   } catch (e) {
     resourceError.value = e instanceof Error ? e.message : '读取资源失败'
   } finally {

@@ -225,7 +225,6 @@ function handleReferenceConfirm(refs: PickedReference[]): void {
  * - 文件夹：读取目录结构作为提示内容，供 AI 了解该文件夹下有什么。
  */
 async function handleAddResource(ref: { kind: 'resource' | 'resource-dir'; path: string; label: string }): Promise<void> {
-  const projectId = selectedProjectId.value
   const refKey = `file:${ref.path}`
   // 防重复：同一资源只允许引用一次
   if (assistant.pendingAttachments.value.some((a) => `${a.kind}:${a.ref}` === refKey)) {
@@ -240,15 +239,22 @@ async function handleAddResource(ref: { kind: 'resource' | 'resource-dir'; path:
     path: ref.path
   })
 
+  // 资源路径兼容两种来源：
+  //  - 绝对路径：来自「添加引用」对话框选择的智能体资源区（工作区根目录）文件
+  //  - 相对路径：来自「项目资源」面板拖拽的项目资源（project-resources 根）文件
+  const isAbsPath = /^([a-zA-Z]:[\\/]|\\\/|\/)/.test(ref.path)
+
   if (ref.kind === 'resource-dir') {
     // 文件夹：读取目录结构作为提示内容
     try {
-      const res = await window.characterArc.projectResourceList({ projectId, path: ref.path })
-      if (res?.success && res.entries) {
-        const lines = res.entries
+      const entries = isAbsPath
+        ? (await window.characterArc.agentModules.fsList({ path: ref.path }))?.entries
+        : (await window.characterArc.projectResourceList({ projectId: selectedProjectId.value, path: ref.path }))?.entries
+      if (entries?.length) {
+        const lines = entries
           .sort((a, b) => (a.isDirectory !== b.isDirectory ? (a.isDirectory ? -1 : 1) : a.name.localeCompare(b.name, 'zh-Hans-CN')))
           .map((e) => `${e.isDirectory ? '[文件夹] ' : '[文件] '}${e.name}`)
-        const content = `【项目资源文件夹：${ref.label}（相对路径 ${ref.path}）】\n包含 ${res.entries.length} 项：\n${lines.join('\n')}`
+        const content = `【资源文件夹：${ref.label}】\n包含 ${entries.length} 项：\n${lines.join('\n')}`
         assistant.updatePendingAttachment(refKey, { content })
       }
     } catch {
@@ -257,8 +263,10 @@ async function handleAddResource(ref: { kind: 'resource' | 'resource-dir'; path:
   } else {
     // 文件：读取文本内容内联携带
     try {
-      const res = await window.characterArc.projectResourceRead({ projectId, path: ref.path })
-      if (res?.success) {
+      const res = isAbsPath
+        ? await window.characterArc.agentModules.fsRead({ path: ref.path })
+        : await window.characterArc.projectResourceRead({ projectId: selectedProjectId.value, path: ref.path })
+      if (res) {
         const content = typeof res.content === 'string' ? res.content.slice(0, 60000) : ''
         assistant.updatePendingAttachment(refKey, { content, size: res.size })
       }
