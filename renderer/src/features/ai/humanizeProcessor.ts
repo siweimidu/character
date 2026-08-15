@@ -217,13 +217,17 @@ function applyDigitNormalization(text: string): string {
   // 年代 80年代 → 八十年代
   result = result.replace(/(?<!\d)(\d0)年代/g, (_, d: string) => (DECADE_MAP[d] ?? d) + '年代')
   // 月份 1-12 → 汉字
+  // 用 `(?=月)` 而非 `(?=月(?:\D|$))`：后者要求“月”后跟非数字，
+  // 会让“3月5日 / 12月31日”这类完整日期中的月份无法被转换。
+  // 年份前缀仍由负向回顾 (?<![\d年个]) 拦截，避免误改“2023年”内的年份。
   result = result.replace(
-    /(?<![\d年个])([1-9]|1[0-2])(?=月(?:\D|$))/g,
+    /(?<![\d年个])([1-9]|1[0-2])(?=月)/g,
     (_, m: string) => smallNumberToChinese(parseInt(m))
   )
   // 日/号 1-31 → 汉字
+  // 移除“月”的负向回顾约束：此前“3月5日”中的“5日”因前邻是“月”而无法转换。
   result = result.replace(
-    /(?<![\d月])([1-9]|[12]\d|3[01])(?=[日号])/g,
+    /(?<![\d])([1-9]|[12]\d|3[01])(?=[日号])/g,
     (_, d: string) => smallNumberToChinese(parseInt(d))
   )
   return result

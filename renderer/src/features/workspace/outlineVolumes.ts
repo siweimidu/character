@@ -9,8 +9,40 @@ export const DEFAULT_VOLUME_WORD_TARGET = '50000'
 // 分卷默认摘要提示文案
 export const DEFAULT_VOLUME_SUMMARY = '用于承载这一卷的主线目标、阶段冲突和情绪走势。'
 
-// 将阿拉伯数字转为中文数字字符串（支持 1-99 的范围）
+// 将阿拉伯数字转为中文数字字符串（支持 1-999 的范围）
 function formatChineseNumber(value: number): string {
+  // 0 及以下按原样返回，避免越界查表产生空串
+  if (value <= 0) {
+    return String(value)
+  }
+
+  // 100-999：拆成"X百Y十Z"（如 100→一百、234→二百三十四）。
+  // 十位为 1 时写成"一十X"（如 110→一百一十、115→一百一十五），保证规范写法。
+  if (value >= 100 && value <= 999) {
+    const hundreds = Math.floor(value / 100)
+    const remainder = value % 100
+    const prefix = hundreds === 1
+      ? '一百'
+      : `${CHINESE_NUMERALS[hundreds - 1] ?? String(hundreds)}百`
+    const tens = Math.floor(remainder / 10)
+    const units = remainder % 10
+    if (remainder === 0) {
+      return prefix
+    }
+    if (tens === 0) {
+      return `${prefix}零${CHINESE_NUMERALS[units - 1] ?? String(units)}`
+    }
+    const tensText = tens === 1 ? '一十' : `${CHINESE_NUMERALS[tens - 1] ?? String(tens)}十`
+    return units === 0
+      ? `${prefix}${tensText}`
+      : `${prefix}${tensText}${CHINESE_NUMERALS[units - 1] ?? String(units)}`
+  }
+
+  // 超出 999 时直接回退为阿拉伯数字，避免拼接出错
+  if (value >= 1000) {
+    return String(value)
+  }
+
   // 10 以内直接查表
   if (value <= 10) {
     return CHINESE_NUMERALS[value - 1] ?? String(value)
