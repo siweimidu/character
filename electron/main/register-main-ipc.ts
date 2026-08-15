@@ -124,13 +124,13 @@ function renderAiRunsPlainText(rows: Array<Record<string, unknown>>): string {
   const lines: string[] = ['AI 调用日志', '', ''.padEnd(48, '-'), '']
   for (const row of rows) {
     lines.push(
-      `任务：${String(row.task ?? '')}`,
-      `厂商：${String(row.provider ?? '')} / 模型：${String(row.model ?? '')}`,
-      `状态：${String(row.status ?? '')} · 开始：${String(row.startedAt ?? '')} · 耗时：${String(row.duration ?? '')}`,
-      `关联项目：${String(row.projectTitle ?? '')}`
+      `任务：${String(row['任务'] ?? row.task ?? '')}`,
+      `厂商：${String(row['厂商'] ?? row.provider ?? '')} / 模型：${String(row['模型'] ?? row.model ?? '')}`,
+      `状态：${String(row['状态'] ?? row.status ?? '')} · 开始：${String(row['开始时间'] ?? row.startedAt ?? '')} · 耗时：${String(row['耗时'] ?? row.duration ?? '')}`,
+      `关联项目：${String(row['关联项目'] ?? row.projectTitle ?? '')}`
     )
-    if (row.responsePreview) lines.push(`响应预览：${String(row.responsePreview)}`)
-    if (row.error) lines.push(`错误信息：${String(row.error)}`)
+    if (row['响应预览'] ?? row.responsePreview) lines.push(`响应预览：${String(row['响应预览'] ?? row.responsePreview)}`)
+    if (row['错误信息'] ?? row.error) lines.push(`错误信息：${String(row['错误信息'] ?? row.error)}`)
     lines.push(''.padEnd(48, '-'), '')
   }
   return lines.join('\n')
@@ -140,16 +140,16 @@ function renderAiRunsMarkdown(rows: Array<Record<string, unknown>>): string {
   const lines: string[] = ['# AI 调用日志', '', `共 ${rows.length} 条记录`, '']
   for (const row of rows) {
     lines.push(
-      `## ${String(row.task ?? '未知任务')}`,
+      `## ${String(row['任务'] ?? row.task ?? '未知任务')}`,
       '',
-      `- **厂商 / 模型**：${String(row.provider ?? '')} / ${String(row.model ?? '')}`,
-      `- **状态**：${String(row.status ?? '')}`,
-      `- **开始时间**：${String(row.startedAt ?? '')}`,
-      `- **耗时**：${String(row.duration ?? '')}`,
-      `- **关联项目**：${String(row.projectTitle ?? '')}`
+      `- **厂商 / 模型**：${String(row['厂商'] ?? row.provider ?? '')} / ${String(row['模型'] ?? row.model ?? '')}`,
+      `- **状态**：${String(row['状态'] ?? row.status ?? '')}`,
+      `- **开始时间**：${String(row['开始时间'] ?? row.startedAt ?? '')}`,
+      `- **耗时**：${String(row['耗时'] ?? row.duration ?? '')}`,
+      `- **关联项目**：${String(row['关联项目'] ?? row.projectTitle ?? '')}`
     )
-    if (row.responsePreview) lines.push(`- **响应预览**：${String(row.responsePreview)}`)
-    if (row.error) lines.push(`- **错误信息**：${String(row.error)}`)
+    if (row['响应预览'] ?? row.responsePreview) lines.push(`- **响应预览**：${String(row['响应预览'] ?? row.responsePreview)}`)
+    if (row['错误信息'] ?? row.error) lines.push(`- **错误信息**：${String(row['错误信息'] ?? row.error)}`)
     lines.push('')
   }
   return lines.join('\n')

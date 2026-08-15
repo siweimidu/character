@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Bot, Home, Image, Library, Moon, Settings, Sparkles, Sun, Trash2, TrendingUp } from 'lucide-vue-next'
+import { Bot, Home, Image, Library, Moon, Settings, Sparkles, Sun, TrendingUp } from 'lucide-vue-next'
 import { createDiscreteApi, NConfigProvider, NDialogProvider, NGlobalStyle, NMessageProvider, NSpin, darkTheme } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import { createNaiveThemeOverrides, getThemeColorScheme } from '@/theme/presets'
@@ -251,15 +251,6 @@ onBeforeUnmount(() => {
                 @click="appStore.openFanqieTrends()"
               >
                 <TrendingUp :size="16" />
-              </button>
-              <button
-                type="button"
-                class="app-titlebar__nav-btn"
-                title="回收站"
-                aria-label="回收站"
-                @click="appStore.openRecycleBin('global')"
-              >
-                <Trash2 :size="16" />
               </button>
               <button
                 type="button"

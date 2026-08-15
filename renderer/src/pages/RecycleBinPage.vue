@@ -15,7 +15,7 @@ import {
   Users,
   X
 } from 'lucide-vue-next'
-import { NButton, NEmpty, NInputNumber, NPopconfirm, NSelect, NTag, useMessage } from 'naive-ui'
+import { NButton, NCheckbox, NEmpty, NInputNumber, NPopconfirm, NSelect, NTag, useMessage } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import type { RecycleBinCategory } from '@/types/app'
 
@@ -91,6 +91,9 @@ const CATEGORY_ICON: Record<RecycleBinCategory, unknown> = {
 /** 当前选中的类别筛选；'all' 表示全部 */
 const activeCategory = ref<'all' | RecycleBinCategory>('all')
 
+/** 批量操作：当前勾选的条目 id */
+const selectedIds = ref<Set<string>>(new Set())
+
 // 离开全局回收站视图时，若选中了仅全局展示的类别，则重置为“全部”
 watch(
   () => appStore.recycleBinScope,
@@ -98,6 +101,8 @@ watch(
     if (scope !== 'global' && GLOBAL_ONLY_CATEGORIES.has(activeCategory.value as RecycleBinCategory)) {
       activeCategory.value = 'all'
     }
+    // 切换范围后清空已勾选条目，避免跨项目批量误操作
+    selectedIds.value = new Set()
   }
 )
 
@@ -124,6 +129,66 @@ const scopeValue = computed({
 const filteredEntries = computed(() =>
   activeCategory.value === 'all' ? entries.value : entries.value.filter((e) => e.category === activeCategory.value)
 )
+
+/** 当前筛选后的条目是否全部选中 */
+const isAllSelected = computed(() =>
+  filteredEntries.value.length > 0 && filteredEntries.value.every((e) => selectedIds.value.has(e.id))
+)
+
+/** 全选 / 取消全选当前筛选条目 */
+function toggleSelectAll(): void {
+  if (isAllSelected.value) {
+    selectedIds.value = new Set()
+  } else {
+    selectedIds.value = new Set(filteredEntries.value.map((e) => e.id))
+  }
+}
+
+function toggleSelect(id: string): void {
+  const next = new Set(selectedIds.value)
+  if (next.has(id)) {
+    next.delete(id)
+  } else {
+    next.add(id)
+  }
+  selectedIds.value = next
+}
+
+/** 批量恢复 */
+async function batchRestore(): Promise<void> {
+  const ids = [...selectedIds.value]
+  if (!ids.length) {
+    message.warning('请先勾选要恢复的内容')
+    return
+  }
+  let ok = 0
+  let fail = 0
+  for (const id of ids) {
+    const success = await appStore.restoreRecycleEntry(id)
+    if (success) ok++
+    else fail++
+  }
+  selectedIds.value = new Set()
+  if (fail > 0) {
+    message.warning(`已恢复 ${ok} 条，${fail} 条恢复失败`)
+  } else {
+    message.success(`已恢复 ${ok} 条内容`)
+  }
+}
+
+/** 批量彻底删除 */
+function batchDelete(): void {
+  const ids = [...selectedIds.value]
+  if (!ids.length) {
+    message.warning('请先勾选要删除的内容')
+    return
+  }
+  for (const id of ids) {
+    appStore.permanentlyDeleteRecycleEntry(id)
+  }
+  selectedIds.value = new Set()
+  message.success(`已彻底删除 ${ids.length} 条内容`)
+}
 
 /** 各类别数量统计 */
 const categoryCounts = computed<Record<string, number>>(() => {
@@ -274,6 +339,27 @@ function backToProjectCenter(): void {
             <n-button size="tiny" type="primary" @click="saveRetention">保存</n-button>
             <n-button size="tiny" quaternary @click="editingRetention = false"><X :size="14" /></n-button>
           </template>
+          <span class="retention-divider" />
+          <button
+            type="button"
+            class="recycle-batch-btn recycle-batch-btn--restore"
+            :disabled="!selectedIds.size"
+            title="批量恢复所选内容"
+            aria-label="批量恢复"
+            @click="batchRestore"
+          >
+            <RotateCcw :size="16" />
+          </button>
+          <button
+            type="button"
+            class="recycle-batch-btn recycle-batch-btn--delete"
+            :disabled="!selectedIds.size"
+            title="批量彻底删除所选内容"
+            aria-label="批量彻底删除"
+            @click="batchDelete"
+          >
+            <Trash2 :size="16" />
+          </button>
         </div>
       </div>
 
@@ -302,6 +388,14 @@ function backToProjectCenter(): void {
         </button>
       </div>
 
+      <!-- 批量选择工具条 -->
+      <div v-if="filteredEntries.length" class="recycle-select-bar">
+        <n-checkbox :checked="isAllSelected" @update:checked="toggleSelectAll">
+          {{ isAllSelected ? '取消全选' : '全选' }}
+        </n-checkbox>
+        <span v-if="selectedIds.size" class="recycle-select-count">已选择 {{ selectedIds.size }} 项</span>
+      </div>
+
       <!-- 条目卡片列表（网格布局，参考灵感模块风格） -->
       <div v-if="filteredEntries.length" class="recycle-grid">
         <article
@@ -319,6 +413,12 @@ function backToProjectCenter(): void {
             <n-tag size="small" :bordered="false" :color="{ color: `color-mix(in srgb, ${categoryColor(entry.category)} 14%, transparent)`, textColor: categoryColor(entry.category) }">
               {{ categoryLabel(entry.category) }}
             </n-tag>
+            <n-checkbox
+              class="recycle-card-check"
+              :checked="selectedIds.has(entry.id)"
+              @update:checked="toggleSelect(entry.id)"
+              :aria-label="`选择 ${entry.title}`"
+            />
           </div>
 
           <h4 class="recycle-card-title" :title="entry.title">{{ entry.title }}</h4>
@@ -508,6 +608,69 @@ function backToProjectCenter(): void {
   color: var(--arc-primary);
   font-size: 14px;
   font-weight: 700;
+}
+
+.recycle-select-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border: 1px dashed var(--arc-border);
+  border-radius: var(--arc-radius-lg);
+  background: color-mix(in srgb, var(--arc-primary) 4%, var(--arc-bg-surface));
+}
+
+.recycle-select-count {
+  color: var(--arc-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.recycle-card-check {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.retention-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--arc-border);
+  margin: 0 2px;
+}
+
+.recycle-batch-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--arc-border);
+  border-radius: 6px;
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  transition:
+    color 0.14s ease,
+    border-color 0.14s ease,
+    background 0.14s ease;
+}
+
+.recycle-batch-btn:hover:not(:disabled) {
+  border-color: var(--arc-primary);
+  color: var(--arc-primary);
+  background: color-mix(in srgb, var(--arc-primary) 8%, transparent);
+}
+
+.recycle-batch-btn--delete:hover:not(:disabled) {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: color-mix(in srgb, #ef4444 8%, transparent);
+}
+
+.recycle-batch-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .recycle-categories {
