@@ -462,7 +462,8 @@ contextBridge.exposeInMainWorld('characterArc', {
       ipcRenderer.invoke('characterarc:agent-module:plugin:import', toIpcPayload(payload)),
     pluginUninstall: (payload: { moduleId: string }) =>
       ipcRenderer.invoke('characterarc:agent-module:plugin:uninstall', toIpcPayload(payload)),
-    pluginListInstalled: () =>
-      ipcRenderer.invoke('characterarc:agent-module:plugin:list-installed')
+    // 智能体资源区：工作区根目录与「打开工作区」目录选择
+    workspaceGetRoot: () => ipcRenderer.invoke('characterarc:workspace:get-root'),
+    workspacePickDirectory: () => ipcRenderer.invoke('characterarc:workspace:pick-directory')
   }
 })

@@ -4059,4 +4059,27 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
       return { success: false, error: error instanceof Error ? error.message : '删除会话失败' }
     }
   })
+
+  // ── 智能体资源区：工作区根目录与「打开工作区」目录选择 ──
+  // 返回当前工作区根目录（智能体 file_* 工具写入产物的默认位置）。
+  ipcMain.handle('characterarc:workspace:get-root', () => {
+    return { path: getWorkspaceDirPath() }
+  })
+
+  // 弹出「打开工作区」目录选择对话框，返回用户选中的目录；取消则返回 canceled。
+  ipcMain.handle('characterarc:workspace:pick-directory', async (_event) => {
+    const window = deps.windowManager.getActiveWindow()
+    const options: Electron.OpenDialogOptions = {
+      title: '打开工作区（选择文件夹）',
+      defaultPath: getWorkspaceDirPath(),
+      properties: ['openDirectory', 'createDirectory']
+    }
+    const result = window
+      ? await dialog.showOpenDialog(window, options)
+      : await dialog.showOpenDialog(options)
+    if (result.canceled || result.filePaths.length === 0) {
+      return { canceled: true, path: '' }
+    }
+    return { canceled: false, path: result.filePaths[0] }
+  })
 }

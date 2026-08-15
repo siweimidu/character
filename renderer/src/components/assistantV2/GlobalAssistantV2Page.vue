@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import {
   BookMarked,
   Brain,
   FileCheck2,
+  FolderOpen,
   Globe2,
   Network,
   PanelLeftOpen,
@@ -20,7 +21,7 @@ import { createSpeechRecorder, startBrowserSpeech, uint8ArrayToBase64 } from '@/
 import AssistantSessionList from './AssistantSessionList.vue'
 import AssistantMessages from './AssistantMessages.vue'
 import AssistantComposer from './AssistantComposer.vue'
-import StagedChangesView from './StagedChangesView.vue'
+import ResourcePanel from './ResourcePanel.vue'
 import AgentSelector from './AgentSelector.vue'
 import AgentMemoryDialog from './AgentMemoryDialog.vue'
 import ReferencePickerDialog from './ReferencePickerDialog.vue'
@@ -345,11 +346,6 @@ function openKnowledgeDocument(documentId?: string): void {
 
 // 暂存栏是否折叠（用户可最小化）
 const stageCollapsed = ref(false)
-const stageBadgeCount = computed(() =>
-  assistant.stagedChanges.value.filter(
-    (c) => c.status === 'pending' || c.status === 'accepted' || c.status === 'streaming'
-  ).length
-)
 
 // 左侧对话记录栏是否隐藏
 const sessionCollapsed = ref(false)
@@ -504,26 +500,20 @@ onBeforeUnmount(() => {
   activeResizeCleanup?.()
 })
 
-// 写回进行中（独立于 AI 生成状态，仅在真正提交时为 true）
-const isCommitting = ref(false)
+// 资源区组件引用
+const resourcePanelRef = ref<InstanceType<typeof ResourcePanel> | null>(null)
 
-// 写回已确认变更：完成后给出成功/失败提示
-async function handleCommit(ids?: string[]): Promise<void> {
-  if (isCommitting.value) return
-  isCommitting.value = true
-  try {
-    const { committed, failed } = await assistant.commitAccepted(ids)
-    if (failed > 0 && committed > 0) {
-      message.warning(`已写回 ${committed} 项，${failed} 项失败`)
-    } else if (failed > 0) {
-      message.error(`写回失败：${failed} 项未能提交`)
-    } else if (committed > 0) {
-      message.success(`已成功写回 ${committed} 项变更`)
-    }
-  } finally {
-    isCommitting.value = false
+// 「打开工作区」：展开资源区并调用其打开工作区（选择文件夹）能力。
+async function handleOpenWorkspace(): Promise<void> {
+  if (stageCollapsed.value) {
+    reopenStagePanel()
   }
+  // 等待资源区面板完成渲染后，再触发其「打开工作区」
+  await nextTick()
+  await resourcePanelRef.value?.pickWorkspace()
 }
+
+// 注：暂存区已改为「资源区」，写回（commit）能力由对话流中的暂存变更节点承担。
 </script>
 
 <template>
@@ -548,6 +538,15 @@ async function handleCommit(ids?: string[]): Promise<void> {
         @rename="(id, title) => assistant.renameSession(id, title)"
         @collapse="sessionCollapsed = true"
       />
+      <button
+        type="button"
+        class="open-workspace-btn"
+        title="打开工作区（选择文件夹，查看其中的文件与隐藏文件）"
+        @click="handleOpenWorkspace"
+      >
+        <FolderOpen :size="15" />
+        <span>打开工作区</span>
+      </button>
       <div
         class="col-resizer session-resizer"
         role="separator"
@@ -704,43 +703,31 @@ async function handleCommit(ids?: string[]): Promise<void> {
     <button
       v-if="stageCollapsed"
       class="stage-mini"
-      :title="`展开暂存变更 (${stageBadgeCount})`"
+      title="展开资源区"
       @click="reopenStagePanel"
     >
-      <span class="stage-mini-label">暂存</span>
-      <span v-if="stageBadgeCount > 0" class="stage-mini-badge">{{ stageBadgeCount }}</span>
+      <span class="stage-mini-label">资源</span>
     </button>
 
-    <!-- 展开态：完整变更列表 -->
+    <!-- 展开态：资源区（类似 VS Code 资源管理器） -->
     <div v-else class="stage-col" :class="{ resizing: isStageResizing }">
       <div
         class="col-resizer stage-resizer"
         role="separator"
         aria-orientation="vertical"
-        aria-label="调整暂存区宽度"
+        aria-label="调整资源区宽度"
         tabindex="0"
         @mousedown="startStageResize"
         @keydown.left.prevent="resizeStageBy(24)"
         @keydown.right.prevent="resizeStageBy(-24)"
       />
       <div class="stage-col-head">
-        <span class="stage-col-title">暂存区</span>
+        <span class="stage-col-title">资源区</span>
         <button type="button" class="collapse-btn" title="最小化" @click="stageCollapsed = true">
           <span>›</span>
         </button>
       </div>
-      <StagedChangesView
-        class="stage-view"
-        :changes="assistant.stagedChanges.value"
-        :is-busy="assistant.isStreaming.value"
-        :is-committing="isCommitting"
-        @accept="(ids) => assistant.acceptChanges(ids)"
-        @reject="(ids) => assistant.rejectChanges(ids)"
-        @bind-target="(changeId, entityId) => assistant.bindTarget(changeId, entityId)"
-        @commit="(ids) => handleCommit(ids)"
-        @remove="(ids) => assistant.removeChanges(ids)"
-        @clear-finished="() => assistant.clearFinishedStaged()"
-      />
+      <ResourcePanel ref="resourcePanelRef" class="stage-view" />
     </div>
   </div>
 </template>
@@ -780,6 +767,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
 }
 .session-col {
   display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -788,6 +776,30 @@ async function handleCommit(ids?: string[]): Promise<void> {
 .session-col :deep(.session-list) {
   width: 100%;
   flex: 1 1 auto;
+  min-height: 0;
+}
+.open-workspace-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 10px 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--arc-border);
+  background: var(--arc-bg-weak);
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: all 0.16s ease;
+}
+.open-workspace-btn:hover {
+  border-color: color-mix(in srgb, var(--arc-primary) 45%, var(--arc-border));
+  background: var(--arc-primary-soft);
+  color: var(--arc-primary);
 }
 .session-mini {
   border: none;

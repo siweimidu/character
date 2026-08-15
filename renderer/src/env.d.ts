@@ -1141,7 +1141,9 @@ declare global {
         pluginList: (payload?: { query?: string }) => Promise<import('@shared/agent-modules').DshPluginListing[]>,
         pluginImport: (payload: { repo: string; name: string; description: string }) => Promise<import('@shared/agent-modules').PluginImportResult>,
         pluginUninstall: (payload: { moduleId: string }) => Promise<import('@shared/agent-modules').PluginImportResult>,
-        pluginListInstalled: () => Promise<import('@shared/agent-modules').InstalledPlugin[]>
+        pluginListInstalled: () => Promise<import('@shared/agent-modules').InstalledPlugin[]>,
+        workspaceGetRoot: () => Promise<{ path: string }>,
+        workspacePickDirectory: () => Promise<{ canceled: boolean; path: string }>
       }
     }
   }
