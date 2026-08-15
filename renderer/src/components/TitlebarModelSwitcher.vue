@@ -250,7 +250,7 @@ function loadMoreAiRunLogs(): void {
 <template>
   <div v-if="hasProfiles" class="titlebar-switcher">
     <div class="switcher-combined" title="模型切换">
-      <span class="switcher-label">模型切换:</span>
+      <span class="switcher-label">模型</span>
       <n-select
         :value="activeProfileId"
         :options="profileOptions"
@@ -380,45 +380,40 @@ function loadMoreAiRunLogs(): void {
 .switcher-combined {
   position: relative;
   display: flex;
-  align-items: center;
   height: 26px;
+  align-items: center;
   border: 1px solid var(--arc-border);
-  border-radius: 6px;
-  background: var(--arc-bg-surface);
-  transition: border-color 0.15s, box-shadow 0.15s;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--arc-bg-surface) 90%, var(--arc-bg-weak));
+  overflow: hidden;
 }
 
 .switcher-combined:hover {
   border-color: var(--arc-border-strong);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--arc-primary) 10%, transparent);
 }
 
 .switcher-combined .switcher-label {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 8px 0 9px;
+  border-right: 1px solid var(--arc-border);
+  background: var(--arc-bg-weak);
   color: var(--arc-text-hint);
   font-size: 11px;
   font-weight: 600;
-  margin-left: 8px;
-  margin-right: 2px;
+  letter-spacing: 0.02em;
   user-select: none;
   white-space: nowrap;
-  opacity: 0;
-  width: 0;
-  overflow: hidden;
-  transition: opacity 0.15s;
-}
-
-.switcher-combined:hover .switcher-label {
-  opacity: 1;
-  width: auto;
 }
 
 .switcher-profile {
-  width: 112px;
+  width: 104px;
   flex: 0 0 auto;
 }
 
 .switcher-model {
-  width: 150px;
+  width: 142px;
   flex: 0 0 auto;
 }
 

@@ -13,6 +13,8 @@ import {
   Library,
   ListTodo,
   LoaderCircle,
+  Pause,
+  Play,
   Sparkles,
   Square,
   X
@@ -103,7 +105,7 @@ function formatElapsed(run: AiTaskRun): string {
 
 function stageLabel(run: AiTaskRun): string {
   switch (run.stage) {
-    case 'running': return `运行中 · ${formatElapsed(run)}`
+    case 'running': return `${run.paused ? '已暂停' : '运行中'} · ${formatElapsed(run)}`
     case 'done': return `已完成 · ${formatElapsed(run)}`
     case 'error': return `失败 · ${formatElapsed(run)}`
     case 'canceled': return `已取消 · ${formatElapsed(run)}`
@@ -133,6 +135,24 @@ function handleCancel(run: AiTaskRun): void {
 }
 
 function handleDismiss(run: AiTaskRun): void {
+  appStore.dismissAiTask(run.key)
+}
+
+/** 切换任务的暂停/继续状态（仅对运行中的任务生效）。 */
+function handleTogglePause(run: AiTaskRun): void {
+  if (run.stage !== 'running') return
+  if (appStore.isAiTaskPaused(run.key)) {
+    appStore.resumeAiTask(run.key)
+  } else {
+    appStore.pauseAiTask(run.key)
+  }
+}
+
+/** 关闭某条任务：运行中先终止底层执行再移除记录，非运行中直接移除记录。 */
+function handleClose(run: AiTaskRun): void {
+  if (run.stage === 'running') {
+    handleCancel(run)
+  }
   appStore.dismissAiTask(run.key)
 }
 </script>
@@ -212,17 +232,29 @@ function handleDismiss(run: AiTaskRun): void {
 
             <div class="task-item-actions">
               <button
-                v-if="run.stage === 'running' && run.onCancel"
+                v-if="run.stage === 'running'"
                 type="button"
-                class="task-stop"
-                title="停止任务"
-                @click="handleCancel(run)"
+                class="task-action-btn"
+                :class="{ 'is-active': appStore.isAiTaskPaused(run.key) }"
+                :title="appStore.isAiTaskPaused(run.key) ? '继续此任务' : '暂停此任务'"
+                :aria-label="appStore.isAiTaskPaused(run.key) ? '继续此任务' : '暂停此任务'"
+                @click="handleTogglePause(run)"
               >
-                <Square :size="10" fill="currentColor" />
-                <span>停止</span>
+                <Play v-if="appStore.isAiTaskPaused(run.key)" :size="13" />
+                <Pause v-else :size="13" />
               </button>
               <button
-                v-else-if="run.stage !== 'running'"
+                v-if="run.stage === 'running'"
+                type="button"
+                class="task-action-btn"
+                title="关闭此任务"
+                aria-label="关闭此任务"
+                @click="handleClose(run)"
+              >
+                <Square :size="11" fill="currentColor" />
+              </button>
+              <button
+                v-else
                 type="button"
                 class="task-dismiss"
                 title="移除任务记录"
@@ -296,7 +328,7 @@ function handleDismiss(run: AiTaskRun): void {
 
 .task-center-trigger:focus-visible,
 .panel-close:focus-visible,
-.task-stop:focus-visible,
+.task-action-btn:focus-visible,
 .task-dismiss:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--arc-primary) 55%, transparent);
   outline-offset: 2px;
@@ -508,25 +540,40 @@ function handleDismiss(run: AiTaskRun): void {
   display: flex;
   min-height: 26px;
   align-items: center;
+  gap: 4px;
 }
 
-.task-stop {
-  display: inline-flex;
-  height: 24px;
-  align-items: center;
-  gap: 5px;
-  padding: 0 7px;
+.task-action-btn {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  place-items: center;
   border: 1px solid var(--arc-border);
-  border-radius: 4px;
+  border-radius: 5px;
   background: var(--arc-bg-surface);
   color: var(--arc-text-secondary);
   cursor: pointer;
-  font-size: 10px;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
-.task-stop:hover {
-  border-color: color-mix(in srgb, var(--arc-danger) 38%, var(--arc-border));
-  background: color-mix(in srgb, var(--arc-danger) 5%, var(--arc-bg-surface));
+.task-action-btn:hover {
+  border-color: var(--arc-border-strong);
+  background: var(--arc-bg-weak);
+  color: var(--arc-primary);
+}
+
+/* 暂停中的按钮高亮为播放态（继续） */
+.task-action-btn.is-active {
+  border-color: color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border));
+  background: var(--arc-primary-soft);
+  color: var(--arc-primary);
+}
+
+/* 关闭按钮 hover 呈现危险态 */
+.task-item-actions .task-action-btn:last-child:hover {
+  border-color: color-mix(in srgb, var(--arc-danger) 40%, var(--arc-border));
+  background: color-mix(in srgb, var(--arc-danger) 6%, var(--arc-bg-surface));
   color: var(--arc-danger);
 }
 
