@@ -203,6 +203,15 @@ async function handleSave(): Promise<void> {
   }
 }
 
+/** 勾选框切换默认状态：勾选→设为默认，取消→清除默认标记。 */
+async function handleToggleDefault(checked: boolean | string | number): Promise<void> {
+  if (checked) {
+    await handleSetDefault()
+  } else {
+    await handleClearDefault()
+  }
+}
+
 /** 将当前编辑的全局智能体设为默认。 */
 async function handleSetDefault(): Promise<void> {
   if (!props.agent) {
@@ -232,13 +241,38 @@ async function handleSetDefault(): Promise<void> {
   }
 }
 
-/** 加载已导入的 skills 供智能体勾选绑定。 */
-async function loadAvailableSkills(): Promise<void> {
-  const projectId = props.projectId
-  if (!projectId) {
-    availableSkills.value = []
+/** 取消当前编辑的全局智能体的默认标记。 */
+async function handleClearDefault(): Promise<void> {
+  if (!props.agent) {
+    message.warning('请先保存该智能体后再操作')
     return
   }
+  if (props.agent.scope !== 'global') {
+    message.warning('仅全局智能体可设为默认')
+    return
+  }
+  settingDefault.value = true
+  try {
+    const result = await window.characterArc.assistant.agentClearDefault({ id: props.agent.id })
+    if (result?.ok && result.agent) {
+      isDefault.value = false
+      props.agent.isDefault = false
+      emit('saved', result.agent)
+    } else {
+      message.error('取消默认失败')
+    }
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : '取消默认失败')
+  } finally {
+    settingDefault.value = false
+  }
+}
+
+/** 加载已导入的 skills 供智能体勾选绑定。
+ * 全局智能体（无 projectId）也能绑定软件内置 skills 与用户导入到共享目录的扩展 skills；
+ * 局部智能体（有 projectId）则额外并入当前项目导入的扩展 skills。 */
+async function loadAvailableSkills(): Promise<void> {
+  const projectId = props.projectId
   skillsLoading.value = true
   try {
     const result = await window.characterArc.scanProjectSkills(projectId)
@@ -360,17 +394,15 @@ watch(
             v-if="agent && agent.scope === 'global'"
             class="default-agent-row"
           >
-            <span class="default-agent-label">默认智能体</span>
-            <button
-              v-if="!isDefault"
-              type="button"
-              class="default-agent-btn"
+            <NCheckbox
+              :checked="isDefault"
               :disabled="settingDefault"
-              @click="handleSetDefault"
+              @update:checked="handleToggleDefault"
             >
-              {{ settingDefault ? '设置中…' : '设为默认' }}
-            </button>
-            <span v-else class="default-agent-badge">✓ 当前默认</span>
+              <span class="default-agent-label">设为默认</span>
+            </NCheckbox>
+            <span v-if="isDefault" class="default-agent-badge">✓ 当前默认</span>
+            <span v-else class="default-agent-hint">勾选后此智能体将作为全局默认</span>
           </div>
         </NFormItem>
 
@@ -544,11 +576,11 @@ watch(
 }
 .default-agent-row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
   margin-top: 8px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border: 1px dashed var(--arc-border-strong);
   border-radius: 8px;
   background: color-mix(in srgb, var(--arc-primary) 4%, var(--arc-bg-surface));
@@ -558,32 +590,16 @@ watch(
   font-weight: 600;
   color: var(--arc-text-secondary);
 }
-.default-agent-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 5px 12px;
-  border: 1px solid var(--arc-primary);
-  border-radius: 999px;
-  background: var(--arc-primary);
-  color: var(--arc-primary-foreground, #fff);
-  font-size: 11.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.default-agent-btn:hover {
-  filter: brightness(1.05);
-}
-.default-agent-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.default-agent-hint {
+  font-size: 11px;
+  color: var(--arc-text-hint);
+  line-height: 1.4;
 }
 .default-agent-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 10px;
+  padding: 4px 10px;
   border-radius: 999px;
   background: rgba(4, 120, 87, 0.12);
   color: #047857;

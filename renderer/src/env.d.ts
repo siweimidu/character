@@ -925,7 +925,7 @@ declare global {
         success: boolean
         error?: string
       }>
-      scanProjectSkills: (projectId: string) => Promise<{
+      scanProjectSkills: (projectId?: string) => Promise<{
         success: boolean
         skills?: Array<import('@/types/app').ProjectSkillItem>
         error?: string
@@ -1174,6 +1174,8 @@ declare global {
           Promise<import('@shared/assistant-runtime').AgentProfile | null>
         agentDelete: (payload: { id: string }) => Promise<{ ok: boolean }>
         agentSetDefault: (payload: { id: string }) =>
+          Promise<{ ok: boolean; agent: import('@shared/assistant-runtime').AgentProfile | null }>
+        agentClearDefault: (payload: { id: string }) =>
           Promise<{ ok: boolean; agent: import('@shared/assistant-runtime').AgentProfile | null }>
         // 创作记忆（Agent Memory / 学习闭环）
         memoryList: (payload: import('@shared/assistant-runtime').MemoryListRequest) =>

@@ -113,8 +113,8 @@ contextBridge.exposeInMainWorld('characterArc', {
   pickChapterImportFile: () => ipcRenderer.invoke('characterarc:pick-chapter-import-file'),
   /** 读取内置 / 项目级 skills 目录的绝对路径（用于 UI 展示完整通用路径） */
   getProjectSkillsPaths: (projectId: string) => ipcRenderer.invoke('characterarc:project-skills-paths', projectId),
-  /** 加载当前项目可用的 skills（软件内置 + 项目扩展） */
-  scanProjectSkills: (projectId: string) => ipcRenderer.invoke('characterarc:project-skills-scan', projectId),
+  /** 加载当前可用的 skills（软件内置 + 用户导入到共享目录的扩展；传入 projectId 时额外并入该项目扩展） */
+  scanProjectSkills: (projectId?: string) => ipcRenderer.invoke('characterarc:project-skills-scan', projectId ?? ''),
   /** 从本地目录导入一组项目扩展 skills 到应用数据目录（targetGroup 可选，导入到指定分组） */
   importProjectSkillsPackage: (projectId: string, targetGroup?: string, mode?: 'dir' | 'zip' | 'both') => ipcRenderer.invoke('characterarc:project-skills-import', projectId, targetGroup, mode),
   /** 列出当前项目已创建的 skills 分组（含分组内 skill 数量） */
@@ -402,6 +402,8 @@ contextBridge.exposeInMainWorld('characterArc', {
       ipcRenderer.invoke('characterarc:assistant:agent:delete', toIpcPayload(payload)),
     agentSetDefault: (payload: { id: string }) =>
       ipcRenderer.invoke('characterarc:assistant:agent:set-default', toIpcPayload(payload)),
+    agentClearDefault: (payload: { id: string }) =>
+      ipcRenderer.invoke('characterarc:assistant:agent:clear-default', toIpcPayload(payload)),
     // 创作记忆（Agent Memory / 学习闭环）
     memoryList: (payload: { projectId: string; limit?: number }) =>
       ipcRenderer.invoke('characterarc:assistant:memory:list', toIpcPayload(payload)),

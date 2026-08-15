@@ -731,6 +731,15 @@ function registerAgentHandlers(): void {
       return { ok: !!updated, agent: updated }
     }
   )
+
+  ipcMain.handle(
+    ASSISTANT_IPC_CHANNELS.AGENT_CLEAR_DEFAULT,
+    async (_event, payload: AgentDeleteRequest) => {
+      const store = await getSharedAgentStore()
+      const updated = store.clearDefaultGlobalAgent(payload.id)
+      return { ok: !!updated, agent: updated }
+    }
+  )
 }
 
 // ============================================================================

@@ -8,6 +8,7 @@
 import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import type { AgentProfile, AgentScope } from '@shared/assistant-runtime'
+import { SOLO_AVATAR_IMG } from '@shared/solo-avatar-image'
 
 /**
  * 初始化 agent_profiles 表。幂等。
@@ -124,10 +125,8 @@ export const SOLO_SYSTEM_PROMPT = `# 角色
 - 修改必须有明确理由并写进 stage_* 的 reason 字段。作者设定优先，不擅自颠覆既有设定。`
 
 /**
- * Solo 默认智能体的自定义 SVG 头像（data URI 兼容的裸 SVG 字符串）。
- * 采用「五子棋」主题棋盘：象征默认智能体如棋局一般布局全局、落子有章，主色用弧光品牌蓝。
+ * Solo 默认智能体的头像已改为用户上传的「五子棋」图片（jpeg data URI，见 @shared/solo-avatar-image 的 SOLO_AVATAR_IMG）。
  */
-export const SOLO_AVATAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"><rect width="64" height="64" rx="14" fill="#fef3c7"/><g stroke="#b45309" stroke-width="1.2"><path d="M12 12H52V52H12Z" fill="#fffbeb"/><path d="M12 22H52 M12 32H52 M12 42H52 M22 12V52 M32 12V52 M42 12V52"/></g><circle cx="22" cy="22" r="3" fill="#1f2937"/><circle cx="32" cy="32" r="3" fill="#fff" stroke="#1f2937" stroke-width="1"/><circle cx="42" cy="22" r="3" fill="#1f2937"/><circle cx="22" cy="42" r="3" fill="#1f2937"/><circle cx="32" cy="42" r="3" fill="#fff" stroke="#1f2937" stroke-width="1"/></svg>`
 
 export const BUILTIN_AGENTS: BuiltinAgentSeed[] = [
   {
@@ -335,7 +334,7 @@ export const BUILTIN_AGENTS: BuiltinAgentSeed[] = [
     name: 'Solo',
     description: '默认智能体，深度适配本小说编辑器的全能创作助手',
     presetIndex: 10,
-    avatar: SOLO_AVATAR_SVG,
+    avatar: SOLO_AVATAR_IMG,
     skillIds: ['novelist-craft', 'chapter-craft', 'outline-architecture', 'setting-consistency', 'plot-thread'],
     systemPrompt: SOLO_SYSTEM_PROMPT
   }
@@ -556,7 +555,7 @@ export function seedBuiltinAgents(db: DatabaseSync): void {
     db.prepare(`
       INSERT OR IGNORE INTO agent_profiles
         (id, name, description, system_prompt, avatar, avatar_type, is_builtin, preset_index, scope, project_id, skill_ids, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 'svg', 1, ?, 'global', NULL, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, 'image', 1, ?, 'global', NULL, ?, ?, ?)
     `).run(
       'builtin-solo',
       solo.name,
@@ -575,6 +574,7 @@ export function seedBuiltinAgents(db: DatabaseSync): void {
         description = ?,
         system_prompt = ?,
         avatar = ?,
+        avatar_type = 'image',
         preset_index = ?,
         skill_ids = ?,
         updated_at = ?
@@ -772,6 +772,16 @@ export class AgentProfileStore {
     this.db.prepare(`UPDATE agent_profiles SET is_default = 0 WHERE scope = 'global'`).run()
     this.db
       .prepare(`UPDATE agent_profiles SET is_default = 1, updated_at = ? WHERE id = ?`)
+      .run(new Date().toISOString(), id)
+    return this.get(id)
+  }
+
+  /** 取消全局作用域下的默认智能体标记（仅允许取消全局作用域）。 */
+  clearDefaultGlobalAgent(id: string): AgentProfile | null {
+    const target = this.get(id)
+    if (!target || target.scope !== 'global') return null
+    this.db
+      .prepare(`UPDATE agent_profiles SET is_default = 0, updated_at = ? WHERE id = ?`)
       .run(new Date().toISOString(), id)
     return this.get(id)
   }

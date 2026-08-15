@@ -374,6 +374,7 @@ export const ASSISTANT_IPC_CHANNELS = {
   AGENT_UPDATE: 'characterarc:assistant:agent:update',
   AGENT_DELETE: 'characterarc:assistant:agent:delete',
   AGENT_SET_DEFAULT: 'characterarc:assistant:agent:set-default',
+  AGENT_CLEAR_DEFAULT: 'characterarc:assistant:agent:clear-default',
   // 创作记忆（Agent Memory / 学习闭环）
   MEMORY_LIST: 'characterarc:assistant:memory:list',
   MEMORY_CREATE: 'characterarc:assistant:memory:create',
