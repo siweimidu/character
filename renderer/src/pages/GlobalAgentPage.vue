@@ -73,6 +73,8 @@ const composerValue = computed({
 })
 
 const selectedAgentId = ref<string>('')
+// 当前选中智能体的作用范围（'local' 本小说 / 'global' 全局），发送时一并传递。
+const selectedAgentScope = ref<'local' | 'global' | undefined>(undefined)
 const AGENT_SELECT_KEY = 'arc-global-agent-active-agent'
 function persistAgentSelection(id: string): void {
   selectedAgentId.value = id
@@ -194,6 +196,7 @@ function sendWithMode(intentHint?: string): void {
   void assistant.send({
     intentHint: intentHint || 'global-assistant-v2:standard',
     agentId: selectedAgentId.value || undefined,
+    agentScope: selectedAgentScope.value,
     fileAreaPath: fileAreaPath.value.trim() || undefined
   })
 }
@@ -608,6 +611,7 @@ function handleVoiceInput(): void {
           v-model="selectedAgentId"
           :project-id="selectedProjectId"
           @update:model-value="persistAgentSelection"
+          @update:scope="(s) => { selectedAgentScope = s }"
         />
         <button class="ga-memory-toggle" title="创作记忆（学习闭环）" @click="memoryDialogVisible = true">
           <Brain :size="14" />

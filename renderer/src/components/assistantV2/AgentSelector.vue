@@ -15,6 +15,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:modelValue', agentId: string): void
+  /** 同步当前选中智能体的作用范围，供上层在发送时明确传递 agentScope。 */
+  (e: 'update:scope', scope?: 'local' | 'global'): void
 }>()
 
 const message = useMessage()
@@ -36,9 +38,12 @@ async function loadAgents(scope?: 'local' | 'global'): Promise<void> {
     })
     agents.value = list as unknown as AgentProfile[]
     isLoaded.value = true
-    // 如果没有选中智能体，默认选第一个
-    if (!props.modelValue && agents.value.length > 0) {
-      emit('update:modelValue', agents.value[0].id)
+    // 若当前选中不在本作用域列表内（如切换 scope、删除选中项或首次进入），
+    // 默认选中第一个并同步其作用范围，保证「界面显示的智能体」与「实际调用的智能体」一致。
+    if (agents.value.length > 0 && !agents.value.some((a) => a.id === props.modelValue)) {
+      const first = agents.value[0]
+      emit('update:modelValue', first.id)
+      emit('update:scope', first.scope)
     }
   } catch (err) {
     console.error('加载智能体失败:', err)
@@ -85,6 +90,7 @@ function avatarUrl(agent: AgentProfile): string {
 
 function handleSelect(agent: AgentProfile): void {
   emit('update:modelValue', agent.id)
+  emit('update:scope', agent.scope)
   isOpen.value = false
 }
 
@@ -97,6 +103,7 @@ function handleSaved(agent: AgentProfile): void {
   // 刷新列表并选中新保存的智能体
   void loadAgents()
   emit('update:modelValue', agent.id)
+  emit('update:scope', agent.scope)
   showManager.value = false
   editingAgent.value = null
 }
@@ -113,10 +120,9 @@ async function handleDelete(agent: AgentProfile): Promise<void> {
     const result = await A.agentDelete({ id: agent.id })
     if (result.ok) {
       message.success('智能体已删除')
+      // loadAgents 内部会在当前选中项不在列表内时自动选中第一个并同步其作用范围，
+      // 因此删除后无需在此重复 emit，避免 scope 同步不一致。
       await loadAgents()
-      if (props.modelValue === agent.id && agents.value.length > 0) {
-        emit('update:modelValue', agents.value[0].id)
-      }
     }
   } catch (err) {
     message.error(err instanceof Error ? err.message : '删除失败')
@@ -129,7 +135,9 @@ onMounted(() => {
 
 watch(() => props.modelValue, () => {
   if (!props.modelValue && agents.value.length > 0) {
-    emit('update:modelValue', agents.value[0].id)
+    const first = agents.value[0]
+    emit('update:modelValue', first.id)
+    emit('update:scope', first.scope)
   }
 })
 </script>

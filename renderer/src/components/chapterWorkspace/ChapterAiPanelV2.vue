@@ -48,11 +48,14 @@ const assistant = props.assistant
 // 只保留一个选择智能体的卡片（AgentSelector），作用范围（本小说/全局）
 // 由卡片内的下拉标签页决定，不再额外提供右侧的独立切换按钮。
 const selectedAgentId = ref<string | undefined>(undefined)
+// 当前选中智能体的作用范围（'local' 本小说 / 'global' 全局），发送时一并传递。
+const selectedAgentScope = ref<'local' | 'global' | undefined>(undefined)
 
-/** 发送时携带当前选中的智能体 ID 与所属项目。作用范围由选中的智能体自身决定。 */
+/** 发送时携带当前选中的智能体 ID、作用范围与所属项目。作用范围由选中的智能体自身决定。 */
 function agentSendOptions() {
   return {
     agentId: selectedAgentId.value || undefined,
+    agentScope: selectedAgentScope.value,
     agentProjectId: appStore.selectedProjectId
   }
 }
@@ -487,7 +490,11 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
     </header>
 
     <div class="agent-strip">
-      <AgentSelector v-model="selectedAgentId" :project-id="appStore.selectedProjectId" />
+      <AgentSelector
+        v-model="selectedAgentId"
+        :project-id="appStore.selectedProjectId"
+        @update:scope="(s) => { selectedAgentScope = s }"
+      />
     </div>
 
     <div class="session-strip">

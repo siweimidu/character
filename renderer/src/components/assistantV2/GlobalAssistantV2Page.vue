@@ -161,6 +161,9 @@ function handleVoiceInput(): void {
 
 // 当前选中的智能体
 const selectedAgentId = ref<string>('')
+// 当前选中智能体的作用范围（'local' 本小说 / 'global' 全局）。
+// 发送时随 agentId 一并传递，确保后端按所选智能体注入其系统提示词与绑定 skill。
+const selectedAgentScope = ref<'local' | 'global' | undefined>(undefined)
 
 // 创作记忆对话框
 const memoryDialogVisible = ref(false)
@@ -245,7 +248,8 @@ function fillQuickAction(prompt: string): void {
 function sendWithMode(intentHint?: string): void {
   void assistant.send({
     intentHint: intentHint || 'global-assistant-v2:chat',
-    agentId: selectedAgentId.value || undefined
+    agentId: selectedAgentId.value || undefined,
+    agentScope: selectedAgentScope.value
   })
 }
 
@@ -559,7 +563,12 @@ async function handleCommit(ids?: string[]): Promise<void> {
 
       <!-- 智能体选择器 + 创作记忆 -->
       <div class="agent-toolbar">
-        <AgentSelector v-model="selectedAgentId" :project-id="selectedProjectId" @update:model-value="persistAgentSelection" />
+        <AgentSelector
+          v-model="selectedAgentId"
+          :project-id="selectedProjectId"
+          @update:model-value="persistAgentSelection"
+          @update:scope="(s) => { selectedAgentScope = s }"
+        />
         <button
           class="memory-toggle"
           title="创作记忆（学习闭环）"
