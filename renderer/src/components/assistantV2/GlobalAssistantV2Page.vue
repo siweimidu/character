@@ -579,6 +579,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   activeResizeCleanup?.()
+  // 退出「智能体」界面时，自动清理所有没有实际内容的空会话（含未发送消息的草稿会话）。
+  void assistant.cleanupEmptySessions()
 })
 
 // 资源区组件引用
