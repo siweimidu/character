@@ -159,14 +159,6 @@ defineExpose({ redraw })
       @wheel="onWheel"
     >
       <div class="arc-qsb-thumb" :style="{ top: thumbTop + 'px', height: thumbHeight + 'px' }" />
-      <button
-        class="arc-qsb-close"
-        title="关闭快速滑动按钮"
-        @pointerdown.stop
-        @click="$emit('close')"
-      >
-        ×
-      </button>
     </div>
   </Transition>
 </template>
@@ -216,33 +208,6 @@ defineExpose({ redraw })
 .arc-qsb:active .arc-qsb-thumb {
   width: 14px;
   background: color-mix(in srgb, var(--arc-text-secondary) 75%, transparent);
-}
-
-.arc-qsb-close {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 14px;
-  height: 14px;
-  line-height: 12px;
-  text-align: center;
-  padding: 0;
-  border: none;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--arc-bg-body) 85%, transparent);
-  color: var(--arc-text-hint);
-  font-size: 12px;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.12s;
-}
-
-.arc-qsb:hover .arc-qsb-close {
-  opacity: 1;
-}
-
-.arc-qsb-close:hover {
-  color: var(--arc-text-primary);
 }
 
 .arc-qsb-fade-enter-active,

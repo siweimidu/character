@@ -381,7 +381,9 @@ function handleEditorContextMenu(e: MouseEvent): void {
   const target = e.target as HTMLElement | null
   // 扩大右键范围：整个正文编辑区（含 .ProseMirror 及其两侧留白、标题、摘要等）都弹出菜单
   const scrollEl = scrollRef.value
-  if (!target || !scrollEl || !scrollEl.contains(target)) return
+  // 快速滑动按钮也是有效的右键目标（其内部不再显示关闭叉号，改为通过右键菜单关闭）
+  const onQuickScroll = !!target?.closest('.arc-qsb')
+  if (!target || (!scrollEl || !scrollEl.contains(target)) && !onQuickScroll) return
   // 若右键点在可编辑/可输入控件（标题 input、按钮等）上，交给默认行为，避免干扰
   const tag = target.tagName
   if (
@@ -845,7 +847,7 @@ onBeforeUnmount(() => {
         ref="quickScrollRef"
         :visible="appStore.appSettings.editorMinimap"
         :scroll-container="scrollRef"
-        @close="appStore.updateAppSetting('editorMinimap', false)"
+        @contextmenu="handleEditorContextMenu"
       />
     </div>
 

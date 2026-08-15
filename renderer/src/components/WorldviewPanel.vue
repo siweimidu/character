@@ -446,6 +446,11 @@ watch(
     }
 
     focusedEntryId.value = target.entityId
+    // 从作品概览等入口跳转时，同时勾选（选中）对应的世界观词条，便于快速定位与后续操作
+    const worldEntry = appStore.worldviewEntries.find((entry) => entry.id === target.entityId)
+    if (worldEntry && !selectedEntryIds.value.includes(worldEntry.id)) {
+      selectedEntryIds.value = [...selectedEntryIds.value, worldEntry.id]
+    }
     await nextTick()
     document.querySelector<HTMLElement>(`[data-assistant-focus-id="${target.entityId}"]`)
       ?.scrollIntoView({ behavior: 'smooth', block: 'center' })

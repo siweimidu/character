@@ -2290,6 +2290,52 @@ async function saveSettings(): Promise<void> {
           </div>
         </section>
 
+        <div class="dark-mode-row">
+          <div class="dark-mode-label">
+            <Moon :size="15" />
+            <div>
+              <span class="dark-mode-text">深色模式</span>
+              <span class="dark-mode-hint">适合夜间长时间写作，开关即刻生效，无需保存</span>
+            </div>
+          </div>
+          <n-switch
+            :value="draftSettings.darkMode"
+            @update:value="(value) => applyDarkModeImmediately(value)"
+          />
+        </div>
+        <div v-if="draftSettings.darkMode" class="dark-style-grid">
+          <button
+            v-for="preset in darkModePresets"
+            :key="preset.name"
+            type="button"
+            class="dark-style-card"
+            :class="{ active: draftSettings.darkModeStyle === preset.name }"
+            @click="draftSettings.darkModeStyle = preset.name as DarkModeStyle"
+          >
+            <div
+              class="dark-style-swatch"
+              :style="{
+                background: preset.bgBody,
+                borderColor: preset.border,
+                color: preset.textPrimary
+              }"
+            >
+              <span
+                class="dark-style-swatch-surface"
+                :style="{ background: preset.bgSurface, borderColor: preset.border }"
+              ></span>
+              <span
+                class="dark-style-swatch-text"
+                :style="{ color: preset.textPrimary }"
+              >Aa</span>
+            </div>
+            <div class="dark-style-meta">
+              <strong>{{ preset.label }}</strong>
+              <p>{{ preset.description }}</p>
+            </div>
+          </button>
+        </div>
+
         <section id="sec-prefs" class="settings-section">
           <div class="section-title">
             <MonitorCog :size="18" />
@@ -2383,19 +2429,6 @@ async function saveSettings(): Promise<void> {
           </div>
           <div class="dark-mode-row">
             <div class="dark-mode-label">
-              <Moon :size="15" />
-              <div>
-                <span class="dark-mode-text">深色模式</span>
-                <span class="dark-mode-hint">适合夜间长时间写作，开关即刻生效，无需保存</span>
-              </div>
-            </div>
-            <n-switch
-              :value="draftSettings.darkMode"
-              @update:value="(value) => applyDarkModeImmediately(value)"
-            />
-          </div>
-          <div class="dark-mode-row">
-            <div class="dark-mode-label">
               <FileCode2 :size="15" />
               <div>
                 <span class="dark-mode-text">正文快速滑动按钮</span>
@@ -2406,38 +2439,6 @@ async function saveSettings(): Promise<void> {
               :value="draftSettings.editorMinimap"
               @update:value="(value) => applyMinimapImmediately(value)"
             />
-          </div>
-          <div v-if="draftSettings.darkMode" class="dark-style-grid">
-            <button
-              v-for="preset in darkModePresets"
-              :key="preset.name"
-              type="button"
-              class="dark-style-card"
-              :class="{ active: draftSettings.darkModeStyle === preset.name }"
-              @click="draftSettings.darkModeStyle = preset.name as DarkModeStyle"
-            >
-              <div
-                class="dark-style-swatch"
-                :style="{
-                  background: preset.bgBody,
-                  borderColor: preset.border,
-                  color: preset.textPrimary
-                }"
-              >
-                <span
-                  class="dark-style-swatch-surface"
-                  :style="{ background: preset.bgSurface, borderColor: preset.border }"
-                ></span>
-                <span
-                  class="dark-style-swatch-text"
-                  :style="{ color: preset.textPrimary }"
-                >Aa</span>
-              </div>
-              <div class="dark-style-meta">
-                <strong>{{ preset.label }}</strong>
-                <p>{{ preset.description }}</p>
-              </div>
-            </button>
           </div>
 <!--          <div class="storage-note">-->
 <!--            <Save :size="16" />-->
