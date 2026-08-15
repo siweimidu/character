@@ -216,21 +216,22 @@ function handleBatchDelete(): void {
             >
               <template #trigger>
                 <button class="sort-btn" title="选择排序方式" aria-label="选择排序方式">
-                  <ArrowUpDown :size="16" />
+                  <ArrowUpDown :size="14" />
+                  <span class="sort-btn-label">排序</span>
                 </button>
               </template>
-              <div class="sort-popover-body">
-                <p class="sort-popover-title">选择排序方式</p>
+              <div class="sort-panel">
+                <p class="sort-panel-title">选择排序方式</p>
                 <div
                   v-for="opt in SORT_OPTIONS"
                   :key="opt.key"
-                  class="sort-option"
+                  class="sort-item"
                   :class="{ active: sortMode === opt.key }"
                   @click="selectSort(opt.key)"
                 >
-                  <span class="sort-option-label">{{ opt.label }}</span>
+                  <span class="sort-item-name">{{ opt.label }}</span>
                   <button
-                    class="sort-option-dir"
+                    class="sort-item-dir"
                     :title="`切换方向：当前${DIRECTION_LABEL[dimensionDirection(opt.key)]}`"
                     @click.stop="toggleDirection(opt.key)"
                   >
@@ -239,11 +240,12 @@ function handleBatchDelete(): void {
                   </button>
                 </div>
                 <div
-                  class="sort-option"
+                  class="sort-item"
                   :class="{ active: sortMode === 'manual' }"
                   @click="enableManualSort"
                 >
-                  <span class="sort-option-label">手动排序</span>
+                  <span class="sort-item-name">手动排序</span>
+                  <span class="sort-item-hint">上下移动</span>
                 </div>
               </div>
             </n-popover>
@@ -327,107 +329,110 @@ function handleBatchDelete(): void {
   gap: 8px;
 }
 
+/* 排序按钮：胶囊形轮廓按钮，仅展示 SVG 图标 + “排序” 二字 */
 .sort-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
+  gap: 6px;
   height: 32px;
+  padding: 0 14px;
   border: 1px solid var(--arc-border);
-  border-radius: 8px;
+  border-radius: 999px;
   background: var(--arc-bg-surface);
   color: var(--arc-text-secondary);
   cursor: pointer;
-  padding: 0;
   flex-shrink: 0;
-  transition: border-color 0.2s, color 0.2s, background 0.2s, transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  font-size: 12.5px;
+  font-weight: 600;
+  transition: border-color 0.16s, color 0.16s, background 0.16s;
 }
 
 .sort-btn:hover {
   border-color: var(--arc-primary);
   color: var(--arc-primary);
-  background: color-mix(in srgb, var(--arc-primary) 6%, var(--arc-bg-surface));
-  transform: translateY(-1px);
+  background: var(--arc-bg-weak);
 }
 
 .sort-btn:active {
-  transform: translateY(0) scale(0.94);
+  transform: scale(0.96);
 }
 
-/* 排序悬浮窗 */
-.sort-popover-body {
-  min-width: 220px;
-  padding: 4px;
+.sort-btn-label {
+  white-space: nowrap;
+  line-height: 1;
 }
 
-.sort-popover-title {
-  margin: 0 0 4px;
-  padding: 2px 8px 6px;
+/* 排序悬浮窗面板：border-led 分层，冷色调背景跟随主题 */
+.sort-panel {
+  min-width: 224px;
+  padding: 6px;
+}
+
+.sort-panel-title {
+  margin: 0 0 6px;
+  padding: 4px 8px 8px;
   font-size: 11px;
   font-weight: 600;
   color: var(--arc-text-hint);
   border-bottom: 1px solid var(--arc-border);
 }
 
-.sort-option {
+.sort-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 7px 8px;
-  border-radius: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
   cursor: pointer;
   color: var(--arc-text-secondary);
   font-size: 13px;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.14s, color 0.14s;
 }
 
-.sort-option:hover {
+.sort-item:hover {
   background: var(--arc-bg-weak);
   color: var(--arc-text-primary);
 }
 
-.sort-option.active {
+.sort-item.active {
   color: var(--arc-primary);
   font-weight: 600;
   background: color-mix(in srgb, var(--arc-primary) 7%, var(--arc-bg-surface));
 }
 
-.sort-option-label {
+.sort-item-name {
   white-space: nowrap;
 }
 
-.sort-option-icon {
-  flex-shrink: 0;
+.sort-item-hint {
+  font-size: 11px;
+  font-weight: 500;
   color: var(--arc-text-hint);
-  transition: color 0.15s;
 }
 
-.sort-option:hover .sort-option-icon {
-  color: var(--arc-primary);
-}
-
-.sort-option-dir {
+.sort-item-dir {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 22px;
   height: 22px;
   border: 1px solid var(--arc-border);
-  border-radius: 6px;
+  border-radius: 999px;
   background: transparent;
   color: var(--arc-text-hint);
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  transition: border-color 0.14s, color 0.14s, background 0.14s;
 }
 
-.sort-option-dir:hover {
+.sort-item-dir:hover {
   border-color: var(--arc-primary);
   color: var(--arc-primary);
   background: color-mix(in srgb, var(--arc-primary) 8%, var(--arc-bg-surface));
 }
 
-.sort-option.active .sort-option-dir {
+.sort-item.active .sort-item-dir {
   color: var(--arc-primary);
   border-color: color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border));
 }
