@@ -265,12 +265,24 @@ function cancelEditingFont(): void {
   fontSizeDraft.value = String(fontSize.value)
 }
 
+// Ctrl+滚轮缩放：用 rAF 合并连续滚轮事件，避免每滚动一格就触发一次渲染导致卡顿
+let wheelAccumulator = 0
+let wheelRafId: number | null = null
+
 function handleEditorWheel(e: WheelEvent): void {
   // Ctrl(或 Cmd)+滚轮 调整正文字号，避免触发页面/浏览器缩放
   if (!e.ctrlKey && !e.metaKey) return
   e.preventDefault()
-  const delta = e.deltaY > 0 ? -1 : 1
-  stepFont(delta)
+  // 累积滚轮步进值，合并到下一帧统一应用
+  wheelAccumulator += e.deltaY > 0 ? -1 : 1
+  if (wheelRafId !== null) return
+  wheelRafId = requestAnimationFrame(() => {
+    wheelRafId = null
+    if (wheelAccumulator === 0) return
+    const steps = Math.round(wheelAccumulator)
+    wheelAccumulator = 0
+    stepFont(steps)
+  })
 }
 
 const currentChapter = computed(() => appStore.selectedChapter)
@@ -644,6 +656,12 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleGlobalKeydown)
   scrollRef.value?.removeEventListener('wheel', handleEditorWheel)
   scrollRef.value?.removeEventListener('scroll', handleEditorScroll)
+  // 清理未执行的滚轮缩放任务
+  if (wheelRafId !== null) {
+    cancelAnimationFrame(wheelRafId)
+    wheelRafId = null
+    wheelAccumulator = 0
+  }
 })
 </script>
 
@@ -953,7 +971,7 @@ onBeforeUnmount(() => {
         <div class="quick-thread-actions">
           <n-button
             type="info"
-            ghost
+            secondary
             :loading="aiGeneratingThread"
             :disabled="aiGeneratingThread"
             @click="aiGenerateThread"
