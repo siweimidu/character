@@ -121,6 +121,8 @@ export function useAssistant(options: UseAssistantOptions) {
    * 只有当真正向 AI 发送了第一条消息时才写入后端并加入历史。
    */
   const draftSession = ref<AssistantSession | null>(null)
+  /** 所有尚未持久化的草稿会话 ID 集合（支持同时新建多个空会话，退出页面时统一清理）。 */
+  const draftSessionIds = ref<Set<string>>(new Set())
   const activeSession = computed(() =>
     draftSession.value && draftSession.value.id === activeSessionId.value
       ? draftSession.value
@@ -469,6 +471,8 @@ export function useAssistant(options: UseAssistantOptions) {
     const pid = options.projectId()
     if (!pid) {
       sessions.value = []
+      draftSessionIds.value = new Set()
+      draftSession.value = null
       isInitializing.value = false
       return
     }
@@ -492,6 +496,9 @@ export function useAssistant(options: UseAssistantOptions) {
     try {
       const list = await A.sessionList({ projectId: pid, surfaceId: sessionSurfaceId, scopeRef: sessionScopeRef() })
       sessions.value = list
+      // 重新拉取后端会话列表后，内存中的草稿会话不再有效，全部丢弃。
+      draftSession.value = null
+      draftSessionIds.value = new Set()
       if (!activeSessionId.value && list.length > 0) {
         await switchSession(list[0].id)
       } else {
@@ -566,6 +573,10 @@ export function useAssistant(options: UseAssistantOptions) {
     }
     draftSession.value = session
     activeSessionId.value = session.id
+    // 草稿会话也加入前端会话列表（置顶），让用户能在侧边栏看到并管理多个并行空会话。
+    // 列表中的草稿会话仅存在于内存，尚未持久化；只有真正发送消息后才写入后端历史。
+    sessions.value = [session, ...sessions.value.filter((s) => s.id !== session.id)]
+    draftSessionIds.value = new Set(draftSessionIds.value).add(session.id)
     turns.value = []
     eventsByTurn.value = new Map()
     stagedChanges.value = []
@@ -583,11 +594,14 @@ export function useAssistant(options: UseAssistantOptions) {
    * 将「草稿会话」正式写入后端并加入历史列表，返回持久化后的会话。
    * 若当前活跃会话不是草稿（已是持久化会话）则直接返回。
    */
-  async function persistDraftSession(title: string): Promise<AssistantSession | null> {
-    if (!draftSession.value) return null
+  async function persistDraftSession(title: string, sessionId?: string): Promise<AssistantSession | null> {
+    // 定位目标草稿：优先按传入 sessionId，其次当前草稿指针。
+    const targetId = sessionId ?? draftSession.value?.id
+    if (!targetId || !draftSessionIds.value.has(targetId)) return null
+    const draft = sessions.value.find((s) => s.id === targetId) ?? draftSession.value
+    if (!draft) return null
     const pid = options.projectId()
     if (!pid) return null
-    const draft = draftSession.value
     // 用前端生成的同一 ID 通过 sessionRestore 创建后端会话（该接口支持指定 id）。
     const res = await A.sessionRestore({
       id: draft.id,
@@ -605,9 +619,12 @@ export function useAssistant(options: UseAssistantOptions) {
       title,
       updatedAt: new Date().toISOString()
     }
-    draftSession.value = null
-    // 新会话置顶，与「发送首条消息即成为最近对话」的习惯一致。
-    sessions.value = [persisted, ...sessions.value]
+    if (draftSession.value?.id === persisted.id) draftSession.value = null
+    // 该会话已正式持久化，从草稿集合中移除；列表中的条目已存在（createSession 时已置顶），仅更新其标题。
+    const ids = new Set(draftSessionIds.value)
+    ids.delete(persisted.id)
+    draftSessionIds.value = ids
+    sessions.value = [persisted, ...sessions.value.filter((s) => s.id !== persisted.id)]
     return persisted
   }
 
@@ -616,10 +633,9 @@ export function useAssistant(options: UseAssistantOptions) {
     if (!sessions.value.some((s) => s.id === sessionId)) {
       return
     }
-    // 切换到其他会话时，丢弃尚未写入历史的草稿会话（从未持久化，无需后端清理）。
-    if (draftSession.value && draftSession.value.id === activeSessionId.value) {
-      draftSession.value = null
-    }
+    // 切换到其他会话时，清空当前草稿会话指针（草稿会话仍保留在列表/内存中，供切回继续编辑；
+    // 未发送消息的空草稿将在退出页面时由 cleanupEmptySessions 统一清理）。
+    draftSession.value = null
     activeSessionId.value = sessionId
     turns.value = []
     eventsByTurn.value = new Map()
@@ -631,6 +647,12 @@ export function useAssistant(options: UseAssistantOptions) {
     // 切换到/新建对话时清空输入框草稿与待发送的引用/上传附件，避免残留上一个对话的内容
     composerValue.value = ''
     pendingAttachments.value = []
+    // 草稿会话尚未持久化到后端，后端不存在对应记录，不能（也不需要）从后端加载 turns/暂存变更，
+    // 否则 sessionLoad 会因会话不存在而报错。直接保留空的 turns 即可。
+    if (draftSessionIds.value.has(sessionId)) {
+      isInitializing.value = false
+      return
+    }
     await Promise.all([reloadTurns(), reloadStaged()])
   }
 
@@ -641,7 +663,8 @@ export function useAssistant(options: UseAssistantOptions) {
     }
 
     // 删除前先将会话快照写入回收站（Runtime v2 会话保存在后端 SQLite，需在此处记录）
-    const target = sessions.value.find((s) => s.id === sessionId)
+    // 草稿会话未持久化，后端不存在对应记录，无需写入回收站快照。
+    const target = !draftSessionIds.value.has(sessionId) ? sessions.value.find((s) => s.id === sessionId) : undefined
     if (target) {
       try {
         const loaded = await A.sessionLoad({ sessionId, withReplay: true })
@@ -656,8 +679,15 @@ export function useAssistant(options: UseAssistantOptions) {
       }
     }
 
-    await A.sessionDelete({ sessionId })
+    // 草稿会话仅存在于前端内存，后端并无对应记录，跳过后端删除（否则会报会话不存在）。
+    if (!draftSessionIds.value.has(sessionId)) {
+      await A.sessionDelete({ sessionId })
+    }
     sessions.value = sessions.value.filter((s) => s.id !== sessionId)
+    // 若删除的是草稿会话，同步清理草稿标记。
+    const ids = new Set(draftSessionIds.value)
+    ids.delete(sessionId)
+    draftSessionIds.value = ids
     if (activeSessionId.value === sessionId) {
       activeSessionId.value = null
       turns.value = []
@@ -686,6 +716,8 @@ export function useAssistant(options: UseAssistantOptions) {
 
     // 逐个把会话快照写入回收站，失败不阻断删除
     await Promise.all(ids.map(async (id) => {
+      // 草稿会话未持久化，后端不存在，无法也无需写入回收站快照
+      if (draftSessionIds.value.has(id)) return
       const target = sessions.value.find((s) => s.id === id)
       if (!target) return
       try {
@@ -700,8 +732,16 @@ export function useAssistant(options: UseAssistantOptions) {
       }
     }))
 
-    await A.sessionDeleteBatch({ sessionIds: ids })
+    // 草稿会话仅存在于前端内存，后端并无对应记录，仅删除已持久化会话，避免报“会话不存在”。
+    const persistedDeleteIds = ids.filter((id) => !draftSessionIds.value.has(id))
+    if (persistedDeleteIds.length > 0) {
+      await A.sessionDeleteBatch({ sessionIds: persistedDeleteIds })
+    }
     sessions.value = sessions.value.filter((s) => !ids.includes(s.id))
+    // 若批量删除的会话含草稿，同步清理草稿标记。
+    const idSet = new Set(draftSessionIds.value)
+    for (const id of ids) idSet.delete(id)
+    draftSessionIds.value = idSet
 
     // 若活动会话被批量删除，切到剩余的第一个会话；没有剩余则重置为空会话
     if (activeSessionId.value && ids.includes(activeSessionId.value)) {
@@ -717,53 +757,11 @@ export function useAssistant(options: UseAssistantOptions) {
     }
   }
 
-  /**
-   * 退出全局智能体页面时清理「空会话」：没有任何对话内容（没有任何 turn）的会话。
-   * 这些会话会被自动永久删除，且不记入回收站（直接调用后端批量删除，不写回收站快照）。
-   * @returns 被删除的空会话数量
-   */
-  async function deleteEmptySessionsPermanent(): Promise<number> {
-    const ids: string[] = []
-    for (const s of sessions.value) {
-      try {
-        const loaded = await A.sessionLoad({ sessionId: s.id })
-        const turns = (loaded?.turns ?? []) as Array<{
-          userMessage?: string
-          assistantMessage?: string
-        }>
-        // 没有任何 turn，或 turn 均无实际内容（用户/助手消息均为空白）视为空会话
-        const isEmpty =
-          turns.length === 0 ||
-          turns.every(
-            (t) =>
-              !(t.userMessage && t.userMessage.trim()) &&
-              !(t.assistantMessage && t.assistantMessage.trim())
-          )
-        if (isEmpty) ids.push(s.id)
-      } catch (e) {
-        // 单个会话检测失败不阻断整体清理，仅记录日志
-        console.error('[useAssistant] 检测空会话失败:', e)
-      }
-    }
-
-    if (ids.length === 0) return 0
-
-    // 直接调用后端批量删除（级联删除 turns / events / 暂存变更），不写回收站快照。
-    await A.sessionDeleteBatch({ sessionIds: ids })
-    sessions.value = sessions.value.filter((s) => !ids.includes(s.id))
-    if (activeSessionId.value && ids.includes(activeSessionId.value)) {
-      activeSessionId.value = null
-      turns.value = []
-      eventsByTurn.value = new Map()
-      stagedChanges.value = []
-      cancelEditing()
-      restoredDraftLabel.value = ''
-    }
-    return ids.length
-  }
-
   async function renameSession(sessionId: string, title: string): Promise<void> {
-    await A.sessionRename({ sessionId, title })
+    // 草稿会话未持久化，后端无对应记录，仅更新前端内存中的标题；已持久化会话才调用后端改名。
+    if (!draftSessionIds.value.has(sessionId)) {
+      await A.sessionRename({ sessionId, title })
+    }
     sessions.value = sessions.value.map((s) =>
       s.id === sessionId ? { ...s, title } : s
     )
@@ -810,8 +808,8 @@ export function useAssistant(options: UseAssistantOptions) {
 
     // 新建对话（草稿会话）在用户真正发送首条消息时才写入历史，标题用首条提问摘要。
     // 放到 flushAppSettings 之后，避免设置保存失败时留下空的草稿会话。
-    if (draftSession.value && draftSession.value.id === sessionId) {
-      const persisted = await persistDraftSession(derivedTitle)
+    if (draftSessionIds.value.has(sessionId)) {
+      const persisted = await persistDraftSession(derivedTitle, sessionId)
       if (!persisted) return
       sessionId = persisted.id
     } else {
@@ -1148,6 +1146,69 @@ export function useAssistant(options: UseAssistantOptions) {
     return cleared
   }
 
+  /**
+   * 清理所有没有实际内容的空会话（退出全局智能体页面时调用）：
+   * 1. 清理所有未持久化的草稿会话（仅在内存中，直接从会话列表移除）；
+   * 2. 清理已持久化但没有任何对话（turn）的空会话（调用后端删除）。
+   * 返回被清理的会话数量。
+   */
+  async function cleanupEmptySessions(): Promise<number> {
+    const pid = options.projectId()
+    if (!pid) return 0
+
+    const removedDraftIds: string[] = []
+    // 1) 先收集所有草稿会话 ID（未持久化，只在内存中）。
+    for (const id of draftSessionIds.value) {
+      removedDraftIds.push(id)
+    }
+
+    // 2) 收集已持久化但无任何 turn 的空会话。
+    const emptyPersistedIds: string[] = []
+    for (const s of sessions.value) {
+      if (removedDraftIds.includes(s.id)) continue
+      try {
+        const loaded = await A.sessionLoad({ sessionId: s.id })
+        if (loaded && (!loaded.turns || loaded.turns.length === 0)) {
+          emptyPersistedIds.push(s.id)
+        }
+      } catch {
+        // 加载失败视为无需清理，跳过。
+      }
+    }
+
+    const allIds = [...new Set([...removedDraftIds, ...emptyPersistedIds])]
+    if (allIds.length === 0) return 0
+
+    // 3) 已持久化的空会话需要后端级联删除（草稿会话本身未入库，仅在前端清理）。
+    const persistedIds = allIds.filter((id) => !removedDraftIds.includes(id))
+    if (persistedIds.length > 0) {
+      try {
+        await A.sessionDeleteBatch({ sessionIds: persistedIds })
+      } catch (e) {
+        lastError.value = e instanceof Error ? e.message : String(e)
+      }
+    }
+
+    // 4) 从前端列表与草稿集合中移除所有被清理的会话。
+    sessions.value = sessions.value.filter((s) => !allIds.includes(s.id))
+    const idSet = new Set(draftSessionIds.value)
+    for (const id of allIds) idSet.delete(id)
+    draftSessionIds.value = idSet
+    if (draftSession.value && allIds.includes(draftSession.value.id)) {
+      draftSession.value = null
+    }
+    if (activeSessionId.value && allIds.includes(activeSessionId.value)) {
+      activeSessionId.value = null
+      turns.value = []
+      eventsByTurn.value = new Map()
+      stagedChanges.value = []
+      streamingTurnId.value = null
+      cancelEditing()
+      restoredDraftLabel.value = ''
+    }
+    return allIds.length
+  }
+
   // ==========================================================================
   // 生命周期
   // ==========================================================================
@@ -1157,6 +1218,7 @@ export function useAssistant(options: UseAssistantOptions) {
     () => options.projectId(),
     async () => {
       draftSession.value = null
+      draftSessionIds.value = new Set()
       activeSessionId.value = null
       turns.value = []
       eventsByTurn.value = new Map()
@@ -1178,6 +1240,7 @@ export function useAssistant(options: UseAssistantOptions) {
         // 章节级 Surface 共享项目级会话：切换章节/分卷时保持同一个对话，仅保留原会话。
         if (isChapterSurface) return
         draftSession.value = null
+        draftSessionIds.value = new Set()
         activeSessionId.value = null
         turns.value = []
         eventsByTurn.value = new Map()
@@ -1221,7 +1284,6 @@ export function useAssistant(options: UseAssistantOptions) {
     switchSession,
     deleteSession,
     deleteSessions,
-    deleteEmptySessionsPermanent,
     renameSession,
     send,
     continueWithPrompt,
@@ -1242,6 +1304,7 @@ export function useAssistant(options: UseAssistantOptions) {
     bindTarget,
     removeChanges,
     clearFinishedStaged,
+    cleanupEmptySessions,
     reloadSessions,
     reloadStaged
   }

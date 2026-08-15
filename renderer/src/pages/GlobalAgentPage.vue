@@ -339,10 +339,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   activeResizeCleanup?.()
   document.removeEventListener('click', onDocClick)
-  // 退出全局智能体页面时自动清理「空会话」：无内容的会话不记入回收站，直接永久删除。
-  void assistant.deleteEmptySessionsPermanent().then((count) => {
-    if (count > 0) console.log(`[GlobalAgentPage] 已自动删除 ${count} 个空会话（不记入回收站）`)
-  })
+  // 退出全局智能体页面时，自动清理所有没有实际内容的空会话（含未发送消息的草稿会话）。
+  void assistant.cleanupEmptySessions()
 })
 
 async function copyMessage(text: string): Promise<void> {
