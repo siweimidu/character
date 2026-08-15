@@ -1,7 +1,7 @@
 import type { AppSettings } from '../shared-types'
 import { isLocalBaseUrl, normalizeSettings } from '../settings'
 import { createProxyFetch } from '../proxy-fetch'
-import { buildModelsUrlCandidates } from './model-urls'
+import { buildModelsUrlCandidates, isGeminiNativeBaseUrl } from './model-urls'
 import {
   isAnthropicProtocol,
   isOpenCodeProvider,
@@ -174,6 +174,63 @@ async function fetchModelsAnthropic(baseUrl: string, apiKey: string, requestFetc
   }
 }
 
+/** 原生 Gemini /models 列表单页条数上限 */
+const GEMINI_MODELS_PAGE_SIZE = 100
+/** 原生 Gemini /models 列表最大翻页数 */
+const GEMINI_MODELS_MAX_PAGES = 20
+
+/**
+ * 通过 Google Gemini 原生 REST API 获取模型列表。
+ * 原生接口使用 x-goog-api-key 头鉴权，端点形如 {base}/models，
+ * 返回体字段为 models[].name（带 models/ 前缀），并可基于 nextPageToken 翻页。
+ */
+async function fetchModelsGeminiNative(baseUrl: string, apiKey: string, requestFetch: typeof fetch): Promise<FetchedModel[]> {
+  const trimmed = baseUrl.trim().replace(/\/+$/, '')
+  const models: FetchedModel[] = []
+  let pageToken = ''
+  for (let page = 0; page < GEMINI_MODELS_MAX_PAGES; page++) {
+    const sep = pageToken ? '&' : '?'
+    const url = `${trimmed}/models${pageToken ? `${sep}pageToken=${encodeURIComponent(pageToken)}` : `?pageSize=${GEMINI_MODELS_PAGE_SIZE}`}`
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), FETCH_MODELS_TIMEOUT_MS)
+    try {
+      const response = await requestFetch(url, {
+        method: 'GET',
+        headers: { 'x-goog-api-key': apiKey },
+        signal: controller.signal
+      })
+      if (response.status === 404 || response.status === 405) {
+        throw new Error('Google Gemini 原生接口不支持拉取模型列表，请手动输入模型名称（如 imagen-3.0-generate-002）。')
+      }
+      if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`)
+      const data = (await response.json()) as {
+        models?: Array<{ name?: string }>
+        nextPageToken?: string
+      }
+      for (const item of data.models ?? []) {
+        const raw = (typeof item?.name === 'string' && item.name.trim()) ? item.name.trim() : ''
+        if (!raw) continue
+        // 原生接口 name 形如 models/imagen-3.0-generate-002，剥离前缀后作为模型 ID
+        const id = raw.replace(/^models\//i, '').trim()
+        if (!id) continue
+        models.push({ id, ownedBy: 'google' })
+      }
+      pageToken = data.nextPageToken ?? ''
+      if (!pageToken) break
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') throw new Error('获取模型列表超时，请检查网络或代理设置。')
+      throw error
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  if (models.length === 0) {
+    throw new Error('Google Gemini 模型列表返回为空，请检查 API Key 是否有图片模型权限，或手动输入模型名称。')
+  }
+  models.sort((a, b) => a.id.localeCompare(b.id))
+  return models
+}
+
 /**
  * 根据当前 provider 获取可用的模型列表。
  *
@@ -210,7 +267,9 @@ export async function fetchImageModels(settings: AppSettings): Promise<FetchedMo
   const apiKey = settings.imageApiKey?.trim()
   if (!baseUrl) throw new Error('请先填写图片生成 Base URL。')
   if (!apiKey) throw new Error('请先填写图片生成 API Key。')
+  const requestFetch = createProxyFetch(settings.proxyUrl)
+  if (isGeminiNativeBaseUrl(baseUrl)) return fetchModelsGeminiNative(baseUrl, apiKey, requestFetch)
   return isGitCodeModelsBaseUrl(baseUrl)
-    ? fetchModelsGitCode(baseUrl, apiKey, createProxyFetch(settings.proxyUrl))
-    : fetchModelsOpenAiCompatible(baseUrl, apiKey, createProxyFetch(settings.proxyUrl))
+    ? fetchModelsGitCode(baseUrl, apiKey, requestFetch)
+    : fetchModelsOpenAiCompatible(baseUrl, apiKey, requestFetch)
 }

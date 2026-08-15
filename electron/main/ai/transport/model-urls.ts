@@ -67,6 +67,26 @@ function stripOpenAiCompatSuffix(baseUrl: string): string | null {
   return null
 }
 
+/** 判断是否为 Google Gemini 原生 REST API（非 OpenAI 兼容入口）地址。
+ * 原生入口形如 https://generativelanguage.googleapis.com/v1beta，
+ * 需使用 x-goog-api-key 头与 /models 端点；OpenAI 兼容入口则带 /openai 后缀。 */
+export function isGeminiNativeBaseUrl(baseUrl: string): boolean {
+  const trimmed = baseUrl.trim().replace(/\/+$/, '')
+  let host = ''
+  let pathname = ''
+  try {
+    const url = new URL(trimmed)
+    host = url.hostname
+    pathname = url.pathname
+  } catch {
+    return false
+  }
+  if (!/(^|\.)generativelanguage\.googleapis\.com$/i.test(host)) return false
+  // OpenAI 兼容入口 .../v1beta/openai 走 OpenAI 协议，不属于原生 API。
+  if (/(^|\/)openai\/?$/i.test(pathname)) return false
+  return /\/v\d+beta(?:\/|$)/i.test(pathname)
+}
+
 /** 从 baseUrl 中提取版本段（如 /v1、/v2、/v1beta），无则返回 null */
 function extractVersionPath(baseUrl: string): string | null {
   const match = baseUrl.match(/(\/v\d+(?:beta)?)(?:\/|$)/i)

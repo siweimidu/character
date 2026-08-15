@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { buildModelsUrlCandidates } from './model-urls.ts'
+import { buildModelsUrlCandidates, isGeminiNativeBaseUrl } from './model-urls.ts'
 
 test('OpenAI 官方地址生成 /v1/models 候选', () => {
   const candidates = buildModelsUrlCandidates('https://api.openai.com/v1')
@@ -52,4 +52,20 @@ test('自定义无版本段地址会同时尝试 /v1/models 与 /models', () => 
 test('去重后候选列表无重复项', () => {
   const candidates = buildModelsUrlCandidates('https://api.deepseek.com/v1')
   assert.equal(new Set(candidates).size, candidates.length)
+})
+
+test('Google Gemini 原生地址被识别为原生接口', () => {
+  assert.equal(isGeminiNativeBaseUrl('https://generativelanguage.googleapis.com/v1beta'), true)
+  assert.equal(isGeminiNativeBaseUrl('https://generativelanguage.googleapis.com/v1beta/'), true)
+})
+
+test('Google Gemini OpenAI 兼容入口不被识别为原生接口', () => {
+  assert.equal(isGeminiNativeBaseUrl('https://generativelanguage.googleapis.com/v1beta/openai'), false)
+  assert.equal(isGeminiNativeBaseUrl('https://generativelanguage.googleapis.com/v1beta/openai/'), false)
+})
+
+test('非 Google 地址不被识别为原生接口', () => {
+  assert.equal(isGeminiNativeBaseUrl('https://api.openai.com/v1'), false)
+  assert.equal(isGeminiNativeBaseUrl('https://example.com/v1beta'), false)
+  assert.equal(isGeminiNativeBaseUrl(''), false)
 })
