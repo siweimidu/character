@@ -130,14 +130,14 @@ export const SOLO_SYSTEM_PROMPT = `# 角色
 
 /**
  * 「顶级爆款网文」智能体的头像。
- * 采用内联 SVG，内嵌 <image> 引用作者上传的爆款网文头像图片（见 ISSUE #506），
+ * 采用内联 SVG，内嵌 <image> 引用作者上传的爆款网文头像图片（见 ISSUE #514），
  * 并预置暖金色“爆”字兜底底图，避免外部图片未加载时头像空白。
  */
 export const BESTSELER_NOVEL_AVATAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <rect width="64" height="64" rx="14" fill="#f59e0b"/>
   <circle cx="32" cy="32" r="24" fill="#fef3c7"/>
   <text x="32" y="42" font-size="30" font-weight="bold" text-anchor="middle" fill="#d97706" font-family="sans-serif">爆</text>
-  <image href="https://cnb.cool/siweimidu/character-arc/-/imgs/issues/2088590426716139520/bV21zvDCe6BvOWzegyZ85A/bee9b1dc-7ef1-41f5-b8df-9aabbbf26e4a.png" x="0" y="0" width="64" height="64" preserveAspectRatio="xMidYMid slice"/>
+  <image href="https://cnb.cool/siweimidu/character-arc/-/imgs/issues/2088614867298840576/bV21zvDCe6BvOWzegyZ85A/a220dd36-0e1f-4251-81a3-c5fcf27df9dc.png" x="0" y="0" width="64" height="64" preserveAspectRatio="xMidYMid slice"/>
 </svg>`
 
 /**
