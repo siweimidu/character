@@ -120,6 +120,41 @@ function formatOutlineStatusLabel(status: unknown): string {
   }
 }
 
+function renderAiRunsPlainText(rows: Array<Record<string, unknown>>): string {
+  const lines: string[] = ['AI 调用日志', '', ''.padEnd(48, '-'), '']
+  for (const row of rows) {
+    lines.push(
+      `任务：${String(row.task ?? '')}`,
+      `厂商：${String(row.provider ?? '')} / 模型：${String(row.model ?? '')}`,
+      `状态：${String(row.status ?? '')} · 开始：${String(row.startedAt ?? '')} · 耗时：${String(row.duration ?? '')}`,
+      `关联项目：${String(row.projectTitle ?? '')}`
+    )
+    if (row.responsePreview) lines.push(`响应预览：${String(row.responsePreview)}`)
+    if (row.error) lines.push(`错误信息：${String(row.error)}`)
+    lines.push(''.padEnd(48, '-'), '')
+  }
+  return lines.join('\n')
+}
+
+function renderAiRunsMarkdown(rows: Array<Record<string, unknown>>): string {
+  const lines: string[] = ['# AI 调用日志', '', `共 ${rows.length} 条记录`, '']
+  for (const row of rows) {
+    lines.push(
+      `## ${String(row.task ?? '未知任务')}`,
+      '',
+      `- **厂商 / 模型**：${String(row.provider ?? '')} / ${String(row.model ?? '')}`,
+      `- **状态**：${String(row.status ?? '')}`,
+      `- **开始时间**：${String(row.startedAt ?? '')}`,
+      `- **耗时**：${String(row.duration ?? '')}`,
+      `- **关联项目**：${String(row.projectTitle ?? '')}`
+    )
+    if (row.responsePreview) lines.push(`- **响应预览**：${String(row.responsePreview)}`)
+    if (row.error) lines.push(`- **错误信息**：${String(row.error)}`)
+    lines.push('')
+  }
+  return lines.join('\n')
+}
+
 function compareVersions(a: string, b: string): number {
   // 清理版本号后缀（如 -beta、-rc.1），避免 Number() 产生 NaN 导致比较结果错误
   const stripSuffix = (v: string): string => v.replace(/[-+].*$/, '')
@@ -1688,6 +1723,65 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     outlineSheet['!autofilter'] = { ref: 'A1:I1' }
     XLSX.utils.book_append_sheet(workbook, outlineSheet, '剧情大纲')
     await writeFile(result.filePath, XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }))
+    return { success: true, canceled: false, filePath: result.filePath }
+  })
+
+  ipcMain.handle('characterarc:export-ai-runs', async (_event, payload: unknown) => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) {
+      return { success: false, canceled: true, error: '没有可用的窗口。' }
+    }
+
+    const request = (payload ?? {}) as {
+      format?: string
+      rows?: Array<Record<string, unknown>>
+      defaultFileName?: string
+    }
+    const format = request.format || 'json'
+    const rows = Array.isArray(request.rows) ? request.rows : []
+
+    const fileName = (request.defaultFileName || 'ai-call-logs').replace(/[\\/:*?"<>|]/g, '-').trim() || 'ai-call-logs'
+
+    if (format === 'xlsx') {
+      const result = await dialog.showSaveDialog(window, {
+        title: '导出 AI 调用日志 Excel',
+        defaultPath: `${fileName}.xlsx`,
+        filters: [{ name: 'Excel 工作簿', extensions: ['xlsx'] }]
+      })
+      if (result.canceled || !result.filePath) return { success: false, canceled: true }
+      const workbook = XLSX.utils.book_new()
+      const sheet = XLSX.utils.json_to_sheet(rows)
+      sheet['!cols'] = Object.keys(rows[0] ?? {}).map((key) => ({ wch: Math.max(12, String(key).length + 4) }))
+      XLSX.utils.book_append_sheet(workbook, sheet, 'AI 调用日志')
+      await writeFile(result.filePath, XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }))
+      return { success: true, canceled: false, filePath: result.filePath }
+    }
+
+    let text = ''
+    let filterName = '文本文档'
+    let extension = 'txt'
+    let title = '导出 AI 调用日志 TXT'
+    if (format === 'markdown' || format === 'md') {
+      text = renderAiRunsMarkdown(rows)
+      filterName = 'Markdown 文档'
+      extension = 'md'
+      title = '导出 AI 调用日志 Markdown'
+    } else if (format === 'json') {
+      text = JSON.stringify(rows, null, 2)
+      filterName = 'JSON 文件'
+      extension = 'json'
+      title = '导出 AI 调用日志 JSON'
+    } else {
+      text = renderAiRunsPlainText(rows)
+    }
+
+    const result = await dialog.showSaveDialog(window, {
+      title,
+      defaultPath: `${fileName}.${extension}`,
+      filters: [{ name: filterName, extensions: [extension] }]
+    })
+    if (result.canceled || !result.filePath) return { success: false, canceled: true }
+    await writeFile(result.filePath, text, 'utf-8')
     return { success: true, canceled: false, filePath: result.filePath }
   })
 

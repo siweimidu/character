@@ -1621,7 +1621,8 @@ export const useAppStore = defineStore('app', () => {
   const GLOBAL_RECYCLE_CATEGORIES = new Set<import('@/types/app').RecycleBinCategory>([
     'ai-profile',
     'reference-work',
-    'skill'
+    'skill',
+    'ai-run'
   ])
 
   /** 向当前项目回收站写入一条删除记录 */
@@ -2093,6 +2094,15 @@ export const useAppStore = defineStore('app', () => {
         if (!res.success) return false
         break
       }
+      case 'ai-run': {
+        const run = (data as Record<string, unknown>)?.run as unknown as import('@/types/app').AiRunRecord
+        if (!run || !run.id) return false
+        if (!globalAiRuns.value.some((item) => item.id === run.id)) {
+          globalAiRuns.value = normalizeAiRuns([...globalAiRuns.value, run])
+        }
+        schedulePersist('fast')
+        break
+      }
       default:
         return false
     }
@@ -2551,7 +2561,30 @@ export const useAppStore = defineStore('app', () => {
             }))
           : undefined
       }
-    ].slice(-200)
+    ].slice(-500)
+    schedulePersist('fast')
+  }
+
+  /** 将指定的 AI 调用日志移入全局回收站（软删除，可恢复）。 */
+  function moveAiRunsToRecycle(ids: string[]): void {
+    const idSet = new Set(ids)
+    if (!idSet.size) return
+    const now = new Date().toISOString()
+    const runs = globalAiRuns.value.filter((run) => idSet.has(run.id))
+    if (!runs.length) return
+    for (const run of runs) {
+      const title = String(run.task ?? '').trim() || 'AI 调用'
+      pushRecycleEntry(
+        'ai-run',
+        title,
+        { run } as Record<string, unknown>,
+        {
+          projectId: run.projectId || '',
+          summary: `${run.provider} / ${run.model} · ${run.startedAt ?? ''}`
+        }
+      )
+    }
+    globalAiRuns.value = globalAiRuns.value.filter((run) => !idSet.has(run.id))
     schedulePersist('fast')
   }
 
@@ -5410,6 +5443,7 @@ export const useAppStore = defineStore('app', () => {
     autoSaveIntervalLabel,
     aiRuns,
     allAiRuns,
+    moveAiRunsToRecycle,
     allRecycleBinEntries,
     recycleBinEntries,
     recycleBinScope,

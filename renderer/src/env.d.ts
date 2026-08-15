@@ -670,6 +670,16 @@ declare global {
         filePath?: string
         error?: string
       }>
+      exportAiRuns: (payload: {
+        format: 'txt' | 'markdown' | 'json' | 'xlsx'
+        rows: Array<Record<string, unknown>>
+        defaultFileName?: string
+      }) => Promise<{
+        success: boolean
+        canceled: boolean
+        filePath?: string
+        error?: string
+      }>
       setZoomFactor: (factor: number) => Promise<{
         success: boolean
         factor?: number

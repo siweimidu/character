@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ChevronDown, RefreshCw, ScrollText } from 'lucide-vue-next'
-import { NModal, NSelect, NTag } from 'naive-ui'
+import { ArchiveRestore, ChevronDown, Download, FileCode, FileDown, FileJson, FileText, RefreshCw, ScrollText, Trash2 } from 'lucide-vue-next'
+import { NCheckbox, NModal, NSelect, NTag, useMessage } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import { toIpcPayload } from '@/utils/ipcPayload'
 import type { AiRunRecord } from '@/types/app'
 
+const message = useMessage()
 const appStore = useAppStore()
 const isFetchingModels = ref(false)
 const fetchedModels = ref<Array<{ id: string }>>([])
 const logVisible = ref(false)
 const LOG_PAGE_SIZE = 30
 const visibleLogCount = ref(LOG_PAGE_SIZE)
+const selectedRunIds = ref<Set<string>>(new Set())
+const isExporting = ref(false)
 
 const profileOptions = computed(() =>
   appStore.appSettings.aiProfiles.map(p => ({ label: p.name, value: p.id }))
@@ -245,12 +248,103 @@ function openLogModal(): void {
 function loadMoreAiRunLogs(): void {
   visibleLogCount.value += LOG_PAGE_SIZE
 }
+
+const isAllSelected = computed(() =>
+  aiRunLogs.value.length > 0 && aiRunLogs.value.every((item) => selectedRunIds.value.has(item.id))
+)
+
+function toggleSelectAll(): void {
+  if (isAllSelected.value) {
+    selectedRunIds.value = new Set()
+  } else {
+    selectedRunIds.value = new Set(aiRunLogs.value.map((item) => item.id))
+  }
+}
+
+function toggleSelectRun(id: string): void {
+  const next = new Set(selectedRunIds.value)
+  if (next.has(id)) {
+    next.delete(id)
+  } else {
+    next.add(id)
+  }
+  selectedRunIds.value = next
+}
+
+function openGlobalRecycleBin(): void {
+  logVisible.value = false
+  appStore.openRecycleBin('global')
+}
+
+function exportAiRuns(format: 'txt' | 'markdown' | 'json' | 'xlsx', rows: Array<Record<string, unknown>>): Promise<boolean> {
+  return window.characterArc.exportAiRuns({
+    format,
+    rows,
+    defaultFileName: 'AI调用日志'
+  }).then((result) => {
+    if (result.success) {
+      message.success('AI 调用日志已导出')
+      return true
+    }
+    if (!result.canceled && result.error) {
+      message.error(result.error)
+    }
+    return false
+  }).catch((error) => {
+    message.error(error instanceof Error ? error.message : '导出失败')
+    return false
+  })
+}
+
+function toExportRows(runs: AiRunRecord[]): Array<Record<string, unknown>> {
+  return runs.map((run) => ({
+    任务: formatTaskLabel(run.task, run.clientKey),
+    厂商: run.provider,
+    模型: run.model,
+    状态: statusMeta[run.status]?.label || run.status,
+    开始时间: run.startedAt ? formatTime(run.startedAt) : '',
+    结束时间: run.finishedAt ? formatTime(run.finishedAt) : '',
+    耗时: formatDuration(run.durationMs),
+    token用量: formatTokenUsage(run),
+    关联项目: projectTitleFor(run),
+    关联章节: chapterTitleFor(run),
+    响应预览: run.responsePreview || '',
+    错误信息: run.error || ''
+  }))
+}
+
+async function handleExport(format: 'txt' | 'markdown' | 'json' | 'xlsx'): Promise<void> {
+  const target = selectedRunIds.value.size > 0
+    ? aiRunLogs.value.filter((item) => selectedRunIds.value.has(item.id))
+    : aiRunLogs.value
+  if (!target.length) {
+    message.warning('没有可导出的记录')
+    return
+  }
+  if (isExporting.value) return
+  isExporting.value = true
+  try {
+    await exportAiRuns(format, toExportRows(target))
+  } finally {
+    isExporting.value = false
+  }
+}
+
+function handleBatchDelete(): void {
+  if (!selectedRunIds.value.size) {
+    message.warning('请先勾选要删除的日志')
+    return
+  }
+  const ids = [...selectedRunIds.value]
+  appStore.moveAiRunsToRecycle(ids)
+  selectedRunIds.value = new Set()
+  message.success(`已将 ${ids.length} 条日志移入全局回收站`)
+}
 </script>
 
 <template>
   <div v-if="hasProfiles" class="titlebar-switcher">
     <div class="switcher-combined" title="模型切换">
-      <span class="switcher-label">模型</span>
       <n-select
         :value="activeProfileId"
         :options="profileOptions"
@@ -295,12 +389,53 @@ function loadMoreAiRunLogs(): void {
     preset="card"
     class="ai-log-modal"
     :bordered="false"
-    :style="{ width: 'min(680px, calc(100vw - 24px))' }"
+    :style="{ width: 'min(720px, calc(100vw - 24px))' }"
     @close="logVisible = false"
   >
     <div class="ai-log-modal__summary">
       <strong>AI 调用日志</strong>
       <span>全部调用 · {{ aiRunLogs.length }} 条记录</span>
+    </div>
+
+    <div v-if="aiRunLogs.length" class="ai-log-toolbar">
+      <label class="ai-log-select-all">
+        <n-checkbox :checked="isAllSelected" @update:checked="toggleSelectAll" />
+        <span>全选</span>
+      </label>
+      <div class="ai-log-toolbar__spacer" />
+      <div class="ai-log-toolbar__actions">
+        <button
+          class="ai-log-tool-btn"
+          type="button"
+          :disabled="!selectedRunIds.size"
+          title="删除所选日志（移入全局回收站）"
+          @click="handleBatchDelete"
+        >
+          <Trash2 :size="13" />
+          <span>批量删除</span>
+        </button>
+        <div class="ai-log-export">
+          <button class="ai-log-tool-btn" type="button" :disabled="isExporting" title="导出所选（未勾选则导出全部）">
+            <Download :size="13" />
+            <span>导出</span>
+          </button>
+          <div class="ai-log-export__menu">
+            <button type="button" @click="handleExport('txt')"><FileText :size="13" /><span>TXT</span></button>
+            <button type="button" @click="handleExport('markdown')"><FileDown :size="13" /><span>Markdown</span></button>
+            <button type="button" @click="handleExport('json')"><FileJson :size="13" /><span>JSON</span></button>
+            <button type="button" @click="handleExport('xlsx')"><FileCode :size="13" /><span>Excel</span></button>
+          </div>
+        </div>
+        <button
+          class="ai-log-tool-btn ai-log-tool-btn--recycle"
+          type="button"
+          title="前往全局回收站查看已删除内容"
+          @click="openGlobalRecycleBin"
+        >
+          <ArchiveRestore :size="13" />
+          <span>全局回收站</span>
+        </button>
+      </div>
     </div>
 
     <div v-if="!aiRunLogs.length" class="ai-log-empty">
@@ -312,46 +447,51 @@ function loadMoreAiRunLogs(): void {
         v-for="item in visibleAiRunLogs"
         :key="item.run.id"
         class="ai-log-card"
-        :class="`ai-log-card--${item.run.status}`"
+        :class="[`ai-log-card--${item.run.status}`, { 'ai-log-card--selected': selectedRunIds.has(item.run.id) }]"
       >
-        <div class="ai-log-card__head">
-          <div class="ai-log-card__title">
-            <div class="ai-log-card__title-row">
-              <strong>{{ item.taskLabel }}</strong>
-              <span class="ai-log-card__run-id">#{{ item.run.id.slice(-6) }}</span>
+        <div class="ai-log-card__select" @click.stop>
+          <n-checkbox :checked="selectedRunIds.has(item.run.id)" @update:checked="toggleSelectRun(item.run.id)" />
+        </div>
+        <div class="ai-log-card__body">
+          <div class="ai-log-card__head">
+            <div class="ai-log-card__title">
+              <div class="ai-log-card__title-row">
+                <strong>{{ item.taskLabel }}</strong>
+                <span class="ai-log-card__run-id">#{{ item.run.id.slice(-6) }}</span>
+              </div>
+              <span>{{ item.run.provider }} / {{ item.run.model }}</span>
             </div>
-            <span>{{ item.run.provider }} / {{ item.run.model }}</span>
+            <n-tag size="small" :type="statusMeta[item.run.status]?.type || 'default'" :bordered="false">
+              {{ statusMeta[item.run.status]?.label || item.run.status }}
+            </n-tag>
           </div>
-          <n-tag size="small" :type="statusMeta[item.run.status]?.type || 'default'" :bordered="false">
-            {{ statusMeta[item.run.status]?.label || item.run.status }}
-          </n-tag>
-        </div>
 
-        <div class="ai-log-card__meta">
-          <span v-if="item.projectTitle">关联项目：{{ item.projectTitle }}</span>
-          <span>开始：{{ item.startedAt }}</span>
-          <span>耗时：{{ item.duration }}</span>
-          <span>{{ item.tokenUsage }}</span>
-        </div>
+          <div class="ai-log-card__meta">
+            <span v-if="item.projectTitle">关联项目：{{ item.projectTitle }}</span>
+            <span>开始：{{ item.startedAt }}</span>
+            <span>耗时：{{ item.duration }}</span>
+            <span>{{ item.tokenUsage }}</span>
+          </div>
 
-        <div v-if="item.chapterTitle" class="ai-log-card__chapter">
-          关联章节：{{ item.chapterTitle }}
-        </div>
+          <div v-if="item.chapterTitle" class="ai-log-card__chapter">
+            关联章节：{{ item.chapterTitle }}
+          </div>
 
-        <div v-if="item.run.responsePreview" class="ai-log-card__preview">
-          <span class="ai-log-card__section-label">响应预览</span>
-          {{ item.run.responsePreview }}
-        </div>
+          <div v-if="item.run.responsePreview" class="ai-log-card__preview">
+            <span class="ai-log-card__section-label">响应预览</span>
+            {{ item.run.responsePreview }}
+          </div>
 
-        <div v-if="item.run.error" class="ai-log-card__error">
-          <span class="ai-log-card__section-label">错误信息</span>
-          {{ item.run.error }}
-        </div>
+          <div v-if="item.run.error" class="ai-log-card__error">
+            <span class="ai-log-card__section-label">错误信息</span>
+            {{ item.run.error }}
+          </div>
 
-        <div class="ai-log-card__foot">
-          <span class="ai-log-chip">工具读取：{{ item.readStats.reads }} 次 / 命中资料：{{ item.readStats.hits }} 条</span>
-          <span v-if="item.run.repairTriggered" class="ai-log-chip">触发过结构化修复</span>
-          <span v-if="item.finishedAt" class="ai-log-chip">结束：{{ item.finishedAt }}</span>
+          <div class="ai-log-card__foot">
+            <span class="ai-log-chip">工具读取：{{ item.readStats.reads }} 次 / 命中资料：{{ item.readStats.hits }} 条</span>
+            <span v-if="item.run.repairTriggered" class="ai-log-chip">触发过结构化修复</span>
+            <span v-if="item.finishedAt" class="ai-log-chip">结束：{{ item.finishedAt }}</span>
+          </div>
         </div>
       </article>
 
@@ -366,6 +506,7 @@ function loadMoreAiRunLogs(): void {
       </button>
     </div>
   </n-modal>
+</template>
 </template>
 
 <style scoped>
@@ -390,21 +531,6 @@ function loadMoreAiRunLogs(): void {
 
 .switcher-combined:hover {
   border-color: var(--arc-border-strong);
-}
-
-.switcher-combined .switcher-label {
-  display: inline-flex;
-  align-items: center;
-  height: 100%;
-  padding: 0 8px 0 9px;
-  border-right: 1px solid var(--arc-border);
-  background: var(--arc-bg-weak);
-  color: var(--arc-text-hint);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  user-select: none;
-  white-space: nowrap;
 }
 
 .switcher-profile {
@@ -716,6 +842,131 @@ function loadMoreAiRunLogs(): void {
     align-items: flex-start;
     gap: 6px;
   }
+}
+
+.ai-log-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--arc-border);
+  border-radius: 10px;
+  background: var(--arc-bg-weak);
+}
+
+.ai-log-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--arc-text-secondary);
+  font-size: 12px;
+  user-select: none;
+  cursor: pointer;
+}
+
+.ai-log-toolbar__spacer {
+  flex: 1 1 auto;
+}
+
+.ai-log-toolbar__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ai-log-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--arc-border);
+  border-radius: 6px;
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.ai-log-tool-btn:hover:not(:disabled) {
+  border-color: var(--arc-border-strong);
+  color: var(--arc-text-primary);
+  background: var(--arc-bg-weak);
+}
+
+.ai-log-tool-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ai-log-export {
+  position: relative;
+  display: inline-flex;
+}
+
+.ai-log-export__menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 140px;
+  padding: 4px;
+  border: 1px solid var(--arc-border);
+  border-radius: 10px;
+  background: var(--arc-bg-surface);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+}
+
+.ai-log-export:hover .ai-log-export__menu,
+.ai-log-export:focus-within .ai-log-export__menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ai-log-export__menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+  transition: background 0.15s, color 0.15s;
+}
+
+.ai-log-export__menu button:hover {
+  background: var(--arc-bg-weak);
+  color: var(--arc-text-primary);
+}
+
+.ai-log-card {
+  display: flex;
+  gap: 10px;
+}
+
+.ai-log-card__select {
+  display: flex;
+  align-items: flex-start;
+  padding-top: 14px;
+  flex: 0 0 auto;
+}
+
+.ai-log-card__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ai-log-card--selected {
+  border-color: color-mix(in srgb, var(--arc-primary) 55%, var(--arc-border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--arc-primary) 28%, transparent), 0 8px 20px rgba(15, 23, 42, 0.08);
 }
 
 .spinning {

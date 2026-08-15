@@ -67,6 +67,8 @@ contextBridge.exposeInMainWorld('characterArc', {
   exportChapterTxt: (payload: unknown) => ipcRenderer.invoke('characterarc:export-chapter-txt', toIpcPayload(payload)),
   /** 将单个章节导出为 DOCX */
   exportChapterDocx: (payload: unknown) => ipcRenderer.invoke('characterarc:export-chapter-docx', toIpcPayload(payload)),
+  /** 导出 AI 调用日志（支持 txt / markdown / json / xlsx） */
+  exportAiRuns: (payload: unknown) => ipcRenderer.invoke('characterarc:export-ai-runs', toIpcPayload(payload)),
   /** 从 JSON 文件导入项目数据 */
   importJson: () => ipcRenderer.invoke('characterarc:import-json'),
   /** 批量导入世界观设定（txt/md/json） */

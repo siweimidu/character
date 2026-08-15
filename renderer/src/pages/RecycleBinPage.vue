@@ -45,14 +45,15 @@ const CATEGORY_META: Record<RecycleBinCategory, { label: string; color: string }
   'project': { label: '项目', color: '#f43f5e' },
   'ai-profile': { label: 'AI 接口配置', color: '#8b5cf6' },
   'reference-work': { label: '参考作品', color: '#06b6d4' },
-  'skill': { label: '项目 Skills', color: '#a855f7' }
+  'skill': { label: '项目 Skills', color: '#a855f7' },
+  'ai-run': { label: 'AI 调用日志', color: '#3b82f6' }
 }
 
 /** 是否处于全局视图（用于展示“所有项目”提示） */
 const isGlobalScope = computed(() => appStore.recycleBinScope === 'global')
 
 /** 仅在全局回收站展示的类别（AI 接口配置、项目 Skills 等全局数据） */
-const GLOBAL_ONLY_CATEGORIES = new Set<RecycleBinCategory>(['ai-profile', 'reference-work', 'skill'])
+const GLOBAL_ONLY_CATEGORIES = new Set<RecycleBinCategory>(['ai-profile', 'reference-work', 'skill', 'ai-run'])
 
 /** 当前范围下可见的类别（全局类别仅在全局回收站展示，项目/汇总视图不显示） */
 const visibleCategories = computed(() =>
@@ -83,7 +84,8 @@ const CATEGORY_ICON: Record<RecycleBinCategory, unknown> = {
   'project': BookMarked,
   'ai-profile': Settings2,
   'reference-work': FileCheck2,
-  'skill': Sparkles
+  'skill': Sparkles,
+  'ai-run': FileCheck2
 }
 
 /** 当前选中的类别筛选；'all' 表示全部 */
