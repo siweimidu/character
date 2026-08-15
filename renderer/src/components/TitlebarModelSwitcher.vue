@@ -249,26 +249,28 @@ function loadMoreAiRunLogs(): void {
 
 <template>
   <div v-if="hasProfiles" class="titlebar-switcher">
-    <span class="switcher-label">模型切换:</span>
-    <n-select
-      :value="activeProfileId"
-      :options="profileOptions"
-      size="tiny"
-      class="switcher-profile"
-      :consistent-menu-width="false"
-      @update:value="(v: string) => { activeProfileId = v; fetchedModels = [] }"
-    />
-    <span class="switcher-sep" />
-    <n-select
-      :value="activeModel"
-      :options="modelOptions"
-      size="tiny"
-      class="switcher-model"
-      filterable
-      tag
-      :consistent-menu-width="false"
-      @update:value="(v: string) => { activeModel = v }"
-    />
+    <div class="switcher-combined" title="模型切换">
+      <span class="switcher-label">模型切换:</span>
+      <n-select
+        :value="activeProfileId"
+        :options="profileOptions"
+        size="tiny"
+        class="switcher-profile"
+        :consistent-menu-width="false"
+        @update:value="(v: string) => { activeProfileId = v; fetchedModels = [] }"
+      />
+      <span class="switcher-sep" />
+      <n-select
+        :value="activeModel"
+        :options="modelOptions"
+        size="tiny"
+        class="switcher-model"
+        filterable
+        tag
+        :consistent-menu-width="false"
+        @update:value="(v: string) => { activeModel = v }"
+      />
+    </div>
     <button
       class="switcher-refresh"
       title="刷新模型列表"
@@ -375,20 +377,65 @@ function loadMoreAiRunLogs(): void {
   app-region: no-drag;
 }
 
-.switcher-label {
+.switcher-combined {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 26px;
+  border: 1px solid var(--arc-border);
+  border-radius: 6px;
+  background: var(--arc-bg-surface);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.switcher-combined:hover {
+  border-color: var(--arc-border-strong);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--arc-primary) 10%, transparent);
+}
+
+.switcher-combined .switcher-label {
   color: var(--arc-text-hint);
   font-size: 11px;
   font-weight: 600;
+  margin-left: 8px;
   margin-right: 2px;
   user-select: none;
+  white-space: nowrap;
+  opacity: 0;
+  width: 0;
+  overflow: hidden;
+  transition: opacity 0.15s;
+}
+
+.switcher-combined:hover .switcher-label {
+  opacity: 1;
+  width: auto;
 }
 
 .switcher-profile {
-  width: 120px;
+  width: 112px;
+  flex: 0 0 auto;
 }
 
 .switcher-model {
-  width: 160px;
+  width: 150px;
+  flex: 0 0 auto;
+}
+
+.switcher-combined :deep(.n-base-selection) {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.switcher-combined :deep(.n-base-selection:hover),
+.switcher-combined :deep(.n-base-selection.n-base-selection--active) {
+  box-shadow: none !important;
+}
+
+.switcher-combined :deep(.n-base-selection__input input),
+.switcher-combined :deep(.n-base-selection-label) {
+  font-size: 12px;
 }
 
 .switcher-sep {
@@ -396,6 +443,7 @@ function loadMoreAiRunLogs(): void {
   height: 16px;
   background: var(--arc-border);
   margin: 0 2px;
+  flex: 0 0 auto;
 }
 
 .switcher-refresh {
