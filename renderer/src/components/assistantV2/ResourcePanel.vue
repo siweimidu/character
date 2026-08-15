@@ -12,12 +12,14 @@ import { onMounted, ref } from 'vue'
 import { useMessage } from 'naive-ui'
 import {
   ChevronRight,
+  FilePlus,
   FileText,
   Folder,
   FolderOpen,
   FolderPlus,
   RefreshCw,
-  Trash2
+  Trash2,
+  UnfoldHorizontal
 } from 'lucide-vue-next'
 import type { AgentFsEntry } from '@shared/agent-modules'
 import ResourceNode from './ResourceNode.vue'
@@ -179,6 +181,68 @@ async function backToDefaultRoot(): Promise<void> {
   if (res?.path) await loadRoot(res.path)
 }
 
+// ── 新建文件 / 新建文件夹 ──
+const createVisible = ref(false)
+const createMode = ref<'file' | 'folder'>('file')
+const createName = ref('')
+const createContent = ref('')
+
+function openCreateFile(): void {
+  createMode.value = 'file'
+  createName.value = ''
+  createContent.value = ''
+  createVisible.value = true
+}
+
+function openCreateFolder(): void {
+  createMode.value = 'folder'
+  createName.value = ''
+  createContent.value = ''
+  createVisible.value = true
+}
+
+async function confirmCreate(): Promise<void> {
+  const name = createName.value.trim()
+  if (!name) {
+    message.warning('请输入名称')
+    return
+  }
+  if (!root.value?.path) {
+    message.warning('请先打开一个工作区')
+    return
+  }
+  const target = `${root.value.path.replace(/[\\/]+$/, '')}/${name}`
+  try {
+    if (createMode.value === 'folder') {
+      await window.characterArc.agentModules.fsMkdir({ path: target })
+      message.success(`已新建文件夹「${name}」`)
+    } else {
+      await window.characterArc.agentModules.fsWrite({ path: target, content: createContent.value })
+      message.success(`已新建文件「${name}」`)
+    }
+    createVisible.value = false
+    await refresh()
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : '创建失败')
+  }
+}
+
+/** 全部折叠：将资源区所有目录收起。 */
+function collapseAll(): void {
+  const stack: TreeNode[] = root.value ? [root.value] : []
+  while (stack.length) {
+    const node = stack.pop()
+    if (!node) continue
+    if (node.isDirectory) node.expanded = false
+    for (const child of node.children) stack.push(child)
+  }
+  if (root.value) {
+    // 根目录默认保持展开，仅收起其下各级目录
+    root.value.expanded = true
+    message.success('已折叠全部文件夹')
+  }
+}
+
 onMounted(() => {
   // 默认打开工作区根目录（智能体产物所在位置）
   void backToDefaultRoot()
@@ -194,11 +258,17 @@ defineExpose({ refresh, loadRoot, pickWorkspace })
       <div class="rp-title-row">
         <span class="rp-title">资源区</span>
         <div class="rp-actions">
-          <button type="button" class="rp-btn" title="打开工作区（选择文件夹）" @click="pickWorkspace">
+          <button type="button" class="rp-btn" title="新建文件" @click="openCreateFile">
+            <FilePlus :size="14" />
+          </button>
+          <button type="button" class="rp-btn" title="新建文件夹" @click="openCreateFolder">
             <FolderPlus :size="14" />
           </button>
           <button type="button" class="rp-btn" title="刷新" @click="refresh">
             <RefreshCw :size="14" />
+          </button>
+          <button type="button" class="rp-btn" title="全部折叠" @click="collapseAll">
+            <UnfoldHorizontal :size="14" />
           </button>
         </div>
       </div>
@@ -260,6 +330,40 @@ defineExpose({ refresh, loadRoot, pickWorkspace })
           <button type="button" class="rp-modal-close" @click="previewVisible = false">×</button>
         </div>
         <pre class="rp-modal-content arc-scrollbar">{{ previewLoading ? '加载中…' : previewContent }}</pre>
+      </div>
+    </div>
+
+    <!-- 新建文件 / 新建文件夹弹窗 -->
+    <div v-if="createVisible" class="rp-modal">
+      <div class="rp-modal-card rp-create-card">
+        <div class="rp-modal-head">
+          <span class="rp-modal-title">{{ createMode === 'file' ? '新建文件' : '新建文件夹' }}</span>
+          <button type="button" class="rp-modal-close" @click="createVisible = false">×</button>
+        </div>
+        <div class="rp-create-body">
+          <label class="rp-create-field">
+            <span class="rp-create-label">名称</span>
+            <input
+              v-model="createName"
+              class="rp-create-input"
+              :placeholder="createMode === 'file' ? '例如：index.html / 资料.md' : '例如：素材'"
+              @keydown.enter="confirmCreate"
+            />
+          </label>
+          <label v-if="createMode === 'file'" class="rp-create-field">
+            <span class="rp-create-label">内容（可选）</span>
+            <textarea
+              v-model="createContent"
+              class="rp-create-input rp-create-textarea"
+              rows="5"
+              placeholder="文件内容"
+            />
+          </label>
+          <div class="rp-create-actions">
+            <button type="button" class="rp-create-btn" @click="createVisible = false">取消</button>
+            <button type="button" class="rp-create-btn rp-create-btn-primary" @click="confirmCreate">确定</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -504,5 +608,71 @@ defineExpose({ refresh, loadRoot, pickWorkspace })
   color: var(--arc-text-primary);
   white-space: pre-wrap;
   word-break: break-all;
+}
+.rp-create-card {
+  width: min(440px, 90vw);
+  height: auto;
+}
+.rp-create-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+}
+.rp-create-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rp-create-label {
+  font-size: 12px;
+  color: var(--arc-text-secondary);
+}
+.rp-create-input {
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  background: var(--arc-bg-panel);
+  color: var(--arc-text-primary);
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+.rp-create-input:focus {
+  border-color: var(--arc-primary);
+}
+.rp-create-textarea {
+  resize: vertical;
+  font-family: 'JetBrains Mono', monospace;
+}
+.rp-create-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+.rp-create-btn {
+  border: 1px solid var(--arc-border);
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  font-size: 12.5px;
+  padding: 7px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+.rp-create-btn:hover {
+  border-color: var(--arc-primary);
+  color: var(--arc-primary);
+}
+.rp-create-btn-primary {
+  background: var(--arc-primary);
+  border-color: var(--arc-primary);
+  color: #fff;
+}
+.rp-create-btn-primary:hover {
+  background: var(--arc-primary-soft);
+  color: var(--arc-primary);
 }
 </style>

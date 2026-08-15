@@ -915,7 +915,7 @@ watch(
           </NButton>
           <NButton
             size="small"
-            title="添加文件引用（当前章节）"
+            title="添加文件引用"
             quaternary
             :disabled="props.isStreaming"
             @click="emit('attach')"
