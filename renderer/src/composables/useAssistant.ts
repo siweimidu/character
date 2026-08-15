@@ -1039,8 +1039,8 @@ export function useAssistant(options: UseAssistantOptions) {
 
   async function undoTurn(turnId: string): Promise<TurnTruncateResult | null> {
     const index = turns.value.findIndex((turn) => turn.id === turnId)
-    if (index < 0 || index !== turns.value.length - 1) {
-      lastError.value = '只能撤回最后一轮对话。'
+    if (index < 0) {
+      lastError.value = '撤回的对话不存在。'
       return null
     }
     // 记录被撤回这轮携带的模式/命令意图，撤回后连带恢复（如“标准模式”芯片）

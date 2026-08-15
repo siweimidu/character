@@ -107,20 +107,6 @@ export async function importDshPlugin(
   }
 
   const moduleId = `plugin.${normalized.replace(/[^a-z0-9_.-]/g, '-')}`
-  register({
-    id: moduleId,
-    name,
-    description,
-    kind: 'plugin',
-    source: 'marketplace',
-    scope: 'global',
-    enabledByDefault: false,
-    risk: 'medium',
-    toolNames: [],
-    version: '1.0.0',
-    icon: 'Puzzle',
-    author: repo.split('/')[0] ?? 'dsh-plugin'
-  })
 
   const installed: InstalledPlugin = {
     id: moduleId,
@@ -131,6 +117,7 @@ export async function importDshPlugin(
     author: repo.split('/')[0] ?? 'dsh-plugin',
     installedAt: new Date().toISOString()
   }
+  register(buildPluginModuleDefinition(installed))
   plugins.push(installed)
   await writeInstalledPlugins(plugins)
 
@@ -156,6 +143,30 @@ export async function uninstallDshPlugin(
 /** 列出已导入插件。 */
 export async function listInstalledPlugins(): Promise<InstalledPlugin[]> {
   return readInstalledPlugins()
+}
+
+/**
+ * 由已安装插件记录构建能力模块定义。
+ *
+ * 用于应用重启后从持久化清单重建插件能力模块（插件注册本身只存在于内存
+ * registry，重启后若不重建，会出现「插件市场显示已导入、能力模块里却没有」
+ * 的问题）。字段与 importDshPlugin 注册时保持一致。
+ */
+export function buildPluginModuleDefinition(installed: InstalledPlugin): AgentModuleDefinition {
+  return {
+    id: installed.id,
+    name: installed.name,
+    description: installed.description,
+    kind: 'plugin',
+    source: 'marketplace',
+    scope: 'global',
+    enabledByDefault: false,
+    risk: 'medium',
+    toolNames: [],
+    version: installed.version ?? '1.0.0',
+    icon: 'Puzzle',
+    author: installed.author ?? installed.repo.split('/')[0] ?? 'dsh-plugin'
+  }
 }
 
 export { pluginStorePath }

@@ -30,7 +30,7 @@ import {
   type PluginImportRequest,
   type PluginListRequest
 } from '@shared/agent-modules'
-import { getAgentModuleRegistry } from './bootstrap'
+import { getAgentModuleRegistry, ensurePluginsRebuilt } from './bootstrap'
 import { KNOWN_MCP_MARKETS } from './tools/mcp'
 import {
   listDshPlugins,
@@ -68,8 +68,10 @@ function formatSize(n: number): string {
  */
 export function registerAgentModuleIpcHandlers(): void {
   // ==================== 模块列表 / 启停 / 配置 ====================
-  ipcMain.handle(CH.MODULE_LIST, (_evt, payload: AgentModuleListRequest) => {
+  ipcMain.handle(CH.MODULE_LIST, async (_evt, payload: AgentModuleListRequest) => {
     const registry = getAgentModuleRegistry()
+    // 等待插件能力模块重建完成，保证「插件市场已导入」的插件在能力模块中一致可见。
+    await ensurePluginsRebuilt()
     return registry.list({ scope: payload?.scope, kind: payload?.kind })
   })
 

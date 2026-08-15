@@ -11,6 +11,7 @@ import { createSystemFileTools } from './tools/system-filesystem'
 import { createExecTools } from './tools/exec'
 import { createMcpTools } from './tools/mcp'
 import { SqliteNovelAccessor } from './mcp-novel-server'
+import { listInstalledPlugins, buildPluginModuleDefinition } from './tools/plugin'
 import type { DatabaseSync } from 'node:sqlite'
 
 /** 全局唯一模块注册表实例。 */
@@ -104,7 +105,37 @@ export function initAgentModuleRegistry(): AgentModuleRegistry {
     createTools: () => []
   })
 
+  // 重建已导入的插件能力模块（插件注册只存在于内存 registry，重启后需从
+  // 持久化清单恢复，否则会出现「插件市场显示已导入、能力模块里却没有」的 bug）。
+  pluginsRebuild = rebuildInstalledPlugins(registry)
+
   return registry
+}
+
+/** 插件能力模块重建任务（供查询前 await，避免首次查询读到未注册的竞态）。 */
+let pluginsRebuild: Promise<void> | null = null
+
+/**
+ * 等待已导入插件能力模块重建完成。
+ * 供模块列表等 IPC 查询前调用，保证「插件市场已导入」与「能力模块」始终一致。
+ */
+export function ensurePluginsRebuilt(): Promise<void> {
+  return pluginsRebuild ?? Promise.resolve()
+}
+
+/**
+ * 从持久化插件清单重新注册已导入的插件能力模块，保证重启后仍能在
+ * 「能力模块」中看到并启停它们。
+ */
+async function rebuildInstalledPlugins(reg: AgentModuleRegistry): Promise<void> {
+  try {
+    const installed = await listInstalledPlugins()
+    for (const plugin of installed) {
+      reg.register({ definition: buildPluginModuleDefinition(plugin) })
+    }
+  } catch {
+    // 插件清单读取失败不影响应用启动，静默跳过。
+  }
 }
 
 /** 获取模块注册中心（未初始化时惰性初始化）。 */
@@ -126,4 +157,5 @@ export function attachAgentModuleStore(db: DatabaseSync): void {
 export function resetAgentModuleRegistryForTest(): void {
   registry = null
   moduleStore = null
+  pluginsRebuild = null
 }

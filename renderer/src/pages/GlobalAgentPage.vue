@@ -410,6 +410,77 @@ async function handleUndoTurn(turnId: string): Promise<void> {
   const result = await assistant.undoTurn(turnId)
   if (result) notifyTruncate(result, '撤回')
 }
+
+// ============================================================================
+// 对话流右侧透明横条：悬浮放大、点击跳转、悬浮显示缩略内容
+// ============================================================================
+const gaFlowRef = ref<HTMLElement | null>(null)
+const turnNodes = ref<Record<string, HTMLElement | null>>({})
+const railHoverIdx = ref<number | null>(null)
+/** 对话流滚动标记，用于刷新横条 active 高亮。 */
+const railScrollTick = ref(0)
+function onFlowScroll(): void {
+  railScrollTick.value++
+}
+
+function setTurnNode(turnId: string, el: unknown): void {
+  if (el) {
+    // FlowNodeView 为单根组件，Vue 会把根元素暴露给函数式 ref。
+    const root = (el as { $el?: HTMLElement }).$el ?? (el as HTMLElement)
+    turnNodes.value[turnId] = root as HTMLElement
+  }
+}
+
+/** 点击横条，滚动到对应轮次对话。 */
+function jumpToTurnIndex(idx: number): void {
+  const msg = assistant.messages.value[idx]
+  if (!msg) return
+  const el = turnNodes.value[msg.turnId]
+  if (el && gaFlowRef.value) {
+    const top = el.offsetTop - gaFlowRef.value.clientHeight * 0.28
+    gaFlowRef.value.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+  }
+}
+
+/** 该轮对话当前是否位于可视区内（用于高亮对应横条）。 */
+function isTurnInView(turnId: string): boolean {
+  // 依赖 railScrollTick 使滚动时重新计算（仅用于建立响应式依赖）
+  void railScrollTick.value
+  const el = turnNodes.value[turnId]
+  if (!el || !gaFlowRef.value) return false
+  const containerRect = gaFlowRef.value.getBoundingClientRect()
+  const elRect = el.getBoundingClientRect()
+  const top = elRect.top - containerRect.top
+  const h = gaFlowRef.value.clientHeight
+  return top > -40 && top < h + 40
+}
+
+/** 悬浮横条时展示的缩略内容（优先取用户提问，否则取助手回复摘要）。 */
+const railHoverText = computed(() => {
+  if (railHoverIdx.value === null) return ''
+  const msg = assistant.messages.value[railHoverIdx.value]
+  if (!msg) return ''
+  const raw = (msg.userMessage || msg.assistantMessage || '').replace(/\s+/g, ' ').trim()
+  return raw.length > 120 ? raw.slice(0, 120) + '…' : raw
+})
+
+/** 缩略内容浮层定位：跟随当前悬浮横条，避免超出右侧/顶部。 */
+const railTipStyle = computed(() => {
+  const idx = railHoverIdx.value
+  const msg = idx !== null ? assistant.messages.value[idx] : undefined
+  if (!msg || !gaFlowRef.value) return {}
+  const el = turnNodes.value[msg.turnId]
+  if (!el || !gaFlowRef.value) return {}
+  // tooltip 定位在右侧 rail 旁：把当前轮次在可视区内的位置作为 tooltip 的 top，
+  // 使缩略内容贴近对应对话出现，便于对照。
+  const containerRect = gaFlowRef.value.getBoundingClientRect()
+  const elRect = el.getBoundingClientRect()
+  // 相对可视区（滚动容器）的垂直位置，作为绝对定位的 top，使浮层贴近对应对话。
+  const top = elRect.top - containerRect.top + gaFlowRef.value.scrollTop
+  const clamped = Math.max(8, Math.min(top, gaFlowRef.value.clientHeight - 8 + gaFlowRef.value.scrollTop))
+  return { top: `${clamped}px` }
+})
+
 async function handleResendTurn(): Promise<void> {
   const result = await assistant.resendEditedTurn({ intentHint: 'global-assistant-v2:chat' })
   if (result) notifyTruncate(result, '重新分叉')
@@ -706,11 +777,14 @@ function handleVoiceInput(): void {
       <!-- 对话流（自动折叠） -->
       <div
         v-if="assistant.messages.value.length > 0 || assistant.isStreaming.value"
+        ref="gaFlowRef"
         class="ga-flow arc-scrollbar"
+        @scroll.passive="onFlowScroll"
       >
         <FlowNodeView
           v-for="msg in assistant.messages.value"
           :key="msg.turnId"
+          :ref="(el) => setTurnNode(msg.turnId, el)"
           :message="msg"
           :auto-collapse="true"
           @edit-start="() => handleEditStart(msg)"
@@ -718,6 +792,34 @@ function handleVoiceInput(): void {
           @resend="() => handleResendTurn()"
           @copy="() => copyMessage(msg.assistantMessage)"
         />
+
+        <!-- 右侧透明横条：悬浮放大、点击跳转、悬浮显示缩略内容 -->
+        <div
+          v-if="assistant.messages.value.length > 1"
+          class="ga-turn-rail"
+          aria-hidden="true"
+        >
+          <button
+            v-for="(msg, idx) in assistant.messages.value"
+            :key="'ga-rail-' + msg.turnId"
+            type="button"
+            class="ga-rail-tick"
+            :class="{ active: isTurnInView(msg.turnId), hover: railHoverIdx === idx }"
+            @mouseenter="railHoverIdx = idx"
+            @mouseleave="railHoverIdx = null"
+            @click="jumpToTurnIndex(idx)"
+          />
+        </div>
+
+        <!-- 悬浮横条时显示的缩略内容浮层（相对对话流容器定位） -->
+        <div
+          v-if="railHoverIdx !== null && assistant.messages.value[railHoverIdx]"
+          class="ga-rail-tip"
+          :style="railTipStyle"
+        >
+          <span class="ga-rail-tip-label">第 {{ railHoverIdx + 1 }} 轮对话</span>
+          <span class="ga-rail-tip-text">{{ railHoverText }}</span>
+        </div>
       </div>
 
       <!-- Hero 空状态 -->
@@ -1241,6 +1343,78 @@ function handleVoiceInput(): void {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  position: relative;
+}
+
+/* ── 对话流右侧透明横条（悬浮放大 / 点击跳转 / 悬浮显示缩略内容）── */
+.ga-turn-rail {
+  position: sticky;
+  top: 50%;
+  transform: translateY(-50%);
+  align-self: flex-end;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 12px;
+  flex: 0 0 auto;
+  margin-top: -18px;
+  pointer-events: none;
+}
+.ga-rail-tick {
+  flex: 0 1 auto;
+  width: 6px;
+  min-height: 4px;
+  max-height: 16px;
+  border: none;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--arc-text-primary) 16%, transparent);
+  cursor: pointer;
+  padding: 0;
+  opacity: 0.9;
+  transition: background 0.18s ease, transform 0.18s ease, width 0.18s ease, flex-basis 0.18s ease;
+  pointer-events: auto;
+}
+.ga-rail-tick:hover,
+.ga-rail-tick.hover {
+  background: color-mix(in srgb, var(--arc-primary) 60%, transparent);
+  transform: scaleX(2.4);
+  width: 13px;
+}
+.ga-rail-tick.active {
+  background: color-mix(in srgb, var(--arc-primary) 75%, transparent);
+}
+.ga-rail-tip {
+  position: absolute;
+  right: 48px;
+  transform: translateY(-50%);
+  max-width: 260px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--arc-border-strong);
+  background: color-mix(in srgb, var(--arc-bg-surface) 94%, transparent);
+  box-shadow: var(--arc-shadow-lg);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--arc-text-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  pointer-events: none;
+  z-index: 12;
+  backdrop-filter: blur(4px);
+}
+.ga-rail-tip-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--arc-primary);
+}
+.ga-rail-tip-text {
+  min-width: 0;
+  overflow-wrap: break-word;
+  color: var(--arc-text-secondary);
 }
 .ga-starter {
   flex: 1;
