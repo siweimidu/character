@@ -14,8 +14,7 @@ import type {
   AgentModuleDefinition,
   AgentModuleKind,
   AgentModuleRuntime,
-  AgentModuleScope,
-  AgentModuleStatus
+  AgentModuleScope
 } from '@shared/agent-modules'
 import { BUILTIN_AGENT_MODULES } from '@shared/agent-modules'
 

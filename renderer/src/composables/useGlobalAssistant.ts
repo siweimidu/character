@@ -1,4 +1,4 @@
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, toValue, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, toValue, watch } from 'vue'
 import type { MaybeRefOrGetter } from 'vue'
 import { BookMarked, FileCheck2, Globe2, Network, Users } from 'lucide-vue-next'
 import { useMessage } from 'naive-ui'
@@ -16,8 +16,6 @@ export type QuickAction = {
   label: string
   prompt: string
 }
-
-type ProposalIntent = 'chat' | 'proposal'
 
 export type ToolGroup = {
   key: 'search' | 'read' | 'write'
@@ -1213,29 +1211,6 @@ export function useGlobalAssistant(options: UseGlobalAssistantOptions = {}) {
       blocked: files.filter((file) => !file.canApply).length
     }
   })
-
-  async function shouldGenerateProposal(userPrompt: string, assistantReply: string): Promise<boolean> {
-    const project = appStore.currentProject
-    if (!project) return false
-
-    const response = await window.characterArc.generateAi(toIpcPayload({
-      task: 'assistant-intent',
-      settings: appStore.appSettings,
-      context: {
-        projectTitle: project.title,
-        projectGenre: project.genre,
-        chapterTitle: '',
-        chapterSummary: '',
-        selectedText: '',
-        quickAction: `global-assistant:${activeMode.value}`,
-        userPrompt: `${userPrompt}\n\n助手回复：${assistantReply}`
-      }
-    }))
-
-    if (!response.success || !response.result) return false
-    const intent = (response.result as { intent?: ProposalIntent }).intent
-    return intent === 'proposal'
-  }
 
   async function generateProposal(userPrompt: string, assistantReply: string, sessionId = activeSessionId.value): Promise<void> {
     const project = appStore.currentProject

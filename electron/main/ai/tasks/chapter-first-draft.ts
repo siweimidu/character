@@ -114,7 +114,6 @@ const handler: TaskHandler = {
     const chapterHasExistingContent = Boolean(context.chapterHasExistingContent)
     const expandMode = String(context.expandMode ?? '') === 'expand'
     const condenseMode = String(context.condenseMode ?? '') === 'condense'
-    const expandTarget = Math.max(Number(context.expandTarget ?? 0) || 0, 0)
     const existingWordCount = chapterContent.length
     const expandBlock = expandMode
       ? `

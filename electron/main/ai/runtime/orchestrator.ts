@@ -14,7 +14,7 @@ import { normalizeSettings, validateSettings, resolveMaxTokens, applyReasoningSa
 import { getTaskHandler } from '../tasks'
 import { getStructuredTaskSchema } from '../tasks/object-schemas'
 import { resolveTaskSkills } from '../skills'
-import { addAiRunUsage, aiGenerateText, aiGenerateTextWithUsage, aiStreamObjectWithUsage, aiStreamTextWithUsage } from '../generate'
+import { addAiRunUsage, aiGenerateTextWithUsage, aiStreamObjectWithUsage, aiStreamTextWithUsage } from '../generate'
 import { buildSystemPrompt, createModel, isToolUseNotSupportedError } from '../provider'
 import { buildPromptInput } from './context-builder'
 import { enrichTaskContextForGeneration } from './task-context'

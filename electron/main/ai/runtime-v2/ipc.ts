@@ -39,8 +39,6 @@ import {
   type TurnTruncateRequest,
   type TurnTruncateResult
 } from '@shared/assistant-runtime'
-import { presetAvatarDataUri } from '@shared/agent-avatars'
-import { seedBuiltinAgents } from './agent-profile-store'
 import type { AiTaskName, AppSettings } from '../shared-types'
 import type { Tool } from '../agent/tools/types'
 import { buildRunMeta } from '../runtime/run-meta'

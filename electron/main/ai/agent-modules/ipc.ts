@@ -9,7 +9,7 @@
 
 import { ipcMain, dialog, BrowserWindow } from 'electron'
 import { readdir, readFile, writeFile, rm, mkdir, stat } from 'node:fs/promises'
-import { basename, join, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import {
   AGENT_MODULE_IPC_CHANNELS as CH,
   BUILTIN_AGENT_MODULES,

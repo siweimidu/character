@@ -32,7 +32,7 @@ export function runLightCheck(
     return { passed: true, violations }
   }
 
-  checkItemConsistency(chapterContent, stateBefore.characterStates, delta, violations)
+  checkItemConsistency(stateBefore.characterStates, delta, violations)
   checkLocationConsistency(stateBefore.characterStates, delta, violations)
   checkWorldRuleViolations(chapterContent, stateBefore.worldRules, violations)
   checkStateConflicts(stateBefore.characterStates, delta, violations)
@@ -45,7 +45,6 @@ export function runLightCheck(
 
 /** 检查物品移除是否与角色库存一致 */
 function checkItemConsistency(
-  content: string,
   characterStates: CharacterState[],
   delta: StateDelta,
   violations: LightCheckViolation[]

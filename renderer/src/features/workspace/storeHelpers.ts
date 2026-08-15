@@ -1,10 +1,10 @@
 import { toRaw } from 'vue'
-import { createDefaultWorkflowDocuments, normalizeWorkflowDocuments } from '@/features/novelWorkflow/documents'
-import { createDefaultNovelWorkflowStages, normalizeNovelWorkflowStages } from '@/features/novelWorkflow/stages'
+import { normalizeWorkflowDocuments } from '@/features/novelWorkflow/documents'
+import { normalizeNovelWorkflowStages } from '@/features/novelWorkflow/stages'
 import { DEFAULT_CHAPTER_WORD_TARGET, normalizeChapterWordTarget } from '@/features/chapters/wordTarget'
 import { DEFAULT_EDITOR_FONT, isEditorFont } from '@/features/chapters/editorTypography'
 import { createOutlineVolume as createWorkspaceVolume } from '@/features/workspace/outlineVolumes'
-import { createDemoWorkspace, normalizeWorkspace } from '@/features/workspace/projectWorkspace'
+import { normalizeWorkspace } from '@/features/workspace/projectWorkspace'
 import type {
   AiProfile,
   AiRunRecord,
@@ -24,7 +24,6 @@ import type {
   OrganizationMembership,
   OutlineItem,
   OutlineVolume,
-  PlotThread,
   ProjectSummary,
   ProjectSkillItem,
   ReferenceWorkItem,
@@ -288,31 +287,6 @@ export const defaultAppSettings: AppSettings = {
 }
 
 // 合并用户设置与默认设置，uiScale 限制在 0.75-1.75 的合理范围内
-function normalizeKnowledgeDocuments(documents?: KnowledgeDocument[] | null): KnowledgeDocument[] {
-  return Array.isArray(documents)
-    ? documents.map((document) => ({
-        ...document,
-        title: document.title?.trim() || '未命名知识文档',
-        sourceType:
-          document.sourceType === 'reference-summary'
-          || document.sourceType === 'workflow-document'
-          || document.sourceType === 'canon-fact'
-          || document.sourceType === 'chapter-summary'
-            ? document.sourceType
-            : 'reference-chunk',
-        sourceLabel: document.sourceLabel?.trim() || '',
-        content: document.content?.trim() || '',
-        summary: document.summary?.trim() || '',
-        keywords: Array.isArray(document.keywords)
-          ? document.keywords.map((keyword) => String(keyword).trim()).filter(Boolean).slice(0, 20)
-          : [],
-        metadata: document.metadata && typeof document.metadata === 'object' ? document.metadata : {},
-        createdAt: document.createdAt || new Date().toISOString(),
-        updatedAt: document.updatedAt || document.createdAt || new Date().toISOString()
-      }))
-    : []
-}
-
 export function normalizeAiRuns(aiRuns?: AiRunRecord[] | null): AiRunRecord[] {
   return Array.isArray(aiRuns)
     ? aiRuns.map((run) => ({
@@ -708,7 +682,7 @@ export function buildWorkspaceMapFromLegacy(
   payload: LegacyStoredState,
   selectedProjectId: string
 ): Record<string, ProjectWorkspaceData> {
-  const workspaceEntries = payload.projects?.map((project, index) => [
+  const workspaceEntries = payload.projects?.map((project) => [
     project.id,
     normalizeProjectWorkspaceData(
       project.id === selectedProjectId

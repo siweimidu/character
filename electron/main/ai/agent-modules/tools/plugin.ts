@@ -8,7 +8,7 @@
  * 安装状态持久化到用户数据目录下的 plugin-market.json，跨重启保留。
  */
 
-import { readFile, writeFile, mkdir, rm } from 'node:fs/promises'
+import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import { app } from 'electron'
 import type {

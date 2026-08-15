@@ -297,10 +297,6 @@ export class SqliteNovelAccessor implements NovelProjectAccessor {
 class InMemoryNovelAccessor implements NovelProjectAccessor {
   private data: Record<string, Record<string, unknown>> = {}
 
-  private static normalizeId(name: string): string {
-    return name.toLowerCase().replace(/[^a-z0-9_-]/g, '-')
-  }
-
   private getBucket(projectId: string, type: string): Record<string, unknown> {
     const key = `${projectId}:${type}`
     if (!this.data[key]) this.data[key] = {}

@@ -2,7 +2,7 @@ import type { TaskHandler, PromptBuildInput } from './base'
 import { extractJsonObject, jsonStringField } from './base'
 import type { AiTaskResult, InspirationPackResult, InspirationResult } from '../shared-types'
 import { resolveWritingStyleInstruction } from '../prompts/shared'
-import { formatWorldviewEntries, formatCharacters, formatOrganizations, formatCharacterRelationships, formatOrganizationMemberships, formatInspirationEntries, formatOutlineItems } from '../prompts/format-helpers'
+import { formatWorldviewEntries, formatCharacters, formatOrganizations, formatCharacterRelationships, formatOrganizationMemberships, formatOutlineItems } from '../prompts/format-helpers'
 
 /** 灵感包生成任务：围绕当前章节生成一组灵感卡片 */
 const handler: TaskHandler = {

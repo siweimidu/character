@@ -12,7 +12,6 @@ import type {
   OrganizationEntry,
   OrganizationMembership,
   OutlineItem,
-  OutlineVolume,
   PlotThread,
   ProjectWorkspaceData,
   PromptCategory,
@@ -21,8 +20,8 @@ import type {
   WorkflowDocument,
   WorldviewEntry
 } from '@/types/app'
-import { createDefaultWorkflowDocuments, normalizeWorkflowDocuments } from '@/features/novelWorkflow/documents'
-import { cloneOutlineVolumes, createOutlineVolume, ensureVolumeCollections, normalizeVolumeWorkflowDocuments } from '@/features/workspace/outlineVolumes'
+import { normalizeWorkflowDocuments } from '@/features/novelWorkflow/documents'
+import { cloneOutlineVolumes, ensureVolumeCollections, normalizeVolumeWorkflowDocuments } from '@/features/workspace/outlineVolumes'
 import { buildBuiltinPromptData } from '@/features/prompts/templates'
 
 // 将日期字符串安全转为 ISO 时间戳，无效值回退到当前时间
@@ -556,8 +555,7 @@ export function createDemoWorkspace(): ProjectWorkspaceData {
 
 // 标准化工作区数据：校正所有集合的结构和字段值
 export function normalizeWorkspace(
-  workspace?: Partial<ProjectWorkspaceData> | null,
-  options?: Record<string, never>
+  workspace?: Partial<ProjectWorkspaceData> | null
 ): ProjectWorkspaceData {
   if (!workspace) {
     return createEmptyWorkspace()

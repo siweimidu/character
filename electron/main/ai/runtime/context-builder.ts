@@ -1,4 +1,4 @@
-import type { AiTaskPayload, AiTaskKnowledgeContext, PromptPair } from '../shared-types'
+import type { AiTaskPayload, AiTaskKnowledgeContext } from '../shared-types'
 import type { SkillSelection } from '../skills/types'
 import type { PromptBuildInput } from '../tasks/base'
 import type { PromptCapabilityId } from '../prompts/capability'

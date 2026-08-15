@@ -1,7 +1,7 @@
 import type { TaskHandler, PromptBuildInput } from './base'
 import { extractJsonObject } from './base'
 import type { AiTaskResult, ChapterAnalysisResult } from '../shared-types'
-import { formatWorldviewEntries, formatCharacters, formatOrganizations, formatCharacterRelationships, formatOrganizationMemberships, formatInspirationEntries, formatOutlineItems } from '../prompts/format-helpers'
+import { formatWorldviewEntries, formatCharacters, formatOrganizations, formatCharacterRelationships, formatOrganizationMemberships, formatOutlineItems } from '../prompts/format-helpers'
 
 /**
  * 将未知值标准化为字符串数组，最多取前 5 项

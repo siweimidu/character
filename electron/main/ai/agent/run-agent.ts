@@ -163,7 +163,6 @@ export async function runAgent(params: RunAgentParams): Promise<RunAgentResult> 
   let firstAttemptReasoning = ''
 
   const startStream = (
-    onReasoningDelta: (delta: string) => void,
     captureError: (error: unknown) => void
   ) => streamText({
     model: createModel(params.settings),
@@ -200,7 +199,7 @@ export async function runAgent(params: RunAgentParams): Promise<RunAgentResult> 
       }
     }
 
-    const currentResult = startStream(onReasoningDelta, (error) => { streamError = error })
+    const currentResult = startStream((error) => { streamError = error })
 
     try {
       // fullStream 同时承载推理、正文、工具与错误，避免 reasoning 阶段界面无反馈。

@@ -16,16 +16,6 @@ export interface PresetAgentAvatar {
   inner: string
 }
 
-function buildAvatar(
-  index: number,
-  name: string,
-  color: string,
-  bg: string,
-  inner: string
-): PresetAgentAvatar {
-  return { index, name, color, inner }
-}
-
 export const PRESET_AGENT_AVATARS: PresetAgentAvatar[] = [
   {
     index: 0,

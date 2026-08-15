@@ -1,6 +1,6 @@
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
-import { FAST_PERSIST_DELAY_MS, formatAutoSaveIntervalLabel, isLiveAutoSaveInterval, resolveAutoSaveDelayMs } from '@/features/settings/autoSave'
+import { formatAutoSaveIntervalLabel, isLiveAutoSaveInterval } from '@/features/settings/autoSave'
 import { createDefaultWorkflowDocuments } from '@/features/novelWorkflow/documents'
 import { createDefaultNovelWorkflowStages } from '@/features/novelWorkflow/stages'
 import { DEFAULT_CHAPTER_WORD_TARGET, normalizeChapterWordTarget } from '@/features/chapters/wordTarget'
@@ -528,18 +528,6 @@ export const useAppStore = defineStore('app', () => {
   const currentProject = computed(
     () => projects.value.find((project) => project.id === selectedProjectId.value) ?? projects.value[0]
   )
-
-  function resolveWorkflowVolumeId(preferredVolumeId?: string): string {
-    const resolved = String(preferredVolumeId ?? '').trim()
-    if (resolved) {
-      return resolved
-    }
-
-    return activeWorkflowVolume.value?.id
-      || selectedChapterVolume.value?.id
-      || outlineVolumes.value[0]?.id
-      || ''
-  }
 
   // ── AI 事件处理 ──
 
@@ -2143,19 +2131,22 @@ export const useAppStore = defineStore('app', () => {
       }
     }
     // 更新已有条目的到期时间按新配置重算（仅对未过期的保留）
+    // 已过期条目不重算，保持过期以由 purgeExpiredRecycleBin 清理，避免调大保留天数后“复活”。
     const now = Date.now()
-    globalRecycleBin.value = globalRecycleBin.value.map((entry) => {
+    const recomputeExpiry = (entry: import('@/types/app').RecycleBinEntry): import('@/types/app').RecycleBinEntry | null => {
+      if (new Date(entry.expiresAt).getTime() <= now) return null
       const base = new Date(entry.deletedAt)
       const expiresAt = new Date(base.getTime() + safe * 24 * 60 * 60 * 1000)
       return { ...entry, expiresAt: expiresAt.toISOString() }
-    })
+    }
+    globalRecycleBin.value = globalRecycleBin.value
+      .map(recomputeExpiry)
+      .filter((entry): entry is import('@/types/app').RecycleBinEntry => entry !== null)
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
-      recycleBin: (workspace.recycleBin ?? []).map((entry) => {
-        const base = new Date(entry.deletedAt)
-        const expiresAt = new Date(base.getTime() + safe * 24 * 60 * 60 * 1000)
-        return { ...entry, expiresAt: expiresAt.toISOString() }
-      })
+      recycleBin: (workspace.recycleBin ?? [])
+        .map(recomputeExpiry)
+        .filter((entry): entry is import('@/types/app').RecycleBinEntry => entry !== null)
     }))
     scheduleSettingsPersist()
   }
@@ -2569,7 +2560,6 @@ export const useAppStore = defineStore('app', () => {
   function moveAiRunsToRecycle(ids: string[]): void {
     const idSet = new Set(ids)
     if (!idSet.size) return
-    const now = new Date().toISOString()
     const runs = globalAiRuns.value.filter((run) => idSet.has(run.id))
     if (!runs.length) return
     for (const run of runs) {

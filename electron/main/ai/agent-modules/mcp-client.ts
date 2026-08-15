@@ -13,7 +13,6 @@
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import type { Readable } from 'node:stream'
 
 // ============================================================================
 // 类型定义
@@ -85,8 +84,6 @@ interface JsonRpcRequest {
 const HANDSHAKE_TIMEOUT_MS = 10_000
 /** 工具调用超时（毫秒）。 */
 const TOOL_CALL_TIMEOUT_MS = 60_000
-/** 流式读取超时（毫秒）。 */
-const STREAM_TIMEOUT_MS = 5_000
 /** 最大输出字符数。 */
 const MAX_OUTPUT_CHARS = 30_000
 
@@ -354,8 +351,6 @@ export class HttpMcpClient extends EventEmitter {
   private requestId = 0
   private handshakeDone = false
   private serverName: string
-  private eventSource: Readable | null = null
-
   constructor(serverName: string, url: string, apiKey?: string) {
     super()
     this.serverName = serverName
@@ -476,7 +471,6 @@ export class HttpMcpClient extends EventEmitter {
   /** 关闭连接。 */
   async close(): Promise<void> {
     this.handshakeDone = false
-    this.eventSource = null
     this.emit('disconnected')
   }
 
