@@ -19,6 +19,7 @@ import {
 } from '@/features/workspace/workbenchMenu'
 
 import { useAppStore } from '@/stores/app'
+import { useThemeTransition } from '@/composables/useThemeTransition'
 import { darkModePresets, themePresets } from '@/theme/presets'
 import { toIpcPayload } from '@/utils/ipcPayload'
 import type { AiProfile, AppSettings, DarkModeStyle, ImageProfile, SpeechProfile, ThemeName, VisionProfile } from '@/types/app'
@@ -41,7 +42,9 @@ function applyThemeImmediately(themeName: ThemeName): void {
 /** 深色模式开关即时生效并持久化，无需再点保存设置 */
 function applyDarkModeImmediately(value: boolean): void {
   draftSettings.darkMode = value
-  appStore.updateAppSetting('darkMode', value, { flushWorkspace: false })
+  runThemeTransition(() => {
+    appStore.updateAppSetting('darkMode', value, { flushWorkspace: false })
+  })
 }
 
 /** 正文右侧快速滑动按钮开关即时生效并持久化，无需再点保存设置 */
@@ -75,6 +78,7 @@ function themeTextColor(color: string): string {
 }
 
 const appStore = useAppStore()
+const { transition: runThemeTransition } = useThemeTransition()
 const message = useMessage()
 const isTestingAiConnection = ref(false)
 const isBenchmarkingModel = ref(false)
@@ -3404,6 +3408,7 @@ async function saveSettings(): Promise<void> {
   justify-content: space-between;
   gap: 16px;
   margin-top: 14px;
+  margin-bottom: 24px;
   border: 1px solid var(--arc-border);
   border-radius: 10px;
   padding: 12px 16px;
@@ -3438,6 +3443,7 @@ async function saveSettings(): Promise<void> {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin-top: 10px;
+  margin-bottom: 24px;
 }
 
 .dark-style-card {

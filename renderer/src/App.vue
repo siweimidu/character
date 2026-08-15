@@ -4,6 +4,7 @@ import { Bot, Home, Image, Library, Moon, Settings, Sparkles, Sun, Trash2, Trend
 import { createDiscreteApi, NConfigProvider, NDialogProvider, NGlobalStyle, NMessageProvider, NSpin, darkTheme } from 'naive-ui'
 import { useAppStore } from '@/stores/app'
 import { createNaiveThemeOverrides, getThemeColorScheme } from '@/theme/presets'
+import { useThemeTransition } from '@/composables/useThemeTransition'
 import ProjectCenter from '@/pages/ProjectCenter.vue'
 import ProjectWizardPage from '@/pages/ProjectWizardPage.vue'
 import ContinuationImportPage from '@/pages/ContinuationImportPage.vue'
@@ -26,7 +27,7 @@ const appStore = useAppStore()
 const platform = window.characterArc?.platform ?? 'unknown'
 const settingsVisible = ref(false)
 const { message } = createDiscreteApi(['message'])
-let themeTransitionFrame: number | null = null
+const { transition: runThemeTransition } = useThemeTransition()
 
 // 根据当前选中主题生成 Naive UI 主题覆盖变量
 const themeOverrides = computed(() =>
@@ -142,17 +143,8 @@ function shouldShowManualSaveToast(): boolean {
 }
 
 function toggleDarkMode(): void {
-  const root = document.documentElement
-  root.classList.add('theme-switching')
-  if (themeTransitionFrame !== null) {
-    window.cancelAnimationFrame(themeTransitionFrame)
-  }
-  appStore.updateAppSetting('darkMode', !appStore.appSettings.darkMode, { flushWorkspace: false })
-  themeTransitionFrame = window.requestAnimationFrame(() => {
-    themeTransitionFrame = window.requestAnimationFrame(() => {
-      root.classList.remove('theme-switching')
-      themeTransitionFrame = null
-    })
+  runThemeTransition(() => {
+    appStore.updateAppSetting('darkMode', !appStore.appSettings.darkMode, { flushWorkspace: false })
   })
 }
 
@@ -192,10 +184,6 @@ onMounted(() => {
   document.addEventListener('visibilitychange', syncVisibilityClass)
 })
 onBeforeUnmount(() => {
-  if (themeTransitionFrame !== null) {
-    window.cancelAnimationFrame(themeTransitionFrame)
-    document.documentElement.classList.remove('theme-switching')
-  }
   window.removeEventListener('keydown', handleGlobalKeydown)
   window.removeEventListener('beforeunload', handleBeforeUnload)
   document.removeEventListener('visibilitychange', syncVisibilityClass)

@@ -74,6 +74,16 @@ html.theme-switching *::after {
   transition: none !important;
 }
 
+/* 深色/浅色切换使用 View Transitions 合成器交叉淡化：视觉丝滑，开销集中在合成层。
+   统一动画时长与缓动，避免元素级过渡干扰，同时抑制大范围重排重绘造成的卡顿。 */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 260ms;
+  animation-timing-function: ease-out;
+  /* 使用普通混合模式做交叉淡化，避免大尺寸页面因混合计算而掉帧 */
+  mix-blend-mode: normal;
+}
+
 button,
 input,
 textarea {
