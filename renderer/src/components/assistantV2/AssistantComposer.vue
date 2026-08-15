@@ -77,6 +77,9 @@ interface SlashCommandDef {
   builtin?: boolean
 }
 const BUILTIN_COMMANDS: SlashCommandDef[] = [
+  { key: 'goal', label: '/goal', description: '目标模式：以最终验收目标为导向自主执行并自检闭环', template: 'goal', intentHint: 'global-assistant-v2:goal', builtin: true },
+  { key: 'plan', label: '/plan', description: '计划模式：先输出分步执行计划，确认后再逐步落地', template: 'plan', intentHint: 'global-assistant-v2:plan', builtin: true },
+  { key: 'spec', label: '/spec', description: '规范模式：输出 spec/tasks/checklist 三份规格文档', template: 'spec', intentHint: 'global-assistant-v2:spec', builtin: true },
   { key: 'standard', label: '/standard', description: '标准模式：常规对话与创作协助', template: 'standard', intentHint: 'global-assistant-v2:standard', builtin: true },
   { key: 'ptc', label: '/ptc', description: 'PTC 模式：规划-任务-执行的结构化流程', template: 'ptc', intentHint: 'global-assistant-v2:ptc', builtin: true },
   { key: 'minimal', label: '/minimal', description: '极简模式：精简输出、直击要点', template: 'minimal', intentHint: 'global-assistant-v2:minimal', builtin: true },
