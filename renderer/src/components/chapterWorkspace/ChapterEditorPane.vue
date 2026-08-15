@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { Check, ChevronDown, ChevronRight, Folder, FocusIcon, History, Maximize2, Menu, MessageSquareQuote, Minus, Minimize2, Plus, RefreshCw, Save, Search, ShieldAlert, Sparkles, Type, Wand2 } from 'lucide-vue-next'
+import { Check, ChevronDown, ChevronRight, Folder, FocusIcon, History, Maximize2, Menu, MessageSquareQuote, Minus, Minimize2, Plus, Redo2, RefreshCw, Save, Search, ShieldAlert, Sparkles, Type, Undo2, Wand2 } from 'lucide-vue-next'
 import EditorCommandPalette from './EditorCommandPalette.vue'
 import type { CommandPaletteAction } from './editorCommandPalette'
 import { NAlert, NDropdown, NDynamicTags, NForm, NFormItem, NInput, NModal, NSelect, NTag, NTooltip, useMessage } from 'naive-ui'
@@ -454,8 +454,48 @@ async function handleCtxAction(id: string): Promise<void> {
     if (appStore.appSettings.editorMinimap) {
       nextTick(() => quickScrollRef.value?.redraw())
     }
+  } else if (id === 'float-undo') {
+    // 切换正文左下角回退悬浮按钮开关，持久化到应用设置（软件重启后保持上次设置）
+    appStore.updateAppSetting('editorFloatUndo', !appStore.appSettings.editorFloatUndo)
   }
 }
+
+// ── 回退悬浮按钮：正文左下角的回退/撤销回退圆形按钮，不随正文滑动移动 ──
+// tiptap 的 Undo/Redo 能力来自 StarterKit 内置的 History 扩展
+// 用一个响应式版本号驱动重算：编辑器每次事务后自增，使 canUndo/canRedo 实时刷新
+const editorRevision = ref(0)
+const canUndo = computed(() => {
+  void editorRevision.value
+  return !!tiptapEditor.value?.can().undo()
+})
+const canRedo = computed(() => {
+  void editorRevision.value
+  return !!tiptapEditor.value?.can().redo()
+})
+
+function runFloatUndo(direction: 'undo' | 'redo'): void {
+  const editor = tiptapEditor.value
+  if (!editor) return
+  const chain = editor.chain().focus()
+  if (direction === 'undo') {
+    chain.undo().run()
+  } else {
+    chain.redo().run()
+  }
+}
+
+// 监听 tiptap 编辑器事务，实时刷新回退/撤销回退可用状态
+watch(
+  () => tiptapEditor.value,
+  (editor) => {
+    if (!editor) return
+    const onTransaction = (): void => {
+      editorRevision.value++
+    }
+    editor.on('transaction', onTransaction)
+    return () => editor.off('transaction', onTransaction)
+  }
+)
 
 // 章节正文更新后触发快速滑动按钮位置刷新
 function onChapterContentUpdate(value: string, chapterId: string): void {
@@ -849,6 +889,38 @@ onBeforeUnmount(() => {
         :scroll-container="scrollRef"
         @contextmenu="handleEditorContextMenu"
       />
+
+      <!-- 回退悬浮按钮：正文左下角圆形按钮，不随正文滑动移动；设置持久化，软件重启后保持 -->
+      <Transition name="arc-float-fade">
+        <div
+          v-if="appStore.appSettings.editorFloatUndo && currentChapter"
+          class="ep-float-undo"
+          @contextmenu.prevent="handleEditorContextMenu"
+        >
+          <button
+            type="button"
+            class="ep-float-undo-btn"
+            :class="{ disabled: !canUndo }"
+            :disabled="!canUndo"
+            title="回退"
+            @mousedown.prevent
+            @click="runFloatUndo('undo')"
+          >
+            <Undo2 :size="16" />
+          </button>
+          <button
+            type="button"
+            class="ep-float-undo-btn"
+            :class="{ disabled: !canRedo }"
+            :disabled="!canRedo"
+            title="撤销回退"
+            @mousedown.prevent
+            @click="runFloatUndo('redo')"
+          >
+            <Redo2 :size="16" />
+          </button>
+        </div>
+      </Transition>
     </div>
 
     <EditorFindBar
@@ -866,6 +938,7 @@ onBeforeUnmount(() => {
       :y="ctxMenuY"
       :has-selection="ctxMenuHasSelection"
       :minimap-active="appStore.appSettings.editorMinimap"
+      :float-undo-active="appStore.appSettings.editorFloatUndo"
       @close="ctxMenuVisible = false"
       @action="handleCtxAction"
     />
@@ -1292,6 +1365,59 @@ onBeforeUnmount(() => {
   min-height: 0;
   display: flex;
   align-items: stretch;
+}
+
+/* 回退悬浮按钮：固定在正文左下角（字数显示上方），不随正文滚动 */
+.ep-float-undo {
+  position: absolute;
+  left: 20px;
+  bottom: 16px;
+  z-index: 30;
+  display: flex;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.ep-float-undo-btn {
+  pointer-events: auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--arc-border);
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+  transition: background 0.15s, color 0.15s, transform 0.1s;
+}
+
+.ep-float-undo-btn:hover:not(.disabled) {
+  background: var(--arc-bg-surface-hover);
+  color: var(--arc-text-primary);
+}
+
+.ep-float-undo-btn:active:not(.disabled) {
+  transform: scale(0.94);
+}
+
+.ep-float-undo-btn.disabled {
+  color: var(--arc-text-hint);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.arc-float-fade-enter-active,
+.arc-float-fade-leave-active {
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.arc-float-fade-enter-from,
+.arc-float-fade-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
 }
 
 .ep-canvas {

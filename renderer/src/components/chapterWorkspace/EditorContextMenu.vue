@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { Clipboard, ClipboardPaste, Copy, FileText, Scissors, Search, TextCursor, PanelRight } from 'lucide-vue-next'
+import { Clipboard, ClipboardPaste, Copy, FileText, Scissors, Search, TextCursor, PanelRight, Undo2 } from 'lucide-vue-next'
 
 export interface EditorContextMenuItem {
   id: string
   label: string
-  icon: 'copy' | 'cut' | 'paste' | 'paste-plain' | 'select-all' | 'find' | 'minimap'
+  icon: 'copy' | 'cut' | 'paste' | 'paste-plain' | 'select-all' | 'find' | 'minimap' | 'float-undo'
   disabled?: boolean
   separatorBefore?: boolean
 }
@@ -16,6 +16,7 @@ const props = defineProps<{
   y: number
   hasSelection: boolean
   minimapActive?: boolean
+  floatUndoActive?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -38,6 +39,12 @@ const items = computed<EditorContextMenuItem[]>(() => [
     id: 'minimap',
     label: props.minimapActive ? '关闭快速滑动按钮' : '启用快速滑动按钮',
     icon: 'minimap',
+    separatorBefore: true,
+  },
+  {
+    id: 'float-undo',
+    label: props.floatUndoActive ? '关闭回退悬浮按钮' : '启用回退悬浮按钮',
+    icon: 'float-undo',
     separatorBefore: true,
   },
 ])
@@ -107,6 +114,7 @@ const iconMap = {
   'select-all': TextCursor,
   find: Search,
   minimap: PanelRight,
+  'float-undo': Undo2,
   document: FileText,
 } as const
 </script>

@@ -1180,6 +1180,8 @@ export interface AppSettings {
   editorFont: EditorFont
   /** 是否启用正文右侧的快速滑动按钮（拖动滑块可快速在长文中上下滑动） */
   editorMinimap: boolean
+  /** 是否启用正文左下角的回退/撤销回退悬浮按钮（持久化，软件重启后保持上次设置） */
+  editorFloatUndo: boolean
   /** UI 缩放比例，范围 0.75-1.75 */
   uiScale: number
   /** 工作台创作模块的全局菜单顺序，使用稳定菜单 ID */

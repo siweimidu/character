@@ -276,6 +276,7 @@ export const defaultAppSettings: AppSettings = {
   autoSaveInterval: '5m',
   editorFont: DEFAULT_EDITOR_FONT,
   editorMinimap: false,
+  editorFloatUndo: false,
   uiScale: 1,
   workspaceMenuOrder: normalizeWorkbenchMenuOrder(),
   homeProjectSortMode: 'manual',
@@ -525,6 +526,7 @@ export function normalizeAppSettings(settings?: Partial<AppSettings> | null): Ap
     autoSaveInterval: sanitizeSettingString(source.autoSaveInterval, defaultAppSettings.autoSaveInterval),
     editorFont: isEditorFont(source.editorFont) ? source.editorFont : defaultAppSettings.editorFont,
     editorMinimap: typeof source.editorMinimap === 'boolean' ? source.editorMinimap : defaultAppSettings.editorMinimap,
+    editorFloatUndo: typeof source.editorFloatUndo === 'boolean' ? source.editorFloatUndo : defaultAppSettings.editorFloatUndo,
     uiScale:
       typeof source.uiScale === 'number' && Number.isFinite(source.uiScale)
         ? Math.min(1.75, Math.max(0.75, source.uiScale))

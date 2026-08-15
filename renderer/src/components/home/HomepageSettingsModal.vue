@@ -184,6 +184,7 @@ const draftSettings = reactive<AppSettings>({
   autoSaveInterval: '5m',
   editorFont: 'clear-mono',
   editorMinimap: false,
+  editorFloatUndo: false,
   uiScale: 1,
   workspaceMenuOrder: [...DEFAULT_WORKBENCH_MENU_ORDER],
   homeProjectSortMode: 'manual',
