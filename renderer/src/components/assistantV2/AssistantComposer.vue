@@ -50,6 +50,8 @@ const emit = defineEmits<{
   (e: 'upload-file'): void
   (e: 'upload-files', files: File[]): void
   (e: 'add-file', file: { name: string; content: string; mime: string; size: number; path?: string }): void
+  /** 后台加载/保存完成后，回填某个已展示的附件芯片的 content / path 等字段。 */
+  (e: 'update-file', refKey: string, patch: { content?: string; path?: string; size?: number }): void
   (e: 'cancel'): void
   (e: 'edit-last'): void
   (e: 'clear-restored'): void
@@ -415,7 +417,10 @@ function sendWithIntent(): void {
   if (selectedMode.value && intent?.startsWith('global-assistant-v2:')) {
     selectedMode.value = null
   }
-  emit('send', intent)
+  // 若有文件仍在后台读取/保存，先等它们完成，确保附件内容完整后再发送。
+  void Promise.all(pendingFileLoads).then(() => {
+    emit('send', intent)
+  })
 }
 
 /** 通过原生隐藏 input 选择本地文本文件，作为 IPC 文件对话框的可靠回退 */
@@ -431,58 +436,98 @@ function handleNativeFileChange(event: Event): void {
   input.value = ''
 }
 
-/** 读取本地文件内容并作为「文件引用」加入待发送附件（以文件名按钮形式展示，而非整段文本输入）。 */
+/** 正在后台读取/保存的本地文件任务，发送前需等待全部完成，确保附件内容完整。 */
+let pendingFileLoads: Promise<void>[] = []
+
+/** 是否应在后台读取为内联文本的本地文件（文本类且体积适中）。 */
+function isInlineTextFile(file: File): boolean {
+  return (
+    file.type.startsWith('text/') ||
+    /\.(txt|md|markdown|mdown|mkd|json|js|ts|py|css|html|xml|csv|log|ya?ml|ini|sql|sh)$/i.test(file.name)
+  ) && file.size <= 2 * 1024 * 1024
+}
+
+/**
+ * 读取本地文件并作为「文件引用」加入待发送附件（以文件名按钮形式展示）。
+ *
+ * 性能优化：
+ *  - 先立即上抛「文件名芯片」让按钮瞬间出现，避免大文件读取/编码/保存期间界面无反馈；
+ *  - 再在后台并发达读取内容或保存到工作区，完成后通过 update-file 回填，不阻塞交互。
+ */
 async function addFilesAsAttachment(files: File[]): Promise<void> {
   if (files.length === 0) return
+
+  // 第一步：立刻把文件名芯片加入待发送附件，让用户第一时间看到反馈。
   for (const file of files) {
-    let content = ''
-    let savedPath: string | undefined
-    const isTextLike =
-      file.type.startsWith('text/') ||
-      /\.(txt|md|markdown|mdown|mkd|json|js|ts|py|css|html|xml|csv|log|ya?ml|ini|sql|sh)$/i.test(file.name)
-    if (isTextLike && file.size <= 2 * 1024 * 1024) {
-      try {
-        content = await file.text()
-      } catch {
-        content = ''
-      }
-    }
-    // 二进制/不可内联文件（如压缩包、图片、音视频）：读取为 base64 保存到工作区
-    // 上传目录，并把相对路径随附件下发，让 AI 能用 file_read / file_list 等工具读取。
-    if (!content && file.size > 0) {
-      try {
-        const buffer = await file.arrayBuffer()
-        const base64 = bytesToBase64(buffer)
-        if (base64.length <= 25 * 1024 * 1024) {
-          const res = await window.characterArc.saveAssistantUpload({
-            projectId: props.projectId ?? undefined,
-            fileName: file.name,
-            mime: file.type || 'application/octet-stream',
-            dataBase64: base64
-          })
-          if (res?.success && res.path) savedPath = res.path
-        }
-      } catch {
-        // 保存失败则仅以文件名引用，仍可发送（AI 只看到文件名）
-      }
-    }
     emit('add-file', {
       name: file.name,
-      content,
+      content: '',
       mime: file.type || 'application/octet-stream',
-      size: file.size,
-      path: savedPath
+      size: file.size
     })
+  }
+
+  // 第二步：并发加载内容 / 保存工作区，完成后再回填芯片字段。
+  const task = (async () => {
+    const tasks = files.map(async (file) => {
+      const refKey = `file:${file.name}`
+      let content = ''
+      let savedPath: string | undefined
+      let savedSize = file.size
+
+      if (isInlineTextFile(file)) {
+        try {
+          content = await file.text()
+        } catch {
+          content = ''
+        }
+      }
+
+      // 二进制/不可内联文件（如压缩包、图片、音视频）：读取为 base64 保存到工作区
+      // 上传目录，并把相对路径随附件下发，让 AI 能用 file_read / file_list 等工具读取。
+      if (!content && file.size > 0) {
+        try {
+          const buffer = await file.arrayBuffer()
+          const base64 = bytesToBase64(buffer)
+          if (base64.length <= 25 * 1024 * 1024) {
+            const res = await window.characterArc.saveAssistantUpload({
+              projectId: props.projectId ?? undefined,
+              fileName: file.name,
+              mime: file.type || 'application/octet-stream',
+              dataBase64: base64
+            })
+            if (res?.success && res.path) {
+              savedPath = res.path
+              if (typeof res.size === 'number') savedSize = res.size
+            }
+          }
+        } catch {
+          // 保存失败则仅以文件名引用，仍可发送（AI 只看到文件名）
+        }
+      }
+
+      emit('update-file', refKey, { content, path: savedPath, size: savedSize })
+    })
+
+    await Promise.all(tasks)
+  })()
+
+  pendingFileLoads = [...pendingFileLoads, task]
+  try {
+    await task
+  } finally {
+    // 完成后移除，避免数组无限增长
+    pendingFileLoads = pendingFileLoads.filter((t) => t !== task)
   }
 }
 
-/** 把 ArrayBuffer 转为 base64 字符串（分块拼接，避免大文件超出参数长度限制）。 */
+/** 把 ArrayBuffer 转为 base64 字符串（用 apply 批量拼接，规避超长参数栈并提升性能）。 */
 function bytesToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer)
   const chunk = 0x8000
   let binary = ''
   for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk) as unknown as number[])
   }
   return btoa(binary)
 }

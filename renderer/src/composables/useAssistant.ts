@@ -170,6 +170,13 @@ export function useAssistant(options: UseAssistantOptions) {
     pendingAttachments.value = [...pendingAttachments.value, att]
   }
 
+  /** 更新某个待发送附件（如后台加载完文件内容/保存路径后回填）。 */
+  function updatePendingAttachment(refKey: string, patch: Partial<Omit<TurnAttachment, 'kind' | 'ref'>>): void {
+    pendingAttachments.value = pendingAttachments.value.map((a) =>
+      `${a.kind}:${a.ref}` === refKey ? { ...a, ...patch } : a
+    )
+  }
+
   function removePendingAttachment(refKey: string): void {
     pendingAttachments.value = pendingAttachments.value.filter((a) => `${a.kind}:${a.ref}` !== refKey)
   }
@@ -1101,6 +1108,7 @@ export function useAssistant(options: UseAssistantOptions) {
     composerValue,
     pendingAttachments,
     addPendingAttachment,
+    updatePendingAttachment,
     removePendingAttachment,
     clearPendingAttachments,
     editingTurnId,
