@@ -13,8 +13,6 @@ import {
   Library,
   ListTodo,
   LoaderCircle,
-  Pause,
-  Play,
   Sparkles,
   Square,
   X
@@ -138,16 +136,6 @@ function handleDismiss(run: AiTaskRun): void {
   appStore.dismissAiTask(run.key)
 }
 
-/** 切换任务的暂停/继续状态（仅对运行中的任务生效）。 */
-function handleTogglePause(run: AiTaskRun): void {
-  if (run.stage !== 'running') return
-  if (appStore.isAiTaskPaused(run.key)) {
-    appStore.resumeAiTask(run.key)
-  } else {
-    appStore.pauseAiTask(run.key)
-  }
-}
-
 /** 关闭某条任务：运行中先终止底层执行再移除记录，非运行中直接移除记录。 */
 function handleClose(run: AiTaskRun): void {
   if (run.stage === 'running') {
@@ -231,18 +219,6 @@ function handleClose(run: AiTaskRun): void {
             </div>
 
             <div class="task-item-actions">
-              <button
-                v-if="run.stage === 'running'"
-                type="button"
-                class="task-action-btn"
-                :class="{ 'is-active': appStore.isAiTaskPaused(run.key) }"
-                :title="appStore.isAiTaskPaused(run.key) ? '继续此任务' : '暂停此任务'"
-                :aria-label="appStore.isAiTaskPaused(run.key) ? '继续此任务' : '暂停此任务'"
-                @click="handleTogglePause(run)"
-              >
-                <Play v-if="appStore.isAiTaskPaused(run.key)" :size="13" />
-                <Pause v-else :size="13" />
-              </button>
               <button
                 v-if="run.stage === 'running'"
                 type="button"
@@ -558,20 +534,6 @@ function handleClose(run: AiTaskRun): void {
 }
 
 .task-action-btn:hover {
-  border-color: var(--arc-border-strong);
-  background: var(--arc-bg-weak);
-  color: var(--arc-primary);
-}
-
-/* 暂停中的按钮高亮为播放态（继续） */
-.task-action-btn.is-active {
-  border-color: color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border));
-  background: var(--arc-primary-soft);
-  color: var(--arc-primary);
-}
-
-/* 关闭按钮 hover 呈现危险态 */
-.task-item-actions .task-action-btn:last-child:hover {
   border-color: color-mix(in srgb, var(--arc-danger) 40%, var(--arc-border));
   background: color-mix(in srgb, var(--arc-danger) 6%, var(--arc-bg-surface));
   color: var(--arc-danger);

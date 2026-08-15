@@ -130,14 +130,42 @@ export const SOLO_SYSTEM_PROMPT = `# 角色
 
 /**
  * 「顶级爆款网文」智能体的头像。
- * 采用内联 SVG，内嵌 <image> 引用作者上传的爆款网文头像图片（见 ISSUE #514），
- * 并预置暖金色“爆”字兜底底图，避免外部图片未加载时头像空白。
+ * 纯矢量 SVG 头像：暖金色渐变底 + 光芒 + 打开的书籍 + 醒目“爆”字，
+ * 不依赖任何外部图片资源，本地渲染即可完整呈现（见 ISSUE #539）。
  */
 export const BESTSELER_NOVEL_AVATAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#f59e0b"/>
-  <circle cx="32" cy="32" r="24" fill="#fef3c7"/>
-  <text x="32" y="42" font-size="30" font-weight="bold" text-anchor="middle" fill="#d97706" font-family="sans-serif">爆</text>
-  <image href="https://cnb.cool/siweimidu/character-arc/-/imgs/issues/2088614867298840576/bV21zvDCe6BvOWzegyZ85A/a220dd36-0e1f-4251-81a3-c5fcf27df9dc.png" x="0" y="0" width="64" height="64" preserveAspectRatio="xMidYMid slice"/>
+  <defs>
+    <linearGradient id="bestseller-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fcd34d"/>
+      <stop offset="0.55" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#e8590c"/>
+    </linearGradient>
+    <radialGradient id="bestseller-glow" cx="0.5" cy="0.42" r="0.62">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="bestseller-paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#fde68a"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#bestseller-bg)"/>
+  <circle cx="32" cy="30" r="27" fill="url(#bestseller-glow)"/>
+  <g stroke="#ffffff" stroke-width="1" opacity="0.35" stroke-linecap="round">
+    <path d="M32 8 v4"/>
+    <path d="M18 12 l2.6 2.6"/>
+    <path d="M46 12 l-2.6 2.6"/>
+  </g>
+  <g>
+    <path d="M32 40 c-8.5 -4.6 -20 -5.2 -20 1.4 v15.2 c0 2 1.9 3 3.8 2.2 l16.2 -7.2 v-11.6z" fill="url(#bestseller-paper)"/>
+    <path d="M32 40 c8.5 -4.6 20 -5.2 20 1.4 v15.2 c0 2 -1.9 3 -3.8 2.2 l-16.2 -7.2 v-11.6z" fill="url(#bestseller-paper)"/>
+    <path d="M32 40 v22" stroke="#f59e0b" stroke-width="1.4" stroke-linecap="round"/>
+    <path d="M21 41.5 c1.4 0.8 2.6 1.6 3.6 2.5 c1 0.9 1.6 1.9 1.6 3.2" stroke="#b45309" stroke-width="0.7" fill="none" opacity="0.5"/>
+  </g>
+  <circle cx="32" cy="26" r="12" fill="#ffffff" opacity="0.18"/>
+  <text x="32" y="34" font-size="24" font-weight="bold" text-anchor="middle" fill="#fff7ed" stroke="#b45309" stroke-width="0.6" paint-order="stroke" font-family="'PingFang SC','Microsoft YaHei',sans-serif">爆</text>
+  <path d="M17 56 l1.5 3 3.3.4 -2.4 2.2 .6 3.2 -3-1.6 -3 1.6 .6-3.2 -2.4-2.2 3.3-.4z" fill="#fff7ed" opacity="0.85"/>
+  <path d="M49 53 l1.1 2.2 2.4.3 -1.8 1.7 .5 2.5 -2.2-1.2 -2.2 1.2 .5-2.5 -1.8-1.7 2.4-.3z" fill="#ffffff" opacity="0.6"/>
 </svg>`
 
 /**
