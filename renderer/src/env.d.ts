@@ -1220,7 +1220,7 @@ declare global {
         mcpServerUpdate: (payload: { id: string; patch: Record<string, unknown> }) => Promise<import('@shared/agent-modules').McpServerDefinition>,
         mcpServerDelete: (payload: { id: string }) => Promise<{ ok: boolean }>,
         mcpServerTest: (payload: { id: string }) => Promise<import('@shared/agent-modules').McpServerTestResult>,
-        pluginList: (payload?: { query?: string }) => Promise<import('@shared/agent-modules').DshPluginListing[]>,
+        pluginList: (payload?: { query?: string; page?: number; perPage?: number; loadMore?: boolean }) => Promise<import('@shared/agent-modules').PluginListPage>,
         pluginImport: (payload: { repo: string; name: string; description: string }) => Promise<import('@shared/agent-modules').PluginImportResult>,
         pluginUninstall: (payload: { moduleId: string }) => Promise<import('@shared/agent-modules').PluginImportResult>,
         pluginListInstalled: () => Promise<import('@shared/agent-modules').InstalledPlugin[]>,

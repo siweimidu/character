@@ -304,12 +304,19 @@ export function registerAgentModuleIpcHandlers(): void {
 
   // ==================== dsh-plugin 插件市场 ====================
   ipcMain.handle(CH.PLUGIN_LIST, async (_evt, payload: PluginListRequest) => {
-    return listDshPlugins(payload?.query)
+    return listDshPlugins({
+      query: payload?.query,
+      page: payload?.page,
+      perPage: payload?.perPage,
+      loadMore: payload?.loadMore
+    })
   })
 
   ipcMain.handle(CH.PLUGIN_IMPORT, async (_evt, payload: PluginImportRequest) => {
     const registry = getAgentModuleRegistry()
-    return importDshPlugin(payload, (def) => registry.register({ definition: def }))
+    return importDshPlugin(payload, (def, createTools) =>
+      registry.register({ definition: def, createTools })
+    )
   })
 
   ipcMain.handle(CH.PLUGIN_UNINSTALL, async (_evt, payload: { moduleId?: string }) => {

@@ -11,8 +11,13 @@ import { createSystemFileTools } from './tools/system-filesystem'
 import { createExecTools } from './tools/exec'
 import { createMcpTools } from './tools/mcp'
 import { SqliteNovelAccessor } from './mcp-novel-server'
-import { listInstalledPlugins, buildPluginModuleDefinition } from './tools/plugin'
+import { buildPluginModuleDefinition, BUILTIN_PLUGINS, listInstalledPluginsSync, ensureBuiltinPluginsPersisted } from './tools/plugin'
+import { createPluginTools } from './tools/plugin'
+import { createPluginMarketTools, setPluginCodeDir, preloadPluginCode } from './tools/plugin-runtime'
+import type { Tool } from '../../agent/tools/types'
 import type { DatabaseSync } from 'node:sqlite'
+import { app } from 'electron'
+import { join } from 'node:path'
 
 /** 全局唯一模块注册表实例。 */
 let registry: AgentModuleRegistry | null = null
@@ -91,23 +96,33 @@ export function initAgentModuleRegistry(): AgentModuleRegistry {
     definition: {
       id: 'plugin.market',
       name: '插件市场（dsh-plugin）',
-      description: '从 GitHub dsh-plugin 话题导入插件，everything is a plugin。',
+      description: '从 GitHub dsh-plugin 话题导入插件，everything is a plugin。内置 dsh 路由预设自动启用。',
       kind: 'plugin',
       source: 'builtin',
       scope: 'global',
       enabledByDefault: true,
       risk: 'low',
-      toolNames: ['plugin_list', 'plugin_import'],
+      toolNames: ['plugin_list', 'plugin_import', 'agent_router_status'],
       icon: 'Puzzle',
       version: '1.0.0',
       author: 'CharacterArc'
     },
-    createTools: () => []
+    createTools: () => createPluginMarketTools()
   })
 
   // 重建已导入的插件能力模块（插件注册只存在于内存 registry，重启后需从
   // 持久化清单恢复，否则会出现「插件市场显示已导入、能力模块里却没有」的 bug）。
   pluginsRebuild = rebuildInstalledPlugins(registry)
+
+  // 注入插件代码根目录并异步预加载已安装插件代码（best-effort）。
+  try {
+    setPluginCodeDir(join(app.getPath('userData'), 'data', 'dsh-plugins'))
+    void pluginsRebuild.then(() =>
+      preloadPluginCode(listInstalledPluginsSync())
+    )
+  } catch {
+    // 设置插件目录失败不影响启动。
+  }
 
   return registry
 }
@@ -129,9 +144,19 @@ export function ensurePluginsRebuilt(): Promise<void> {
  */
 async function rebuildInstalledPlugins(reg: AgentModuleRegistry): Promise<void> {
   try {
-    const installed = await listInstalledPlugins()
+    // 先把内置 dsh 预设持久化（使其在插件市场显示为「已导入」并默认启用）。
+    let installed = await ensureBuiltinPluginsPersisted()
+    const repos = new Set(installed.map((p) => p.repo.toLowerCase()))
+    for (const bp of BUILTIN_PLUGINS) {
+      if (!repos.has(bp.repo.toLowerCase())) {
+        installed = [...installed, bp]
+      }
+    }
     for (const plugin of installed) {
-      reg.register({ definition: buildPluginModuleDefinition(plugin) })
+      reg.register({
+        definition: buildPluginModuleDefinition(plugin),
+        createTools: () => createPluginTools(plugin) as Tool[]
+      })
     }
   } catch {
     // 插件清单读取失败不影响应用启动，静默跳过。

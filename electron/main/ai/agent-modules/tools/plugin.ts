@@ -18,9 +18,35 @@ import type {
   PluginImportResult
 } from '@shared/agent-modules'
 import type { AgentModuleDefinition } from '@shared/agent-modules'
+import type { Tool } from '../../agent/tools/types'
+import { createPluginPresetTools } from './plugin-runtime'
 
 /** GitHub dsh-plugin 话题搜索地址。 */
-const DSHP_PLUGIN_TOPIC_URL = 'https://api.github.com/search/repositories?q=topic:dsh-plugin'
+const DSHP_PLUGIN_TOPIC_URL = 'https://api.github.com/search/repositories'
+
+/** 每页默认条数（GitHub 单页上限 100）。 */
+const DEFAULT_PAGE_SIZE = 30
+
+/** 单次可累计的插件列表缓存（内存），避免重复请求 / 保证 hasMore 正确。 */
+const listCache = new Map<string, DshPluginListing[]>()
+
+/** 已安装插件同步缓存（供同步的 createTools 使用，启动时/增删时刷新）。 */
+let installedCache: InstalledPlugin[] | null = null
+
+/** 读取已安装插件（带同步缓存）。 */
+function readInstalledCached(): InstalledPlugin[] {
+  return installedCache ?? []
+}
+
+/** 强制刷新同步缓存（增删/启动后调用）。 */
+export function refreshInstalledCache(plugins: InstalledPlugin[]): void {
+  installedCache = plugins
+}
+
+/** 同步读取已安装插件清单（用于同步的 createTools）。 */
+export function listInstalledPluginsSync(): InstalledPlugin[] {
+  return readInstalledCached()
+}
 
 /** 已导入插件清单文件（位于 userData 下）。 */
 function pluginStorePath(): string {
@@ -32,9 +58,12 @@ async function readInstalledPlugins(): Promise<InstalledPlugin[]> {
   try {
     const raw = await readFile(pluginStorePath(), 'utf8')
     const parsed = JSON.parse(raw) as { plugins?: InstalledPlugin[] }
-    return Array.isArray(parsed?.plugins) ? parsed.plugins : []
+    const list = Array.isArray(parsed?.plugins) ? parsed.plugins : []
+    installedCache = list
+    return list
   } catch {
-    return []
+    installedCache = installedCache ?? []
+    return installedCache
   }
 }
 
@@ -43,18 +72,118 @@ async function writeInstalledPlugins(plugins: InstalledPlugin[]): Promise<void> 
   const file = pluginStorePath()
   await mkdir(dirname(file), { recursive: true })
   await writeFile(file, JSON.stringify({ plugins }, null, 2), 'utf8')
+  installedCache = plugins
 }
 
 /**
- * 从 GitHub 搜索 dsh-plugin 话题下的仓库。
- * 支持可选关键词过滤；网络失败时返回空数组（UI 提示离线）。
+ * 确保内置 dsh 预设持久化到已安装清单（幂等），
+ * 使它们在插件市场里也显示为「已导入」。返回合并后的清单。
  */
-export async function listDshPlugins(query?: string): Promise<DshPluginListing[]> {
+export async function ensureBuiltinPluginsPersisted(): Promise<InstalledPlugin[]> {
+  const existing = await readInstalledPlugins()
+  const repos = new Set(existing.map((p) => p.repo.toLowerCase()))
+  const toAdd = BUILTIN_PLUGINS.filter((p) => !repos.has(p.repo.toLowerCase()))
+  if (toAdd.length === 0) return existing
+  const merged = [...existing, ...toAdd]
+  await writeInstalledPlugins(merged)
+  return merged
+}
+
+export interface DshPluginPage {
+  /** 当前页累计返回的插件（全部已加载页合并）。 */
+  items: DshPluginListing[]
+  /** 是否还有下一页可继续加载。 */
+  hasMore: boolean
+  /** 当前已加载到的页码（下一页从 page+1 开始）。 */
+  page: number
+  /** 每页条数。 */
+  perPage: number
+  /** 本次请求失败（离线/超时）时置 true。 */
+  offline?: boolean
+}
+
+/** 清除内存分页缓存（供卸载等场景强制刷新）。 */
+export function clearPluginListCache(): void {
+  listCache.clear()
+}
+
+/**
+ * 从 GitHub 搜索 dsh-plugin 话题下的仓库（分页）。
+ *
+ * 支持：
+ *  - 关键词过滤（query）
+ *  - 分页（page / perPage）与增量加载（loadMore）
+ *
+ * 原实现只抓 GitHub 第一页（默认 30 条），导致插件市场只显示部分插件。
+ * 这里改为支持持续翻页：只要 GitHub 返回条数等于 perPage 即视为还有更多，
+ * UI 侧「往下滑 / 点 load more」就能不断刷新出后续插件。
+ */
+export async function listDshPlugins(options?: {
+  query?: string
+  page?: number
+  perPage?: number
+  loadMore?: boolean
+}): Promise<DshPluginPage> {
+  const query = (options?.query ?? '').trim()
+  const perPage = Math.min(100, Math.max(1, options?.perPage ?? DEFAULT_PAGE_SIZE))
+  const page = Math.max(1, options?.page ?? 1)
+
   const installed = await readInstalledPlugins()
   const installedRepos = new Set(installed.map((p) => p.repo.toLowerCase()))
-  const url = DSHP_PLUGIN_TOPIC_URL + (query ? `+${encodeURIComponent(query.trim())}` : '')
+  const cacheKey = `q:${query || '*'}`
+
+  // 增量加载（loadMore=true）：只拉取新的一页，并追加到该查询的累计缓存。
+  if (options?.loadMore) {
+    const pageItems = await fetchDshPage(query, page, perPage, installedRepos)
+    const prior = listCache.get(cacheKey) ?? []
+    const seen = new Set(prior.map((p) => p.repo.toLowerCase()))
+    const appended = pageItems.items.filter((p) => !seen.has(p.repo.toLowerCase()))
+    const merged = [...prior, ...appended]
+    listCache.set(cacheKey, merged)
+    return {
+      items: merged,
+      hasMore: pageItems.hasMore,
+      page,
+      perPage,
+      offline: pageItems.offline
+    }
+  }
+
+  // 从第一页开始的全量刷新：直接重新拉第一页并重置缓存。
+  const pageItems = await fetchDshPage(query, 1, perPage, installedRepos)
+  if (pageItems.offline) {
+    // 离线时保留旧缓存，让用户仍能浏览已加载的条目。
+    return {
+      items: listCache.get(cacheKey) ?? [],
+      hasMore: false,
+      page: 1,
+      perPage,
+      offline: true
+    }
+  }
+  listCache.set(cacheKey, pageItems.items)
+  return { ...pageItems, page: 1, perPage }
+}
+
+/** 抓取 GitHub 单页 dsh-plugin 搜索结果。 */
+async function fetchDshPage(
+  query: string,
+  page: number,
+  perPage: number,
+  installedRepos: Set<string>
+): Promise<{
+  items: DshPluginListing[]
+  hasMore: boolean
+  offline: boolean
+}> {
+  const url =
+    `${DSHP_PLUGIN_TOPIC_URL}?q=topic:dsh-plugin` +
+    (query ? `+${encodeURIComponent(query)}` : '') +
+    `&per_page=${perPage}&page=${page}`
 
   let items: Array<Record<string, unknown>> = []
+  let hasMore = false
+  let offline = false
   try {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 8000)
@@ -64,27 +193,42 @@ export async function listDshPlugins(query?: string): Promise<DshPluginListing[]
     })
     clearTimeout(timer)
     if (res.ok) {
-      const body = (await res.json()) as { items?: Array<Record<string, unknown>> }
+      const body = (await res.json()) as {
+        items?: Array<Record<string, unknown>>
+        total_count?: number
+      }
       items = Array.isArray(body.items) ? body.items : []
+      hasMore = items.length >= perPage
+      if (typeof body.total_count === 'number') {
+        hasMore = hasMore && items.length > 0
+      }
+    } else {
+      // GitHub 限流（403/429）时按离线处理，避免 UI 卡死。
+      offline = true
     }
   } catch {
-    // 离线或超时：返回空清单
+    // 离线或超时：返回空清单，标记离线
+    offline = true
   }
 
-  return items.map((it) => {
-    const repo = String(it.full_name ?? '')
-    const name = String(it.name ?? repo.split('/').pop() ?? repo)
-    return {
-      repo,
-      name,
-      description: typeof it.description === 'string' ? it.description : undefined,
-      url: String(it.html_url ?? `https://github.com/${repo}`),
-      installed: repo !== '' && installedRepos.has(repo.toLowerCase()),
-      stars: typeof it.stargazers_count === 'number' ? it.stargazers_count : undefined,
-      language: typeof it.language === 'string' ? it.language : undefined,
-      updatedAt: typeof it.updated_at === 'string' ? it.updated_at : undefined
-    }
-  })
+  return {
+    items: items.map((it) => {
+      const repo = String(it.full_name ?? '')
+      const name = String(it.name ?? repo.split('/').pop() ?? repo)
+      return {
+        repo,
+        name,
+        description: typeof it.description === 'string' ? it.description : undefined,
+        url: String(it.html_url ?? `https://github.com/${repo}`),
+        installed: repo !== '' && installedRepos.has(repo.toLowerCase()),
+        stars: typeof it.stargazers_count === 'number' ? it.stargazers_count : undefined,
+        language: typeof it.language === 'string' ? it.language : undefined,
+        updatedAt: typeof it.updated_at === 'string' ? it.updated_at : undefined
+      }
+    }),
+    hasMore,
+    offline
+  }
 }
 
 /**
@@ -93,7 +237,10 @@ export async function listDshPlugins(query?: string): Promise<DshPluginListing[]
  */
 export async function importDshPlugin(
   req: PluginImportRequest,
-  register: (def: AgentModuleDefinition) => void
+  register: (
+    def: AgentModuleDefinition,
+    createTools?: () => unknown[]
+  ) => void
 ): Promise<PluginImportResult> {
   const repo = (req?.repo ?? '').trim()
   const name = (req?.name ?? '').trim() || repo.split('/').pop() || '插件'
@@ -117,7 +264,7 @@ export async function importDshPlugin(
     author: repo.split('/')[0] ?? 'dsh-plugin',
     installedAt: new Date().toISOString()
   }
-  register(buildPluginModuleDefinition(installed))
+  register(buildPluginModuleDefinition(installed), () => createPluginTools(installed))
   plugins.push(installed)
   await writeInstalledPlugins(plugins)
 
@@ -146,6 +293,51 @@ export async function listInstalledPlugins(): Promise<InstalledPlugin[]> {
 }
 
 /**
+ * 由已安装插件构建可执行工具工厂（真实能力注入）。
+ * 让「装了插件就自动能用」：每个已安装插件都会贡献一个
+ * `plugin_<id>_run` 工具（任务路由 / persona 注入），不再是空模块。
+ */
+export function createPluginTools(installed: InstalledPlugin): Tool[] {
+  return createPluginPresetTools([
+    {
+      id: installed.id,
+      repo: installed.repo,
+      name: installed.name,
+      description: installed.description,
+      builtin: isBuiltinPluginRepo(installed.repo)
+    }
+  ])
+}
+
+/** 默认内置插件清单（用户指定自动安装的两个 dsh 预设）。 */
+export const BUILTIN_PLUGINS: InstalledPlugin[] = [
+  {
+    id: 'plugin.v4-flash-godmode-opencode-go',
+    repo: 'SheberDavid/v4-flash-godmode-opencode-go',
+    name: 'V4 Flash 神模式',
+    description: '让 Flash / 普通模型从「鬼模式」切到「神模式」：任务感知路由 + 深度思考锚（w7 persona），构建/修复自动分流。',
+    version: '1.0.0',
+    author: 'SheberDavid',
+    installedAt: new Date().toISOString()
+  },
+  {
+    id: 'plugin.dsh-routing-suite',
+    repo: 'yjh051108/dsh-routing-suite',
+    name: 'dsh 路由套件',
+    description: '任务感知推理模式路由（spec/react/weak），按首条消息分类注入 persona 与首轮核心工具面，实测 P1–P23。',
+    version: '1.0.0',
+    author: 'yjh051108',
+    installedAt: new Date().toISOString()
+  }
+]
+
+/** 默认内置插件是否出现在「已导入」清单。 */
+export function isBuiltinPluginRepo(repo: string): boolean {
+  const r = repo.toLowerCase()
+  return BUILTIN_PLUGINS.some((p) => p.repo.toLowerCase() === r)
+}
+
+/**
  * 由已安装插件记录构建能力模块定义。
  *
  * 用于应用重启后从持久化清单重建插件能力模块（插件注册本身只存在于内存
@@ -153,16 +345,18 @@ export async function listInstalledPlugins(): Promise<InstalledPlugin[]> {
  * 的问题）。字段与 importDshPlugin 注册时保持一致。
  */
 export function buildPluginModuleDefinition(installed: InstalledPlugin): AgentModuleDefinition {
+  const builtin = isBuiltinPluginRepo(installed.repo)
   return {
     id: installed.id,
     name: installed.name,
     description: installed.description,
     kind: 'plugin',
-    source: 'marketplace',
+    source: builtin ? 'builtin' : 'marketplace',
     scope: 'global',
-    enabledByDefault: false,
+    // 内置 dsh 预设默认启用（装上即自动使用）。
+    enabledByDefault: builtin,
     risk: 'medium',
-    toolNames: [],
+    toolNames: [`plugin_${installed.id.replace(/^plugin[-_.]/i, '').replace(/[^a-z0-9_-]/gi, '-')}_run`],
     version: installed.version ?? '1.0.0',
     icon: 'Puzzle',
     author: installed.author ?? installed.repo.split('/')[0] ?? 'dsh-plugin'

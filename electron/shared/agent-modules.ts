@@ -345,6 +345,26 @@ export interface InstalledPlugin {
 
 export interface PluginListRequest {
   query?: string
+  /** 页码（从 1 开始）。 */
+  page?: number
+  /** 每页条数（1..100，默认 30）。 */
+  perPage?: number
+  /** 是否为增量加载（loadMore），为 true 时只拉取第 page 页并追加到已加载列表。 */
+  loadMore?: boolean
+}
+
+/** dsh-plugin 分页结果。 */
+export interface PluginListPage {
+  /** 累计返回的插件（loadMore 时已合并所有已加载页）。 */
+  items: DshPluginListing[]
+  /** 是否还有下一页可继续加载。 */
+  hasMore: boolean
+  /** 当前已加载到的页码。 */
+  page: number
+  /** 每页条数。 */
+  perPage: number
+  /** 本次请求离线/失败标记。 */
+  offline?: boolean
 }
 
 export interface PluginImportRequest {

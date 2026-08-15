@@ -16,9 +16,14 @@ const message = useMessage()
 const plugins = ref<DshPluginListing[]>([])
 const installed = ref<InstalledPlugin[]>([])
 const loading = ref(false)
+const loadingMore = ref(false)
+const hasMore = ref(false)
+const page = ref(1)
 const importing = ref<Set<string>>(new Set())
 const query = ref('')
 const offline = ref(false)
+
+const PER_PAGE = 30
 
 const installedById = new Map<string, string>()
 
@@ -50,16 +55,50 @@ async function loadPlugins(search?: string): Promise<void> {
   loading.value = true
   offline.value = false
   try {
-    const items = await window.characterArc.agentModules.pluginList(search ? { query: search } : undefined)
-    plugins.value = items
-    if (items.length === 0 && !offline.value && !search) {
+    const result = await window.characterArc.agentModules.pluginList(search ? { query: search } : undefined)
+    plugins.value = result.items ?? []
+    hasMore.value = Boolean(result.hasMore)
+    page.value = 1
+    if (plugins.value.length === 0 && !offline.value && !search) {
       // 空结果但未标记离线时也视为无插件
     }
   } catch {
     plugins.value = []
     offline.value = true
+    hasMore.value = false
   } finally {
     loading.value = false
+  }
+}
+
+/** 往下滑 / 点“加载更多”：拉取下一页并追加（无限滚动）。 */
+async function loadMore(): Promise<void> {
+  if (loadingMore.value || loading.value || !hasMore.value) return
+  loadingMore.value = true
+  try {
+    const next = page.value + 1
+    const result = await window.characterArc.agentModules.pluginList({
+      query: query.value.trim() || undefined,
+      page: next,
+      perPage: PER_PAGE,
+      loadMore: true
+    })
+    plugins.value = result.items ?? plugins.value
+    hasMore.value = Boolean(result.hasMore)
+    page.value = next
+  } catch {
+    // 加载失败保留已加载内容，hasMore 不变，用户可再试。
+  } finally {
+    loadingMore.value = false
+  }
+}
+
+/** 列表容器滚动到底部时自动加载下一页。 */
+function onListScroll(e: Event): void {
+  const el = e.target as HTMLElement | null
+  if (!el) return
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 60) {
+    void loadMore()
   }
 }
 
@@ -154,7 +193,7 @@ defineExpose({ loadPlugins, loadInstalled })
     </div>
     <div v-else-if="plugins.length === 0" class="apm-empty">暂无匹配的 dsh-plugin 插件</div>
 
-    <div v-else class="apm-list arc-scrollbar">
+    <div v-else class="apm-list arc-scrollbar" @scroll="onListScroll">
       <div
         v-for="p in plugins"
         :key="p.repo"
@@ -200,6 +239,19 @@ defineExpose({ loadPlugins, loadInstalled })
             {{ importing.has(p.repo) ? '导入中…' : '导入' }}
           </button>
         </div>
+      </div>
+
+      <div v-if="loadingMore || hasMore" class="apm-loadmore">
+        <button
+          v-if="hasMore"
+          type="button"
+          class="apm-loadmore-btn"
+          :disabled="loadingMore"
+          @click="loadMore"
+        >
+          {{ loadingMore ? '加载中…' : '加载更多（往下滑继续刷新）' }}
+        </button>
+        <span v-else-if="loadingMore" class="apm-loadmore-tip">加载中…</span>
       </div>
     </div>
   </div>
@@ -401,6 +453,34 @@ defineExpose({ loadPlugins, loadInstalled })
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
+}
+.apm-loadmore {
+  display: flex;
+  justify-content: center;
+  padding: 6px 0 2px;
+  min-height: 28px;
+}
+.apm-loadmore-btn {
+  border: 1px solid var(--arc-border);
+  background: var(--arc-bg-weak);
+  color: var(--arc-text-secondary);
+  font-size: 11px;
+  padding: 4px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.apm-loadmore-btn:hover:not(:disabled) {
+  border-color: var(--arc-primary);
+  color: var(--arc-primary);
+}
+.apm-loadmore-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.apm-loadmore-tip {
+  font-size: 11px;
+  color: var(--arc-text-hint);
 }
 .apm-item-actions {
   display: flex;
