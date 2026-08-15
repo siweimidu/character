@@ -7,7 +7,7 @@
  *   - MCP 市场
  */
 
-import { ipcMain } from 'electron'
+import { ipcMain, dialog, BrowserWindow } from 'electron'
 import { readdir, readFile, writeFile, rm, mkdir, stat } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import {
@@ -183,6 +183,23 @@ export function registerAgentModuleIpcHandlers(): void {
     } catch {
       return { path: abs, exists: false, isDirectory: false, isFile: false, size: 0 }
     }
+  })
+
+  // ==================== 文件区（工作目录）选择 ====================
+  ipcMain.handle(CH.FS_PICK_FOLDER, async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    const options: Electron.OpenDialogOptions = {
+      title: '选择文件区（工作目录）',
+      buttonLabel: '选择此文件夹',
+      properties: ['openDirectory', 'createDirectory']
+    }
+    const result = owner
+      ? await dialog.showOpenDialog(owner, options)
+      : await dialog.showOpenDialog(options)
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, canceled: true, path: '' }
+    }
+    return { success: true, canceled: false, path: result.filePaths[0] }
   })
 
   // ==================== MCP 市场 ====================

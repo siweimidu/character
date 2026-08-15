@@ -94,6 +94,8 @@ export interface AssistantSendOptions {
   agentScope?: 'local' | 'global'
   /** 局部智能体归属项目（每项目/小说隔离）。缺省取 options.projectId()。 */
   agentProjectId?: string
+  /** 全局智能体「文件区」工作目录（绝对路径）。设置后对话产物默认保存到该目录。 */
+  fileAreaPath?: string
 }
 
 export function useAssistant(options: UseAssistantOptions) {
@@ -845,7 +847,8 @@ export function useAssistant(options: UseAssistantOptions) {
         attachments: plainAttachments,
         agentId: sendOptions.agentId,
         agentScope: sendOptions.agentScope,
-        agentProjectId: sendOptions.agentProjectId ?? options.projectId()
+        agentProjectId: sendOptions.agentProjectId ?? options.projectId(),
+        fileAreaPath: sendOptions.fileAreaPath
       })
       // 事件流已经在 handler 里做了乐观 turn 的替换 + 状态更新，
       // 这里只兜底：若乐观 turn 依然存在（没有任何事件推来），清理掉。

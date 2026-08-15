@@ -411,6 +411,12 @@ export interface TurnSendRequest {
   agentScope?: 'local' | 'global'
   /** 局部智能体归属的项目 ID（通常等于 session.projectId，用于每项目/小说隔离）。 */
   agentProjectId?: string
+  /**
+   * 全局智能体「文件区」工作目录（绝对路径）。
+   * 选择后，与智能体对话产生的文件产物（file_* 工具）默认保存到该目录。
+   * 缺省时回落到项目工作区根目录。
+   */
+  fileAreaPath?: string
 }
 
 export interface TurnAttachment {

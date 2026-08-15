@@ -276,7 +276,11 @@ export function createExecutionPlanner(
 
       // 通用文件系统工具：让智能体具备像 Codex / Claude Code 一样真正操作文件的能力
       // （列目录/读/写/删/移动/搜索），例如“删除第一张封面图”可直接落地。
-      const fileTools = createFileTools({ workspaceDir: getWorkspaceDirPath() })
+      // 若设置了「文件区」，则以文件区为工作目录，对话产物默认保存到该目录。
+      const fileAreaPath = String(request.fileAreaPath ?? '').trim()
+      const fileTools = createFileTools({
+        workspaceDir: fileAreaPath || getWorkspaceDirPath()
+      })
 
       const combined: Tool[] = [
         ...chapterReadTools,

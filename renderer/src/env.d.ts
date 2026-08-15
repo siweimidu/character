@@ -1129,6 +1129,7 @@ declare global {
         fsDelete: (payload: { path: string; recursive: boolean }) => Promise<import('@shared/agent-modules').AgentFsDeleteResult>,
         fsMkdir: (payload: { path: string }) => Promise<import('@shared/agent-modules').AgentFsMkdirResult>,
         fsInfo: (payload: { path: string }) => Promise<import('@shared/agent-modules').AgentFsInfoResult>,
+        pickFileAreaFolder: () => Promise<{ success: boolean; canceled?: boolean; path: string }>,
         mcpListMarkets: () => Promise<import('@shared/agent-modules').McpMarketDefinition[]>,
         mcpListTools: (payload: { marketId?: string }) => Promise<import('@shared/agent-modules').McpToolListing[]>,
         mcpImport: (payload: { marketId: string; toolId: string }) => Promise<import('@shared/agent-modules').McpImportResult>,

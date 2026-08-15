@@ -102,6 +102,7 @@ export const AGENT_MODULE_IPC_CHANNELS = {
   FS_DELETE: 'characterarc:agent-module:fs:delete',
   FS_MKDIR: 'characterarc:agent-module:fs:mkdir',
   FS_INFO: 'characterarc:agent-module:fs:info',
+  FS_PICK_FOLDER: 'characterarc:agent-module:fs:pick-folder',
   // MCP 市场
   MCP_LIST_MARKETS: 'characterarc:agent-module:mcp:list-markets',
   MCP_LIST_TOOLS: 'characterarc:agent-module:mcp:list-tools',

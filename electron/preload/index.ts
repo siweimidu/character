@@ -436,6 +436,9 @@ contextBridge.exposeInMainWorld('characterArc', {
       ipcRenderer.invoke('characterarc:agent-module:fs:mkdir', toIpcPayload(payload)),
     fsInfo: (payload: { path: string }) =>
       ipcRenderer.invoke('characterarc:agent-module:fs:info', toIpcPayload(payload)),
+    // 选择文件区（工作目录）
+    pickFileAreaFolder: () =>
+      ipcRenderer.invoke('characterarc:agent-module:fs:pick-folder'),
     // MCP 市场
     mcpListMarkets: () => ipcRenderer.invoke('characterarc:agent-module:mcp:list-markets'),
     mcpListTools: (payload: { marketId?: string }) =>

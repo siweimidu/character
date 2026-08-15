@@ -19,9 +19,9 @@ import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import {
   Brain,
-  Check,
   ChevronDown,
   ChevronRight,
+  FolderOpen,
   FolderTree,
   Package,
   PanelLeftClose,
@@ -32,7 +32,6 @@ import {
 } from 'lucide-vue-next'
 import type { SurfaceDefinition, TurnTruncateResult } from '@shared/assistant-runtime'
 import type { AgentModuleRuntime } from '@shared/agent-modules'
-import AiProviderIcon from '@/components/assistantV2/AiProviderIcon.vue'
 import DeepSeekFishLogo from '@/components/assistantV2/DeepSeekFishLogo.vue'
 import { useAppStore } from '@/stores/app'
 import { useAssistant } from '@/composables/useAssistant'
@@ -144,9 +143,6 @@ function onDocClick(event: MouseEvent): void {
   if (projectPickerOpen.value && projectPickerEl.value && !projectPickerEl.value.contains(event.target as Node)) {
     projectPickerOpen.value = false
   }
-  if (modelMenuOpen.value && modelMenuEl.value && !modelMenuEl.value.contains(event.target as Node)) {
-    modelMenuOpen.value = false
-  }
 }
 function selectProject(projectId: string): void {
   if (projectId !== selectedProjectId.value) {
@@ -158,50 +154,37 @@ function selectProject(projectId: string): void {
 }
 
 // ============================================================================
-// 当前 AI 接口 / 模型
+// 全局智能体「文件区」：选择具体文件夹作为对话产物保存的工作目录
 // ============================================================================
-const activeProfileName = computed(() => {
-  const profile = appStore.appSettings.aiProfiles.find(
-    (p) => p.id === appStore.appSettings.activeAiProfileId
-  )
-  return profile?.name || appStore.appSettings.provider || '未配置'
-})
-const activeProvider = computed(() => {
-  const profile = appStore.appSettings.aiProfiles.find(
-    (p) => p.id === appStore.appSettings.activeAiProfileId
-  )
-  return profile?.provider || appStore.appSettings.provider || ''
-})
-const activeModel = computed(() => appStore.appSettings.model || '未选模型')
-
-// 模型选择菜单（DeepSeek Harness ModelSelect 两级下拉）
-type ModelPane = 'root' | 'model' | 'profile'
-const modelMenuOpen = ref(false)
-const modelPane = ref<ModelPane>('root')
-const modelMenuEl = ref<HTMLElement | null>(null)
-const modelOptionsList = computed(() => {
-  const activeProfile = appStore.appSettings.aiProfiles.find(
-    (p) => p.id === appStore.appSettings.activeAiProfileId
-  )
-  const savedModels = activeProfile?.models?.filter(Boolean) ?? []
-  if (savedModels.length > 0) return savedModels
-  const current = appStore.appSettings.model
-  return current ? [current] : []
-})
-const profileOptionsList = computed(() =>
-  appStore.appSettings.aiProfiles.map((p) => ({ id: p.id, name: p.name }))
-)
-function toggleModelMenu(): void {
-  modelMenuOpen.value = !modelMenuOpen.value
-  modelPane.value = 'root'
+const FILE_AREA_KEY = 'arc-global-agent-file-area'
+const fileAreaPath = ref('')
+function restoreFileArea(): void {
+  try {
+    const saved = window.localStorage.getItem(FILE_AREA_KEY)
+    if (saved) fileAreaPath.value = saved
+  } catch { /* ignore */ }
 }
-function chooseModel(model: string): void {
-  appStore.updateActiveAiProfileModel(model)
-  modelMenuOpen.value = false
+async function pickFileArea(): Promise<void> {
+  try {
+    const result = await window.characterArc.agentModules.pickFileAreaFolder()
+    if (!result?.success || !result.path) return
+    fileAreaPath.value = result.path
+    try { window.localStorage.setItem(FILE_AREA_KEY, result.path) } catch { /* ignore */ }
+    message.success('已设置文件区：对话产物将保存到此目录')
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : '选择文件区失败')
+  }
 }
-function switchProfile(id: string): void {
-  appStore.switchAiProfile(id)
-  modelMenuOpen.value = false
+function clearFileArea(): void {
+  fileAreaPath.value = ''
+  try { window.localStorage.removeItem(FILE_AREA_KEY) } catch { /* ignore */ }
+  message.success('已清除文件区，产物保存回项目工作区')
+}
+function fileAreaName(): string {
+  const p = fileAreaPath.value.trim()
+  if (!p) return ''
+  const segs = p.split(/[\\/]/).filter(Boolean)
+  return segs[segs.length - 1] || p
 }
 
 // ============================================================================
@@ -210,7 +193,8 @@ function switchProfile(id: string): void {
 function sendWithMode(intentHint?: string): void {
   void assistant.send({
     intentHint: intentHint || 'global-assistant-v2:standard',
-    agentId: selectedAgentId.value || undefined
+    agentId: selectedAgentId.value || undefined,
+    fileAreaPath: fileAreaPath.value.trim() || undefined
   })
 }
 const availableSkills = computed(() =>
@@ -343,6 +327,7 @@ function startDetailsResize(event: MouseEvent): void { startColumnResize('detail
 
 onMounted(() => {
   restoreAgentSelection()
+  restoreFileArea()
   sessionWidth.value = readStoredWidth(SESSION_WIDTH_KEY, SESSION_DEFAULT_WIDTH, SESSION_MIN_WIDTH, SESSION_MAX_WIDTH)
   detailsWidth.value = readStoredWidth(DETAILS_WIDTH_KEY, DETAILS_DEFAULT_WIDTH, DETAILS_MIN_WIDTH, DETAILS_MAX_WIDTH)
   document.addEventListener('click', onDocClick)
@@ -549,6 +534,24 @@ function handleVoiceInput(): void {
 
       <!-- 侧栏底部 -->
       <div class="ga-sidebar-foot">
+        <!-- 文件区（工作目录）：对话产物保存位置 -->
+        <div class="ga-file-area-card">
+          <div class="ga-ctx-label">文件区 · 产物保存目录</div>
+          <button type="button" class="ga-file-area-select" title="选择文件夹作为文件区" @click="pickFileArea">
+            <FolderTree :size="14" class="ga-file-area-icon" />
+            <span v-if="fileAreaPath" class="ga-file-area-name">{{ fileAreaName() }}</span>
+            <span v-else class="ga-file-area-name muted">未选择（默认项目工作区）</span>
+          </button>
+          <div v-if="fileAreaPath" class="ga-file-area-path" :title="fileAreaPath">{{ fileAreaPath }}</div>
+          <div class="ga-file-area-actions">
+            <button type="button" class="ga-file-area-pick" @click="pickFileArea">
+              <FolderOpen :size="12" />
+              <span>{{ fileAreaPath ? '更换文件夹' : '选择文件夹' }}</span>
+            </button>
+            <button v-if="fileAreaPath" type="button" class="ga-file-area-clear" @click="clearFileArea">清除</button>
+          </div>
+        </div>
+
         <!-- 项目上下文选择器 -->
         <div ref="projectPickerEl" class="ga-ctx-card" @click="toggleProjectPicker">
           <div class="ga-ctx-label">当前上下文 · 小说项目</div>
@@ -577,72 +580,6 @@ function handleVoiceInput(): void {
               </button>
               <div v-if="projects.length === 0" class="ga-ctx-dropdown-empty">暂无小说项目，请先返回主页创建。</div>
             </div>
-          </div>
-        </div>
-
-        <!-- AI 接口 / 模型选择 -->
-        <div ref="modelMenuEl" class="ga-model-menu-wrap">
-          <button type="button" class="ga-ai-indicator" :class="{ open: modelMenuOpen }" @click="toggleModelMenu">
-            <AiProviderIcon :provider="activeProvider" :size="14" />
-            <span class="ga-ai-indicator-name">{{ activeProfileName }}</span>
-            <span class="ga-ai-indicator-sep">·</span>
-            <span class="ga-ai-indicator-model">{{ activeModel }}</span>
-            <ChevronDown :size="12" class="ga-model-caret" :class="{ open: modelMenuOpen }" />
-          </button>
-
-          <div v-if="modelMenuOpen" class="ga-model-menu" role="menu" @click.stop>
-            <template v-if="modelPane === 'root'">
-              <button type="button" role="menuitem" class="ga-model-cell" @click="modelPane = 'model'">
-                <span class="ga-model-cell-label">模型</span>
-                <span class="ga-model-cell-value">{{ activeModel }}</span>
-                <ChevronRight :size="13" class="ga-model-cell-chevron" />
-              </button>
-              <button type="button" role="menuitem" class="ga-model-cell" @click="modelPane = 'profile'">
-                <span class="ga-model-cell-label">接口</span>
-                <span class="ga-model-cell-value">{{ activeProfileName }}</span>
-                <ChevronRight :size="13" class="ga-model-cell-chevron" />
-              </button>
-            </template>
-
-            <template v-if="modelPane === 'model'">
-              <div class="ga-model-menu-head">选择模型</div>
-              <div class="ga-model-menu-list arc-scrollbar">
-                <button
-                  v-for="m in modelOptionsList"
-                  :key="m"
-                  type="button"
-                  role="menuitemradio"
-                  :aria-checked="activeModel === m"
-                  class="ga-model-option"
-                  :class="{ selected: activeModel === m }"
-                  @click="chooseModel(m)"
-                >
-                  <span class="ga-model-option-name">{{ m }}</span>
-                  <Check v-if="activeModel === m" :size="14" class="ga-model-check" />
-                </button>
-                <div v-if="modelOptionsList.length === 0" class="ga-model-menu-empty">暂无可选模型，请先在接口配置中添加。</div>
-              </div>
-            </template>
-
-            <template v-if="modelPane === 'profile'">
-              <div class="ga-model-menu-head">选择 AI 接口</div>
-              <div class="ga-model-menu-list arc-scrollbar">
-                <button
-                  v-for="p in profileOptionsList"
-                  :key="p.id"
-                  type="button"
-                  role="menuitemradio"
-                  :aria-checked="appStore.appSettings.activeAiProfileId === p.id"
-                  class="ga-model-option"
-                  :class="{ selected: appStore.appSettings.activeAiProfileId === p.id }"
-                  @click="switchProfile(p.id)"
-                >
-                  <span class="ga-model-option-name">{{ p.name }}</span>
-                  <Check v-if="appStore.appSettings.activeAiProfileId === p.id" :size="14" class="ga-model-check" />
-                </button>
-                <div v-if="profileOptionsList.length === 0" class="ga-model-menu-empty">暂无 AI 接口，请先在设置中配置。</div>
-              </div>
-            </template>
           </div>
         </div>
 
@@ -1034,127 +971,95 @@ function handleVoiceInput(): void {
 .ga-ctx-option-meta { flex: 0 0 auto; font-size: 11px; color: var(--arc-text-hint); }
 .ga-ctx-dropdown-empty { padding: 14px 12px; font-size: 12px; color: var(--arc-text-hint); text-align: center; }
 
-/* AI 指示器 */
-.ga-model-menu-wrap { position: relative; }
-.ga-ai-indicator {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--arc-primary) 6%, var(--arc-bg-surface));
-  border: 1px solid color-mix(in srgb, var(--arc-primary) 16%, var(--arc-border));
-  color: var(--arc-text-secondary);
-  font-size: 11px;
-  min-width: 0;
-  width: 100%;
-  text-align: left;
-  font-family: inherit;
-  cursor: pointer;
+/* 文件区（工作目录）卡片 */
+.ga-file-area-card {
+  position: relative;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--arc-primary) 5%, var(--arc-bg-surface));
+  border: 1px solid color-mix(in srgb, var(--arc-primary) 22%, var(--arc-border));
   transition: border-color 0.15s ease, background 0.15s ease;
 }
-.ga-ai-indicator:hover, .ga-ai-indicator.open {
-  border-color: color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border));
-  background: color-mix(in srgb, var(--arc-primary) 10%, var(--arc-bg-surface));
+.ga-file-area-card:hover {
+  border-color: color-mix(in srgb, var(--arc-primary) 42%, var(--arc-border));
 }
-.ga-model-caret { flex: 0 0 auto; color: var(--arc-text-hint); transition: transform 0.18s ease; }
-.ga-model-caret.open { transform: rotate(180deg); }
-.ga-ai-indicator-name {
-  flex: 0 0 auto;
-  font-weight: 600;
-  color: var(--arc-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 38%;
-}
-.ga-ai-indicator-sep { flex: 0 0 auto; color: var(--arc-text-hint); }
-.ga-ai-indicator-model {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.ga-model-menu {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 0;
-  right: 0;
-  z-index: 40;
-  min-width: 200px;
-  overflow: hidden;
-  border: 1px solid var(--arc-border-strong);
-  border-radius: 12px;
-  background: var(--arc-bg-surface);
-  box-shadow: var(--arc-shadow-md);
-}
-.ga-model-cell {
+.ga-file-area-select {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
-  padding: 11px 12px;
+  padding: 0;
   border: none;
-  border-bottom: 1px solid var(--arc-border);
   background: transparent;
-  font-family: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background 0.12s ease;
-}
-.ga-model-cell:hover { background: var(--arc-bg-weak); }
-.ga-model-cell-label { font-size: 12.5px; font-weight: 600; color: var(--arc-text-primary); }
-.ga-model-cell-value {
-  flex: 1 1 auto;
-  min-width: 0;
-  font-size: 11.5px;
-  color: var(--arc-text-hint);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: right;
-}
-.ga-model-cell-chevron { flex: 0 0 auto; color: var(--arc-text-hint); }
-.ga-model-menu-head {
-  padding: 8px 12px;
-  font-size: 10.5px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--arc-text-hint);
-  border-bottom: 1px solid var(--arc-border);
-}
-.ga-model-menu-list { max-height: 220px; overflow-y: auto; padding: 4px; }
-.ga-model-option {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  padding: 9px 10px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
   font-family: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.12s ease;
 }
-.ga-model-option:hover { background: var(--arc-bg-weak); }
-.ga-model-option.selected { background: var(--ga-primary-soft); }
-.ga-model-option-name {
+.ga-file-area-icon { flex: 0 0 auto; color: var(--arc-primary); }
+.ga-file-area-name {
   flex: 1 1 auto;
   min-width: 0;
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--arc-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ga-model-option.selected .ga-model-option-name { color: var(--arc-primary); }
-.ga-model-check { flex: 0 0 auto; color: var(--arc-primary); }
-.ga-model-menu-empty { padding: 14px 12px; font-size: 12px; color: var(--arc-text-hint); text-align: center; }
+.ga-file-area-name.muted { color: var(--arc-text-hint); font-weight: 500; }
+.ga-file-area-path {
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: var(--arc-text-hint);
+  font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+.ga-file-area-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.ga-file-area-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  border: 1px solid color-mix(in srgb, var(--arc-primary) 35%, var(--arc-border));
+  background: color-mix(in srgb, var(--arc-primary) 10%, var(--arc-bg-surface));
+  color: var(--arc-primary);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.ga-file-area-pick:hover {
+  background: color-mix(in srgb, var(--arc-primary) 16%, var(--arc-bg-surface));
+  border-color: color-mix(in srgb, var(--arc-primary) 55%, var(--arc-border));
+}
+.ga-file-area-clear {
+  padding: 4px 8px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--arc-text-secondary);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.ga-file-area-clear:hover {
+  color: var(--arc-danger);
+  border-color: color-mix(in srgb, var(--arc-danger) 30%, var(--arc-border));
+}
+
 
 /* 折叠窄条 */
 .ga-session-mini, .ga-details-mini {

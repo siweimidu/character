@@ -33,7 +33,7 @@ export function initAgentModuleRegistry(): AgentModuleRegistry {
       kind: 'filesystem',
       source: 'builtin',
       scope: 'global',
-      enabledByDefault: false,
+      enabledByDefault: true,
       risk: 'critical',
       toolNames: ['sysfs_list', 'sysfs_read', 'sysfs_write', 'sysfs_delete', 'sysfs_mkdir', 'sysfs_info'],
       icon: 'FolderTree',
