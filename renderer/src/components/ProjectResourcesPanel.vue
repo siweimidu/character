@@ -95,6 +95,23 @@ function refresh(): void {
   void load()
 }
 
+/** 资源区条目拖拽到智能体输入框时使用的自定义 MIME 类型（与 AssistantComposer 约定）。 */
+const ARC_RESOURCE_MIME = 'application/x-arc-resource'
+
+/** 拖拽某个资源条目到智能体输入框：把资源路径/名称/类型写入自定义 MIME，供对话框 drop 时解析。 */
+function onDragStart(event: DragEvent, entry: ResourceEntry): void {
+  if (!event.dataTransfer) return
+  const payload = {
+    kind: entry.isDirectory ? 'resource-dir' : 'resource-file',
+    path: entry.path,
+    name: entry.name
+  }
+  event.dataTransfer.setData(ARC_RESOURCE_MIME, JSON.stringify(payload))
+  // 兜底：保证在未识别自定义 MIME 的场景下也能有可见的拖拽效果
+  event.dataTransfer.setData('text/plain', `资源：${entry.name}`)
+  if (entry.isDirectory) event.dataTransfer.effectAllowed = 'copy'
+}
+
 function collapseAll(): void {
   collapsedDirs.value = new Set(entries.value.filter((e) => e.isDirectory).map((e) => e.path))
   message.success('已折叠全部文件夹')
@@ -330,7 +347,13 @@ onMounted(() => {
           class="resource-item"
           :class="{ folder: entry.isDirectory, collapsed: isCollapsed(entry) }"
         >
-          <div class="row" :title="entry.name" @click="entry.isDirectory ? toggleDir(entry) : openPreview(entry)">
+          <div
+            class="row"
+            :title="entry.name"
+            :draggable="true"
+            @dragstart="onDragStart($event, entry)"
+            @click="entry.isDirectory ? toggleDir(entry) : openPreview(entry)"
+          >
             <span class="chevron">
               <ChevronDown v-if="entry.isDirectory && !isCollapsed(entry)" :size="15" />
               <ChevronRight v-else :size="15" />

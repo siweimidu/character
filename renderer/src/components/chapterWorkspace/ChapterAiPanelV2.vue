@@ -296,7 +296,7 @@ function handleAttachFile(): void {
   referencePickerVisible.value = true
 }
 
-function handleReferenceConfirm(refs: Array<{ kind: 'chapter' | 'volume'; id: string; label: string }>): void {
+function handleReferenceConfirm(refs: Array<{ kind: 'chapter' | 'volume' | 'resource' | 'resource-dir'; id: string; label: string; path?: string }>): void {
   for (const ref of refs) {
     if (ref.kind === 'volume') {
       assistant.addPendingAttachment({
@@ -304,12 +304,71 @@ function handleReferenceConfirm(refs: Array<{ kind: 'chapter' | 'volume'; id: st
         ref: `volume:${ref.id}`,
         label: `分卷《${ref.label}》`
       })
-    } else {
+    } else if (ref.kind === 'chapter') {
       assistant.addPendingAttachment({
         kind: 'chapter',
         ref: `chapter:${ref.id}`,
         label: `章节《${ref.label}》`
       })
+    } else if (ref.kind === 'resource' || ref.kind === 'resource-dir') {
+      // 资源区文件/文件夹：复用资源读取逻辑
+      if (ref.path) {
+        void handleAddResource({
+          kind: ref.kind,
+          path: ref.path,
+          label: ref.label
+        })
+      }
+    }
+  }
+}
+
+/**
+ * 处理资源区（文件/文件夹）拖拽或引用：读取资源内容后作为「文件」附件加入待发送区。
+ * - 文件：读取文本内容内联携带，并附相对路径供 AI 用文件工具读取。
+ * - 文件夹：读取目录结构作为提示内容，供 AI 了解该文件夹下有什么。
+ */
+async function handleAddResource(ref: { kind: 'resource' | 'resource-dir'; path: string; label: string }): Promise<void> {
+  activeTab.value = 'chat'
+  const projectId = selectedProjectId.value
+  const refKey = `file:${ref.path}`
+  // 防重复：同一资源只允许引用一次
+  if (assistant.pendingAttachments.value.some((a) => `${a.kind}:${a.ref}` === refKey)) {
+    message.warning('该资源已在待发送引用中')
+    return
+  }
+  // 先立刻上抛「文件名芯片」，让用户第一时间看到反馈
+  assistant.addPendingAttachment({
+    kind: 'file',
+    ref: `file:${ref.path}`,
+    label: `资源：${ref.label}`,
+    path: ref.path
+  })
+
+  if (ref.kind === 'resource-dir') {
+    // 文件夹：读取目录结构作为提示内容
+    try {
+      const res = await window.characterArc.projectResourceList({ projectId, path: ref.path })
+      if (res?.success && res.entries) {
+        const lines = res.entries
+          .sort((a, b) => (a.isDirectory !== b.isDirectory ? (a.isDirectory ? -1 : 1) : a.name.localeCompare(b.name, 'zh-Hans-CN')))
+          .map((e) => `${e.isDirectory ? '[文件夹] ' : '[文件] '}${e.name}`)
+        const content = `【项目资源文件夹：${ref.label}（相对路径 ${ref.path}）】\n包含 ${res.entries.length} 项：\n${lines.join('\n')}`
+        assistant.updatePendingAttachment(refKey, { content })
+      }
+    } catch {
+      // 忽略读取失败，仅以文件名引用
+    }
+  } else {
+    // 文件：读取文本内容内联携带
+    try {
+      const res = await window.characterArc.projectResourceRead({ projectId, path: ref.path })
+      if (res?.success) {
+        const content = typeof res.content === 'string' ? res.content.slice(0, 60000) : ''
+        assistant.updatePendingAttachment(refKey, { content, size: res.size })
+      }
+    } catch {
+      // 忽略读取失败，仅以文件名引用
     }
   }
 }
@@ -664,6 +723,7 @@ defineExpose({ sendPrompt, sendPromptWithAction, triggerDraft, applyTargetWords,
             assistant.addPendingAttachment({ kind: 'chapter', ref: `chapter:${ref.id}`, label: `章节《${ref.label}》` })
           }
         }"
+        @add-resource="handleAddResource"
         @remove-attachment="(key) => assistant.removePendingAttachment(key)"
         @upload-file="handleUploadFile"
         @upload-files="handleUploadFiles"

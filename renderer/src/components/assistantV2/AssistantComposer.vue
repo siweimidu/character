@@ -49,6 +49,8 @@ const emit = defineEmits<{
   (e: 'apply-skill', skill: { id: string; label: string }): void
   (e: 'remove-attachment', refKey: string): void
   (e: 'add-reference', ref: { kind: 'chapter' | 'volume' | 'skill'; id: string; label: string }): void
+  /** 添加资源区（文件/文件夹）引用。path 为相对资源根目录的路径。 */
+  (e: 'add-resource', ref: { kind: 'resource' | 'resource-dir'; path: string; label: string }): void
   (e: 'upload-file'): void
   (e: 'upload-files', files: File[]): void
   (e: 'add-file', file: { name: string; content: string; mime: string; size: number; path?: string }): void
@@ -564,15 +566,21 @@ const isDragOver = ref(false)
 const ACCEPTED_TEXT_EXT = ['txt', 'md', 'markdown', 'mdown', 'mkd']
 
 const ARC_REF_MIME = 'application/x-arc-ref'
+/** 项目资源区拖拽（文件/文件夹）使用的自定义 MIME（与 ProjectResourcesPanel 约定）。 */
+const ARC_RESOURCE_MIME = 'application/x-arc-resource'
 
 function hasArcRef(event: DragEvent): boolean {
   return !!event.dataTransfer?.types?.includes(ARC_REF_MIME)
 }
 
+function hasArcResourceRef(event: DragEvent): boolean {
+  return !!event.dataTransfer?.types?.includes(ARC_RESOURCE_MIME)
+}
+
 function handleDragEnter(event: DragEvent): void {
   event.preventDefault()
   if (props.isStreaming) return
-  if (event.dataTransfer?.types?.includes('Files') || hasArcRef(event)) {
+  if (event.dataTransfer?.types?.includes('Files') || hasArcRef(event) || hasArcResourceRef(event)) {
     isDragOver.value = true
   }
 }
@@ -580,7 +588,7 @@ function handleDragEnter(event: DragEvent): void {
 function handleDragOver(event: DragEvent): void {
   event.preventDefault()
   if (props.isStreaming) return
-  if (event.dataTransfer?.types?.includes('Files') || hasArcRef(event)) {
+  if (event.dataTransfer?.types?.includes('Files') || hasArcRef(event) || hasArcResourceRef(event)) {
     isDragOver.value = true
   }
 }
@@ -597,6 +605,24 @@ function handleDrop(event: DragEvent): void {
   event.preventDefault()
   isDragOver.value = false
   if (props.isStreaming) return
+
+  // 资源区文件/文件夹拖拽：解析自定义 MIME，加入待发送附件芯片
+  if (event.dataTransfer?.types?.includes(ARC_RESOURCE_MIME)) {
+    try {
+      const raw = event.dataTransfer.getData(ARC_RESOURCE_MIME) ?? ''
+      const res = JSON.parse(raw) as { kind: 'resource-file' | 'resource-dir'; path: string; name: string }
+      if (res && res.path) {
+        emit('add-resource', {
+          kind: res.kind === 'resource-dir' ? 'resource-dir' : 'resource',
+          path: res.path,
+          label: res.name || res.path
+        })
+      }
+    } catch {
+      // 忽略无法解析的拖拽数据
+    }
+    return
+  }
 
   // 章节/分卷引用拖拽：解析自定义 MIME，加入待发送附件芯片
   if (hasArcRef(event)) {
@@ -726,7 +752,7 @@ watch(
   >
     <div class="drag-overlay" v-if="isDragOver">
       <Upload :size="18" />
-      松开以上传本地文件
+      松开以添加本地文件或资源引用
     </div>
     <input
       ref="fileInputRef"
