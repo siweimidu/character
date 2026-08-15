@@ -58,8 +58,9 @@ export async function transpileTypeScript(source: string, filename: string): Pro
       compilerOptions: {
         target: ts.ScriptTarget.ES2020,
         module: ts.ModuleKind.CommonJS,
-        moduleResolution: (ts.ModuleResolutionKind as Record<string, number>).NodeJs ??
-          (ts.ModuleResolutionKind as Record<string, number>).Node10 ??
+        moduleResolution:
+          (ts.ModuleResolutionKind as unknown as Record<string, number>).NodeJs ??
+          (ts.ModuleResolutionKind as unknown as Record<string, number>).Node10 ??
           2,
         esModuleInterop: true,
         allowJs: true,
@@ -70,6 +71,8 @@ export async function transpileTypeScript(source: string, filename: string): Pro
   }
 
   try {
+    // esbuild 为可选依赖：运行时若未安装则抛错，由外层 catch 降级到内置最小转译器。
+    // @ts-ignore - esbuild 不在生产依赖中，属可选能力
     const esbuild = await import('esbuild')
     const result = await esbuild.transform(source, {
       loader: 'ts',
