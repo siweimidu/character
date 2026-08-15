@@ -596,14 +596,15 @@ function handleCreateOutline(volumeId = appStore.outlineVolumes[0]?.id): void {
 }
 
 // 调用 AI 接口自动扩展新的分卷，作为大纲的上层结构
-async function handleExpandOutline(): Promise<void> {
+async function handleExpandOutline(userPrompt: string = ''): Promise<void> {
   if (isExpanding.value) {
     return
   }
-  openQuantityDialog('volume', 10)
+  openQuantityDialog('volume', 10, { userPrompt })
 }
 
-async function doExpandOutline(count: number): Promise<void> {
+async function doExpandOutline(count: number, userPrompt = ''): Promise<void> {
+  const expandRequirement = userPrompt.trim()
   let created = 0
   for (let i = 0; i < count; i++) {
     try {
@@ -633,7 +634,8 @@ async function doExpandOutline(count: number): Promise<void> {
               outlineItems: buildAiOutlineContext(),
               ...buildAiEntityContext(),
               worldviewTitles: appStore.worldviewEntries.map((entry) => entry.title),
-              characterNames: appStore.characters.map((character) => character.name)
+              characterNames: appStore.characters.map((character) => character.name),
+              userPrompt: [expandRequirement].filter(Boolean)
             }
           }))
       )
@@ -669,22 +671,23 @@ async function doExpandOutline(count: number): Promise<void> {
   }
 }
 
-async function handleExpandVolumeOutline(volume: OutlineVolume, count = 5): Promise<void> {
-  const taskKey = expandVolumeTaskKey(volume.id)
+async function handleExpandVolumeOutline(targetVolume: OutlineVolume, userPrompt: string = ''): Promise<void> {
+  const taskKey = expandVolumeTaskKey(targetVolume.id)
   if (isAnyVolumeExpanding.value) {
     return
   }
-  openQuantityDialog('nodes', 10, { volumeId: volume.id, volumeTitle: volume.title })
+  openQuantityDialog('nodes', 10, { volumeId: targetVolume.id, volumeTitle: targetVolume.title, userPrompt })
   return
 }
 
-async function doExpandVolumeOutline(volume: OutlineVolume, count = 5): Promise<void> {
+async function doExpandVolumeOutline(volume: OutlineVolume, count = 5, userPrompt = ''): Promise<void> {
   const taskKey = expandVolumeTaskKey(volume.id)
   if (isAnyVolumeExpanding.value) {
     return
   }
 
   const targetCount = Math.max(1, Math.min(count, 10))
+  const expandRequirement = userPrompt.trim()
 
   try {
     const result = await appStore.runTrackedAiTask(
@@ -722,7 +725,9 @@ async function doExpandVolumeOutline(volume: OutlineVolume, count = 5): Promise<
                   summary: item.summary,
                   status: item.status
                 })),
-              userPrompt: `请优先扩写当前分卷从现有节点往后最需要的 ${targetCount} 个剧情子节点。`
+              userPrompt: expandRequirement
+                ? `请优先扩写当前分卷从现有节点往后最需要的 ${targetCount} 个剧情子节点。\n用户补充要求：${expandRequirement}`
+                : `请优先扩写当前分卷从现有节点往后最需要的 ${targetCount} 个剧情子节点。`
             }
           }))
     )
@@ -1394,14 +1399,16 @@ const quantityDialogTitle = ref('')
 const quantityDialogDesc = ref('')
 const quantityDialogTargetVolumeId = ref('')
 const quantityDialogTargetVolumeTitle = ref('')
+const quantityDialogRequirement = ref('')
 
-function openQuantityDialog(mode: QuantityDialogMode, max: number, opts: { volumeId?: string; volumeTitle?: string } = {}): void {
+function openQuantityDialog(mode: QuantityDialogMode, max: number, opts: { volumeId?: string; volumeTitle?: string; userPrompt?: string } = {}): void {
   if (max < 1) return
   quantityDialogMode.value = mode
   quantityDialogMax.value = max
   quantityDialogValue.value = 1
   quantityDialogTargetVolumeId.value = opts.volumeId ?? ''
   quantityDialogTargetVolumeTitle.value = opts.volumeTitle ?? ''
+  quantityDialogRequirement.value = opts.userPrompt ?? ''
   switch (mode) {
     case 'chapters':
       quantityDialogTitle.value = '一键生成章节'
@@ -1426,17 +1433,18 @@ function handleQuantityEnter(): void {
 
 function confirmQuantityDialog(): void {
   const count = Math.max(1, Math.min(quantityDialogMax.value, Math.floor(quantityDialogValue.value)))
+  const requirement = quantityDialogRequirement.value.trim()
   quantityDialogVisible.value = false
   switch (quantityDialogMode.value) {
     case 'chapters':
       doCreateChapters(count)
       break
     case 'volume':
-      doExpandOutline(count)
+      doExpandOutline(count, requirement)
       break
     case 'nodes': {
       const volume = appStore.outlineVolumes.find((v) => v.id === quantityDialogTargetVolumeId.value)
-      if (volume) doExpandVolumeOutline(volume, count)
+      if (volume) doExpandVolumeOutline(volume, count, requirement)
       break
     }
   }
@@ -1979,7 +1987,7 @@ watch(
           <Rows3 :size="16" />
           <span>新增分卷</span>
         </button>
-        <button class="soft-button primary" :disabled="isExpanding" @click="handleExpandOutline">
+        <button class="soft-button primary" :disabled="isExpanding" @click="handleExpandOutline()">
           <Sparkles :size="16" />
           <span>{{ isExpanding ? '扩写中...' : 'AI 扩写分卷' }}</span>
         </button>
@@ -2624,6 +2632,14 @@ watch(
           style="width: 100%;"
           placeholder="1"
           @keydown.enter="handleQuantityEnter"
+        />
+        <n-input
+          v-if="quantityDialogMode === 'volume' || quantityDialogMode === 'nodes'"
+          v-model:value="quantityDialogRequirement"
+          type="textarea"
+          :rows="3"
+          placeholder="补充要求（可选）：可填写对扩写方向的具体要求，如剧情走向、风格、需要引入的角色或设定等"
+          style="width: 100%; margin-top: 12px;"
         />
       </div>
     </n-modal>

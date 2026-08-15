@@ -82,5 +82,5 @@ test('初稿只建立索引，世界状态统一在章节定稿后同步', () =>
   assert.match(appStoreSource, /selection: \{ mode: 'custom', chapterIds: ids \}/)
   assert.match(appStoreSource, /onBackfillStateProgress\(handleBackfillStateProgress\)/)
   assert.match(appStoreSource, /label: '同步定稿章节故事状态'/)
-  assert.match(aiTaskCenterSource, /run\.progress\?\.percentage/)
+  assert.match(aiTaskCenterSource, /run\.progress \?\? 100/)
 })
