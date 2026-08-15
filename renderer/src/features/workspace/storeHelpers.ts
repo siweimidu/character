@@ -321,6 +321,7 @@ export function normalizeAiRuns(aiRuns?: AiRunRecord[] | null): AiRunRecord[] {
           run.status === 'running' || run.status === 'success' || run.status === 'error' || run.status === 'canceled'
             ? run.status
             : 'success',
+        deletedAt: run.deletedAt || undefined,
         startedAt: run.startedAt || new Date().toISOString(),
         finishedAt: run.finishedAt || undefined,
         durationMs: Number.isFinite(run.durationMs) ? Math.max(0, Number(run.durationMs)) : undefined,

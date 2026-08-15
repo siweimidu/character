@@ -281,6 +281,7 @@ export async function ensureWorkspaceDb(): Promise<DatabaseSync> {
       provider TEXT NOT NULL,
       model TEXT NOT NULL,
       status TEXT NOT NULL,
+      deleted_at TEXT NOT NULL DEFAULT '',
       started_at TEXT NOT NULL,
       finished_at TEXT NOT NULL DEFAULT '',
       duration_ms INTEGER,
@@ -646,6 +647,12 @@ function ensureAiRunColumns(db: DatabaseSync): void {
 
   if (!columnNames.has('usage_json')) {
     db.exec(`ALTER TABLE ai_runs ADD COLUMN usage_json TEXT NOT NULL DEFAULT '{}';`)
+  }
+
+  const globalColumns = db.prepare(`PRAGMA table_info('global_ai_runs')`).all() as Array<{ name: string }>
+  const globalColumnNames = new Set(globalColumns.map((column) => column.name))
+  if (!globalColumnNames.has('deleted_at')) {
+    db.exec(`ALTER TABLE global_ai_runs ADD COLUMN deleted_at TEXT NOT NULL DEFAULT '';`)
   }
 }
 
@@ -1052,7 +1059,7 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
 
     const aiRuns = db.prepare(`
       SELECT project_id AS projectId, id, chapter_id AS chapterId, task, provider, model, status,
-        started_at AS startedAt, finished_at AS finishedAt, duration_ms AS durationMs,
+        deleted_at AS deletedAt, started_at AS startedAt, finished_at AS finishedAt, duration_ms AS durationMs,
         used_knowledge_json AS usedKnowledgeJson, tool_calls_json AS toolCallsJson,
         usage_json AS usageJson, repair_triggered AS repairTriggered, error,
         response_preview AS responsePreview
@@ -1066,6 +1073,7 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
       provider: row.provider as string,
       model: row.model as string,
       status: row.status as WorkspaceAiRunStatus,
+      deletedAt: (row.deletedAt as string) || undefined,
       startedAt: row.startedAt as string,
       finishedAt: (row.finishedAt as string) || undefined,
       durationMs: typeof row.durationMs === 'number' ? row.durationMs : undefined,
@@ -1348,7 +1356,7 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
 
   const aiRuns = db.prepare(`
     SELECT project_id AS projectId, id, chapter_id AS chapterId, task, provider, model, status,
-      started_at AS startedAt, finished_at AS finishedAt, duration_ms AS durationMs,
+      deleted_at AS deletedAt, started_at AS startedAt, finished_at AS finishedAt, duration_ms AS durationMs,
       used_knowledge_json AS usedKnowledgeJson, tool_calls_json AS toolCallsJson, usage_json AS usageJson, repair_triggered AS repairTriggered,
       error, response_preview AS responsePreview
     FROM global_ai_runs
@@ -1361,6 +1369,7 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
     provider: row.provider as string,
     model: row.model as string,
     status: row.status as WorkspaceAiRunStatus,
+    deletedAt: (row.deletedAt as string) || undefined,
     startedAt: row.startedAt as string,
     finishedAt: (row.finishedAt as string) || undefined,
     durationMs: typeof row.durationMs === 'number' ? row.durationMs : undefined,
@@ -1711,6 +1720,7 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
       plot_threads: new Set(),
       assistant_sessions: new Set(),
       cover_workbench_history: new Set(),
+      global_ai_runs: new Set(),
       recycle_bin: new Set()
     }
 
@@ -1834,8 +1844,8 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
     `)
 
     const insertAiRun = db.prepare(`
-      INSERT OR REPLACE INTO global_ai_runs (id, project_id, chapter_id, task, provider, model, status, started_at, finished_at, duration_ms, used_knowledge_json, tool_calls_json, usage_json, repair_triggered, error, response_preview, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO global_ai_runs (id, project_id, chapter_id, task, provider, model, status, deleted_at, started_at, finished_at, duration_ms, used_knowledge_json, tool_calls_json, usage_json, repair_triggered, error, response_preview, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     const insertWorkflowDocument = db.prepare(`
@@ -2178,6 +2188,7 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
 
     const globalAiRuns = Array.isArray(payload.aiRuns) ? payload.aiRuns : []
     globalAiRuns.forEach((run, index) => {
+      allIds.global_ai_runs.add(run.id)
       insertAiRun.run(
         run.id,
         run.projectId ?? '',
@@ -2186,6 +2197,7 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
         run.provider,
         run.model,
         run.status,
+        run.deletedAt ?? '',
         run.startedAt,
         run.finishedAt ?? '',
         typeof run.durationMs === 'number' ? Math.max(0, Math.round(run.durationMs)) : null,

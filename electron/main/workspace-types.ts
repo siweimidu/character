@@ -68,6 +68,7 @@ export type WorkspaceAiRunRecord = {
   provider: string
   model: string
   status: WorkspaceAiRunStatus
+  deletedAt?: string
   startedAt: string
   finishedAt?: string
   durationMs?: number

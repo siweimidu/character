@@ -507,7 +507,6 @@ function handleBatchDelete(): void {
     </div>
   </n-modal>
 </template>
-</template>
 
 <style scoped>
 .titlebar-switcher {

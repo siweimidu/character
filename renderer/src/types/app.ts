@@ -787,6 +787,8 @@ export interface AiRunRecord {
   model: string
   /** 运行状态 */
   status: AiRunStatus
+  /** 软删除时间；非空表示该记录已移入全局回收站 */
+  deletedAt?: string
   /** 开始时间 */
   startedAt: string
   /** 结束时间 */
