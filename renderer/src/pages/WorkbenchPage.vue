@@ -94,8 +94,8 @@ const sidebarItemPresentation = {
   inspiration: { description: '收集标题、桥段、转折与人物动机', icon: Lightbulb, color: '#f59e0b' },
   'project-knowledge': { description: '一致性审计与从已有章节补录状态', icon: FileCheck2, color: '#14b8a6' },
   'prompt-library': { description: '管理写作提示词模板与一键套用', icon: MessageSquareText, color: '#f97316' },
-  'global-assistant-v2': { description: '多轮对话 + 暂存变更审阅', icon: Sparkles, color: '#0d7d5a' }
-} satisfies Record<WorkbenchMenuId, { description: string; icon: Component; color: string }>
+  'global-assistant-v2': { description: 'Runtime v2 · 多轮对话 + 暂存变更审阅', icon: Sparkles, color: '#0d7d5a' }
+}
 
 const sidebarItemCatalog = WORKBENCH_MENU_DEFINITIONS.map((item) => ({
   ...item,
@@ -441,28 +441,30 @@ watch(searchKeyword, (value) => {
       <div class="workspace-body" :class="{ 'workspace-body--flush': isGlobalAssistantPanel }">
         <div class="workspace-body-shell">
           <div class="workspace-body-main arc-scrollbar" :class="{ 'workspace-body-main--flush': isGlobalAssistantPanel }">
-            <!-- 搜索模式下显示全局搜索结果面板 -->
-            <SearchResultsPanel
-              v-if="isSearchMode"
-              key="search-results"
-              :query="normalizedSearch"
-              @open-result="openSearchResult"
-            />
-            <!-- 非搜索模式下根据当前激活的面板渲染对应组件 -->
-            <NovelWorkflowPanel v-else-if="appStore.activePanel === 'workflow'" key="workflow" />
-            <OverviewPanel v-else-if="appStore.activePanel === 'overview'" key="overview" :search-query="normalizedSearch" />
-            <ProjectKnowledgePanel v-else-if="appStore.activePanel === 'project-knowledge'" key="project-knowledge" />
-            <PromptLibraryPanel v-else-if="appStore.activePanel === 'prompt-library'" key="prompt-library" />
-            <WorldviewPanel v-else-if="appStore.activePanel === 'world'" key="world" :search-query="normalizedSearch" />
-            <CharactersPanel v-else-if="appStore.activePanel === 'characters'" key="characters" :search-query="normalizedSearch" />
-            <RelationsPanel v-else-if="appStore.activePanel === 'relations'" key="relations" :search-query="normalizedSearch" />
-            <InspirationPanel v-else-if="appStore.activePanel === 'inspiration'" key="inspiration" :search-query="normalizedSearch" />
-            <OutlinePanel v-else-if="appStore.activePanel === 'outline'" key="outline" :search-query="normalizedSearch" />
-            <PlotThreadsPanel v-else-if="appStore.activePanel === 'threads'" key="threads" :search-query="normalizedSearch" />
-            <ProjectResourcesPanel v-else-if="appStore.activePanel === 'project-resources'" key="project-resources" />
-            <GlobalAssistantPage v-else-if="appStore.activePanel === 'global-assistant'" key="global-assistant" />
-            <GlobalAssistantV2Page v-else-if="appStore.activePanel === 'global-assistant-v2'" key="global-assistant-v2" />
-            <SettingsPanel v-else key="settings" />
+            <KeepAlive :max="16">
+              <!-- 搜索模式下显示全局搜索结果面板 -->
+              <SearchResultsPanel
+                v-if="isSearchMode"
+                key="search-results"
+                :query="normalizedSearch"
+                @open-result="openSearchResult"
+              />
+              <!-- 非搜索模式下根据当前激活的面板渲染对应组件 -->
+              <NovelWorkflowPanel v-else-if="appStore.activePanel === 'workflow'" key="workflow" />
+              <OverviewPanel v-else-if="appStore.activePanel === 'overview'" key="overview" :search-query="normalizedSearch" />
+              <ProjectKnowledgePanel v-else-if="appStore.activePanel === 'project-knowledge'" key="project-knowledge" />
+              <PromptLibraryPanel v-else-if="appStore.activePanel === 'prompt-library'" key="prompt-library" />
+              <WorldviewPanel v-else-if="appStore.activePanel === 'world'" key="world" :search-query="normalizedSearch" />
+              <CharactersPanel v-else-if="appStore.activePanel === 'characters'" key="characters" :search-query="normalizedSearch" />
+              <RelationsPanel v-else-if="appStore.activePanel === 'relations'" key="relations" :search-query="normalizedSearch" />
+              <InspirationPanel v-else-if="appStore.activePanel === 'inspiration'" key="inspiration" :search-query="normalizedSearch" />
+              <OutlinePanel v-else-if="appStore.activePanel === 'outline'" key="outline" :search-query="normalizedSearch" />
+              <PlotThreadsPanel v-else-if="appStore.activePanel === 'threads'" key="threads" :search-query="normalizedSearch" />
+              <ProjectResourcesPanel v-else-if="appStore.activePanel === 'project-resources'" key="project-resources" />
+              <GlobalAssistantPage v-else-if="appStore.activePanel === 'global-assistant'" key="global-assistant" />
+              <GlobalAssistantV2Page v-else-if="appStore.activePanel === 'global-assistant-v2'" key="global-assistant-v2" />
+              <SettingsPanel v-else key="settings" />
+            </KeepAlive>
           </div>
 
           <Transition name="assistant-backdrop">

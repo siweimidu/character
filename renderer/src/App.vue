@@ -309,17 +309,19 @@ onBeforeUnmount(() => {
               <p>正在载入本地工作区...</p>
             </div>
             <Transition v-else name="view-fade" mode="out-in">
-              <ProjectCenter v-if="appStore.currentView === 'projects'" key="projects" />
-              <ProjectWizardPage v-else-if="appStore.currentView === 'wizard'" key="wizard" />
-              <ContinuationImportPage v-else-if="appStore.currentView === 'continuation-import'" key="continuation-import" />
-              <ChapterStudioPage v-else-if="appStore.currentView === 'chapter-studio'" key="chapter-studio" />
-              <DeconstructionLibraryPage v-else-if="appStore.currentView === 'deconstruction-library'" key="deconstruction-library" />
-              <SkillsPage v-else-if="appStore.currentView === 'skills'" key="skills" />
-              <CoverWorkbenchPage v-else-if="appStore.currentView === 'cover-workbench'" key="cover-workbench" />
-              <FanqieTrendsPage v-else-if="appStore.currentView === 'fanqie-trends'" key="fanqie-trends" />
-              <RecycleBinPage v-else-if="appStore.currentView === 'recycle-bin'" key="recycle-bin" />
-              <GlobalAgentPage v-else-if="appStore.currentView === 'global-agent'" key="global-agent" />
-              <WorkbenchPage v-else key="workbench" />
+              <KeepAlive :max="10">
+                <ProjectCenter v-if="appStore.currentView === 'projects'" key="projects" />
+                <ProjectWizardPage v-else-if="appStore.currentView === 'wizard'" key="wizard" />
+                <ContinuationImportPage v-else-if="appStore.currentView === 'continuation-import'" key="continuation-import" />
+                <ChapterStudioPage v-else-if="appStore.currentView === 'chapter-studio'" key="chapter-studio" />
+                <DeconstructionLibraryPage v-else-if="appStore.currentView === 'deconstruction-library'" key="deconstruction-library" />
+                <SkillsPage v-else-if="appStore.currentView === 'skills'" key="skills" />
+                <CoverWorkbenchPage v-else-if="appStore.currentView === 'cover-workbench'" key="cover-workbench" />
+                <FanqieTrendsPage v-else-if="appStore.currentView === 'fanqie-trends'" key="fanqie-trends" />
+                <RecycleBinPage v-else-if="appStore.currentView === 'recycle-bin'" key="recycle-bin" />
+                <GlobalAgentPage v-else-if="appStore.currentView === 'global-agent'" key="global-agent" />
+                <WorkbenchPage v-else key="workbench" />
+              </KeepAlive>
             </Transition>
           </div>
           <GlobalAiGenerateModal />

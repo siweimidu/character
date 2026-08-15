@@ -40,6 +40,6 @@ test('大纲面板的两个扩写入口均传递用户补充要求', () => {
   const source = readFileSync(new URL('../../../../renderer/src/components/OutlinePanel.vue', import.meta.url), 'utf8')
 
   assert.match(source, /handleExpandOutline\(userPrompt/)
-  assert.match(source, /handleExpandVolumeOutline\(targetVolume/)
+  assert.match(source, /handleExpandVolumeOutline\(targetVolume[^)]*userPrompt/)
   assert.match(source, /userPrompt:\s*\[/)
 })
