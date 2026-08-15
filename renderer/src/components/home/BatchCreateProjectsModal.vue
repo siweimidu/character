@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { NButton, NInputNumber, NModal, NSelect, NSpin, useMessage } from 'naive-ui'
-import { BookPlus, LoaderCircle, Sparkles } from 'lucide-vue-next'
+import { BookPlus, LoaderCircle, Minus, Sparkles } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/app'
 import { toIpcPayload } from '@/utils/ipcPayload'
 import { createProjectBatchSeedPayloads, type BatchSeedProject } from '@/features/wizard/projectSeed'
@@ -47,6 +47,9 @@ const canGenerate = computed(() => {
 
 const canCreate = computed(() => generatedProjects.value.length > 0 && !isCreating.value && !isGenerating.value)
 
+/** AI 后台任务中心里的任务 key，用于驱动标题栏「AI 后台任务」进度。 */
+const PROJECT_BATCH_TASK_KEY = 'project-batch-seed'
+
 function handleCountEnter(): void {
   // 数量为空时按回车自动填入 1，避免停留在灰色的 Please Input 占位状态
   if (!count.value || count.value < 1) count.value = 1
@@ -66,6 +69,19 @@ function handleClose(): void {
   emit('update:show', false)
 }
 
+/**
+ * 右上角减号：最小化到后台。
+ * 生成中关闭弹窗时，任务不会被取消，而是继续在标题栏「AI 后台任务」中执行；
+ * 生成完成后自动重新打开弹窗展示结果。未在生成时则等同于普通关闭。
+ */
+function handleMinimize(): void {
+  if (isGenerating.value || isCreating.value) {
+    emit('update:show', false)
+    return
+  }
+  handleClose()
+}
+
 async function handleGenerate(): Promise<void> {
   const n = Number(count.value)
   if (n < 1) {
@@ -79,16 +95,29 @@ async function handleGenerate(): Promise<void> {
   isGenerating.value = true
   generatedProjects.value = []
   try {
-    const result = await window.characterArc.generateAi(
-      toIpcPayload({
-        task: 'project-batch-seed',
-        settings: appStore.appSettings,
-        context: {
-          count: n,
-          genre: selectedGenre,
-          novelLength: selectedLength.value ?? ''
-        }
-      })
+    // 通过 runTrackedAiTask 将批量生成注册到标题栏「AI 后台任务」，
+    // 这样即使关闭/最小化弹窗，任务也会在后台继续执行并实时显示进度。
+    const result = await appStore.runTrackedAiTask(
+      {
+        key: PROJECT_BATCH_TASK_KEY,
+        kind: 'project',
+        label: 'AI 批量生成作品',
+        description: `正在为 ${n} 个新作品生成名称、世界观与前 3 章大纲`,
+        panel: 'project-center'
+      },
+      () =>
+        window.characterArc.generateAi(
+          toIpcPayload({
+            clientTaskId: appStore.getClientTaskId(),
+            task: 'project-batch-seed',
+            settings: appStore.appSettings,
+            context: {
+              count: n,
+              genre: selectedGenre,
+              novelLength: selectedLength.value ?? ''
+            }
+          })
+        )
     )
 
     if (!result.success || !result.result) {
@@ -107,6 +136,8 @@ async function handleGenerate(): Promise<void> {
 
     generatedProjects.value = list
     message.success(`已生成 ${list.length} 个作品`)
+    // 若用户此前已最小化到后台，生成完成后自动重新打开弹窗展示结果
+    emit('update:show', true)
   } catch (error) {
     message.error(error instanceof Error ? error.message : 'AI 批量生成失败，请稍后重试')
   } finally {
@@ -139,11 +170,24 @@ async function handleCreate(): Promise<void> {
     :show="props.show"
     preset="card"
     class="arc-editor-modal batch-create-modal"
-    title="批量生成作品"
     :bordered="false"
     :closable="!isGenerating && !isCreating"
     @close="handleClose"
   >
+    <template #header>
+      <div class="batch-modal-header">
+        <span class="batch-modal-title">批量生成作品</span>
+        <button
+          type="button"
+          class="batch-minimize-btn"
+          :title="isGenerating ? '最小化到后台，继续生成' : '最小化'"
+          :aria-label="isGenerating ? '最小化到后台，继续生成' : '最小化'"
+          @click="handleMinimize"
+        >
+          <Minus :size="16" />
+        </button>
+      </div>
+    </template>
     <div class="batch-create-body arc-scrollbar">
       <p class="batch-create-intro">
         先批量生成作品名称，再由 AI 依据题材、目标篇幅与简介，为每个作品生成开局世界观和前 3 章大纲。
@@ -254,6 +298,44 @@ async function handleCreate(): Promise<void> {
 <style scoped>
 .batch-create-modal {
   width: min(680px, calc(100vw - 40px));
+}
+
+.batch-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.batch-modal-title {
+  color: var(--arc-text-primary);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.batch-minimize-btn {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid var(--arc-border);
+  border-radius: 5px;
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.batch-minimize-btn:hover {
+  border-color: var(--arc-border-strong);
+  background: var(--arc-bg-weak);
+  color: var(--arc-primary);
+}
+
+.batch-minimize-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--arc-primary) 55%, transparent);
+  outline-offset: 2px;
 }
 
 .batch-create-body {

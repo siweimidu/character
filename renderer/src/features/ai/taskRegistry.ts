@@ -69,6 +69,7 @@ export type AiTaskKind =
   | 'plot-thread'
   | 'cover'
   | 'reference'
+  | 'project'
   | 'other'
 
 /** 启动任务时所需的输入（不含 startedAt/stage，内部补齐） */

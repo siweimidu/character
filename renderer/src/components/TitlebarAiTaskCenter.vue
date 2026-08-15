@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Feather,
   FileText,
+  FolderOpen,
   Image as ImageIcon,
   Library,
   ListTodo,
@@ -124,6 +125,7 @@ function kindIcon(kind: AiTaskKind) {
     case 'plot-thread': return Library
     case 'cover': return ImageIcon
     case 'reference': return BookOpen
+    case 'project': return FolderOpen
     default: return Brush
   }
 }
