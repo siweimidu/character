@@ -35,6 +35,10 @@ const selectedSkillIds = ref<string[]>([])
 const availableSkills = ref<ProjectSkillItem[]>([])
 const skillsLoading = ref(false)
 const isSaving = ref(false)
+/** 当前编辑的全局智能体是否已是默认（仅编辑全局智能体时可设为默认）。 */
+const isDefault = ref(false)
+/** 是否正在执行「设为默认」操作。 */
+const settingDefault = ref(false)
 
 /** 将已导入的 skill 按分组聚合，供绑定面板按分组展示 */
 const groupedAvailableSkills = computed(() => {
@@ -199,6 +203,35 @@ async function handleSave(): Promise<void> {
   }
 }
 
+/** 将当前编辑的全局智能体设为默认。 */
+async function handleSetDefault(): Promise<void> {
+  if (!props.agent) {
+    message.warning('请先保存该智能体后再设为默认')
+    return
+  }
+  if (props.agent.scope !== 'global') {
+    message.warning('仅全局智能体可设为默认')
+    return
+  }
+  settingDefault.value = true
+  try {
+    const result = await window.characterArc.assistant.agentSetDefault({ id: props.agent.id })
+    if (result?.ok && result.agent) {
+      isDefault.value = true
+      message.success(`已将「${result.agent.name}」设为默认全局智能体`)
+      // 刷新当前编辑态，同步最新的 isDefault 标记
+      props.agent.isDefault = true
+      emit('saved', result.agent)
+    } else {
+      message.error('设为默认失败')
+    }
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : '设为默认失败')
+  } finally {
+    settingDefault.value = false
+  }
+}
+
 /** 加载已导入的 skills 供智能体勾选绑定。 */
 async function loadAvailableSkills(): Promise<void> {
   const projectId = props.projectId
@@ -226,6 +259,7 @@ function fillForm(agent: AgentProfile | null): void {
     systemPrompt.value = agent.systemPrompt
     scope.value = agent.scope ?? 'global'
     selectedSkillIds.value = [...(agent.skillIds ?? [])]
+    isDefault.value = !!agent.isDefault
     if (agent.avatarType === 'svg') {
       avatarType.value = 'svg'
       avatarDataUri.value = ''
@@ -261,6 +295,7 @@ function fillForm(agent: AgentProfile | null): void {
     robotSvgAvatar.value = randomRobotAvatarSvg()
     scope.value = 'global'
     selectedSkillIds.value = []
+    isDefault.value = false
   }
 }
 
@@ -321,6 +356,22 @@ watch(
             </button>
           </div>
           <p v-if="scope === 'local'" class="scope-hint">局部智能体仅服务于当前项目/小说，与其它小说的局部智能体数据完全隔离。</p>
+          <div
+            v-if="agent && agent.scope === 'global'"
+            class="default-agent-row"
+          >
+            <span class="default-agent-label">默认智能体</span>
+            <button
+              v-if="!isDefault"
+              type="button"
+              class="default-agent-btn"
+              :disabled="settingDefault"
+              @click="handleSetDefault"
+            >
+              {{ settingDefault ? '设置中…' : '设为默认' }}
+            </button>
+            <span v-else class="default-agent-badge">✓ 当前默认</span>
+          </div>
         </NFormItem>
 
         <NFormItem label="描述">
@@ -490,6 +541,54 @@ watch(
   font-size: 11px;
   color: var(--arc-text-hint);
   line-height: 1.4;
+}
+.default-agent-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px dashed var(--arc-border-strong);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--arc-primary) 4%, var(--arc-bg-surface));
+}
+.default-agent-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--arc-text-secondary);
+}
+.default-agent-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border: 1px solid var(--arc-primary);
+  border-radius: 999px;
+  background: var(--arc-primary);
+  color: var(--arc-primary-foreground, #fff);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.default-agent-btn:hover {
+  filter: brightness(1.05);
+}
+.default-agent-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.default-agent-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(4, 120, 87, 0.12);
+  color: #047857;
+  font-size: 11.5px;
+  font-weight: 600;
 }
 .skill-bind {
   width: 100%;

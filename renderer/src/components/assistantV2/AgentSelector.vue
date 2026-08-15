@@ -35,9 +35,13 @@ const editingAgent = ref<AgentProfile | null>(null)
 // 默认展示「本小说智能体」（内置智能体已迁移到本小说智能体，全局默认含 Solo）。
 const activeScope = ref<'local' | 'global'>(props.defaultScope ?? 'local')
 
-/** 作用域内默认智能体（Solo，若被删除则回落到第一个）。 */
+/** 作用域内默认智能体：优先取被「设为默认」的智能体，否则回落 Solo，再取第一个。 */
 const defaultAgent = computed<AgentProfile | null>(
-  () => agents.value.find((a) => a.id === 'builtin-solo') ?? agents.value[0] ?? null
+  () =>
+    agents.value.find((a) => a.isDefault) ??
+    agents.value.find((a) => a.id === 'builtin-solo') ??
+    agents.value[0] ??
+    null
 )
 
 /** 是否选中了「默认」智能体。 */
@@ -230,7 +234,8 @@ onMounted(() => {
               <div class="item-info">
                 <div class="item-name">
                   {{ agent.name }}
-                  <span v-if="agent.isBuiltin" class="builtin-tag">内置</span>
+                  <span v-if="agent.isDefault" class="builtin-tag">默认</span>
+                  <span v-if="agent.isBuiltin && !agent.isDefault" class="builtin-tag">内置</span>
                 </div>
                 <div class="item-desc">{{ agent.description }}</div>
               </div>

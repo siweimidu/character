@@ -272,6 +272,8 @@ export interface AgentProfile {
   projectId?: string
   /** 绑定的 skill id 列表。每次调用该智能体时会自动注入这些 skill。 */
   skillIds: string[]
+  /** 是否为该作用域的默认智能体（设为默认后为 true）。 */
+  isDefault?: boolean
   createdAt: string
   updatedAt: string
 }
@@ -371,6 +373,7 @@ export const ASSISTANT_IPC_CHANNELS = {
   AGENT_CREATE: 'characterarc:assistant:agent:create',
   AGENT_UPDATE: 'characterarc:assistant:agent:update',
   AGENT_DELETE: 'characterarc:assistant:agent:delete',
+  AGENT_SET_DEFAULT: 'characterarc:assistant:agent:set-default',
   // 创作记忆（Agent Memory / 学习闭环）
   MEMORY_LIST: 'characterarc:assistant:memory:list',
   MEMORY_CREATE: 'characterarc:assistant:memory:create',

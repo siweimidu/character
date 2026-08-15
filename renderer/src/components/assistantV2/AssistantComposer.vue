@@ -141,9 +141,21 @@ loadCustomCommands()
 // ── 新建命令弹窗 ──
 const addCommandVisible = ref(false)
 const addCommandForm = ref({ key: '', label: '', description: '', template: '' })
+/** 打开新建命令弹窗前，斜杠命令/skill 悬浮窗是否处于展开状态。
+ *  用于点击「取消」后把悬浮窗重新展开，避免丢失正在编辑的命令上下文。 */
+let slashOpenBeforeAdd = false
 function openAddCommand(): void {
   addCommandForm.value = { key: '', label: '', description: '', template: '' }
+  slashOpenBeforeAdd = slashOpen.value
   addCommandVisible.value = true
+}
+/** 取消新建命令：关闭弹窗，并恢复斜杠命令/skill 悬浮窗（若打开前是展开的）。 */
+function closeAddCommand(): void {
+  addCommandVisible.value = false
+  if (slashOpenBeforeAdd) {
+    slashOpen.value = true
+    if (textareaRef.value) textareaRef.value.focus()
+  }
 }
 function submitAddCommand(): void {
   const key = addCommandForm.value.key.trim()
@@ -916,7 +928,7 @@ watch(
         </div>
       </div>
       <!-- 新建命令弹窗 -->
-      <div v-if="addCommandVisible" class="add-cmd-overlay" @mousedown.self="addCommandVisible = false">
+      <div v-if="addCommandVisible" class="add-cmd-overlay" @mousedown.self="closeAddCommand">
         <div class="add-cmd-dialog">
           <div class="add-cmd-title">新建命令</div>
           <label class="add-cmd-field">
@@ -936,7 +948,7 @@ watch(
             <textarea v-model="addCommandForm.template" rows="3" placeholder="请告诉我这个命令要让智能体做什么…" />
           </label>
           <div class="add-cmd-actions">
-            <button type="button" class="add-cmd-btn" @click="addCommandVisible = false">取消</button>
+            <button type="button" class="add-cmd-btn" @click="closeAddCommand">取消</button>
             <button
               type="button"
               class="add-cmd-btn primary"

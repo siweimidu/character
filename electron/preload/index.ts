@@ -400,6 +400,8 @@ contextBridge.exposeInMainWorld('characterArc', {
       ipcRenderer.invoke('characterarc:assistant:agent:update', toIpcPayload(payload)),
     agentDelete: (payload: { id: string }) =>
       ipcRenderer.invoke('characterarc:assistant:agent:delete', toIpcPayload(payload)),
+    agentSetDefault: (payload: { id: string }) =>
+      ipcRenderer.invoke('characterarc:assistant:agent:set-default', toIpcPayload(payload)),
     // 创作记忆（Agent Memory / 学习闭环）
     memoryList: (payload: { projectId: string; limit?: number }) =>
       ipcRenderer.invoke('characterarc:assistant:memory:list', toIpcPayload(payload)),

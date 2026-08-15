@@ -481,6 +481,7 @@ onMounted(() => {
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  overflow-y: auto;
 }
 .amcp-header {
   padding: 12px 14px 8px;

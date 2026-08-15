@@ -31,6 +31,7 @@ export function initAgentProfilesSchema(db: DatabaseSync): void {
       scope TEXT NOT NULL DEFAULT 'global',
       project_id TEXT,
       skill_ids TEXT NOT NULL DEFAULT '[]',
+      is_default INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     ) STRICT;
@@ -61,6 +62,9 @@ function ensureAgentProfileColumns(db: DatabaseSync): void {
   }
   if (!names.has('skill_ids')) {
     db.exec(`ALTER TABLE agent_profiles ADD COLUMN skill_ids TEXT NOT NULL DEFAULT '[]';`)
+  }
+  if (!names.has('is_default')) {
+    db.exec(`ALTER TABLE agent_profiles ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0;`)
   }
 }
 
@@ -121,9 +125,9 @@ export const SOLO_SYSTEM_PROMPT = `# 角色
 
 /**
  * Solo 默认智能体的自定义 SVG 头像（data URI 兼容的裸 SVG 字符串）。
- * 采用「孤星 + 笔尖」主题：象征默认的独立创作助手，主色用弧光品牌蓝。
+ * 采用「五子棋」主题棋盘：象征默认智能体如棋局一般布局全局、落子有章，主色用弧光品牌蓝。
  */
-export const SOLO_AVATAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"><rect width="64" height="64" rx="14" fill="#e0f2fe"/><path d="M32 8 L35.5 22 L50 22 L38 32 L43 47 L32 38 L21 47 L26 32 L14 22 L28.5 22 Z" fill="#0ea5e9" stroke="#0284c7" stroke-width="1.5" stroke-linejoin="round"/><path d="M23 50 L32 42 L41 50" fill="none" stroke="#0284c7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="32" cy="33" r="3" fill="#f0f9ff"/></svg>`
+export const SOLO_AVATAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"><rect width="64" height="64" rx="14" fill="#fef3c7"/><g stroke="#b45309" stroke-width="1.2"><path d="M12 12H52V52H12Z" fill="#fffbeb"/><path d="M12 22H52 M12 32H52 M12 42H52 M22 12V52 M32 12V52 M42 12V52"/></g><circle cx="22" cy="22" r="3" fill="#1f2937"/><circle cx="32" cy="32" r="3" fill="#fff" stroke="#1f2937" stroke-width="1"/><circle cx="42" cy="22" r="3" fill="#1f2937"/><circle cx="22" cy="42" r="3" fill="#1f2937"/><circle cx="32" cy="42" r="3" fill="#fff" stroke="#1f2937" stroke-width="1"/></svg>`
 
 export const BUILTIN_AGENTS: BuiltinAgentSeed[] = [
   {
@@ -353,6 +357,7 @@ interface AgentProfileRow {
   scope: string
   project_id: string | null
   skill_ids: string
+  is_default: number
   created_at: string
   updated_at: string
 }
@@ -380,6 +385,7 @@ function rowToAgent(row: AgentProfileRow): AgentProfile {
     scope: (row.scope || 'global') as AgentScope,
     projectId: row.project_id || undefined,
     skillIds: parseSkillIds(row.skill_ids),
+    isDefault: row.is_default === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   }
@@ -759,6 +765,17 @@ export class AgentProfileStore {
     return true
   }
 
+  /** 设置全局作用域下的默认智能体（设为默认后，其它全局智能体会被取消默认标记）。 */
+  setDefaultGlobalAgent(id: string): AgentProfile | null {
+    const target = this.get(id)
+    if (!target || target.scope !== 'global') return null
+    this.db.prepare(`UPDATE agent_profiles SET is_default = 0 WHERE scope = 'global'`).run()
+    this.db
+      .prepare(`UPDATE agent_profiles SET is_default = 1, updated_at = ? WHERE id = ?`)
+      .run(new Date().toISOString(), id)
+    return this.get(id)
+  }
+
   /** 获取当前默认智能体（按作用域与项目过滤）。 */
   getDefaultAgent(scope?: AgentScope, projectId?: string): AgentProfile {
     if (scope === 'local' && projectId) {
@@ -767,12 +784,16 @@ export class AgentProfileStore {
         // 项目无本小说智能体时回落到全局默认（此时 local 必为空，local[0] 恒为 undefined，无需兜底）
         return this.getDefaultAgent('global')
       }
-      // 默认选择本小说智能体中的「Solo」（若存在，未被删除）
+      // 默认选择本小说智能体中被设为默认的（若存在），否则回落到「Solo」，再取第一个。
+      const marked = local.find((a) => a.isDefault)
+      if (marked) return marked
       const solo = local.find((a) => a.id === builtinProjectId('builtin-solo', projectId))
       return solo ?? local[0]
     }
-    // 全局默认智能体：优先选择 Solo（若存在，未被删除），否则取第一个全局智能体。
+    // 全局默认智能体：优先取被「设为默认」的智能体，否则回落 Solo，再取第一个。
     const globals = this.list({ scope: 'global' })
+    const marked = globals.find((a) => a.isDefault)
+    if (marked) return marked
     const solo = globals.find((a) => a.id === 'builtin-solo')
     return solo ?? globals[0]
   }
