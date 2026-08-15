@@ -139,7 +139,9 @@ async function loadSkillDefinition(root: string, relSegments: string[], scope: '
       manifest: fullManifest,
       compatibility: frontmatter.overrides.compatibility ?? heuristic.compatibility,
       compatibilityNote: frontmatter.overrides.compatibilityNote ?? heuristic.compatibilityNote,
-      enabled: frontmatter.overrides.enabled ?? heuristic.enabled,
+      // 内置 skills 默认全部启用（除非 frontmatter 显式禁用，或属于当前环境无法运行的 external-only 能力）；
+      // 项目扩展 skills 仍沿用启发式判断的默认启用状态。
+      enabled: frontmatter.overrides.enabled ?? (scope === 'builtin' ? heuristic.compatibility !== 'external-only' : heuristic.enabled),
       referencesCount,
       referenceFiles: referenceFiles.map((f) => `references/${f}`),
       content

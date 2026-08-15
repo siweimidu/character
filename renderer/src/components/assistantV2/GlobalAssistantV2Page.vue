@@ -25,6 +25,7 @@ import ResourcePanel from './ResourcePanel.vue'
 import AgentSelector from './AgentSelector.vue'
 import AgentMemoryDialog from './AgentMemoryDialog.vue'
 import ReferencePickerDialog from './ReferencePickerDialog.vue'
+import { toSlashSkills, useProjectSkillsLoader } from '@/features/projectSkills/useProjectSkills'
 
 const appStore = useAppStore()
 const { selectedProjectId } = storeToRefs(appStore)
@@ -303,12 +304,9 @@ const quickActions: Array<{ label: string; prompt: string }> = [
   { label: '伏笔审计', prompt: '请读取伏笔线索、章节摘要和创作记忆，列出待回收伏笔、风险和建议处理顺序。' }
 ]
 
-/** 当前项目已启用的 skills，供输入 / 唤起时快速选择 */
-const availableSkills = computed(() =>
-  (appStore.currentProject?.projectSkills ?? [])
-    .filter((s) => s.enabled)
-    .map((s) => ({ id: s.id, name: s.name, description: s.description, category: s.category, scope: s.scope }))
-)
+/** 当前项目内置 + 项目扩展 skills（含 scope，便于分组展示），供输入 / 唤起时快速选择 */
+const { skills: projectSkillItems } = useProjectSkillsLoader()
+const availableSkills = computed(() => toSlashSkills(projectSkillItems.value))
 
 const assetLinks = computed(() => [
   { id: 'world', label: '世界观', count: appStore.worldviewEntries.length, icon: Globe2 },

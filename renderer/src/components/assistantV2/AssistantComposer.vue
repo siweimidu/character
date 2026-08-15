@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { NButton } from 'naive-ui'
 import {
   Bookmark,
+  ChevronDown,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Mic,
   Paperclip,
   Plus,
+  Search,
   Square,
   Trash2,
   Undo2,
@@ -188,6 +192,14 @@ const slashTab = ref<'command' | 'skill'>('command')
 /** 两栏各维持一个高亮索引，切换栏时不互相干扰 */
 const slashIdxByTab = { command: ref(0), skill: ref(0) }
 
+/** Skills 栏内的独立搜索关键词（区别于触发 / 弹窗的 slashQuery）。 */
+const skillSearchQuery = ref('')
+/** Skills 栏中已折叠的分组标题集合。 */
+const collapsedSkillGroups = reactive<Record<string, boolean>>({})
+function toggleSkillGroup(title: string): void {
+  collapsedSkillGroups[title] = !collapsedSkillGroups[title]
+}
+
 
 /** 统一把「命令」和「Skills」合并为一个可滑动选择的列表，供键盘/鼠标操作。 */
 type SlashEntry =
@@ -242,7 +254,16 @@ const slashGroups = computed(() => {
     return label.toLowerCase().includes(q) || key.toLowerCase().includes(q)
   }
   const commands = slashCommandEntries.value.filter((c) => match(c.label, c.key))
-  const skills = slashSkillEntries.value.filter((s) => match(s.label, s.id))
+  // Skills 栏内还支持在弹层中额外搜索（skillSearchQuery），两者取并集生效。
+  const skillQ = skillSearchQuery.value.trim().toLowerCase()
+  const skills = slashSkillEntries.value.filter((s) => {
+    if (!match(s.label, s.id)) return false
+    if (!skillQ) return true
+    const name = (s.name ?? '').toLowerCase()
+    const desc = (s.description ?? '').toLowerCase()
+    const cat = skillCategoryLabel(s.category).toLowerCase()
+    return name.includes(skillQ) || desc.includes(skillQ) || cat.includes(skillQ)
+  })
   const groups: Array<{ title: string; items: SlashEntry[] }> = []
   if (commands.length) groups.push({ title: '命令', items: commands })
   if (skills.length) {
@@ -278,17 +299,38 @@ const slashMatches = computed<SlashEntry[]>(() => {
   return activeGroups.flatMap((g) => g.items)
 })
 
-/** Skills 栏的分组列表，每项附带其在 slashMatches 中的平铺索引（用于高亮对齐）。 */
-const slashSkillGroupsRendered = computed<Array<{ title: string; items: Array<{ entry: SlashEntry; index: number }> }>>(() => {
-  const groups: Array<{ title: string; items: Array<{ entry: SlashEntry; index: number }> }> = []
+/** Skills 栏的分组列表，每项附带其在 slashMatches 中的平铺索引（用于高亮对齐）与折叠状态。 */
+const slashSkillGroupsRendered = computed<Array<{ title: string; count: number; collapsed: boolean; items: Array<{ entry: SlashEntry; index: number }> }>>(() => {
+  const groups: Array<{ title: string; count: number; collapsed: boolean; items: Array<{ entry: SlashEntry; index: number }> }> = []
   let offset = 0
   for (const g of slashGroups.value) {
     if (g.title === '命令') continue
     const mapped = g.items.map((entry) => ({ entry, index: offset++ }))
-    groups.push({ title: g.title, items: mapped })
+    groups.push({
+      title: g.title,
+      count: g.items.length,
+      collapsed: !!collapsedSkillGroups[g.title],
+      items: mapped
+    })
   }
   return groups
 })
+
+/** Skills 栏命中总数（用于顶部显示与空态判断）。 */
+const slashSkillMatchCount = computed(() =>
+  slashSkillGroupsRendered.value.reduce((sum, g) => sum + g.items.length, 0)
+)
+/** 是否有分组处于折叠状态（用于“全部展开”按钮态）。 */
+const hasCollapsedSkillGroup = computed(() =>
+  slashSkillGroupsRendered.value.some((g) => g.collapsed)
+)
+/** 全部展开 / 全部折叠。 */
+function toggleAllSkillGroups(): void {
+  const anyCollapsed = slashSkillGroupsRendered.value.some((g) => g.collapsed)
+  for (const g of slashSkillGroupsRendered.value) {
+    collapsedSkillGroups[g.title] = anyCollapsed ? false : true
+  }
+}
 
 function slashEntryKey(e: SlashEntry): string {
   if (e.kind === 'command') return `cmd:${e.key}`
@@ -320,6 +362,10 @@ function switchSlashTab(tab: 'command' | 'skill'): void {
   slashTab.value = tab
   slashActiveIdx.value = 0
   slashIdxByTab[tab].value = 0
+  // 切出 Skills 栏时清空其内部搜索，避免残留过滤条件影响下次查看。
+  if (tab !== 'skill') {
+    skillSearchQuery.value = ''
+  }
 }
 
 /** 判断当前光标是否位于一个 / 斜杠命令输入中，并提取 query。 */
@@ -711,6 +757,17 @@ function onSlashItemMouseDown(e: MouseEvent, idx: number): void {
   applySlashCommand(idx)
 }
 
+/** 斜杠菜单在 textarea 失去焦点时是否应保持打开（例如焦点移入 Skills 搜索框）。 */
+function handleSlashBlur(event: FocusEvent): void {
+  const related = event.relatedTarget as Node | null
+  const wrap = textareaRef.value?.closest('.composer-wrap')
+  // 焦点仍落在本组件（含斜杠菜单、Skills 搜索框）内则不关闭，便于继续输入搜索。
+  if (related && wrap && wrap.contains(related)) {
+    return
+  }
+  slashOpen.value = false
+}
+
 watch(
   () => props.restoredLabel,
   async (label) => {
@@ -858,22 +915,58 @@ watch(
             </div>
           </div>
           <div v-else class="slash-items">
+            <!-- Skills 栏：支持搜索与分组展开/折叠 -->
             <template v-if="slashSkillEntries.length">
-              <template v-for="(group, gi) in slashSkillGroupsRendered" :key="gi">
-                <div class="slash-group-title">{{ group.title }}</div>
+              <div class="slash-skill-toolbar">
+                <div class="slash-skill-search">
+                  <Search :size="13" class="slash-skill-search-icon" />
+                  <input
+                    v-model="skillSearchQuery"
+                    type="text"
+                    placeholder="搜索 skills…"
+                    class="slash-skill-search-input"
+                    @mousedown.stop
+                    @keydown.esc="slashOpen = false"
+                    @blur="handleSlashBlur"
+                  />
+                </div>
                 <button
-                  v-for="({ entry, index }, ei) in group.items"
-                  :key="slashEntryKey(entry)"
                   type="button"
-                  class="slash-item"
-                  :class="{ active: index === slashActiveIdx }"
-                  @mousedown.prevent="onSlashItemMouseDown($event, index)"
-                  @mouseenter="slashActiveIdx = index"
+                  class="slash-skill-collapse-all"
+                  :title="hasCollapsedSkillGroup ? '全部展开' : '全部收起'"
+                  @mousedown.prevent="toggleAllSkillGroups"
                 >
-                  <span class="slash-label">{{ entry.label }}</span>
-                  <span class="slash-desc">{{ entry.description }}</span>
+                  <component :is="hasCollapsedSkillGroup ? ChevronsUpDown : ChevronsDownUp" :size="13" />
                 </button>
+              </div>
+              <template v-if="slashSkillMatchCount">
+                <template v-for="(group, gi) in slashSkillGroupsRendered" :key="gi">
+                  <button
+                    type="button"
+                    class="slash-group-toggle"
+                    @mousedown.prevent="toggleSkillGroup(group.title)"
+                  >
+                    <ChevronDown :size="13" class="slash-group-chevron" :class="{ collapsed: group.collapsed }" />
+                    <span class="slash-group-title">{{ group.title }}</span>
+                    <span class="slash-group-count">{{ group.count }}</span>
+                  </button>
+                  <template v-if="!group.collapsed">
+                    <button
+                      v-for="({ entry, index }, ei) in group.items"
+                      :key="slashEntryKey(entry)"
+                      type="button"
+                      class="slash-item"
+                      :class="{ active: index === slashActiveIdx }"
+                      @mousedown.prevent="onSlashItemMouseDown($event, index)"
+                      @mouseenter="slashActiveIdx = index"
+                    >
+                      <span class="slash-label">{{ entry.label }}</span>
+                      <span class="slash-desc">{{ entry.description }}</span>
+                    </button>
+                  </template>
+                </template>
               </template>
+              <div v-else class="slash-empty">没有匹配的 Skills</div>
             </template>
             <div v-else class="slash-empty">没有匹配的 Skills</div>
           </div>
@@ -886,7 +979,7 @@ watch(
         :placeholder="props.isEditing ? '正在编辑历史提问' : '输入 / 唤起快捷指令 · Enter 发送 · Shift+Enter 换行'"
         @input="handleInput"
         @keydown="handleKeydown"
-        @blur="slashOpen = false"
+        @blur="handleSlashBlur"
       />
       <div class="foot">
         <div class="hint">
@@ -1176,6 +1269,100 @@ watch(
 .slash-del:hover {
   background: var(--v2-del-bg, rgba(185, 28, 28, 0.1));
   color: var(--v2-del, #b91c1c);
+}
+/* ── Skills 栏：搜索 + 分组展开/折叠 ── */
+.slash-skill-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px 6px;
+}
+.slash-skill-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--arc-bg-body) 70%, transparent);
+  transition: border-color 0.15s ease;
+}
+.slash-skill-search:focus-within {
+  border-color: var(--arc-primary);
+}
+.slash-skill-search-icon {
+  color: var(--arc-text-hint);
+  flex: 0 0 auto;
+}
+.slash-skill-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--arc-text-primary);
+  font-size: 12px;
+  font-family: inherit;
+}
+.slash-skill-search-input::placeholder {
+  color: var(--arc-text-hint);
+}
+.slash-skill-collapse-all {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--arc-border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--arc-text-hint);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.slash-skill-collapse-all:hover {
+  color: var(--arc-primary);
+  border-color: var(--arc-primary);
+}
+.slash-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--arc-text-primary);
+  text-align: left;
+  padding: 5px 8px 3px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.slash-group-toggle:hover {
+  background: color-mix(in srgb, var(--arc-text-secondary) 6%, transparent);
+}
+.slash-group-toggle .slash-group-title {
+  padding: 0;
+  flex: 0 0 auto;
+  color: var(--arc-text-secondary);
+}
+.slash-group-count {
+  font-family: var(--v2-mono);
+  font-size: 10.5px;
+  color: var(--arc-text-hint);
+  margin-left: auto;
+  padding-right: 4px;
+}
+.slash-group-chevron {
+  color: var(--arc-text-hint);
+  flex: 0 0 auto;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.slash-group-chevron.collapsed {
+  transform: rotate(-90deg);
 }
 .add-cmd-overlay {
   position: fixed;

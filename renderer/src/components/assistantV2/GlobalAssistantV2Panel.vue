@@ -21,6 +21,7 @@ import AssistantComposer from './AssistantComposer.vue'
 import StagedChangesView from './StagedChangesView.vue'
 import AgentSelector from './AgentSelector.vue'
 import ReferencePickerDialog from './ReferencePickerDialog.vue'
+import { toSlashSkills, useProjectSkillsLoader } from '@/features/projectSkills/useProjectSkills'
 
 const props = defineProps<{
   activeViewLabel?: string
@@ -306,12 +307,9 @@ const quickActions: Array<{ label: string; prompt: string }> = [
   { label: '伏笔审计', prompt: '请读取伏笔线索、章节摘要和创作记忆，列出待回收伏笔、风险和建议处理顺序。' }
 ]
 
-/** 当前项目已启用的 skills，供输入 / 唤起时快速选择 */
-const availableSkills = computed(() =>
-  (appStore.currentProject?.projectSkills ?? [])
-    .filter((s) => s.enabled)
-    .map((s) => ({ id: s.id, name: s.name, description: s.description, category: s.category, scope: s.scope }))
-)
+/** 当前项目内置 + 项目扩展 skills（含 scope，便于分组展示），供输入 / 唤起时快速选择 */
+const { skills: projectSkillItems } = useProjectSkillsLoader()
+const availableSkills = computed(() => toSlashSkills(projectSkillItems.value))
 
 const stagedBadgeCount = computed(() =>
   assistant.stagedChanges.value.filter((change) =>

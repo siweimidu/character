@@ -47,6 +47,7 @@ import AgentModuleManager from '@/components/assistantV2/AgentModuleManager.vue'
 import AgentFileExplorer from '@/components/assistantV2/AgentFileExplorer.vue'
 import AgentMcpMarket from '@/components/assistantV2/AgentMcpMarket.vue'
 import AgentPluginMarket from '@/components/assistantV2/AgentPluginMarket.vue'
+import { toSlashSkills, useProjectSkillsLoader } from '@/features/projectSkills/useProjectSkills'
 
 const appStore = useAppStore()
 const { projects, selectedProjectId } = storeToRefs(appStore)
@@ -254,11 +255,10 @@ function sendWithMode(intentHint?: string): void {
     fileAreaPath: fileAreaPath.value.trim() || undefined
   })
 }
-const availableSkills = computed(() =>
-  (currentProject.value?.projectSkills ?? [])
-    .filter((s) => s.enabled)
-    .map((s) => ({ id: s.id, name: s.name, description: s.description, category: s.category }))
-)
+// 全局智能体：内置 + 项目扩展 skills 均可在 / 斜杠命令中列出（含 scope，便于分组展示）。
+// 直接扫描磁盘，确保新导入的 skills 立即可见，并合并已持久化的启用状态。
+const { skills: projectSkillItems } = useProjectSkillsLoader()
+const availableSkills = computed(() => toSlashSkills(projectSkillItems.value))
 
 async function handleUploadFile(): Promise<void> {
   try {
