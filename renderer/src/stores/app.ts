@@ -5206,6 +5206,9 @@ export const useAppStore = defineStore('app', () => {
   /** 当前正在执行的 `runTrackedAiTask` 的 clientTaskId 调用栈（支持并发任务隔离）。 */
   const clientTaskIdStack: string[] = []
 
+  /** 任务被暂停后等待「继续」的 resolve 回调，按任务 key 索引，用于暂停-继续重放。 */
+  const resumeWaiters = new Map<string, () => void>()
+
   /**
    * 执行一次被跟踪的 AI 任务。
    *
@@ -5215,7 +5218,9 @@ export const useAppStore = defineStore('app', () => {
    * - 无论 executor 抛异常还是成功返回，任务都会被标记为结束并在短暂保留后自动清理。
    * - 返回值是 executor 的返回值，方便调用方继续处理结果。
    * - 自动生成 `clientTaskId` 并注入到 executor 的闭包上下文中（通过 `getClientTaskId()`）。
-   * - 不按运行时长自动取消；网络错误、协议错误或用户手动取消时结束。
+   * - 不按运行时长自动取消；网络错误、协议错误、用户暂停或手动取消时结束。
+   * - 支持「暂停-继续」：用户点击暂停会真正中止底层请求，任务保持「已暂停」；
+   *   点击继续后用新的 clientTaskId 重新执行 executor（重放），因此暂停不会丢失任务，也不会继续空转。
    *
    * @throws 保留 executor 原始错误抛出，让上层可以 try/catch 常规处理。
    */
@@ -5224,41 +5229,73 @@ export const useAppStore = defineStore('app', () => {
       throw new Error(`AI 任务「${input.label}」正在进行中，请稍候。`)
     }
 
-    // 生成唯一 clientTaskId，用于主进程 abort 通道
-    const clientTaskId = `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    // 把 clientTaskId 压入调用栈，让 executor 内部构造 payload 时可以取到当前任务对应的 id。
-    // 使用栈结构支持多个任务并发运行（如后台并行多次生成），互不覆盖。
-    clientTaskIdStack.push(clientTaskId)
+    // 每次执行（含暂停后继续）使用一个新的 clientTaskId，用于主进程 abort 通道。
+    let clientTaskId = `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
-    const run: AiTaskRun = {
-      ...input,
-      startedAt: Date.now(),
-      stage: 'running',
-      clientTaskId
+    const registerRun = (): void => {
+      replaceTaskRuns((next) => {
+        next.set(input.key, {
+          ...input,
+          startedAt: Date.now(),
+          stage: 'running',
+          clientTaskId
+        })
+      })
+    }
+    registerRun()
+
+    const runOnce = (): Promise<T> => {
+      // 把 clientTaskId 压入调用栈，让 executor 内部构造 payload 时可以取到当前任务对应的 id。
+      clientTaskIdStack.push(clientTaskId)
+      return executor().finally(() => {
+        const idx = clientTaskIdStack.lastIndexOf(clientTaskId)
+        if (idx >= 0) clientTaskIdStack.splice(idx, 1)
+      })
     }
 
-    replaceTaskRuns((next) => {
-      next.set(input.key, run)
-    })
-
     try {
-      const result = await executor()
-      // 用户点击"退出/暂停"已标记任务为 canceled，此时即使底层请求成功返回，
-      // 也不再把结果交回调用方继续处理（避免已取消任务仍写入业务数据）。
-      if (aiTaskRuns.value.get(input.key)?.stage === 'canceled') {
-        throw new Error('任务已被取消。')
+      for (;;) {
+        try {
+          const result = await runOnce()
+          // 用户点击"退出"已标记任务为 canceled，此时即使底层请求成功返回，
+          // 也不再把结果交回调用方继续处理（避免已取消任务仍写入业务数据）。
+          if (aiTaskRuns.value.get(input.key)?.stage === 'canceled') {
+            throw new Error('任务已被取消。')
+          }
+          finalizeAiTask(input.key, 'done')
+          return result
+        } catch (error) {
+          // 任务被用户暂停：pauseAiTask 已中止底层请求，executor 因此抛错。
+          // 此时保持「已暂停」状态，等待用户点击「继续」后换新的 clientTaskId 重新执行。
+          if (aiTaskRuns.value.get(input.key)?.paused) {
+            await waitForResume(input.key)
+            clientTaskId = `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+            const current = aiTaskRuns.value.get(input.key)
+            if (!current || current.stage !== 'running') {
+              throw new Error('任务已被取消。')
+            }
+            registerRun()
+            continue
+          }
+          throw error
+        }
       }
-      finalizeAiTask(input.key, 'done')
-      return result
     } catch (error) {
+      // 若任务仍处于暂停态（例如用户在重放间隙再次暂停），保持「已暂停」而不转为失败。
+      if (aiTaskRuns.value.get(input.key)?.paused) {
+        throw error
+      }
       const msg = error instanceof Error ? error.message : String(error)
       finalizeAiTask(input.key, 'error', msg)
       throw error
-    } finally {
-      // 弹出当前任务的 id，避免影响其他仍在运行的任务
-      const idx = clientTaskIdStack.lastIndexOf(clientTaskId)
-      if (idx >= 0) clientTaskIdStack.splice(idx, 1)
     }
+  }
+
+  /** 等待任务被用户「继续」；暂停期间挂起，resumeAiTask 时放行以触发重放。 */
+  function waitForResume(key: string): Promise<void> {
+    return new Promise<void>((resolve) => {
+      resumeWaiters.set(key, resolve)
+    })
   }
 
   /** 获取当前正在执行的任务的 clientTaskId（供 executor 闭包内使用） */
@@ -5273,7 +5310,8 @@ export const useAppStore = defineStore('app', () => {
     }
 
     // 任务已被用户明确取消/暂停，忽略迟到的终态覆盖（如 abort 后 executor 抛错触发的 error）。
-    if (existing.stage === 'canceled') {
+    // 暂停中的任务保持「已暂停」，等待用户「继续」后重放，不应被中途的 error/done 覆盖。
+    if (existing.stage === 'canceled' || existing.paused) {
       return
     }
 
@@ -5345,8 +5383,15 @@ export const useAppStore = defineStore('app', () => {
     if (current && current.stage === 'running') {
       const finishedAt = Date.now()
       replaceTaskRuns((next) => {
-        next.set(key, { ...current, stage: 'canceled', finishedAt, minimized: false })
+        next.set(key, { ...current, stage: 'canceled', finishedAt, minimized: false, paused: false })
       })
+    }
+
+    // 若任务正因「暂停」而挂起等待继续，需放行让 runTrackedAiTask 退出，避免 promise 永久挂起。
+    const waiter = resumeWaiters.get(key)
+    if (waiter) {
+      resumeWaiters.delete(key)
+      waiter()
     }
   }
 
@@ -5373,27 +5418,47 @@ export const useAppStore = defineStore('app', () => {
 
   /**
    * 暂停某条正在运行的任务：
-   * - 展示层：冻结进度与耗时计时，按钮图标切换为播放，面板显示「已暂停」。
-   * - 底层：仅冻结展示状态，不中断底层 LLM 请求，任务继续在后台执行，因此不会被取消。
-   * 注：真正的任务终止应使用「退出」按钮（cancelAiTask）；暂停仅用于让用户暂时移开视线而不丢失工作进度。
+   * - 真正中止底层执行：调用任务的 onCancel 回调并通过 clientTaskId 通道中止底层 LLM 请求，
+   *   让任务立即停止消耗资源，而不是继续在后台跑完。
+   * - 展示层：将任务标记为「已暂停」，冻结进度与耗时，按钮图标切换为播放。
+   * - 用户点击「继续」后，runTrackedAiTask 会用新的 clientTaskId 重新执行该任务（重放）。
    */
   function pauseAiTask(key: string): void {
     const run = aiTaskRuns.value.get(key)
     if (!run || run.stage !== 'running' || run.paused) return
+
+    // 真正中止底层执行：先执行任务自带的 onCancel 回调（如章节初稿的内部中止逻辑）。
+    if (run.onCancel) {
+      try {
+        run.onCancel()
+      } catch (error) {
+        console.error('[aiTasks] pause onCancel handler failed:', error)
+      }
+    }
+    // 若任务携带 clientTaskId，则通过主进程 abort 通道中断底层 IPC 请求。
+    if (run.clientTaskId) {
+      void window.characterArc.cancelAiTask(run.clientTaskId).catch((err) => {
+        console.error('[aiTasks] abort underlying IPC on pause failed:', err)
+      })
+    }
+
     replaceTaskRuns((next) => {
       next.set(key, { ...run, paused: true, pausedAt: Date.now() })
     })
   }
 
-  /** 继续一条被暂停的任务：解除暂停态，恢复进度/耗时展示。 */
+  /** 继续一条被暂停的任务：解除暂停态，并触发底层任务用新的 clientTaskId 重新执行（重放）。 */
   function resumeAiTask(key: string): void {
     const run = aiTaskRuns.value.get(key)
     if (!run || !run.paused) return
-    const pauseMs = run.pausedAt ? Math.max(0, Date.now() - run.pausedAt) : 0
     replaceTaskRuns((next) => {
-      // 把 startedAt 顺延暂停时长，让 formatElapsed 忽略暂停期间
-      next.set(key, { ...run, paused: false, pausedAt: undefined, startedAt: run.startedAt + pauseMs })
+      next.set(key, { ...run, paused: false, pausedAt: undefined })
     })
+    const waiter = resumeWaiters.get(key)
+    if (waiter) {
+      resumeWaiters.delete(key)
+      waiter()
+    }
   }
 
   /** 查询某条任务是否处于暂停状态。 */
