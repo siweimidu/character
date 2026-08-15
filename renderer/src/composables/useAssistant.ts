@@ -1058,7 +1058,10 @@ export function useAssistant(options: UseAssistantOptions) {
   /**
    * 重新生成某一轮的 AI 回复：截断该轮及其后的对话，并用该轮的用户提问重新发起请求。
    */
-  async function regenerateTurn(turnId: string): Promise<TurnTruncateResult | null> {
+  async function regenerateTurn(
+    turnId: string,
+    sendOptions: AssistantSendOptions = {}
+  ): Promise<TurnTruncateResult | null> {
     if (!activeSessionId.value || hasLiveStreaming() || isTruncating.value) {
       if (hasLiveStreaming()) lastError.value = '请先停止当前生成，再重新生成回复。'
       return null
@@ -1070,7 +1073,9 @@ export function useAssistant(options: UseAssistantOptions) {
     const result = await truncateTurn(turnId)
     if (!result) return null
     cancelEditing()
-    await sendText(prompt)
+    // 透传与正常发送一致的意图/智能体选择，保证重新生成使用与原始发送相同的
+    // 智能体（agentId/agentScope）与模式（intentHint），而不是回落默认配置。
+    await sendText(prompt, sendOptions)
     return result
   }
 

@@ -98,6 +98,21 @@ function speechConfigMissingHint(): string {
   return missing.length ? `「设置 → 语音识别配置」中尚未填写：${missing.join('、')}` : ''
 }
 
+/**
+ * 将语音识别到的文本以「追加」方式写入输入框：
+ * 在已有文字后补一个逗号，再接本次识别到的新句子（实时追加，而非覆盖）。
+ */
+function appendSpeechText(text: string): void {
+  const prev = composerValue.value.trim()
+  if (!prev) {
+    composerValue.value = text
+    return
+  }
+  // 已有内容以标点收尾时不额外加逗号，避免出现「，。」之类的重复标点。
+  const endsWithPunct = /[，。！？；：,。!?;:]$/.test(prev)
+  composerValue.value = endsWithPunct ? `${prev}${text}` : `${prev}，${text}`
+}
+
 /** 使用配置的语音识别厂商进行识别（OpenAI 兼容 /audio/transcriptions）。 */
 function startProviderSpeechRecognition(): void {
   const settings = appStore.appSettings
@@ -114,7 +129,7 @@ function startProviderSpeechRecognition(): void {
       if (!res.success) throw new Error(res.error ?? '语音识别失败')
       const text = res.result?.text?.trim()
       if (text) {
-        composerValue.value = text
+        appendSpeechText(text)
         message.success('语音识别完成')
       } else {
         message.warning('未识别到语音内容')
@@ -148,7 +163,8 @@ function handleVoiceInput(): void {
     startProviderSpeechRecognition()
     return
   }
-  // 回退：浏览器原生 Web Speech API
+  // 回退：浏览器原生 Web Speech API（其 onresult 回调传入的是自录音起累积的完整文本，
+  // 已包含此前所有已识别内容，直接覆盖即可得到最新完整识别结果，无需也不应追加）。
   const browser = startBrowserSpeech((text) => {
     if (text) composerValue.value = text
   }, () => {
@@ -414,6 +430,15 @@ async function handleResendTurn(): Promise<void> {
   if (result) notifyTruncate(result, '重新分叉')
 }
 
+/** 重新生成：透传与正常发送一致的智能体选择与模式意图，避免回落默认配置。 */
+async function handleRegenerateTurn(turnId: string): Promise<void> {
+  await assistant.regenerateTurn(turnId, {
+    intentHint: 'global-assistant-v2:chat',
+    agentId: selectedAgentId.value || undefined,
+    agentScope: selectedAgentScope.value
+  })
+}
+
 function openKnowledgeDocument(documentId?: string): void {
   appStore.setPanel('project-knowledge')
   if (documentId) {
@@ -561,7 +586,7 @@ async function handleCommit(ids?: string[]): Promise<void> {
         @edit-draft="assistant.updateEditingDraft"
         @resend="handleResendTurn"
         @undo="handleUndoTurn"
-        @regenerate="assistant.regenerateTurn"
+        @regenerate="handleRegenerateTurn"
         @delete-turns="(ids) => assistant.deleteTurns(ids)"
       />
 
