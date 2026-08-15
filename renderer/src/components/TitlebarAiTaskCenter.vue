@@ -177,15 +177,16 @@ function handleClose(run: AiTaskRun): void {
         <header class="task-center-head">
           <div class="task-center-heading">
             <span class="task-center-heading-icon" aria-hidden="true">
-              <ListTodo :size="15" />
+              <ListTodo :size="16" />
             </span>
-            <div>
+            <div class="task-center-heading-text">
+              <span class="task-center-kicker">AI Task Center</span>
               <strong>AI 后台任务</strong>
-              <span>{{ panelSummary }}</span>
+              <span class="task-center-summary">{{ panelSummary }}</span>
             </div>
           </div>
           <button type="button" class="panel-close" title="关闭" aria-label="关闭任务面板" @click="panelOpen = false">
-            <X :size="14" />
+            <X :size="15" />
           </button>
         </header>
 
@@ -203,7 +204,7 @@ function handleClose(run: AiTaskRun): void {
             <div class="task-item-main">
               <div class="task-item-title">
                 <strong :title="run.label">{{ run.label }}</strong>
-                <span>{{ stageLabel(run) }}</span>
+                <span class="task-item-stage">{{ stageLabel(run) }}</span>
               </div>
               <p v-if="run.description || run.error" :class="{ 'is-error': run.stage === 'error' }">
                 {{ run.stage === 'error' ? run.error || run.description : run.description }}
@@ -246,7 +247,9 @@ function handleClose(run: AiTaskRun): void {
         </div>
 
         <div v-else class="task-center-empty">
-          <Activity :size="22" aria-hidden="true" />
+          <span class="task-center-empty-icon" aria-hidden="true">
+            <Activity :size="22" />
+          </span>
           <strong>暂无后台任务</strong>
           <span>AI 任务启动后会在这里显示进度</span>
         </div>
@@ -263,16 +266,17 @@ function handleClose(run: AiTaskRun): void {
   app-region: no-drag;
 }
 
+/* ── 触发按钮：Doubao 风格胶囊按钮 ── */
 .task-center-trigger {
   position: relative;
   display: inline-flex;
-  height: 26px;
+  height: 28px;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 0 9px;
+  padding: 0 10px;
   border: 1px solid var(--arc-border);
-  border-radius: var(--arc-radius-md);
+  border-radius: 999px;
   background: var(--arc-bg-surface);
   color: var(--arc-text-hint);
   cursor: pointer;
@@ -280,23 +284,24 @@ function handleClose(run: AiTaskRun): void {
   font-weight: 600;
   letter-spacing: 0;
   white-space: nowrap;
-  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
 }
 
 .task-center-trigger:hover,
 .task-center-trigger.is-panel-open {
-  border-color: var(--arc-border-strong);
-  background: var(--arc-bg-weak);
-  color: var(--arc-text-primary);
+  border-color: color-mix(in srgb, var(--arc-primary) 32%, var(--arc-border));
+  background: color-mix(in srgb, var(--arc-primary) 4%, var(--arc-bg-surface));
+  color: var(--arc-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--arc-primary) 10%, transparent);
 }
 
 .task-center-trigger.has-running {
-  border-color: color-mix(in srgb, var(--arc-primary) 30%, var(--arc-border));
+  border-color: color-mix(in srgb, var(--arc-primary) 36%, var(--arc-border));
   color: var(--arc-primary);
 }
 
 .task-center-trigger.has-error {
-  border-color: color-mix(in srgb, var(--arc-danger) 38%, var(--arc-border));
+  border-color: color-mix(in srgb, var(--arc-danger) 40%, var(--arc-border));
   color: var(--arc-danger);
 }
 
@@ -314,12 +319,12 @@ function handleClose(run: AiTaskRun): void {
 
 .task-center-badge {
   display: inline-flex;
-  min-width: 16px;
-  height: 16px;
+  min-width: 17px;
+  height: 17px;
   align-items: center;
   justify-content: center;
-  padding: 0 4px;
-  border-radius: 8px;
+  padding: 0 5px;
+  border-radius: 999px;
   background: var(--arc-primary);
   color: #fff;
   font-size: 9px;
@@ -331,84 +336,96 @@ function handleClose(run: AiTaskRun): void {
   background: var(--arc-danger);
 }
 
+/* ── 悬浮面板：Doubao 大圆角 + 边框分层 ── */
 .task-center-panel {
   position: absolute;
-  top: calc(100% + 7px);
+  top: calc(100% + 9px);
   right: 0;
   z-index: 10;
   display: flex;
-  width: min(390px, calc(100vw - 24px));
-  max-height: min(460px, calc(100vh - 56px));
+  width: min(400px, calc(100vw - 24px));
+  max-height: min(480px, calc(100vh - 56px));
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--arc-border-strong);
-  border-radius: 7px;
+  border-radius: 16px;
   background: var(--arc-bg-surface);
-  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.18);
+  box-shadow: 0 16px 40px -12px rgba(15, 23, 42, 0.18);
 }
 
 .task-center-head {
   display: flex;
-  min-height: 48px;
+  min-height: 60px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 10px 0 12px;
+  padding: 12px 14px 12px 16px;
   border-bottom: 1px solid var(--arc-border);
-  background: color-mix(in srgb, var(--arc-bg-surface) 88%, var(--arc-bg-weak));
+  background: color-mix(in srgb, var(--arc-bg-surface) 94%, var(--arc-bg-weak));
 }
 
 .task-center-heading {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 9px;
+  gap: 11px;
 }
 
 .task-center-heading-icon {
   display: grid;
-  width: 27px;
-  height: 27px;
-  flex: 0 0 27px;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
   place-items: center;
-  border: 1px solid color-mix(in srgb, var(--arc-primary) 18%, var(--arc-border));
-  border-radius: 6px;
-  background: var(--arc-primary-soft);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--arc-primary) 8%, var(--arc-bg-surface));
   color: var(--arc-primary);
 }
 
-.task-center-heading > div {
+.task-center-heading-text {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 2px;
 }
 
-.task-center-heading strong {
-  color: var(--arc-text-primary);
-  font-size: 12px;
-  line-height: 1.2;
+.task-center-kicker {
+  color: var(--arc-primary);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1.1;
+  text-transform: uppercase;
 }
 
-.task-center-heading span {
+.task-center-heading-text strong {
+  color: var(--arc-text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.task-center-summary {
   color: var(--arc-text-hint);
-  font-size: 10px;
+  font-size: 10.5px;
   line-height: 1.2;
 }
 
 .panel-close,
 .task-dismiss {
   display: inline-grid;
-  width: 24px;
-  height: 24px;
-  flex: 0 0 24px;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
   place-items: center;
   border: none;
-  border-radius: 4px;
+  border-radius: 8px;
   background: transparent;
   color: var(--arc-text-hint);
   cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .panel-close:hover,
@@ -423,24 +440,29 @@ function handleClose(run: AiTaskRun): void {
 
 .task-center-item {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
   align-items: start;
-  gap: 9px;
-  padding: 11px 10px 11px 12px;
+  gap: 11px;
+  padding: 12px 14px 12px 16px;
   border-bottom: 1px solid color-mix(in srgb, var(--arc-border) 72%, transparent);
+  transition: background 0.14s ease;
 }
 
 .task-center-item:last-child {
   border-bottom: none;
 }
 
+.task-center-item:hover {
+  background: color-mix(in srgb, var(--arc-bg-weak) 60%, var(--arc-bg-surface));
+}
+
 .task-kind-icon {
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 34px;
+  height: 34px;
   place-items: center;
-  border-radius: 5px;
-  background: var(--arc-primary-soft);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--arc-primary) 9%, var(--arc-bg-surface));
   color: var(--arc-primary);
 }
 
@@ -478,12 +500,13 @@ function handleClose(run: AiTaskRun): void {
   overflow: hidden;
   color: var(--arc-text-primary);
   font-size: 12px;
+  font-weight: 650;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.task-item-title span {
+.task-item-stage {
   flex: 0 0 auto;
   color: var(--arc-text-hint);
   font-size: 10px;
@@ -491,7 +514,7 @@ function handleClose(run: AiTaskRun): void {
   white-space: nowrap;
 }
 
-.stage-error .task-item-title span {
+.stage-error .task-item-stage {
   color: var(--arc-danger);
 }
 
@@ -511,14 +534,14 @@ function handleClose(run: AiTaskRun): void {
 }
 
 .task-item-progress {
-  margin-top: 1px;
+  margin-top: 2px;
 }
 
 .task-item-actions {
   display: flex;
   min-height: 26px;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
 }
 
 .task-action-btn {
@@ -528,7 +551,7 @@ function handleClose(run: AiTaskRun): void {
   flex: 0 0 26px;
   place-items: center;
   border: 1px solid var(--arc-border);
-  border-radius: 5px;
+  border-radius: 8px;
   background: var(--arc-bg-surface);
   color: var(--arc-text-secondary);
   cursor: pointer;
@@ -543,23 +566,33 @@ function handleClose(run: AiTaskRun): void {
 
 .task-center-empty {
   display: flex;
-  min-height: 150px;
+  min-height: 168px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 8px;
   padding: 24px;
   color: var(--arc-text-hint);
   text-align: center;
 }
 
-.task-center-empty strong {
-  color: var(--arc-text-secondary);
-  font-size: 12px;
+.task-center-empty-icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 15px;
+  background: var(--arc-bg-weak);
+  color: var(--arc-text-hint);
 }
 
-.task-center-empty span {
-  font-size: 10px;
+.task-center-empty strong {
+  color: var(--arc-text-secondary);
+  font-size: 12.5px;
+}
+
+.task-center-empty > span:last-child {
+  font-size: 10.5px;
 }
 
 .spinning {
@@ -569,13 +602,13 @@ function handleClose(run: AiTaskRun): void {
 .task-center-panel-enter-active,
 .task-center-panel-leave-active {
   transform-origin: top right;
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition: opacity 0.16s ease, transform 0.16s ease;
 }
 
 .task-center-panel-enter-from,
 .task-center-panel-leave-to {
   opacity: 0;
-  transform: translateY(-4px) scale(0.985);
+  transform: translateY(-5px) scale(0.985);
 }
 
 @keyframes task-center-spin {

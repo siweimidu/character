@@ -1,6 +1,7 @@
 import type { AppSettings, AiRunUsage } from '../shared-types'
 import { performAiRequest } from './http'
 import { createProxyFetch } from '../proxy-fetch'
+import { isGeminiNativeBaseUrl } from './model-urls'
 
 /** 图片生成接口的返回结果 */
 export type GeneratedImageResult = {
@@ -61,6 +62,12 @@ export async function generateImage(settings: AppSettings, prompt: string): Prom
   }
   if (!normalized.apiKey.trim()) {
     throw new Error('请先在设置中填写专用的图片生成 API Key。')
+  }
+
+  // Google Gemini 原生 REST API（如 https://generativelanguage.googleapis.com/v1beta）
+  // 使用 generateContent 端点与 x-goog-api-key 鉴权，而非 OpenAI 兼容的 /images/generations。
+  if (isGeminiNativeBaseUrl(normalized.baseUrl)) {
+    return generateImageGeminiNative(normalized, prompt)
   }
 
   const url = `${normalized.baseUrl.replace(/\/$/, '')}/images/generations`
@@ -166,3 +173,115 @@ async function remoteImageToDataUrl(url: string, requestFetch: typeof fetch): Pr
     return url
   }
 }
+
+/**
+ * 构建 Google Gemini 原生图片生成的请求体（generateContent）。
+ *
+ * @param prompt - 图片生成提示词
+ * @returns 序列化后的请求体
+ */
+export function buildGeminiImageRequestBody(prompt: string): string {
+  return JSON.stringify({
+    contents: [
+      {
+        parts: [{ text: prompt }]
+      }
+    ],
+    generationConfig: {
+      responseModalities: ['IMAGE']
+    }
+  })
+}
+
+/** Gemini generateContent 响应中图片所在的数据结构 */
+type GeminiGenerateContentResponse = {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{
+        inlineData?: { mimeType?: string; data?: string }
+        text?: string
+      }>
+    }
+    finishReason?: string
+  }>
+  usageMetadata?: {
+    promptTokenCount?: number
+    candidatesTokenCount?: number
+    totalTokenCount?: number
+  }
+  error?: { message?: string }
+}
+
+/**
+ * 解析 Google Gemini generateContent 响应，提取图片 data URL 与用量。
+ *
+ * @param payload - 已解析的 Gemini 响应 JSON
+ * @returns 图片 data URL、可选 revisedPrompt 与用量；无图片时返回 null
+ */
+export function parseGeminiImageResponse(payload: unknown): { dataUrl: string; revisedPrompt?: string; usage?: AiRunUsage } | null {
+  const data = payload as GeminiGenerateContentResponse
+  if (!data || typeof data !== 'object') return null
+  if (data.error?.message) {
+    throw new Error(data.error.message)
+  }
+  const parts = data.candidates?.[0]?.content?.parts ?? []
+  const inline = parts.find((p) => p?.inlineData?.data)
+  if (inline?.inlineData?.data) {
+    const mimeType = inline.inlineData.mimeType?.trim() || 'image/png'
+    const dataUrl = `data:${mimeType};base64,${inline.inlineData.data}`
+    const revisedPrompt = parts.map((p) => p?.text?.trim()).filter(Boolean).join('\n') || undefined
+    const rawUsage = data.usageMetadata
+    const usage: AiRunUsage | undefined = rawUsage
+      ? {
+          promptTokens: Number.isFinite(rawUsage.promptTokenCount) ? rawUsage.promptTokenCount : undefined,
+          completionTokens: Number.isFinite(rawUsage.candidatesTokenCount) ? rawUsage.candidatesTokenCount : undefined,
+          totalTokens: Number.isFinite(rawUsage.totalTokenCount) ? rawUsage.totalTokenCount : undefined
+        }
+      : undefined
+    return { dataUrl, revisedPrompt, usage }
+  }
+  // 无 inline 图片时，尝试从文本 parts 提取提示（便于排查），否则返回 null 由调用方给出可读错误。
+  const text = parts.map((p) => p?.text?.trim()).filter(Boolean).join('\n')
+  if (text) {
+    throw new Error(`Gemini 未返回图片数据。返回内容：${text.slice(0, 200)}`)
+  }
+  return null
+}
+
+/**
+ * 调用 Google Gemini 原生 REST API 生成图片（如 gemini-2.5-flash-image / imagen 系列）。
+ *
+ * 原生接口与 OpenAI 兼容协议不同：使用 `:generateContent` 端点与 `x-goog-api-key` 头鉴权，
+ * 返回体中的图片位于 candidates[].content.parts[].inlineData.data（base64）。
+ *
+ * @param settings - 已归一化的图片生成配置（需包含 imageModel、imageBaseUrl、imageApiKey）
+ * @param prompt - 图片生成提示词
+ * @returns 包含 dataUrl 和可选 revisedPrompt 的结果
+ */
+async function generateImageGeminiNative(settings: AppSettings, prompt: string): Promise<GeneratedImageResult> {
+  const base = settings.baseUrl.trim().replace(/\/+$/, '')
+  const model = settings.model.trim()
+  const url = `${base}/models/${encodeURIComponent(model)}:generateContent`
+  const requestFetch = createProxyFetch(settings.proxyUrl)
+
+  const response = await performAiRequest({
+    url,
+    init: {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': settings.apiKey
+      },
+      body: buildGeminiImageRequestBody(prompt)
+    },
+    providerLabel: '图片生成接口',
+    requestFetch
+  })
+
+  const parsed = parseGeminiImageResponse(await response.json())
+  if (parsed) {
+    return parsed
+  }
+  throw new Error('Gemini 图片生成成功，但没有返回图片数据。')
+}
+

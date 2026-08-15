@@ -64,6 +64,13 @@ export const imageProviderPresets: ImageProviderPreset[] = [
     hint: '谷歌 Gemini 平台的 Imagen 图片生成模型，需谷歌 API Key。'
   },
   {
+    label: 'Gemini 2.5 Flash Image (谷歌)',
+    value: 'gemini-flash-image-google',
+    model: 'gemini-2.5-flash-image',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    hint: '谷歌 Gemini 原生图像模型 gemini-2.5-flash-image，需谷歌 API Key。'
+  },
+  {
     label: '通义万相 (阿里百炼)',
     value: 'tongyi-wanx-alibaba',
     model: 'wanx2.1-t2i-turbo',
@@ -152,6 +159,7 @@ const IMAGE_PROVIDER_WEBSITES: Record<string, string> = {
   'sd-openai-compatible': 'https://stability.ai',
   'dall-e-3-openai': 'https://platform.openai.com/docs/guides/images',
   'gemini-imagen-google': 'https://ai.google.dev/gemini-api/docs/image-generation',
+  'gemini-flash-image-google': 'https://ai.google.dev/gemini-api/docs/image-generation',
   'tongyi-wanx-alibaba': 'https://bailian.console.aliyun.com',
   'wenxin-yige-baidu': 'https://cloud.baidu.com/product/wenxinworkshop',
   'stable-image-core': 'https://stability.ai',
