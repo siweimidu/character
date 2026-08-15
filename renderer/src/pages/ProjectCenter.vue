@@ -223,13 +223,14 @@ function requestBatchDeleteProjects(projectIds: string[]): void {
       />
 
       <HomepageProjectCollection
-        :projects="appStore.projects"
+        :projects="appStore.sortedProjects"
         :menu-options="projectMenuOptions"
         @open="openProject"
         @menu-select="handleMenuSelect"
         @batch-delete="requestBatchDeleteProjects"
         @batch-create="batchCreateVisible = true"
         @reorder="handleReorderProjects"
+
       />
     </div>
 

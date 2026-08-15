@@ -17,6 +17,7 @@ import {
   type OutlineDropPosition
 } from '@/features/workspace/outlineReorder'
 import { getThemePreset } from '@/theme/presets'
+import { toIpcPayload } from '@/utils/ipcPayload'
 import { createEmptyWorkspace, normalizeGlobalAssistantProposal, mergeGlobalAssistantProposals, normalizeOutlineReferenceIds } from '@/features/workspace/projectWorkspace'
 import { createWorkspacePersistence } from '@/features/workspace/persistence'
 import {
@@ -300,6 +301,28 @@ export const useAppStore = defineStore('app', () => {
   /** 应用全局设置（AI 供应商、模型、自动保存等） */
   const appSettings = ref<AppSettings>(stored.appSettings)
   const coverWorkbenchHistory = ref<import('@/types/app').CoverWorkbenchHistoryItem[]>(stored.coverWorkbenchHistory ?? [])
+
+  /** 首页作品排序方式对应的排序结果。manual 使用持久化的 homeProjectOrder。 */
+  const sortedProjects = computed<ProjectSummary[]>(() => {
+    const list = projects.value
+    const mode = appSettings.value.homeProjectSortMode || 'manual'
+    if (mode === 'edited') {
+      return [...list].sort((a, b) => (b.lastEdited || '').localeCompare(a.lastEdited || ''))
+    }
+    if (mode === 'title') {
+      return [...list].sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'))
+    }
+    // manual：优先按持久化的顺序排，缺失的新项目追加到末尾
+    const order = appSettings.value.homeProjectOrder ?? []
+    if (!order.length) {
+      return [...list]
+    }
+    const orderMap = new Map(order.map((id, index) => [id, index]))
+    const known = list.filter((project) => orderMap.has(project.id))
+    const unknown = list.filter((project) => !orderMap.has(project.id))
+    known.sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0))
+    return [...known, ...unknown]
+  })
   /** 待执行的章节正文插入请求 */
   const pendingChapterInsertion = ref<ChapterInsertionRequest | null>(null)
   /** 用户在编辑器中当前选中的文本状态 */
@@ -619,7 +642,7 @@ export const useAppStore = defineStore('app', () => {
     if (next === aiTaskRuns.value) return
     aiTaskRuns.value = next
 
-    if (payload.stage === 'running') return
+    if (payload.stage === 'running' || payload.stage === 'error') return
     const terminalStartedAt = payload.startedAt
     window.setTimeout(() => {
       const current = aiTaskRuns.value.get(payload.taskKey)
@@ -631,6 +654,97 @@ export const useAppStore = defineStore('app', () => {
         replaceTaskRuns((runs) => runs.delete(payload.taskKey))
       }
     }, AI_TASK_RETENTION_MS)
+  }
+
+  function backfillTaskKey(projectId: string): string {
+    return `chapter-state-backfill:${projectId}`
+  }
+
+  function resolveBackfillProgress(payload: CharacterArcBackfillStateProgressPayload): number {
+    if (payload.status === 'completed') return 100
+    if (payload.total <= 0) return payload.phase === 'starting' ? 5 : 10
+    const phaseRatio = payload.phase === 'applying' ? 0.85 : payload.phase === 'extracting' ? 0.35 : 0.1
+    return Math.min(99, Math.max(1, Math.round(((Math.max(0, payload.current - 1) + phaseRatio) / payload.total) * 100)))
+  }
+
+  function describeBackfillTask(payload: CharacterArcBackfillStateProgressPayload): string {
+    if (payload.status === 'completed') {
+      const result = payload.result
+      if (!result?.totalChapters) return '故事状态已是最新，无需重复同步'
+      if (result.failed > 0) return `已处理 ${result.processedChapters} 章，${result.failed} 章失败`
+      return `已完成 ${result.processedChapters} 章故事状态同步`
+    }
+    if (payload.status === 'failed') return payload.error || '故事状态同步失败'
+    const position = payload.total > 0 ? `${Math.min(payload.current, payload.total)}/${payload.total}` : '准备中'
+    const chapter = payload.chapterTitle ? `《${payload.chapterTitle}》` : ''
+    return [position, chapter, payload.message].filter(Boolean).join(' · ')
+  }
+
+  function handleBackfillStateProgress(payload: CharacterArcBackfillStateProgressPayload): void {
+    if (!payload?.projectId || !payload.taskId) return
+    const key = backfillTaskKey(payload.projectId)
+    const existing = aiTaskRuns.value.get(key)
+    const isRunning = payload.status === 'running' || payload.status === 'pausing' || payload.status === 'paused'
+    if (existing?.runId && existing.runId !== payload.taskId && !isRunning) return
+
+    const startedAt = Date.parse(payload.startedAt) || existing?.startedAt || Date.now()
+    replaceTaskRuns((next) => {
+      next.set(key, {
+        key,
+        kind: 'chapter-post-process',
+        label: '同步定稿章节故事状态',
+        description: describeBackfillTask(payload),
+        panel: 'project-knowledge',
+        startedAt,
+        finishedAt: isRunning ? undefined : Date.now(),
+        stage: isRunning ? 'running' : payload.status === 'completed' ? 'done' : 'error',
+        error: payload.status === 'failed' ? payload.error : undefined,
+        progress: resolveBackfillProgress(payload),
+        runId: payload.taskId
+      })
+    })
+
+    if (isRunning || payload.status === 'failed') return
+    window.setTimeout(() => {
+      const current = aiTaskRuns.value.get(key)
+      if (current?.runId === payload.taskId && current.stage !== 'running') {
+        replaceTaskRuns((next) => next.delete(key))
+      }
+    }, AI_TASK_RETENTION_MS)
+  }
+
+  async function startChapterStateSync(chapterIds: string[]): Promise<void> {
+    const projectId = selectedProjectId.value
+    const ids = [...new Set(chapterIds.map(String).filter(Boolean))]
+    if (!projectId || ids.length === 0) return
+
+    const key = backfillTaskKey(projectId)
+    if (isAiTaskRunning(key)) {
+      throw new Error('该项目已有故事状态同步任务正在进行。')
+    }
+    registerManualTask({
+      key,
+      kind: 'chapter-post-process',
+      label: '同步定稿章节故事状态',
+      description: `正在准备 ${ids.length} 章的后台同步队列`,
+      panel: 'project-knowledge'
+    })
+
+    try {
+      const response = await window.characterArc.backfillProjectState(toIpcPayload({
+        settings: appSettings.value,
+        projectId,
+        selection: { mode: 'custom', chapterIds: ids }
+      }))
+      if (!response.success || !response.result?.taskId) {
+        throw new Error(response.error ?? '未能创建故事状态同步任务')
+      }
+      handleBackfillStateProgress(response.result)
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : '未知错误'
+      finalizeManualTask(key, 'error', detail)
+      throw error
+    }
   }
 
   function getChapterPostGenerationIssues(chapterId: string): CharacterArcChapterPostGenerationIssuesPayload | null {
@@ -2164,6 +2278,45 @@ export const useAppStore = defineStore('app', () => {
           }
         : project
     )
+    schedulePersist('fast')
+  }
+
+  /** 切换首页作品排序方式。切换到 manual 时，用当前顺序作为基准写入持久化。 */
+  function setHomeProjectSortMode(mode: 'manual' | 'edited' | 'title'): void {
+    const nextMode = mode === 'edited' || mode === 'title' ? mode : 'manual'
+    appSettings.value = {
+      ...appSettings.value,
+      homeProjectSortMode: nextMode
+    }
+    if (nextMode === 'manual') {
+      appSettings.value.homeProjectOrder = projects.value.map((project) => project.id)
+    }
+    scheduleSettingsPersist({ flushWorkspace: false })
+  }
+
+  /** 首页手动排序：把 sourceId 移动到 targetId 的前面，并持久化顺序。 */
+  function reorderHomeProject(sourceId: string, targetId: string): void {
+    if (sourceId === targetId) return
+    const current = projects.value
+    const sourceIndex = current.findIndex((project) => project.id === sourceId)
+    const targetIndex = current.findIndex((project) => project.id === targetId)
+    if (sourceIndex === -1 || targetIndex === -1) return
+
+    const next = [...current]
+    const [moved] = next.splice(sourceIndex, 1)
+    const insertAt = next.findIndex((project) => project.id === targetId)
+    if (insertAt === -1) {
+      next.push(moved)
+    } else {
+      next.splice(insertAt, 0, moved)
+    }
+    projects.value = next
+    appSettings.value = {
+      ...appSettings.value,
+      homeProjectSortMode: 'manual',
+      homeProjectOrder: next.map((project) => project.id)
+    }
+    scheduleSettingsPersist({ flushWorkspace: false })
     schedulePersist('fast')
   }
   function updateWorkflowDocument(volumeId: string, documentKey: string, content: string): void {
@@ -4314,6 +4467,20 @@ export const useAppStore = defineStore('app', () => {
     }))
   }
 
+  function updateChapterStatuses(chapterIds: string[], status: ChapterDraft['status']): number {
+    const selectedIds = new Set(chapterIds)
+    let changed = 0
+    updateCurrentWorkspace((workspace) => ({
+      ...workspace,
+      chapters: workspace.chapters.map((chapter) => {
+        if (!selectedIds.has(chapter.id) || chapter.status === status) return chapter
+        changed += 1
+        return normalizeChapterDraft({ ...chapter, status })
+      })
+    }))
+    return changed
+  }
+
   // ── 章节版本管理 ──
   /** 获取指定章节的历史版本列表，按创建时间降序排列 */
   function getChapterVersions(chapterId: string): ChapterVersion[] {
@@ -4954,7 +5121,7 @@ export const useAppStore = defineStore('app', () => {
       .sort((a, b) => a.startedAt - b.startedAt)
   )
 
-  /** 最近已结束、仍在保留窗口内的任务（方便用户看到成功/失败反馈） */
+  /** 最近已结束的任务；成功任务短暂保留，失败任务保留到用户手动关闭。 */
   const recentAiTasks = computed<AiTaskRun[]>(() =>
     Array.from(aiTaskRuns.value.values())
       .filter((run) => run.stage !== 'running')
@@ -5050,6 +5217,10 @@ export const useAppStore = defineStore('app', () => {
       // 任务结束后自动展开被最小化到后台的任务，让用户能看到成功/失败反馈。
       next.set(key, { ...existing, stage, finishedAt, error, minimized: false })
     })
+
+    if (stage === 'error') {
+      return
+    }
 
     window.setTimeout(() => {
       const current = aiTaskRuns.value.get(key)
@@ -5204,6 +5375,7 @@ export const useAppStore = defineStore('app', () => {
   window.characterArc.onChapterStateWarnings(handleChapterStateWarnings)
   window.characterArc.onChapterPostGenerationIssues(handleChapterPostGenerationIssues)
   window.characterArc.onChapterPostGenerationTask(handleChapterPostGenerationTask)
+  window.characterArc.onBackfillStateProgress(handleBackfillStateProgress)
 
   // ── 窗口可见性跟踪 ──
   // 窗口被最小化/隐藏/遮挡时 document.hidden 变为 true，各后台组件据此暂停
@@ -5383,6 +5555,9 @@ export const useAppStore = defineStore('app', () => {
     pendingChapterInsertion,
     plotThreads,
     projects,
+    sortedProjects,
+    setHomeProjectSortMode,
+    reorderHomeProject,
     clearAssistantMessages,
     createAssistantSession,
     deleteAssistantSession,
@@ -5443,6 +5618,7 @@ export const useAppStore = defineStore('app', () => {
     flushWorkspaceSync,
     persistWorkspace,
     updateChapter,
+    updateChapterStatuses,
     updateChapterContent,
     reloadChapterFromDb,
     updateChapterSelection,
@@ -5481,6 +5657,7 @@ export const useAppStore = defineStore('app', () => {
     updateAiTaskProgress,
     registerManualTask,
     finalizeManualTask,
+    startChapterStateSync,
     getChapterStateWarnings,
     dismissChapterStateWarnings,
     getChapterPostGenerationIssues,

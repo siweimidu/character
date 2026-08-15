@@ -455,6 +455,9 @@ export type WorkspacePayload = {
     /** 编辑器是否显示小地图 */
     editorMinimap: boolean
     uiScale: number
+    workspaceMenuOrder: string[]
+    homeProjectSortMode: string
+    homeProjectOrder: string[]
     darkMode: boolean
     darkModeStyle: string
     /** AI 请求超时秒数 */
@@ -727,6 +730,22 @@ export function normalizeAppSettings(
         : 'clear-mono',
     editorMinimap: typeof settings?.editorMinimap === 'boolean' ? settings.editorMinimap : false,
     uiScale,
+    workspaceMenuOrder: Array.isArray(settings?.workspaceMenuOrder)
+      ? [...new Set(settings.workspaceMenuOrder
+          .filter((item): item is string => typeof item === 'string')
+          .map((item) => item.trim())
+          .filter(Boolean))]
+      : [],
+    homeProjectSortMode:
+      settings?.homeProjectSortMode === 'edited' || settings?.homeProjectSortMode === 'title'
+        ? settings.homeProjectSortMode
+        : 'manual',
+    homeProjectOrder: Array.isArray(settings?.homeProjectOrder)
+      ? [...new Set(settings.homeProjectOrder
+          .filter((item): item is string => typeof item === 'string')
+          .map((item) => item.trim())
+          .filter(Boolean))]
+      : [],
     darkMode: Boolean(settings?.darkMode),
     darkModeStyle:
       settings?.darkModeStyle === 'nord'

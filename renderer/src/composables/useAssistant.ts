@@ -197,6 +197,7 @@ export function useAssistant(options: UseAssistantOptions) {
     pendingAttachments.value = []
   }
 
+
   // === 错误 ===
   const lastError = ref<string | null>(null)
 

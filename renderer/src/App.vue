@@ -13,11 +13,11 @@ import DeconstructionLibraryPage from '@/pages/DeconstructionLibraryPage.vue'
 import SkillsPage from '@/pages/SkillsPage.vue'
 import CoverWorkbenchPage from '@/pages/CoverWorkbenchPage.vue'
 import FanqieTrendsPage from '@/pages/FanqieTrendsPage.vue'
+import TitlebarModelSwitcher from '@/components/TitlebarModelSwitcher.vue'
+import TitlebarAiTaskCenter from '@/components/TitlebarAiTaskCenter.vue'
 import RecycleBinPage from '@/pages/RecycleBinPage.vue'
 import GlobalAgentPage from '@/pages/GlobalAgentPage.vue'
-import AiTaskProgressDock from '@/components/AiTaskProgressDock.vue'
 import GlobalAiGenerateModal from '@/components/GlobalAiGenerateModal.vue'
-import TitlebarModelSwitcher from '@/components/TitlebarModelSwitcher.vue'
 import HomepageSettingsModal from '@/components/home/HomepageSettingsModal.vue'
 
 // 全局应用状态
@@ -285,6 +285,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="app-titlebar__tools">
               <TitlebarModelSwitcher />
+              <TitlebarAiTaskCenter />
               <button
                 type="button"
                 class="app-titlebar__theme-toggle"
@@ -321,7 +322,6 @@ onBeforeUnmount(() => {
               <WorkbenchPage v-else key="workbench" />
             </Transition>
           </div>
-          <AiTaskProgressDock />
           <GlobalAiGenerateModal />
         </div>
         <HomepageSettingsModal v-model:show="settingsVisible" />

@@ -36,6 +36,7 @@ export interface AppSettingsPayload {
   visionBaseUrl?: string
   autoSaveInterval: string
   uiScale: number
+  workspaceMenuOrder: string[]
   darkMode: boolean
   darkModeStyle: string
   themeColorIntensity: number

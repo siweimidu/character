@@ -35,6 +35,7 @@ export interface AiTaskRun {
   stage: AiTaskRunStage
   /** 报错信息（如果 stage === 'error'）。 */
   error?: string
+  /** 实时进度 0-100；缺省时进度面板显示不确定进度（转圈）。 */
   /** 可取消令牌：提供时，进度面板会显示"停止"按钮。 */
   onCancel?: () => void
   /** 主进程后台任务的运行版本，用于忽略上一轮迟到的终态事件。 */
@@ -81,8 +82,8 @@ export interface AiTaskRunInput {
 }
 
 /**
- * 任务结束后在列表里保留多久（毫秒）。
- * 给用户一点时间看到"成功 ✓"或"失败 ×"反馈再淡出。
+ * 成功或取消任务结束后在列表里保留多久（毫秒）。
+ * 失败任务由任务中心保留到用户手动关闭。
  */
 export const AI_TASK_RETENTION_MS = 4_500
 

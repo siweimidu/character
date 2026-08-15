@@ -1179,6 +1179,12 @@ export interface AppSettings {
   editorMinimap: boolean
   /** UI 缩放比例，范围 0.75-1.75 */
   uiScale: number
+  /** 工作台创作模块的全局菜单顺序，使用稳定菜单 ID */
+  workspaceMenuOrder: string[]
+  /** 首页作品排序方式：manual=手动排序、edited=最近编辑、title=按标题 */
+  homeProjectSortMode: string
+  /** 手动排序时保存的作品 ID 顺序 */
+  homeProjectOrder: string[]
   /** 是否启用深色模式 */
   darkMode: boolean
   /** 深色模式风格预设 */
