@@ -11,7 +11,7 @@ export default defineConfig({
           index: resolve(__dirname, 'electron/main/index.ts'),
           'archive/project-archive-import-worker': resolve(__dirname, 'electron/main/archive/project-archive-import-worker.ts')
         },
-        external: ['@node-rs/jieba', '@node-rs/jieba/dict.js'],
+        external: ['@node-rs/jieba', '@node-rs/jieba/dict.js', 'esbuild'],
         output: {
           entryFileNames: '[name].js'
         }
