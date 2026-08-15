@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { Check, Clock4, GripHorizontal, MoreHorizontal } from 'lucide-vue-next'
+import { ArrowDown, ArrowUp, Check, Clock4, MoreHorizontal } from 'lucide-vue-next'
 import type { DropdownOption } from 'naive-ui'
 import { NDropdown } from 'naive-ui'
 import { isImageCover, resolveCoverStyle } from '@/features/cover/display'
@@ -15,52 +14,57 @@ const props = defineProps<{
   animationDelay?: string
   selectMode?: boolean
   selected?: boolean
-  draggable?: boolean
-  isDragging?: boolean
-  dragOffset?: { x: number; y: number } | null
-  suppressClick?: boolean
+  /** 手动排序模式：在卡片悬停时显示上/下移动箭头按钮 */
+  manualSort?: boolean
+  /** 上移按钮是否禁用（当前为第一个时禁用） */
+  moveUpDisabled?: boolean
+  /** 下移按钮是否禁用（当前为最后一个时禁用） */
+  moveDownDisabled?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'open', projectId: string): void
   (e: 'menuSelect', action: string | number, projectId: string): void
   (e: 'toggleSelect', projectId: string): void
-  (e: 'pointerDown', payload: PointerEvent, projectId: string): void
-  (e: 'clickConsumed'): void
+  (e: 'moveUp', projectId: string): void
+  (e: 'moveDown', projectId: string): void
 }>()
 
-/** 卡片点击：若正处于拖拽后抬起，则忽略本次点击，避免误打开项目 */
+/** 卡片点击：批量管理模式下切换选中，否则打开项目 */
 function handleCardClick(): void {
-  if (props.suppressClick) {
-    emit('clickConsumed')
-    return
-  }
   if (props.selectMode) {
     emit('toggleSelect', props.project.id)
   } else {
     emit('open', props.project.id)
   }
 }
-
-/** 拖拽时卡片跟随鼠标的位移（transform）。非拖拽时返回 undefined，避免干扰 transition-group 的位移动画 */
-const dragStyle = computed<{ transform: string } | undefined>(() => {
-  if (!props.isDragging || !props.dragOffset) return undefined
-  // translate 跟随鼠标；scale/rotate 与 .is-dragging 的视觉保持一致
-  return { transform: `translate(${props.dragOffset.x}px, ${props.dragOffset.y}px) scale(1.04) rotate(1deg)` }
-})
 </script>
 
 <template>
   <article
     class="homepage-project-card"
-    :class="{ 'is-select-mode': selectMode, 'is-selected': selected, 'is-dragging': isDragging, 'is-draggable': draggable }"
-    :style="animationDelay ? { animationDelay, ...(dragStyle ?? {}) } : dragStyle"
+    :class="{ 'is-select-mode': selectMode, 'is-selected': selected, 'is-manual-sort': manualSort }"
+    :style="animationDelay ? { animationDelay } : undefined"
     :data-project-id="project.id"
     @click="handleCardClick"
-    @pointerdown="(e) => emit('pointerDown', e, project.id)"
   >
-    <div class="drag-handle" title="拖动调整顺序" @click.stop @mousedown.stop>
-      <GripHorizontal :size="14" />
+    <div v-if="manualSort" class="move-controls">
+      <button
+        class="move-btn"
+        title="上移一位"
+        :disabled="moveUpDisabled"
+        @click.stop="emit('moveUp', project.id)"
+      >
+        <ArrowUp :size="13" />
+      </button>
+      <button
+        class="move-btn"
+        title="下移一位"
+        :disabled="moveDownDisabled"
+        @click.stop="emit('moveDown', project.id)"
+      >
+        <ArrowDown :size="13" />
+      </button>
     </div>
     <div class="card-main">
       <button
@@ -289,63 +293,61 @@ const dragStyle = computed<{ transform: string } | undefined>(() => {
   border-color: var(--arc-border-strong);
 }
 
-.drag-handle {
+/* 手动排序时的上/下移动按钮：默认隐藏，悬停卡片时才淡入显示 */
+.move-controls {
   position: absolute;
-  top: 8px;
-  left: 8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 7px;
-  background: color-mix(in srgb, var(--arc-bg-surface) 92%, var(--arc-text-primary));
-  color: var(--arc-text-hint);
-  cursor: grab;
+  top: 50%;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 3;
   opacity: 0;
-  transform: translateY(-3px) scale(0.8);
+  transform: translateY(-50%) translateX(6px) scale(0.92);
   transition:
     opacity 0.2s,
-    transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
-    color 0.15s,
-    background 0.15s;
-  z-index: 2;
-  pointer-events: none;
+    transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.homepage-project-card.is-draggable .drag-handle {
-  pointer-events: auto;
-}
-
-.homepage-project-card.is-draggable:hover .drag-handle {
+.homepage-project-card.is-manual-sort:hover .move-controls {
   opacity: 1;
-  transform: translateY(0) scale(1);
+  transform: translateY(-50%) translateX(0) scale(1);
+}
+
+.move-btn {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--arc-border);
+  border-radius: 7px;
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s,
+    transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.move-btn:hover:not(:disabled) {
   background: color-mix(in srgb, var(--arc-primary) 12%, var(--arc-bg-surface));
   color: var(--arc-primary);
+  border-color: color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border));
+  transform: scale(1.06);
 }
 
-.drag-handle:active {
-  cursor: grabbing;
+.move-btn:active:not(:disabled) {
+  transform: scale(0.94);
 }
 
-.homepage-project-card.is-dragging .drag-handle {
-  opacity: 1;
-  transform: translateY(0) scale(1.05);
-  cursor: grabbing;
-}
-
-.homepage-project-card.is-draggable {
-  cursor: grab;
-}
-
-.homepage-project-card.is-dragging {
-  cursor: grabbing;
-  opacity: 0.55;
-  border-color: var(--arc-primary);
-  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.2);
-  /* 拖拽时通过 inline transform 跟随鼠标，需即时响应，不能有 transition 延迟 */
-  transition: opacity 0.18s, box-shadow 0.2s;
-  z-index: 3;
+.move-btn:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
 }
 
 .card-footer {
