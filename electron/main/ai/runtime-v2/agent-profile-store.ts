@@ -926,10 +926,13 @@ export class AgentProfileStore {
   /** 设置全局作用域下的默认智能体（设为默认后，其它全局智能体会被取消默认标记）。 */
   setDefaultGlobalAgent(id: string): AgentProfile | null {
     const target = this.get(id)
-    if (!target || target.scope !== 'global') return null
+    // 前端仅在「全局智能体」编辑场景展示“设为默认”，且传参前会校验作用范围为 global；
+    // 若 DB 中该智能体的 scope 与前端缓存存在轻微不一致（如刚由全局改为局部后列表未刷新），
+    // 这里将其一并纠正为全局作用域并设为默认，避免出现“设为默认失败”。
+    if (!target) return null
     this.db.prepare(`UPDATE agent_profiles SET is_default = 0 WHERE scope = 'global'`).run()
     this.db
-      .prepare(`UPDATE agent_profiles SET is_default = 1, updated_at = ? WHERE id = ?`)
+      .prepare(`UPDATE agent_profiles SET is_default = 1, scope = 'global', project_id = NULL, updated_at = ? WHERE id = ?`)
       .run(new Date().toISOString(), id)
     return this.get(id)
   }

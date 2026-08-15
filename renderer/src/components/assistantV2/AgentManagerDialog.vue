@@ -203,7 +203,7 @@ async function handleSave(): Promise<void> {
   }
 }
 
-/** 勾选框切换默认状态：勾选→设为默认，取消→清除默认标记。 */
+/** 切换默认状态：设为默认 ⇄ 取消默认。 */
 async function handleToggleDefault(checked: boolean | string | number): Promise<void> {
   if (checked) {
     await handleSetDefault()
@@ -218,8 +218,8 @@ async function handleSetDefault(): Promise<void> {
     message.warning('请先保存该智能体后再设为默认')
     return
   }
-  if (props.agent.scope !== 'global') {
-    message.warning('仅全局智能体可设为默认')
+  if (scope.value !== 'global') {
+    message.warning('仅全局智能体可设为默认，请先将作用范围切回全局智能体')
     return
   }
   settingDefault.value = true
@@ -247,8 +247,8 @@ async function handleClearDefault(): Promise<void> {
     message.warning('请先保存该智能体后再操作')
     return
   }
-  if (props.agent.scope !== 'global') {
-    message.warning('仅全局智能体可设为默认')
+  if (scope.value !== 'global') {
+    message.warning('仅全局智能体可设为默认，请先将作用范围切回全局智能体')
     return
   }
   settingDefault.value = true
@@ -388,21 +388,17 @@ watch(
               <strong>局部智能体</strong>
               <span>仅当前这本小说可用</span>
             </button>
-          </div>
-          <p v-if="scope === 'local'" class="scope-hint">局部智能体仅服务于当前项目/小说，与其它小说的局部智能体数据完全隔离。</p>
-          <div
-            v-if="agent && agent.scope === 'global'"
-            class="default-agent-row"
-          >
-            <NCheckbox
-              :checked="isDefault"
+            <button
+              v-if="agent && agent.scope === 'global'"
+              type="button"
+              class="scope-opt default-opt"
+              :class="{ active: isDefault }"
               :disabled="settingDefault"
-              @update:checked="handleToggleDefault"
+              @click="handleToggleDefault(!isDefault)"
             >
-              <span class="default-agent-label">设为默认</span>
-            </NCheckbox>
-            <span v-if="isDefault" class="default-agent-badge">✓ 当前默认</span>
-            <span v-else class="default-agent-hint">勾选后此智能体将作为全局默认</span>
+              <strong>{{ isDefault ? '默认已启用' : '设为默认' }}</strong>
+              <span>{{ settingDefault ? '处理中…' : (isDefault ? '当前默认' : '作为全局默认') }}</span>
+            </button>
           </div>
         </NFormItem>
 
@@ -533,22 +529,27 @@ watch(
   padding: 4px 0;
 }
 .scope-toggle {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
   gap: 8px;
   width: 100%;
 }
 .scope-opt {
+  flex: 1;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 2px;
-  padding: 10px 12px;
+  padding: 10px 8px;
   border: 1px solid var(--arc-border);
   border-radius: 10px;
   background: var(--arc-bg-surface);
   cursor: pointer;
-  text-align: left;
+  text-align: center;
   transition: all 0.15s ease;
+}
+.scope-opt:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 .scope-opt strong {
   font-size: 13px;
@@ -567,44 +568,6 @@ watch(
 }
 .scope-opt.active strong {
   color: var(--arc-primary);
-}
-.scope-hint {
-  margin: 6px 0 0;
-  font-size: 11px;
-  color: var(--arc-text-hint);
-  line-height: 1.4;
-}
-.default-agent-row {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  margin-top: 8px;
-  padding: 10px 12px;
-  border: 1px dashed var(--arc-border-strong);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--arc-primary) 4%, var(--arc-bg-surface));
-}
-.default-agent-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--arc-text-secondary);
-}
-.default-agent-hint {
-  font-size: 11px;
-  color: var(--arc-text-hint);
-  line-height: 1.4;
-}
-.default-agent-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(4, 120, 87, 0.12);
-  color: #047857;
-  font-size: 11.5px;
-  font-weight: 600;
 }
 .skill-bind {
   width: 100%;
