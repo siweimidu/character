@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **主页排序按钮重构**：主页排序改为单个纯 SVG 图标按钮（上下箭头），点击后弹出悬浮窗展示排序选项，不再直接展开排序文字。
+- **封面生图 Gemini 模型调用修复**：识别 Google Gemini 原生图像模型（gemini-2.5-flash-image / imagen 系列）自动走原生 generateContent 端点，修正 `models/gemini-2.5-flash-image is not found for API version v1main` 报错。
+- **全局智能体空会话自动清理**：新建会话支持多会话并行执行；未发送任何消息的空会话在退出全局智能体界面时自动删除，且不保存到回收站。
+
 ### Changed
 
 - **全局智能体撤回任意轮次**：撤回不再局限于最后一轮对话，可撤回最早（含第一轮）的任意一轮对话；被撤回轮次之后的对话与暂存变更一并清理，原文自动回填到输入框。
