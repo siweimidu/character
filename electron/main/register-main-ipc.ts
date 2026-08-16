@@ -477,6 +477,30 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
   })
 
+  // 导出整个项目（9 个创作模块）为单个 TXT 文件：内容已在渲染进程拼装好，主进程仅负责弹窗写盘，速度快
+  ipcMain.handle('characterarc:export-project-txt', async (_event, payload: unknown) => {
+    const window = deps.windowManager.getActiveWindow()
+    if (!window) return { success: false, canceled: true }
+
+    const request = (payload ?? {}) as {
+      title?: string
+      content?: string
+      defaultFileName?: string
+    }
+
+    const result = await dialog.showSaveDialog(window, {
+      title: request.title?.trim() || '导出项目为 TXT',
+      defaultPath: request.defaultFileName?.trim() || 'characterarc-project.txt',
+      filters: [{ name: '文本文档', extensions: ['txt'] }]
+    })
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true }
+    }
+
+    await writeFile(result.filePath, request.content ?? '', 'utf-8')
+    return { success: true, canceled: false, filePath: result.filePath }
+  })
+
   ipcMain.handle('characterarc:export-markdown', async (_event, payload: unknown) => {
     const window = deps.windowManager.getActiveWindow()
     if (!window) return { success: false, canceled: true }
@@ -489,8 +513,14 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     if (result.canceled || !result.filePath) return { success: false, canceled: true }
     const data = request.data as {
       project?: { title?: string } | null
+      content?: string
       outlineVolumes?: Array<{ id?: string; title?: string }>
       chapters?: Array<{ volumeId?: string; title?: string; content?: string }>
+    }
+    // 支持直接传入已拼装好的 Markdown 内容（渲染进程组装全项目 9 个模块）
+    if (typeof data.content === 'string' && data.content.trim()) {
+      await writeFile(result.filePath, data.content, 'utf-8')
+      return { success: true, canceled: false, filePath: result.filePath }
     }
     const volumeTitleMap = new Map((data.outlineVolumes ?? []).map((volume) => [volume.id ?? '', volume.title?.trim() || '未命名分卷']))
     let activeVolumeId = ''

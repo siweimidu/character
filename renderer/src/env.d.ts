@@ -642,6 +642,11 @@ declare global {
         canceled: boolean
         filePath?: string
       }>
+      exportProjectTxt: (payload: { title?: string; content?: string; defaultFileName?: string } | unknown) => Promise<{
+        success: boolean
+        canceled: boolean
+        filePath?: string
+      }>
       exportMarkdown: (payload: CharacterArcExportRequest | unknown) => Promise<{
         success: boolean
         canceled: boolean

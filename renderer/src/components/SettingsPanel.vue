@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h, reactive, ref, watch } from 'vue'
-import { Archive, BookMarked, Copy, FileJson, FileStack, FileText, FolderOpen, Lightbulb, Network, PenTool, Save, Upload, Users } from 'lucide-vue-next'
+import { Archive, BookMarked, BookOpenText, Copy, FileJson, FileStack, FileText, FolderOpen, FolderTree, Globe2, LayoutDashboard, Lightbulb, Network, PenTool, Save, Upload, Users } from 'lucide-vue-next'
 import { NButton, NCard, NFormItem, NInput, NSelect, NTooltip, useMessage } from 'naive-ui'
 import { getPlainTextFromEditorContent } from '@/features/chapters/editorContent'
 import { autoSaveOptions } from '@/features/settings/autoSave'
@@ -298,6 +298,325 @@ function buildExportEnvelope(moduleType: ImportExportModuleType, data: ProjectIm
   }
 }
 
+// ── 全项目 9 个创作模块导出数据组装 ─────────────────────────────
+
+// 作品概览模块：项目元信息
+function buildOverviewSectionText(): string {
+  const project = appStore.currentProject
+  const lines: string[] = [
+    '【作品概览】',
+    `作品标题：${project?.title?.trim() || '未命名作品'}`,
+    `题材分类：${project?.genre?.trim() || '未设置'}`,
+    `篇幅类型：${project?.novelLength || '未设置'}`,
+    `当前字数：${project?.wordCount || '0 字'}`,
+    `作品简介：${project?.premise?.trim() || '（暂无简介）'}`
+  ]
+  return lines.join('\n')
+}
+
+// 章节创作模块：分卷与章节正文
+function buildChaptersSectionText(): string {
+  const volumes = appStore.outlineVolumes ?? []
+  const chapters = appStore.chapters ?? []
+  const volumeTitleMap = new Map(volumes.map((v) => [v.id, v.title?.trim() || '未命名分卷']))
+  const parts: string[] = ['【章节创作】']
+  if (!chapters.length) {
+    parts.push('（暂无章节内容）')
+    return parts.join('\n')
+  }
+  let activeVolumeId = ''
+  chapters.forEach((chapter, index) => {
+    const shouldPrintVolume = chapter.volumeId && chapter.volumeId !== activeVolumeId
+    if (chapter.volumeId) activeVolumeId = chapter.volumeId
+    if (shouldPrintVolume) {
+      parts.push('', `## ${volumeTitleMap.get(chapter.volumeId ?? '') || '未命名分卷'}`)
+    }
+    parts.push('', `第${index + 1}章 ${chapter.title || '未命名章节'}`)
+    parts.push(getPlainTextFromEditorContent(chapter.content)?.trim() || '（暂无正文内容）')
+  })
+  return parts.join('\n')
+}
+
+// 角色图鉴模块
+function buildCharactersSectionText(): string {
+  const characters = appStore.characters ?? []
+  const parts: string[] = ['【角色图鉴】']
+  if (!characters.length) {
+    parts.push('（暂无角色）')
+    return parts.join('\n')
+  }
+  characters.forEach((c) => {
+    parts.push('', `◆ ${c.name || '未命名角色'}${c.role?.trim() ? `（${c.role.trim()}）` : ''}`)
+    if (c.description?.trim()) parts.push(`  定位：${c.description.trim()}`)
+    if (c.appearance?.trim()) parts.push(`  外貌：${c.appearance.trim()}`)
+    if (c.personality?.trim()) parts.push(`  性格：${c.personality.trim()}`)
+    if (c.background?.trim()) parts.push(`  背景：${c.background.trim()}`)
+    if (Array.isArray(c.tags) && c.tags.length) parts.push(`  标签：${c.tags.map((t) => (typeof t === 'string' ? t : (t as { name?: string }).name || '')).filter(Boolean).join('、')}`)
+  })
+  return parts.join('\n')
+}
+
+// 关系组织模块
+function buildRelationsSectionText(): string {
+  const characters = appStore.characters ?? []
+  const organizations = appStore.organizations ?? []
+  const relationships = appStore.characterRelationships ?? []
+  const memberships = appStore.organizationMemberships ?? []
+  const nameById = new Map(characters.map((c) => [c.id, c.name || '未命名角色']))
+  const parts: string[] = ['【关系组织】']
+  if (organizations.length) {
+    parts.push('', '■ 组织 / 势力')
+    organizations.forEach((org) => {
+      parts.push(`  ◆ ${org.name || '未命名组织'}${org.type?.trim() ? `（${org.type.trim()}）` : ''}`)
+      if (org.motto?.trim()) parts.push(`    信条：${org.motto.trim()}`)
+      if (org.description?.trim()) parts.push(`    描述：${org.description.trim()}`)
+    })
+  }
+  if (memberships.length) {
+    parts.push('', '■ 成员归属')
+    memberships.forEach((m) => {
+      const orgName = organizations.find((o) => o.id === m.organizationId)?.name?.trim() || '未知组织'
+      parts.push(`  ${nameById.get(m.characterId) || '未知角色'} → ${orgName}${m.role?.trim() ? `（${m.role.trim()}）` : ''}`)
+    })
+  }
+  if (relationships.length) {
+    parts.push('', '■ 人物关系')
+    relationships.forEach((r) => {
+      const from = nameById.get(r.fromCharacterId) || '未知角色'
+      const to = nameById.get(r.toCharacterId) || '未知角色'
+      parts.push(`  ${from} —— ${r.type || '关联'} —— ${to}${r.description?.trim() ? `（${r.description.trim()}）` : ''}`)
+    })
+  }
+  if (!organizations.length && !memberships.length && !relationships.length) {
+    parts.push('（暂无关系组织数据）')
+  }
+  return parts.join('\n')
+}
+
+// 世界观设定模块
+function buildWorldviewSectionText(): string {
+  const entries = appStore.worldviewEntries ?? []
+  const parts: string[] = ['【世界观设定】']
+  if (!entries.length) {
+    parts.push('（暂无世界观设定）')
+    return parts.join('\n')
+  }
+  entries.forEach((entry) => {
+    parts.push('', `◆ [${entry.type || '未分类'}] ${entry.title || '未命名条目'}`)
+    if (entry.content?.trim()) parts.push(entry.content.trim())
+    if (Array.isArray(entry.tags) && entry.tags.length) parts.push(`  标签：${entry.tags.join('、')}`)
+  })
+  return parts.join('\n')
+}
+
+// 剧情大纲模块
+function buildOutlineSectionText(): string {
+  const volumes = appStore.outlineVolumes ?? []
+  const items = appStore.outlineItems ?? []
+  const parts: string[] = ['【剧情大纲】']
+  if (!volumes.length && !items.length) {
+    parts.push('（暂无剧情大纲）')
+    return parts.join('\n')
+  }
+  volumes.forEach((volume) => {
+    parts.push('', `■ 分卷：${volume.title?.trim() || '未命名分卷'}`)
+    if (volume.summary?.trim()) parts.push(`  摘要：${volume.summary.trim()}`)
+    if (volume.wordTarget) parts.push(`  目标字数：${volume.wordTarget}`)
+    items
+      .filter((item) => item.volumeId === volume.id)
+      .forEach((item) => {
+        parts.push(`  ◆ ${item.title || '未命名节点'}`)
+        if (item.conflict?.trim()) parts.push(`    冲突：${item.conflict.trim()}`)
+        if (item.summary?.trim()) parts.push(`    摘要：${item.summary.trim()}`)
+        if (item.wordTarget) parts.push(`    字数：${item.wordTarget}`)
+        if (item.status) parts.push(`    状态：${item.status}`)
+      })
+  })
+  // 无分卷但有大纲节点时，直接列出节点
+  if (!volumes.length && items.length) {
+    items.forEach((item) => {
+      parts.push(`  ◆ ${item.title || '未命名节点'}`)
+      if (item.summary?.trim()) parts.push(`    摘要：${item.summary.trim()}`)
+    })
+  }
+  return parts.join('\n')
+}
+
+// 伏笔线索模块
+function buildThreadsSectionText(): string {
+  const threads = appStore.plotThreads ?? []
+  const chapters = appStore.chapters ?? []
+  const chapterTitleById = new Map(chapters.map((c) => [c.id, c.title || '未命名章节']))
+  const parts: string[] = ['【伏笔线索】']
+  if (!threads.length) {
+    parts.push('（暂无伏笔线索）')
+    return parts.join('\n')
+  }
+  threads.forEach((t) => {
+    parts.push('', `◆ ${t.title || '未命名伏笔'}`)
+    if (t.description?.trim()) parts.push(`  描述：${t.description.trim()}`)
+    if (t.openedInChapterId) parts.push(`  埋设章节：${chapterTitleById.get(t.openedInChapterId) || '未知章节'}`)
+    if (t.plannedCloseChapterId) parts.push(`  计划回收：${chapterTitleById.get(t.plannedCloseChapterId) || '未知章节'}`)
+    if (t.closedInChapterId) parts.push(`  已回收章节：${chapterTitleById.get(t.closedInChapterId) || '未知章节'}`)
+    if (t.status) parts.push(`  状态：${t.status}`)
+    if (t.priority) parts.push(`  优先级：${t.priority}`)
+    if (Array.isArray(t.tags) && t.tags.length) parts.push(`  标签：${t.tags.join('、')}`)
+  })
+  return parts.join('\n')
+}
+
+// 灵感模块
+function buildInspirationSectionText(): string {
+  const entries = appStore.inspirationEntries ?? []
+  const parts: string[] = ['【灵感模块】']
+  if (!entries.length) {
+    parts.push('（暂无灵感卡片）')
+    return parts.join('\n')
+  }
+  entries.forEach((entry) => {
+    parts.push('', `◆ [${entry.type || '未分类'}] ${entry.title || '未命名灵感'}`)
+    if (entry.content?.trim()) parts.push(entry.content.trim())
+    if (Array.isArray(entry.tags) && entry.tags.length) parts.push(`  标签：${entry.tags.join('、')}`)
+  })
+  return parts.join('\n')
+}
+
+// 项目知识库模块
+function buildKnowledgeSectionText(): string {
+  const docs = appStore.knowledgeDocuments ?? []
+  const parts: string[] = ['【项目知识库】']
+  if (!docs.length) {
+    parts.push('（暂无项目知识文档）')
+    return parts.join('\n')
+  }
+  docs.forEach((doc) => {
+    parts.push('', `◆ ${doc.title || '未命名文档'}`)
+    if (doc.sourceLabel) parts.push(`  来源：${doc.sourceLabel}`)
+    if (doc.summary?.trim()) parts.push(`  摘要：${doc.summary.trim()}`)
+    if (doc.content?.trim()) parts.push(doc.content.trim())
+    if (Array.isArray(doc.keywords) && doc.keywords.length) parts.push(`  关键词：${doc.keywords.join('、')}`)
+  })
+  return parts.join('\n')
+}
+
+// 组装整个项目的 TXT 内容（9 个模块全部包含）
+function buildFullProjectText(): string {
+  const projectTitle = appStore.currentProject?.title?.trim() || 'CharacterArc 项目导出'
+  return [
+    `# ${projectTitle}`,
+    `导出时间：${new Date().toLocaleString('zh-CN')}`,
+    '',
+    '════════════════════════════════════',
+    buildOverviewSectionText(),
+    '',
+    '════════════════════════════════════',
+    buildChaptersSectionText(),
+    '',
+    '════════════════════════════════════',
+    buildCharactersSectionText(),
+    '',
+    '════════════════════════════════════',
+    buildRelationsSectionText(),
+    '',
+    '════════════════════════════════════',
+    buildWorldviewSectionText(),
+    '',
+    '════════════════════════════════════',
+    buildOutlineSectionText(),
+    '',
+    '════════════════════════════════════',
+    buildThreadsSectionText(),
+    '',
+    '════════════════════════════════════',
+    buildInspirationSectionText(),
+    '',
+    '════════════════════════════════════',
+    buildKnowledgeSectionText()
+  ].join('\n')
+}
+
+// 组装整个项目的 Markdown 内容（9 个模块全部包含）
+function buildFullProjectMarkdown(): string {
+  const projectTitle = appStore.currentProject?.title?.trim() || 'CharacterArc 项目导出'
+  return [
+    `# ${projectTitle}`,
+    '',
+    '---',
+    '',
+    '## 作品概览',
+    '',
+    buildOverviewSectionText().replace(/^【作品概览】$/m, '').replace(/^作品标题：/m, '- 作品标题：').replace(/^题材分类：/m, '- 题材分类：').replace(/^篇幅类型：/m, '- 篇幅类型：').replace(/^当前字数：/m, '- 当前字数：').replace(/^作品简介：/m, '- 作品简介：'),
+    '',
+    '---',
+    '',
+    '## 章节创作',
+    '',
+    buildChaptersSectionText().replace(/^【章节创作】$/m, ''),
+    '',
+    '---',
+    '',
+    '## 角色图鉴',
+    '',
+    buildCharactersSectionText().replace(/^【角色图鉴】$/m, ''),
+    '',
+    '---',
+    '',
+    '## 关系组织',
+    '',
+    buildRelationsSectionText().replace(/^【关系组织】$/m, ''),
+    '',
+    '---',
+    '',
+    '## 世界观设定',
+    '',
+    buildWorldviewSectionText().replace(/^【世界观设定】$/m, ''),
+    '',
+    '---',
+    '',
+    '## 剧情大纲',
+    '',
+    buildOutlineSectionText().replace(/^【剧情大纲】$/m, ''),
+    '',
+    '---',
+    '',
+    '## 伏笔线索',
+    '',
+    buildThreadsSectionText().replace(/^【伏笔线索】$/m, ''),
+    '',
+    '---',
+    '',
+    '## 灵感模块',
+    '',
+    buildInspirationSectionText().replace(/^【灵感模块】$/m, ''),
+    '',
+    '---',
+    '',
+    '## 项目知识库',
+    '',
+    buildKnowledgeSectionText().replace(/^【项目知识库】$/m, '')
+  ].join('\n')
+}
+
+// 组装整个项目的 JSON 载荷（9 个模块全部包含）
+function buildFullProjectPayload(): Record<string, unknown> {
+  return {
+    project: appStore.currentProject,
+    worldviewEntries: appStore.worldviewEntries,
+    characters: appStore.characters,
+    organizations: appStore.organizations,
+    characterRelationships: appStore.characterRelationships,
+    organizationMemberships: appStore.organizationMemberships,
+    inspirationEntries: appStore.inspirationEntries,
+    outlineVolumes: appStore.outlineVolumes,
+    outlineItems: appStore.outlineItems,
+    chapters: appStore.chapters,
+    chapterVersions: appStore.chapterVersions,
+    plotThreads: appStore.plotThreads,
+    knowledgeDocuments: appStore.knowledgeDocuments,
+    exportedAt: new Date().toISOString()
+  }
+}
+
 // 导出 .carc 归档：只传项目 ID，主进程直接从 SQLite 读取并打包，避免大项目数据走 IPC。
 async function handleExportProjectArchive(): Promise<void> {
   const project = appStore.currentProject
@@ -322,115 +641,69 @@ async function handleExportProjectArchive(): Promise<void> {
   }
 }
 
-// 导出章节正文为 TXT 文件（仅包含纯文本内容）
+// 导出整个项目（9 个创作模块）为单个 TXT 文件：内容在渲染进程拼装，主进程直接写盘，速度快
 async function handleExportText(): Promise<void> {
-  const payload = {
-    project: appStore.currentProject,
-    outlineVolumes: appStore.outlineVolumes,
-    chapters: appStore.chapters.map((chapter) => ({
-      volumeId: chapter.volumeId,
-      title: chapter.title,
-      content: getPlainTextFromEditorContent(chapter.content)
-    })),
-    exportedAt: new Date().toISOString()
-  }
-
-  const result = await window.characterArc.exportText(toIpcPayload({
-    data: payload,
-    title: '导出章节正文 TXT',
-    defaultPath: `${buildExportStem('chapters')}.txt`
-  }))
-  if (result.success) {
-    message.success('章节内容已导出')
+  if (!appStore.currentProject?.id) {
+    message.warning('请先打开一个项目再导出')
     return
   }
-
+  const content = buildFullProjectText()
+  const result = await window.characterArc.exportProjectTxt(toIpcPayload({
+    title: '导出项目为 TXT',
+    content,
+    defaultFileName: `${buildExportStem('project')}.txt`
+  }))
+  if (result.success) {
+    message.success('项目内容已导出为 TXT')
+    return
+  }
   if (!result.canceled) {
     message.error('导出 TXT 失败，请稍后重试')
   }
 }
 
-// 导出章节数据为 JSON 文件
+// 导出整个项目（9 个创作模块）为 JSON 文件
 async function handleExportJson(): Promise<void> {
-  const payload = {
-    project: appStore.currentProject,
-    outlineVolumes: appStore.outlineVolumes,
-    chapters: appStore.chapters.map((chapter) => ({
-      volumeId: chapter.volumeId,
-      title: chapter.title,
-      content: getPlainTextFromEditorContent(chapter.content)
-    })),
-    exportedAt: new Date().toISOString()
-  }
-
-  const result = await window.characterArc.exportJson(toIpcPayload({
-    data: payload,
-    title: '导出章节 JSON',
-    defaultPath: `${buildExportStem('chapters')}.json`
-  }))
-  if (result.success) {
-    message.success('章节数据已导出为 JSON')
+  if (!appStore.currentProject?.id) {
+    message.warning('请先打开一个项目再导出')
     return
   }
-
+  const result = await window.characterArc.exportJson(toIpcPayload({
+    data: buildExportEnvelope('project', buildFullProjectPayload()),
+    title: '导出项目 JSON',
+    defaultPath: `${buildExportStem('project')}.json`
+  }))
+  if (result.success) {
+    message.success('项目内容已导出为 JSON')
+    return
+  }
   if (!result.canceled) {
     message.error('导出 JSON 失败，请稍后重试')
   }
 }
 
-// 导出章节内容为 Markdown 文件
+// 导出整个项目（9 个创作模块）为 Markdown 文件
 async function handleExportMarkdown(): Promise<void> {
-  const payload = {
-    project: appStore.currentProject,
-    outlineVolumes: appStore.outlineVolumes,
-    chapters: appStore.chapters.map((chapter) => ({
-      volumeId: chapter.volumeId,
-      title: chapter.title,
-      content: getPlainTextFromEditorContent(chapter.content)
-    })),
-    exportedAt: new Date().toISOString()
-  }
-
-  const result = await window.characterArc.exportMarkdown(toIpcPayload({
-    data: payload,
-    title: '导出章节 Markdown',
-    defaultPath: `${buildExportStem('chapters')}.md`
-  }))
-  if (result.success) {
-    message.success('章节内容已导出为 Markdown')
+  if (!appStore.currentProject?.id) {
+    message.warning('请先打开一个项目再导出')
     return
   }
-
+  const content = buildFullProjectMarkdown()
+  const result = await window.characterArc.exportMarkdown(toIpcPayload({
+    data: {
+      project: appStore.currentProject,
+      content,
+      exportedAt: new Date().toISOString()
+    },
+    title: '导出项目 Markdown',
+    defaultPath: `${buildExportStem('project')}.md`
+  }))
+  if (result.success) {
+    message.success('项目内容已导出为 Markdown')
+    return
+  }
   if (!result.canceled) {
     message.error('导出 Markdown 失败，请稍后重试')
-  }
-}
-
-// 导出章节内容为 Excel 表格
-async function handleExportExcel(): Promise<void> {
-  const payload = {
-    project: appStore.currentProject,
-    outlineVolumes: appStore.outlineVolumes,
-    chapters: appStore.chapters.map((chapter) => ({
-      volumeId: chapter.volumeId,
-      title: chapter.title,
-      content: getPlainTextFromEditorContent(chapter.content)
-    })),
-    exportedAt: new Date().toISOString()
-  }
-
-  const result = await window.characterArc.exportExcel(toIpcPayload({
-    data: payload,
-    title: '导出章节 Excel',
-    defaultPath: `${buildExportStem('chapters')}.xlsx`
-  }))
-  if (result.success) {
-    message.success('章节数据已导出为 Excel 表格')
-    return
-  }
-
-  if (!result.canceled) {
-    message.error('导出 Excel 失败，请稍后重试')
   }
 }
 
@@ -566,6 +839,68 @@ async function handleExportThreads(): Promise<void> {
   }
 }
 
+// 导出作品概览为 JSON 文件
+async function handleExportOverview(): Promise<void> {
+  const result = await window.characterArc.exportJson(toIpcPayload({
+    data: buildExportEnvelope('project', {
+      project: appStore.currentProject
+    }),
+    title: '导出作品概览 JSON',
+    defaultPath: `${buildExportStem('overview')}.json`
+  }))
+
+  if (result.success) {
+    message.success('作品概览已导出')
+    return
+  }
+
+  if (!result.canceled) {
+    message.error('导出作品概览失败，请稍后重试')
+  }
+}
+
+// 导出世界观设定为 JSON 文件
+async function handleExportWorldview(): Promise<void> {
+  const result = await window.characterArc.exportJson(toIpcPayload({
+    data: buildExportEnvelope('worldview', {
+      project: appStore.currentProject,
+      worldviewEntries: appStore.worldviewEntries
+    }),
+    title: '导出世界观设定 JSON',
+    defaultPath: `${buildExportStem('worldview')}.json`
+  }))
+
+  if (result.success) {
+    message.success('世界观设定已导出')
+    return
+  }
+
+  if (!result.canceled) {
+    message.error('导出世界观设定失败，请稍后重试')
+  }
+}
+
+// 导出项目知识库为 JSON 文件
+async function handleExportKnowledge(): Promise<void> {
+  const result = await window.characterArc.exportJson(toIpcPayload({
+    data: buildExportEnvelope('knowledge', {
+      project: appStore.currentProject,
+      knowledgeDocuments: appStore.knowledgeDocuments
+    }),
+    title: '导出项目知识库 JSON',
+    defaultPath: `${buildExportStem('knowledge')}.json`
+  }))
+
+  if (result.success) {
+    message.success('项目知识库已导出')
+    return
+  }
+
+  if (!result.canceled) {
+    message.error('导出项目知识库失败，请稍后重试')
+  }
+}
+
 watch(
   () => appStore.currentProject,
   (project) => {
@@ -690,61 +1025,76 @@ watch(
         <div class="module-export-block">
           <div class="module-export-copy">
             <div class="setting-name">导出项目为其他格式</div>
-            <div class="setting-hint">将章节内容导出为 JSON、Markdown 或 Excel 表格，便于分发和二次处理</div>
+            <div class="setting-hint">将整个项目的全部创作模块导出为 JSON、Markdown 或 TXT，便于分发和二次处理</div>
           </div>
           <div class="module-export-grid">
             <button class="module-export-card" @click="handleExportJson">
               <FileJson :size="18" />
               <strong>导出为 JSON</strong>
-              <span>导出结构化章节数据</span>
+              <span>导出全部 9 个模块结构化数据</span>
             </button>
             <button class="module-export-card" @click="handleExportMarkdown">
               <FileText :size="18" />
               <strong>导出为 Markdown</strong>
-              <span>导出 Markdown 文档</span>
+              <span>导出全部 9 个模块 Markdown 文档</span>
             </button>
-            <button class="module-export-card" @click="handleExportExcel">
+            <button class="module-export-card" @click="handleExportText">
               <FileStack :size="18" />
-              <strong>导出为 Excel 表格</strong>
-              <span>导出章节明细表格</span>
+              <strong>导出为 TXT</strong>
+              <span>导出全部 9 个模块纯文本内容</span>
             </button>
           </div>
         </div>
         <div class="module-export-block">
           <div class="module-export-copy">
             <div class="setting-name">按模块导出</div>
-            <div class="setting-hint">把角色、大纲或章节单独导出，便于分发和复用</div>
+            <div class="setting-hint">按 9 个创作模块单独导出，默认统一使用 JSON 格式，便于分发和复用</div>
           </div>
           <div class="module-export-grid">
+            <button class="module-export-card" @click="handleExportChaptersJson">
+              <FileText :size="18" />
+              <strong>章节创作</strong>
+              <span>导出分卷、章节正文与元信息</span>
+            </button>
+            <button class="module-export-card" @click="handleExportOverview">
+              <LayoutDashboard :size="18" />
+              <strong>作品概览</strong>
+              <span>导出标题、题材、简介与字数</span>
+            </button>
             <button class="module-export-card" @click="handleExportCharacters">
               <Users :size="18" />
-              <strong>角色资料</strong>
+              <strong>角色图鉴</strong>
               <span>导出角色卡与标签</span>
-            </button>
-            <button class="module-export-card" @click="handleExportOutline">
-              <FileStack :size="18" />
-              <strong>剧情大纲</strong>
-              <span>导出大纲节点与冲突</span>
-            </button>
-            <button class="module-export-card" @click="handleExportInspiration">
-              <Lightbulb :size="18" />
-              <strong>灵感卡片</strong>
-              <span>导出标题、桥段与转折素材</span>
             </button>
             <button class="module-export-card" @click="handleExportRelations">
               <Network :size="18" />
               <strong>关系组织</strong>
               <span>导出势力、人物关系与成员归属</span>
             </button>
+            <button class="module-export-card" @click="handleExportWorldview">
+              <Globe2 :size="18" />
+              <strong>世界观设定</strong>
+              <span>导出世界观词条</span>
+            </button>
+            <button class="module-export-card" @click="handleExportOutline">
+              <FolderTree :size="18" />
+              <strong>剧情大纲</strong>
+              <span>导出大纲节点与冲突</span>
+            </button>
             <button class="module-export-card" @click="handleExportThreads">
               <BookMarked :size="18" />
               <strong>伏笔线索</strong>
               <span>导出伏笔清单与状态</span>
             </button>
-            <button class="module-export-card" @click="handleExportChaptersJson">
-              <FileJson :size="18" />
-              <strong>章节 JSON</strong>
-              <span>导出正文与元信息</span>
+            <button class="module-export-card" @click="handleExportInspiration">
+              <Lightbulb :size="18" />
+              <strong>灵感模块</strong>
+              <span>导出标题、桥段与转折素材</span>
+            </button>
+            <button class="module-export-card" @click="handleExportKnowledge">
+              <BookOpenText :size="18" />
+              <strong>项目知识库</strong>
+              <span>导出项目知识文档</span>
             </button>
           </div>
         </div>

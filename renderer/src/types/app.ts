@@ -1020,7 +1020,7 @@ export interface RecycleBinSettings {
 }
 
 /** 导入/导出的模块类型标识 */
-export type ImportExportModuleType = 'project' | 'characters' | 'outline' | 'inspiration' | 'relations' | 'chapters' | 'threads' | 'prompts'
+export type ImportExportModuleType = 'project' | 'characters' | 'outline' | 'inspiration' | 'relations' | 'worldview' | 'chapters' | 'threads' | 'knowledge' | 'prompts'
 
 /** 导入冲突解决模式 */
 export type ImportConflictMode = 'overwrite' | 'copy'
@@ -1042,6 +1042,7 @@ export interface ProjectImportPayload {
   chapters?: ChapterDraft[]
   chapterVersions?: ChapterVersion[]
   plotThreads?: PlotThread[]
+  knowledgeDocuments?: KnowledgeDocument[]
 }
 
 /** CharacterArc 导出文件的标准信封格式 */

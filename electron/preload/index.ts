@@ -57,6 +57,8 @@ contextBridge.exposeInMainWorld('characterArc', {
   importProjectArchive: (payload: unknown) => ipcRenderer.invoke('characterarc:import-project-archive', toIpcPayload(payload)),
   /** 将当前项目导出为纯文本文件 */
   exportText: (payload: unknown) => ipcRenderer.invoke('characterarc:export-text', toIpcPayload(payload)),
+  /** 将整个项目（9 个创作模块）导出为单个 TXT 文件 */
+  exportProjectTxt: (payload: unknown) => ipcRenderer.invoke('characterarc:export-project-txt', toIpcPayload(payload)),
   /** 将当前项目导出为 Markdown 文档 */
   exportMarkdown: (payload: unknown) => ipcRenderer.invoke('characterarc:export-markdown', toIpcPayload(payload)),
   /** 将当前项目导出为 Excel 表格 */
