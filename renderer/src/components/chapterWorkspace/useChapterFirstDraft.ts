@@ -1,4 +1,4 @@
-import { onBeforeUnmount, ref } from 'vue'
+import { onScopeDispose, ref } from 'vue'
 import type { Ref } from 'vue'
 import { buildChapterFirstDraftContext, buildOutlineItemContext, type ChapterFirstDraftContextInput } from '@/features/ai/chapterAssistantContext'
 import {
@@ -289,8 +289,9 @@ export function useChapterFirstDraft(): {
     if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null }
   }
 
-  // 组件卸载时清理耗时计时器与 AI 流事件监听，避免生成中途切换/关闭页面导致泄漏
-  onBeforeUnmount(() => {
+  // 组合式函数作用域销毁时确保资源被清理，避免 v-if 切换页面后定时器/事件监听器持续运行。
+  // 同时清理 AI 流事件监听器与耗时计时器，避免生成中途切换/关闭页面导致泄漏。
+  onScopeDispose(() => {
     stopElapsedTimer()
     unregisterStreamListener()
   })

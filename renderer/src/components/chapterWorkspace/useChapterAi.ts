@@ -702,6 +702,8 @@ export function useChapterAi(): {
 
         // 标记为取消状态
         msg.isCanceled = true
+      } else {
+        console.warn('[useChapterAi] canceled event received but message not found:', streamingMsgId)
       }
 
       const reject = rejectStream
