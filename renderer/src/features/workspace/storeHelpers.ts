@@ -50,10 +50,6 @@ export interface StoredState {
   coverWorkbenchHistory: import('@/types/app').CoverWorkbenchHistoryItem[]
   /** 全局回收站：存放 AI 接口配置、参考作品等全局数据的删除快照 */
   globalRecycleBin: import('@/types/app').RecycleBinEntry[]
-  /** 首页“我的作品”当前选中的排序方式 */
-  projectSortMode?: string
-  /** 首页“我的作品”各排序维度的升/降方向，如 { created: 'asc', edited: 'desc' } */
-  projectSortDirections?: Record<string, 'asc' | 'desc'>
 }
 
 // 旧版存储结构：所有字段可选，用于从旧格式迁移数据
@@ -279,8 +275,6 @@ export const defaultAppSettings: AppSettings = {
   editorFloatUndo: false,
   uiScale: 1,
   workspaceMenuOrder: normalizeWorkbenchMenuOrder(),
-  homeProjectSortMode: 'manual',
-  homeProjectOrder: [],
   darkMode: false,
   darkModeStyle: 'nord',
   aiTimeoutSeconds: 180,
@@ -532,16 +526,6 @@ export function normalizeAppSettings(settings?: Partial<AppSettings> | null): Ap
         ? Math.min(1.75, Math.max(0.75, source.uiScale))
         : defaultAppSettings.uiScale,
     workspaceMenuOrder: normalizeWorkbenchMenuOrder(source.workspaceMenuOrder),
-    homeProjectSortMode: source.homeProjectSortMode === 'edited'
-      || source.homeProjectSortMode === 'created'
-      || source.homeProjectSortMode === 'wordCount'
-      || source.homeProjectSortMode === 'titleLength'
-      || source.homeProjectSortMode === 'manual'
-      ? source.homeProjectSortMode
-      : 'manual',
-    homeProjectOrder: Array.isArray(source.homeProjectOrder)
-      ? [...new Set(source.homeProjectOrder.filter((item): item is string => typeof item === 'string' && item.trim().length > 0))]
-      : [],
     darkMode: typeof source.darkMode === 'boolean' ? source.darkMode : defaultAppSettings.darkMode,
     darkModeStyle: source.darkModeStyle === 'nord' ? 'nord' : defaultAppSettings.darkModeStyle,
     aiTimeoutSeconds:

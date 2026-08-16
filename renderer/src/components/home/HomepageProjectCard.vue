@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowDown, ArrowUp, Check, Clock4, MoreHorizontal } from 'lucide-vue-next'
+import { Check, Clock4, MoreHorizontal } from 'lucide-vue-next'
 import type { DropdownOption } from 'naive-ui'
 import { NDropdown } from 'naive-ui'
 import { isImageCover, resolveCoverStyle } from '@/features/cover/display'
@@ -14,20 +14,12 @@ const props = defineProps<{
   animationDelay?: string
   selectMode?: boolean
   selected?: boolean
-  /** 手动排序模式：在卡片悬停时显示上/下移动箭头按钮 */
-  manualSort?: boolean
-  /** 上移按钮是否禁用（当前为第一个时禁用） */
-  moveUpDisabled?: boolean
-  /** 下移按钮是否禁用（当前为最后一个时禁用） */
-  moveDownDisabled?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'open', projectId: string): void
   (e: 'menuSelect', action: string | number, projectId: string): void
   (e: 'toggleSelect', projectId: string): void
-  (e: 'moveUp', projectId: string): void
-  (e: 'moveDown', projectId: string): void
 }>()
 
 /** 卡片点击：批量管理模式下切换选中，否则打开项目 */
@@ -43,7 +35,7 @@ function handleCardClick(): void {
 <template>
   <article
     class="homepage-project-card"
-    :class="{ 'is-select-mode': selectMode, 'is-selected': selected, 'is-manual-sort': manualSort }"
+    :class="{ 'is-select-mode': selectMode, 'is-selected': selected }"
     :style="animationDelay ? { animationDelay } : undefined"
     :data-project-id="project.id"
     @click="handleCardClick"
@@ -69,25 +61,6 @@ function handleCardClick(): void {
         </div>
         <p class="card-meta">最近编辑：{{ formatProjectEditedAt(project.lastEdited) }}</p>
         <p v-if="project.createdAt" class="card-meta card-meta-created">建立时间：{{ formatProjectEditedAt(project.createdAt) }}</p>
-      </div>
-
-      <div v-if="manualSort" class="move-controls">
-        <button
-          class="move-btn"
-          title="上移一位"
-          :disabled="moveUpDisabled"
-          @click.stop="emit('moveUp', project.id)"
-        >
-          <ArrowUp :size="15" />
-        </button>
-        <button
-          class="move-btn"
-          title="下移一位"
-          :disabled="moveDownDisabled"
-          @click.stop="emit('moveDown', project.id)"
-        >
-          <ArrowDown :size="15" />
-        </button>
       </div>
 
       <n-dropdown
@@ -292,61 +265,6 @@ function handleCardClick(): void {
   background: var(--arc-bg-surface);
   color: var(--arc-text-secondary);
   border-color: var(--arc-border-strong);
-}
-
-/* 手动排序时的上/下移动按钮：默认隐藏，悬停卡片时才淡入显示 */
-.move-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex-shrink: 0;
-  align-self: flex-start;
-  opacity: 0;
-  transform: translateX(6px) scale(0.92);
-  transition:
-    opacity 0.2s,
-    transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.homepage-project-card.is-manual-sort:hover .move-controls {
-  opacity: 1;
-  transform: translateX(0) scale(1);
-}
-
-.move-btn {
-  display: inline-flex;
-  width: 30px;
-  height: 30px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--arc-border);
-  border-radius: 8px;
-  background: var(--arc-bg-surface);
-  color: var(--arc-text-secondary);
-  cursor: pointer;
-  padding: 0;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-  transition:
-    background 0.15s,
-    color 0.15s,
-    border-color 0.15s,
-    transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.move-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--arc-primary) 12%, var(--arc-bg-surface));
-  color: var(--arc-primary);
-  border-color: color-mix(in srgb, var(--arc-primary) 40%, var(--arc-border));
-  transform: scale(1.06);
-}
-
-.move-btn:active:not(:disabled) {
-  transform: scale(0.94);
-}
-
-.move-btn:disabled {
-  opacity: 0.32;
-  cursor: not-allowed;
 }
 
 .card-footer {

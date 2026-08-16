@@ -302,27 +302,6 @@ export const useAppStore = defineStore('app', () => {
   const appSettings = ref<AppSettings>(stored.appSettings)
   const coverWorkbenchHistory = ref<import('@/types/app').CoverWorkbenchHistoryItem[]>(stored.coverWorkbenchHistory ?? [])
 
-  /** 首页作品排序方式对应的排序结果。manual 使用持久化的 homeProjectOrder。 */
-  const sortedProjects = computed<ProjectSummary[]>(() => {
-    const list = projects.value
-    const mode = appSettings.value.homeProjectSortMode || 'manual'
-    if (mode === 'edited') {
-      return [...list].sort((a, b) => (b.lastEdited || '').localeCompare(a.lastEdited || ''))
-    }
-    if (mode === 'title') {
-      return [...list].sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'))
-    }
-    // manual：优先按持久化的顺序排，缺失的新项目追加到末尾
-    const order = appSettings.value.homeProjectOrder ?? []
-    if (!order.length) {
-      return [...list]
-    }
-    const orderMap = new Map(order.map((id, index) => [id, index]))
-    const known = list.filter((project) => orderMap.has(project.id))
-    const unknown = list.filter((project) => !orderMap.has(project.id))
-    known.sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0))
-    return [...known, ...unknown]
-  })
   /** 待执行的章节正文插入请求 */
   const pendingChapterInsertion = ref<ChapterInsertionRequest | null>(null)
   /** 用户在编辑器中当前选中的文本状态 */
@@ -422,10 +401,6 @@ export const useAppStore = defineStore('app', () => {
   const referenceWorks = ref<ReferenceWorkItem[]>(stored.referenceWorks ?? [])
   /** 全局回收站：存放 AI 接口配置、参考作品等全局数据的删除快照 */
   const globalRecycleBin = ref<import('@/types/app').RecycleBinEntry[]>(stored.globalRecycleBin ?? [])
-  /** 首页“我的作品”当前选中的排序方式 */
-  const projectSortMode = ref<string>(stored.projectSortMode ?? 'created')
-  /** 首页“我的作品”各排序维度的升/降方向 */
-  const projectSortDirections = ref<Record<string, 'asc' | 'desc'>>({ ...(stored.projectSortDirections ?? {}) })
   /** 当前项目的回收站条目（项目级删除内容） */
   const projectRecycleBin = computed(() => currentWorkspace.value.recycleBin)
   /** 回收站当前查看范围：'global' 显示全局回收站，'all' 显示当前项目 + 全局，其余为指定项目 ID */
@@ -901,11 +876,6 @@ export const useAppStore = defineStore('app', () => {
     globalRecycleBin.value = Array.isArray((payload as Partial<StoredState>).globalRecycleBin)
       ? (payload as Partial<StoredState>).globalRecycleBin!
       : []
-    projectSortMode.value = (payload as Partial<StoredState>).projectSortMode ?? 'created'
-    projectSortDirections.value = {
-      ...(projectSortDirections.value),
-      ...((payload as Partial<StoredState>).projectSortDirections ?? {})
-    }
     const workspaceAiRuns = Object.entries(projectWorkspaces.value).flatMap(([projectId, workspace]) =>
       (workspace.aiRuns ?? []).map((run) => ({ ...run, projectId: run.projectId || projectId }))
     )
@@ -936,9 +906,7 @@ export const useAppStore = defineStore('app', () => {
       aiRuns: toSerializable(globalAiRuns.value),
       appSettings: toSerializable(appSettings.value),
       coverWorkbenchHistory: toSerializable(coverWorkbenchHistory.value),
-      globalRecycleBin: toSerializable(globalRecycleBin.value),
-      projectSortMode: projectSortMode.value,
-      projectSortDirections: projectSortDirections.value
+      globalRecycleBin: toSerializable(globalRecycleBin.value)
     }
   }
 
@@ -2246,33 +2214,6 @@ export const useAppStore = defineStore('app', () => {
     schedulePersist('fast')
   }
 
-  /** 手动排序：按传入的项目 ID 顺序重排项目列表并持久化（首页“我的作品”手动拖拽排序用） */
-  function reorderProjects(projectIds: string[]): void {
-    const orderIndex = new Map(projectIds.map((id, index) => [id, index]))
-    const nextProjects = [...projects.value].sort((a, b) => {
-      const aIndex = orderIndex.get(a.id)
-      const bIndex = orderIndex.get(b.id)
-      if (aIndex === undefined && bIndex === undefined) return 0
-      if (aIndex === undefined) return 1
-      if (bIndex === undefined) return -1
-      return aIndex - bIndex
-    })
-    projects.value = nextProjects
-    schedulePersist('fast')
-  }
-
-  /** 设置首页“我的作品”的排序方式并持久化 */
-  function setProjectSortMode(mode: string): void {
-    projectSortMode.value = mode || 'created'
-    schedulePersist('fast')
-  }
-
-  /** 设置首页“我的作品”某个排序维度的升/降方向并持久化 */
-  function setProjectSortDirection(dimension: string, direction: 'asc' | 'desc'): void {
-    projectSortDirections.value = { ...projectSortDirections.value, [dimension]: direction }
-    schedulePersist('fast')
-  }
-
   /** 判定本次 updateProject 是否真正编辑了项目元数据（标题/题材/简介/封面等），用于决定是否刷新最近编辑时间 */
   function isProjectMetaEdit(payload: Partial<ProjectSummary>): boolean {
     return (
@@ -2324,44 +2265,6 @@ export const useAppStore = defineStore('app', () => {
     schedulePersist('fast')
   }
 
-  /** 切换首页作品排序方式。切换到 manual 时，用当前顺序作为基准写入持久化。 */
-  function setHomeProjectSortMode(mode: 'manual' | 'edited' | 'title'): void {
-    const nextMode = mode === 'edited' || mode === 'title' ? mode : 'manual'
-    appSettings.value = {
-      ...appSettings.value,
-      homeProjectSortMode: nextMode
-    }
-    if (nextMode === 'manual') {
-      appSettings.value.homeProjectOrder = projects.value.map((project) => project.id)
-    }
-    scheduleSettingsPersist({ flushWorkspace: false })
-  }
-
-  /** 首页手动排序：把 sourceId 移动到 targetId 的前面，并持久化顺序。 */
-  function reorderHomeProject(sourceId: string, targetId: string): void {
-    if (sourceId === targetId) return
-    const current = projects.value
-    const sourceIndex = current.findIndex((project) => project.id === sourceId)
-    const targetIndex = current.findIndex((project) => project.id === targetId)
-    if (sourceIndex === -1 || targetIndex === -1) return
-
-    const next = [...current]
-    const [moved] = next.splice(sourceIndex, 1)
-    const insertAt = next.findIndex((project) => project.id === targetId)
-    if (insertAt === -1) {
-      next.push(moved)
-    } else {
-      next.splice(insertAt, 0, moved)
-    }
-    projects.value = next
-    appSettings.value = {
-      ...appSettings.value,
-      homeProjectSortMode: 'manual',
-      homeProjectOrder: next.map((project) => project.id)
-    }
-    scheduleSettingsPersist({ flushWorkspace: false })
-    schedulePersist('fast')
-  }
   function updateWorkflowDocument(volumeId: string, documentKey: string, content: string): void {
     updateCurrentWorkspace((workspace) => ({
       ...workspace,
@@ -5574,10 +5477,6 @@ export const useAppStore = defineStore('app', () => {
     recycleBinScopeLabel,
     recycleBinReturnView,
     globalRecycleBinEntries,
-    projectSortMode,
-    setProjectSortMode,
-    projectSortDirections,
-    setProjectSortDirection,
     emptyRecycleBin,
     permanentlyDeleteRecycleEntry,
     purgeExpiredRecycleBin,
@@ -5681,7 +5580,6 @@ export const useAppStore = defineStore('app', () => {
     addInspirationType,
     deleteInspirationType,
     deleteProject,
-    reorderProjects,
     deleteWorldviewEntry,
     deleteWorldviewEntries,
     updateWorldviewEntriesTags,
@@ -5714,9 +5612,6 @@ export const useAppStore = defineStore('app', () => {
     pendingChapterInsertion,
     plotThreads,
     projects,
-    sortedProjects,
-    setHomeProjectSortMode,
-    reorderHomeProject,
     clearAssistantMessages,
     createAssistantSession,
     deleteAssistantSession,

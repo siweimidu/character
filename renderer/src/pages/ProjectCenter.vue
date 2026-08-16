@@ -171,10 +171,6 @@ function requestDeleteProject(projectId: string): void {
   })
 }
 
-function handleReorderProjects(projectIds: string[]): void {
-  appStore.reorderProjects(projectIds)
-}
-
 function requestBatchDeleteProjects(projectIds: string[]): void {
   if (projectIds.length === 0) {
     return
@@ -223,14 +219,12 @@ function requestBatchDeleteProjects(projectIds: string[]): void {
       />
 
       <HomepageProjectCollection
-        :projects="appStore.sortedProjects"
+        :projects="appStore.projects"
         :menu-options="projectMenuOptions"
         @open="openProject"
         @menu-select="handleMenuSelect"
         @batch-delete="requestBatchDeleteProjects"
         @batch-create="batchCreateVisible = true"
-        @reorder="handleReorderProjects"
-
       />
     </div>
 

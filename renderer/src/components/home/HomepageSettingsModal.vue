@@ -187,8 +187,6 @@ const draftSettings = reactive<AppSettings>({
   editorFloatUndo: false,
   uiScale: 1,
   workspaceMenuOrder: [...DEFAULT_WORKBENCH_MENU_ORDER],
-  homeProjectSortMode: 'manual',
-  homeProjectOrder: [],
   darkMode: false,
   darkModeStyle: 'nord',
   aiTimeoutSeconds: 180,
@@ -375,8 +373,6 @@ function syncDraftFromStore(): void {
   draftSettings.editorFont = appStore.appSettings.editorFont
   draftSettings.uiScale = appStore.appSettings.uiScale
   draftSettings.workspaceMenuOrder = normalizeWorkbenchMenuOrder(appStore.appSettings.workspaceMenuOrder)
-  draftSettings.homeProjectSortMode = appStore.appSettings.homeProjectSortMode
-  draftSettings.homeProjectOrder = [...appStore.appSettings.homeProjectOrder]
   draftSettings.darkMode = appStore.appSettings.darkMode
   draftSettings.darkModeStyle = appStore.appSettings.darkModeStyle
   draftSettings.aiTimeoutSeconds = appStore.appSettings.aiTimeoutSeconds
