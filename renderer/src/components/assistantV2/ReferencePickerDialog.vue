@@ -37,6 +37,7 @@ watch(
       query.value = ''
       selected.value = {}
       tab.value = 'volume'
+      lastClickedKey.value = null
       expandedVolumes.value = new Set(appStore.outlineVolumes.map((vol) => vol.id))
       // 重置资源区缓存，切到「资源」tab 时重新读取当前工作区根目录
       resourceTree.value = []
@@ -153,10 +154,110 @@ function toggleResourceSelect(entry: ResourceEntry): void {
   }
 }
 
+// ── 多选 / 全选 / Shift 范围选择 ──
+interface TabSelectable {
+  key: string
+  item: PickedReference
+}
+
+/** 构建当前 tab 下所有可见、可勾选的条目（按显示顺序），用于全选与 Shift 范围选择。 */
+function buildTabSelectables(): TabSelectable[] {
+  if (tab.value === 'volume') {
+    const list: TabSelectable[] = []
+    for (const group of filteredVolumes.value) {
+      list.push({
+        key: `volume:${group.volume.id}`,
+        item: { kind: 'volume', id: group.volume.id, label: group.volume.title }
+      })
+      if (expandedVolumes.value.has(group.volume.id)) {
+        for (const ch of group.chapters) {
+          list.push({
+            key: `chapter:${ch.id}`,
+            item: { kind: 'chapter', id: ch.id, label: ch.title }
+          })
+        }
+      }
+    }
+    return list
+  }
+  if (tab.value === 'chapter') {
+    return filteredChapters.value.map((ch) => ({
+      key: `chapter:${ch.id}`,
+      item: { kind: 'chapter', id: ch.id, label: ch.title }
+    }))
+  }
+  // 资源视图：按展示顺序（含展开的子项）收集
+  const list: TabSelectable[] = []
+  const walk = (entries: ResourceEntry[]): void => {
+    for (const entry of entries.filter(resourceMatches)) {
+      list.push({
+        key: resourceSelectionKey(entry),
+        item: {
+          kind: entry.isDirectory ? 'resource-dir' : 'resource',
+          id: entry.path,
+          label: entry.name,
+          path: entry.path
+        }
+      })
+      if (entry.isDirectory && isResourceDirExpanded(entry.path)) {
+        walk(resourceChildrenOf(entry.path))
+      }
+    }
+  }
+  walk(resourceTree.value)
+  return list
+}
+
+const tabSelectables = computed(() => buildTabSelectables())
+
+/** 当前 tab 下所有可见项是否均已勾选。 */
+const allVisibleSelected = computed(() => {
+  const list = tabSelectables.value
+  return list.length > 0 && list.every((x) => !!selected.value[x.key])
+})
+
+/** 全选 / 取消全选当前 tab 下可见项。 */
+function toggleSelectAll(): void {
+  const list = tabSelectables.value
+  const next = { ...selected.value }
+  if (allVisibleSelected.value) {
+    for (const x of list) delete next[x.key]
+  } else {
+    for (const x of list) next[x.key] = x.item
+  }
+  selected.value = next
+}
+
+/** Shift 范围选择：记录最近一次普通点击的位置，Shift 点击时选中其间所有项。 */
+const lastClickedKey = ref<string | null>(null)
+
+/** 行点击：普通点击仅记录锚点；Shift 点击时选中锚点与当前项之间的全部项。 */
+function handleRowClick(key: string, event: MouseEvent): void {
+  if (event.shiftKey) {
+    event.preventDefault()
+    const list = tabSelectables.value
+    const keys = list.map((x) => x.key)
+    const endIdx = keys.indexOf(key)
+    const startIdx = lastClickedKey.value != null ? keys.indexOf(lastClickedKey.value) : -1
+    if (endIdx === -1) return
+    const from = startIdx === -1 ? endIdx : startIdx
+    const [lo, hi] = from <= endIdx ? [from, endIdx] : [endIdx, from]
+    const next = { ...selected.value }
+    for (let i = lo; i <= hi; i++) {
+      next[list[i].key] = list[i].item
+    }
+    selected.value = next
+    lastClickedKey.value = key
+  } else {
+    lastClickedKey.value = key
+  }
+}
+
 // 切到资源 tab 时加载资源根目录
 watch(
   () => tab.value,
   (t) => {
+    lastClickedKey.value = null
     if (t === 'resource' && resourceTree.value.length === 0 && !resourceLoading.value) {
       void loadResourceRoot()
     }
@@ -280,7 +381,10 @@ const selectedCount = computed(() => Object.keys(selected.value).length)
             class="ref-volume"
           >
             <div class="ref-volume-head">
-              <label class="ref-check">
+              <label
+                class="ref-check"
+                @click="handleRowClick(`volume:${group.volume.id}`, $event)"
+              >
                 <input
                   type="checkbox"
                   :checked="isSelected({ kind: 'volume', id: group.volume.id, label: group.volume.title })"
@@ -302,6 +406,7 @@ const selectedCount = computed(() => Object.keys(selected.value).length)
                 v-for="ch in group.chapters"
                 :key="ch.id"
                 class="ref-check ref-chapter"
+                @click="handleRowClick(`chapter:${ch.id}`, $event)"
               >
                 <input
                   type="checkbox"
@@ -320,6 +425,7 @@ const selectedCount = computed(() => Object.keys(selected.value).length)
             v-for="ch in filteredChapters"
             :key="ch.id"
             class="ref-check ref-chapter"
+            @click="handleRowClick(`chapter:${ch.id}`, $event)"
           >
             <input
               type="checkbox"
@@ -352,7 +458,10 @@ const selectedCount = computed(() => Object.keys(selected.value).length)
                   {{ isResourceDirExpanded(entry.path) ? '▾' : '▸' }}
                 </button>
                 <span v-else class="ref-resource-expand"></span>
-                <label class="ref-check">
+                <label
+                  class="ref-check"
+                  @click="handleRowClick(resourceSelectionKey(entry), $event)"
+                >
                   <input
                     type="checkbox"
                     :checked="isResourceSelected(entry)"
@@ -379,7 +488,10 @@ const selectedCount = computed(() => Object.keys(selected.value).length)
                     {{ isResourceDirExpanded(child.path) ? '▾' : '▸' }}
                   </button>
                   <span v-else class="ref-resource-expand"></span>
-                  <label class="ref-check">
+                  <label
+                    class="ref-check"
+                    @click="handleRowClick(resourceSelectionKey(child), $event)"
+                  >
                     <input
                       type="checkbox"
                       :checked="isResourceSelected(child)"
@@ -397,7 +509,17 @@ const selectedCount = computed(() => Object.keys(selected.value).length)
       </div>
 
       <div class="ref-foot">
-        <span class="ref-selected">已选 {{ selectedCount }} 项</span>
+        <div class="ref-foot-left">
+          <button
+            type="button"
+            class="ref-select-all"
+            :disabled="tabSelectables.length === 0"
+            @click="toggleSelectAll"
+          >
+            {{ allVisibleSelected ? '取消全选' : '全选' }}
+          </button>
+          <span class="ref-selected">已选 {{ selectedCount }} 项</span>
+        </div>
         <div class="ref-actions">
           <NButton size="small" quaternary @click="close">
             <template #icon><X :size="13" /></template> 取消
@@ -523,6 +645,30 @@ const selectedCount = computed(() => Object.keys(selected.value).length)
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+.ref-foot-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.ref-select-all {
+  border: 1px solid var(--arc-border);
+  background: var(--arc-bg-surface);
+  color: var(--arc-primary);
+  border-radius: 6px;
+  padding: 2px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.ref-select-all:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--arc-primary) 50%, var(--arc-border));
+  background: var(--arc-primary-soft);
+}
+.ref-select-all:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .ref-selected {
   font-size: 12px;
