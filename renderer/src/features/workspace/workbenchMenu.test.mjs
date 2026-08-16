@@ -19,6 +19,7 @@ test('默认顺序保持当前工作台菜单排列', () => {
     'threads',
     'inspiration',
     'prompt-library',
+    'project-knowledge',
     'global-assistant-v2'
   ])
 })
@@ -36,6 +37,7 @@ test('标准化会过滤无效和重复菜单并将缺失菜单追加到末尾',
       'threads',
       'inspiration',
       'prompt-library',
+      'project-knowledge',
       'global-assistant-v2'
     ]
   )

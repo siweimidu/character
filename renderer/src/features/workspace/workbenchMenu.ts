@@ -8,6 +8,7 @@ export const WORKBENCH_MENU_DEFINITIONS = [
   { id: 'threads', label: '伏笔线索' },
   { id: 'inspiration', label: '灵感模块' },
   { id: 'prompt-library', label: '提示词库' },
+  { id: 'project-knowledge', label: '项目知识库' },
   { id: 'global-assistant-v2', label: '智能体' }
 ] as const
 
