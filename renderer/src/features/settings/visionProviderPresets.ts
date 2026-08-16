@@ -105,9 +105,9 @@ export const visionProviderPresets: VisionProviderPreset[] = [
   {
     label: 'ModelScope 魔搭（视觉）',
     value: 'vision-modelscope',
-    model: 'Qwen/Qwen2.5-VL-7B-Instruct',
+    model: 'Qwen/Qwen3-VL-8B-Instruct',
     baseUrl: 'https://api-inference.modelscope.cn/v1',
-    hint: 'ModelScope（魔搭/魔塔社区）视觉理解模型，如 Qwen/Qwen2.5-VL-7B/14B/72B-Instruct 等。'
+    hint: '魔搭社区 ModelScope 视觉理解模型，如 Qwen/Qwen3-VL-8B-Instruct 等，需 ModelScope API Key。'
   },
   {
     label: '通用 OpenAI 兼容识别接口',

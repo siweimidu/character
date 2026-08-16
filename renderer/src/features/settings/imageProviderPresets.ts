@@ -71,13 +71,6 @@ export const imageProviderPresets: ImageProviderPreset[] = [
     hint: '谷歌 Gemini 平台的 Imagen 图片生成模型，需谷歌 API Key。'
   },
   {
-    label: 'Gemini 2.5 Flash Image (谷歌)',
-    value: 'gemini-flash-image-google',
-    model: 'gemini-2.5-flash-image',
-    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
-    hint: '谷歌 Gemini 原生图像模型 gemini-2.5-flash-image，需谷歌 API Key。'
-  },
-  {
     label: '通义万相 (阿里百炼)',
     value: 'tongyi-wanx-alibaba',
     model: 'wanx2.1-t2i-turbo',
@@ -197,6 +190,13 @@ export const imageProviderPresets: ImageProviderPreset[] = [
     hint: 'Stability AI 官方 API，Base URL 为 https://api.stability.ai，需 Stability AI API Key。'
   },
   {
+    label: 'ModelScope 魔搭（FLUX.1-dev）',
+    value: 'modelscope-flux-dev',
+    model: 'AI-ModelScope/FLUX.1-dev',
+    baseUrl: 'https://api-inference.modelscope.cn',
+    hint: '魔搭社区 ModelScope 图片生成模型（如 FLUX.1-dev 等），需 ModelScope API Key。'
+  },
+  {
     label: '通用 OpenAI 兼容接口',
     value: 'custom-openai-compatible',
     model: '',
@@ -230,7 +230,6 @@ const IMAGE_PROVIDER_WEBSITES: Record<string, string> = {
   'sd-openai-compatible': 'https://stability.ai',
   'dall-e-3-openai': 'https://platform.openai.com/docs/guides/images',
   'gemini-imagen-google': 'https://ai.google.dev/gemini-api/docs/image-generation',
-  'gemini-flash-image-google': 'https://ai.google.dev/gemini-api/docs/image-generation',
   'tongyi-wanx-alibaba': 'https://bailian.console.aliyun.com',
   'wenxin-yige-baidu': 'https://cloud.baidu.com/product/wenxinworkshop',
   'stable-image-core': 'https://stability.ai',
@@ -248,6 +247,7 @@ const IMAGE_PROVIDER_WEBSITES: Record<string, string> = {
   'cloudflare-workers-ai': 'https://developers.cloudflare.com/workers-ai',
   'leonardo-ai': 'https://leonardo.ai',
   'stability-ai': 'https://stability.ai',
+  'modelscope-flux-dev': 'https://www.modelscope.cn',
   'custom-openai-compatible': 'https://platform.openai.com/docs/api-reference'
 }
 

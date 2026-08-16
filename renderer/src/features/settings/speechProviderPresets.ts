@@ -174,6 +174,14 @@ export const speechProviderPresets: SpeechProviderPreset[] = [
     hint: 'TokenDance 聚合中转，兼容 OpenAI 音频转写接口，需 TokenDance API Key。',
     website: 'https://tokendance.com'
   },
+  {
+    label: 'ModelScope 魔搭（语音识别）',
+    value: 'speech-modelscope',
+    model: 'pengzhendong/speech-paraformer-large',
+    baseUrl: 'https://api-inference.modelscope.cn',
+    hint: '魔搭社区 ModelScope 语音识别（ASR）模型，走 OpenAI 兼容接口，需 ModelScope API Key。',
+    website: 'https://www.modelscope.cn'
+  },
 
   // ── 通用 OpenAI 兼容识别接口 ──
   {
@@ -208,6 +216,7 @@ const SPEECH_PROVIDER_WEBSITES: Record<string, string> = {
   'speech-whisper-cpp': 'https://github.com/ggerganov/whisper.cpp',
   'speech-sensevoice': 'https://github.com/FunAudioLLM/SenseVoice',
   'speech-tokendance': 'https://tokendance.com',
+  'speech-modelscope': 'https://www.modelscope.cn',
   'speech-custom': 'https://platform.openai.com/docs/api-reference/audio'
 }
 
