@@ -108,7 +108,7 @@
     "win": {
       "icon": "resources/icon.ico",
       "target": [
-        "nsis"
+        "zip"
       ]
     },
     "nsis": {
