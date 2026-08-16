@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import {
@@ -479,6 +479,12 @@ async function handleCommit(ids?: string[]): Promise<void> {
     isCommitting.value = false
   }
 }
+
+// 关闭/退出智能体面板时，自动清理没有实际内容的空会话（含未发送消息的草稿会话），
+// 且不写入回收站。
+onBeforeUnmount(() => {
+  void assistant.cleanupEmptySessions()
+})
 </script>
 
 <template>

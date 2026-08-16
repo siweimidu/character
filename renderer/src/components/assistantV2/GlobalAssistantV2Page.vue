@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onDeactivated, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import {
@@ -587,7 +587,12 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   activeResizeCleanup?.()
-  // 退出「智能体」界面时，自动清理所有没有实际内容的空会话（含未发送消息的草稿会话）。
+  // 组件真正销毁时也清理（KeepAlive 缓存淘汰/应用关闭等场景）。
+  void assistant.cleanupEmptySessions()
+})
+// 页面被 KeepAlive 缓存导致切换面板时仅触发 onDeactivated 而非 onBeforeUnmount，
+// 必须在此处也清理空会话，否则退出界面时空会话会残留到下次进入。
+onDeactivated(() => {
   void assistant.cleanupEmptySessions()
 })
 
