@@ -719,7 +719,11 @@ function handleChipsWheel(event: WheelEvent): void {
   const canScroll = el.scrollWidth > el.clientWidth
   if (!canScroll) return
   event.preventDefault()
-  el.scrollLeft += event.deltaY + event.deltaX
+  // 将纵向滚轮滚动转换为横向滚动，灵敏度适当提升，滑动更跟手。
+  const delta = Math.abs(event.deltaY) > Math.abs(event.deltaX)
+    ? event.deltaY
+    : event.deltaX
+  el.scrollLeft += delta * 1.4
 }
 
 function handleKeydown(event: KeyboardEvent) {
@@ -1166,6 +1170,7 @@ watch(
   position: relative;
 }
 .attach-chips {
+  position: relative;
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
@@ -1176,27 +1181,41 @@ watch(
   scrollbar-width: none;
   -ms-overflow-style: none;
   padding-bottom: 2px;
+  /* 右侧淡出遮罩，暗示还有更多文件可横向滑动查看 */
+  -webkit-mask-image: linear-gradient(to right, #000 92%, transparent 100%);
+  mask-image: linear-gradient(to right, #000 92%, transparent 100%);
+  /* 滚轮横向滑动更顺滑 */
+  scroll-behavior: smooth;
+  scroll-snap-type: x proximity;
 }
 .attach-chips::-webkit-scrollbar {
   display: none;
+}
+.attach-chips > .attach-chip {
+  scroll-snap-align: start;
 }
 .attach-chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   flex: 0 0 auto;
-  max-width: 170px;
+  max-width: 150px;
   padding: 2px 4px 2px 7px;
   border: 1px solid color-mix(in srgb, var(--arc-primary) 30%, var(--arc-border));
   border-radius: 999px;
   background: var(--arc-primary-soft);
   color: var(--arc-primary);
-  font-size: 11.5px;
+  font-size: 11px;
   cursor: default;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.attach-chip:hover {
+  background: color-mix(in srgb, var(--arc-primary) 10%, var(--arc-primary-soft));
+  border-color: color-mix(in srgb, var(--arc-primary) 46%, var(--arc-border));
 }
 .attach-chip-label {
   min-width: 0;
-  max-width: 120px;
+  max-width: 100px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
