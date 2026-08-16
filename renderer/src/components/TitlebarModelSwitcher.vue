@@ -523,7 +523,7 @@ function handleBatchDelete(): void {
   height: 26px;
   align-items: center;
   border: 1px solid var(--arc-border);
-  border-radius: 999px;
+  border-radius: 7px;
   background: color-mix(in srgb, var(--arc-bg-surface) 90%, var(--arc-bg-weak));
   overflow: hidden;
 }
