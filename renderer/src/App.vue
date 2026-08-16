@@ -44,8 +44,8 @@ const naiveTheme = computed(() => appStore.appSettings.darkMode ? darkTheme : nu
 const appStyleVars = computed(() => {
   const dark = appStore.appSettings.darkMode
   const themeColors = getThemeColorScheme(appStore.theme, dark)
-  const intensity = appStore.appSettings.themeColorIntensity ?? 0.5
-  const safeIntensity = Number.isFinite(intensity) ? Math.min(1, Math.max(0, intensity)) : 0.5
+  const intensity = appStore.appSettings.themeColorIntensity ?? 1
+  const safeIntensity = Number.isFinite(intensity) ? Math.min(1, Math.max(0, intensity)) : 1
   // 主色深浅：向左（接近 0）混合背景色变浅，向右（接近 1）加深主色饱和/深度。
   const mixTarget = dark ? '#000000' : '#ffffff'
   const mixRatio = Math.round(safeIntensity * 100)
@@ -95,8 +95,8 @@ const appStyleVars = computed(() => {
 
 // 主题主色深浅：把 0-1 的强度值映射为 CSS 变量，供全局样式微调主色浓淡
 const themeColorIntensityStyle = computed(() => {
-  const intensity = appStore.appSettings.themeColorIntensity ?? 0.5
-  const safe = Number.isFinite(intensity) ? Math.min(1, Math.max(0, intensity)) : 0.5
+  const intensity = appStore.appSettings.themeColorIntensity ?? 1
+  const safe = Number.isFinite(intensity) ? Math.min(1, Math.max(0, intensity)) : 1
   return {
     '--arc-theme-color-intensity': safe
   }

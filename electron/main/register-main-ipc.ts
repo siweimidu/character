@@ -3104,7 +3104,7 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
         selectedProjectId?: unknown
         appSettings?: unknown
       }
-      const theme = typeof record.theme === 'string' ? record.theme : 'ocean'
+      const theme = typeof record.theme === 'string' ? record.theme : 'doubao'
       const selectedProjectId = typeof record.selectedProjectId === 'string' ? record.selectedProjectId : ''
       const metadata = { theme, selectedProjectId }
       deps.writeAppSettingsRow(db, record.appSettings, metadata)

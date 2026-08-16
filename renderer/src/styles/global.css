@@ -1460,7 +1460,7 @@ input {
   border-radius: var(--arc-radius-lg);
 }
 
-.arc-editor-modal-wide .n-card-content {
+.arc-editor-modal-wide .n-card__content {
   padding: 0 !important;
 }
 
@@ -1569,7 +1569,7 @@ input {
   border-radius: var(--arc-radius-lg);
 }
 
-.arc-settings-modal.n-card > .n-card-content {
+.arc-settings-modal.n-card > .n-card__content {
   min-height: 0;
   flex: 1;
   overflow: hidden;

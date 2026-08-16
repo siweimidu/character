@@ -2332,7 +2332,7 @@ export function writeWorkspaceSnapshot(db: DatabaseSync, payload: WorkspacePaylo
       normalizedAppSettings.darkMode ? 1 : 0,
       normalizedAppSettings.darkModeStyle,
       normalizedAppSettings.aiTimeoutSeconds,
-      normalizedAppSettings.themeColorIntensity ?? 0.5,
+      normalizedAppSettings.themeColorIntensity ?? 1,
       JSON.stringify(normalizedAppSettings.recycleBinSettings ?? {})
     )
 
@@ -2482,7 +2482,7 @@ export function writeAppSettingsRow(
     normalized.darkMode ? 1 : 0,
     normalized.darkModeStyle,
     normalized.aiTimeoutSeconds,
-    normalized.themeColorIntensity ?? 0.5,
+    normalized.themeColorIntensity ?? 1,
     JSON.stringify(normalized.recycleBinSettings ?? {})
   )
 }
