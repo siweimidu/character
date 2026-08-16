@@ -1015,12 +1015,6 @@ watch(
             </template>
             导入项目归档 .carc
           </n-button>
-          <n-button round strong @click="handleExportText">
-            <template #icon>
-              <FileText :size="16" />
-            </template>
-            导出为 TXT
-          </n-button>
         </div>
         <div class="module-export-block">
           <div class="module-export-copy">
