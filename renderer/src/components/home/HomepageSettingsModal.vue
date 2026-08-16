@@ -3574,6 +3574,29 @@ async function saveSettings(): Promise<void> {
   width: min(620px, calc(100vw - 48px));
 }
 
+/* 覆盖通用设置弹窗的固定高度与 flex 布局，避免下方出现大量空白 */
+.cc-switch-modal.n-card {
+  height: auto;
+  max-height: min(72vh, 560px);
+}
+
+.cc-switch-modal.n-card > .n-card__content {
+  overflow-y: auto;
+}
+
+.cc-switch-modal .cc-switch-profile-list-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cc-switch-modal .cc-switch-profile-list {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
 .cc-switch-header {
   display: flex;
   align-items: center;
