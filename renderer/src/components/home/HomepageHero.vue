@@ -1,12 +1,6 @@
 <script setup lang="ts">
-import { Bell, BookOpen, BookUp2, Flame, ImagePlus, LibraryBig, Plus, RefreshCw, Settings2, Trash2, Upload, Wrench } from 'lucide-vue-next'
+import { BookUp2, Bot, ImagePlus, LibraryBig, Plus, Settings2, Trash2, TrendingUp, Upload, Wrench } from 'lucide-vue-next'
 import { NButton } from 'naive-ui'
-import type { StatusIndicator } from '@/composables/useStartupCheck'
-
-defineProps<{
-  announcementStatus?: StatusIndicator
-  updateStatus?: StatusIndicator
-}>()
 
 const emit = defineEmits<{
   (e: 'create'): void
@@ -18,9 +12,7 @@ const emit = defineEmits<{
   (e: 'openSkills'): void
   (e: 'openRecycleBin'): void
   (e: 'openSettings'): void
-  (e: 'openAnnouncement'): void
-  (e: 'openTutorial'): void
-  (e: 'checkUpdate'): void
+  (e: 'openGlobalAgent'): void
 }>()
 </script>
 
@@ -28,28 +20,19 @@ const emit = defineEmits<{
   <header class="homepage-hero">
     <div class="hero-copy">
       <h1>我的作品</h1>
-      <p>选择一个项目继续写作，或开始新的作品。</p>
+      <p class="hero-subtitle">导入一个项目续写，或新建作品</p>
     </div>
 
     <div class="hero-actions">
-      <button class="hero-icon-btn" title="公告" @click="emit('openAnnouncement')">
-        <Bell :size="18" />
-        <span v-if="announcementStatus && announcementStatus !== 'none'" class="status-dot" :class="`status-dot--${announcementStatus}`" />
-      </button>
-      <button class="hero-icon-btn" title="使用教程" @click="emit('openTutorial')">
-        <BookOpen :size="18" />
-      </button>
-      <button class="hero-icon-btn" title="检查更新" @click="emit('checkUpdate')">
-        <RefreshCw :size="18" />
-        <span v-if="updateStatus && updateStatus !== 'none'" class="status-dot" :class="`status-dot--${updateStatus}`" />
-      </button>
-      <button class="hero-icon-btn" title="番茄风向标" @click="emit('openFanqieTrends')">
-        <Flame :size="18" />
-      </button>
-
       <div class="action-group secondary-actions">
         <n-button quaternary circle size="large" title="拆书知识库" @click="emit('openDeconstruction')">
           <template #icon><LibraryBig :size="20" /></template>
+        </n-button>
+        <n-button quaternary circle size="large" title="番茄风向标" @click="emit('openFanqieTrends')">
+          <template #icon><TrendingUp :size="20" /></template>
+        </n-button>
+        <n-button quaternary circle size="large" title="全局智能体" @click="emit('openGlobalAgent')">
+          <template #icon><Bot :size="20" /></template>
         </n-button>
         <n-button quaternary circle size="large" title="Skills" @click="emit('openSkills')">
           <template #icon><Wrench :size="20" /></template>
@@ -109,6 +92,7 @@ const emit = defineEmits<{
   color: var(--arc-text-hint);
   font-size: 14px;
   line-height: 1.6;
+  white-space: nowrap;
 }
 
 .hero-actions {
@@ -116,36 +100,6 @@ const emit = defineEmits<{
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
-}
-
-.hero-icon-btn {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 38px;
-  border: 1px solid var(--arc-border);
-  border-radius: 10px;
-  background: var(--arc-bg-surface);
-  color: var(--arc-text-secondary);
-  cursor: pointer;
-  transition:
-    border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
-    color 0.2s,
-    background 0.2s,
-    transform 0.15s;
-}
-
-.hero-icon-btn:hover {
-  border-color: var(--arc-border-strong);
-  color: var(--arc-text-primary);
-  background: var(--arc-bg-weak);
-  transform: translateY(-1px);
-}
-
-.hero-icon-btn:active {
-  transform: translateY(0) scale(0.96);
 }
 
 .action-group {
@@ -208,23 +162,4 @@ const emit = defineEmits<{
   }
 }
 
-.status-dot {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  pointer-events: none;
-}
-
-.status-dot--new {
-  background: #f43f5e;
-  box-shadow: 0 0 0 2px var(--arc-bg-surface);
-}
-
-.status-dot--error {
-  background: #f59e0b;
-  box-shadow: 0 0 0 2px var(--arc-bg-surface);
-}
 </style>

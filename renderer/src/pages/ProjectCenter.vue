@@ -3,29 +3,21 @@ import { computed, h, ref } from 'vue'
 import { useDialog, useMessage } from 'naive-ui'
 
 import HomepageHero from '@/components/home/HomepageHero.vue'
-import HomepageAnnouncementModal from '@/components/home/HomepageAnnouncementModal.vue'
-import HomepageTutorialModal from '@/components/home/HomepageTutorialModal.vue'
-import HomepageUpdateModal from '@/components/home/HomepageUpdateModal.vue'
 import HomepageProjectCollection from '@/components/home/HomepageProjectCollection.vue'
 import HomepageSettingsModal from '@/components/home/HomepageSettingsModal.vue'
 import ProjectArchiveImportModal from '@/components/ProjectArchiveImportModal.vue'
 import ProjectEditorModal from '@/components/home/ProjectEditorModal.vue'
 import BatchCreateProjectsModal from '@/components/home/BatchCreateProjectsModal.vue'
 import { useAppStore } from '@/stores/app'
-import { useStartupCheck } from '@/composables/useStartupCheck'
 import type { ProjectSummary } from '@/types/app'
 
 const appStore = useAppStore()
 const dialog = useDialog()
 const message = useMessage()
-const { announcementStatus, updateStatus, markAnnouncementRead, markUpdateRead } = useStartupCheck()
 
 const settingsVisible = ref(false)
 const editorVisible = ref(false)
 const batchCreateVisible = ref(false)
-const announcementVisible = ref(false)
-const tutorialVisible = ref(false)
-const updateVisible = ref(false)
 const editingProject = ref<ProjectSummary | null>(null)
 const archiveImportRef = ref<{
   pickArchive: () => Promise<void>
@@ -207,8 +199,6 @@ function requestBatchDeleteProjects(projectIds: string[]): void {
   <section class="project-center">
     <div class="project-shell">
       <HomepageHero
-        :announcement-status="announcementStatus"
-        :update-status="updateStatus"
         @create="appStore.openWizard()"
         @continue-import="appStore.openContinuationImport()"
         @import="archiveImportRef?.pickArchive()"
@@ -218,9 +208,7 @@ function requestBatchDeleteProjects(projectIds: string[]): void {
         @open-skills="openSkillsPage"
         @open-recycle-bin="openRecycleBin"
         @open-settings="settingsVisible = true"
-        @open-announcement="announcementVisible = true"
-        @open-tutorial="tutorialVisible = true"
-        @check-update="markUpdateRead(); updateVisible = true"
+        @open-global-agent="appStore.openGlobalAgent()"
       />
 
       <HomepageProjectCollection
@@ -244,9 +232,6 @@ function requestBatchDeleteProjects(projectIds: string[]): void {
 
     <HomepageSettingsModal v-model:show="settingsVisible" @closed="handleSettingsClosed" />
     <ProjectArchiveImportModal ref="archiveImportRef" />
-    <HomepageAnnouncementModal v-model:show="announcementVisible" @loaded="markAnnouncementRead" />
-    <HomepageTutorialModal v-model:show="tutorialVisible" />
-    <HomepageUpdateModal v-model:show="updateVisible" />
   </section>
 </template>
 
