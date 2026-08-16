@@ -19,7 +19,7 @@ import { initAgentProfilesSchema, seedBuiltinAgents, seedBuiltinAgentsForProject
 import { initAgentMemoriesSchema } from './ai/runtime-v2/agent-memory-store'
 import { initChapterProcessingSchema } from './ai/runtime/chapter-processing-store'
 import { initStateBackfillSchema } from './ai/state-backfill-store'
-import { attachAgentModuleStore } from './ai/agent-modules'
+import { attachAgentModuleStore } from './ai/agent-modules/bootstrap'
 import { migrateKnowledgeDocumentScopes } from './knowledge-document-schema'
 
 const WORKSPACE_DB = 'workspace.db'

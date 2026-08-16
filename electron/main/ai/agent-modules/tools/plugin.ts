@@ -10,7 +10,7 @@
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
-import { app } from 'electron'
+import { getWorkspaceDirPath } from '../../../workspace-store'
 import type {
   DshPluginListing,
   InstalledPlugin,
@@ -50,7 +50,7 @@ export function listInstalledPluginsSync(): InstalledPlugin[] {
 
 /** 已导入插件清单文件（位于 userData 下）。 */
 function pluginStorePath(): string {
-  return join(app.getPath('userData'), 'data', 'plugin-market.json')
+  return join(getWorkspaceDirPath(), 'plugin-market.json')
 }
 
 /** 读取已安装插件清单。 */

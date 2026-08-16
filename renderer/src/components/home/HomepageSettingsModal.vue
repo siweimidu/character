@@ -1429,7 +1429,7 @@ async function saveSettings(): Promise<void> {
             <Cpu :size="18" />
             <div class="section-title-copy">
               <strong>AI 接口配置</strong>
-              <p>管理多个接口配置，可在标题栏快速切换。修改后需点击右下角「保存设置」按钮才生效。</p>
+              <p>管理多个接口配置，可在标题栏快速切换。修改后需点击右下角「保存设置」按钮才生效</p>
             </div>
             <div class="profile-tab-actions">
               <button
@@ -1596,7 +1596,7 @@ async function saveSettings(): Promise<void> {
                 </button>
               </div>
               <div v-if="profileModels().length === 0" class="saved-models-empty">
-                暂无已保存的模型。输入模型名称后点击「保存当前模型」，即可在同一接口下维护多个模型 ID 并快速切换。
+                暂无已保存的模型。输入模型名称后点击「保存当前模型」，即可在同一接口下维护多个模型 ID 并快速切换
               </div>
               <div v-else class="saved-models-list">
                 <button
@@ -1656,7 +1656,7 @@ async function saveSettings(): Promise<void> {
                     />
                   </n-form-item>
                 </div>
-                <p class="advanced-settings-hint">留空时使用模型默认值；温度越高表达越发散，Top P 越低输出越保守。</p>
+                <p class="advanced-settings-hint">留空时使用模型默认值；温度越高表达越发散，Top P 越低输出越保守</p>
               </div>
             </details>
             <div class="section-actions">
@@ -1709,7 +1709,7 @@ async function saveSettings(): Promise<void> {
             <Network :size="18" />
             <div>
               <strong>网络代理</strong>
-              <p>让模型、Embedding 与图片请求通过本地代理服务访问。</p>
+              <p>让模型、Embedding 与图片请求通过本地代理服务访问</p>
             </div>
           </div>
           <n-form-item label="HTTP 代理地址">
@@ -1720,7 +1720,7 @@ async function saveSettings(): Promise<void> {
                 clearable
                 @update:value="handleProxyUrlChange"
               />
-              <span class="preset-hint">Clash 请填写 HTTP 或 Mixed 端口；可省略 http://。</span>
+              <span class="preset-hint">Clash 请填写 HTTP 或 Mixed 端口；可省略 http://</span>
             </div>
           </n-form-item>
           <div class="proxy-test-row">
@@ -1747,7 +1747,7 @@ async function saveSettings(): Promise<void> {
             <Image :size="18" />
             <div class="section-title-copy">
               <strong>图片生成配置</strong>
-              <p>封面工作台使用专用的图片生成接口，支持多套配置新建、复制与删除。</p>
+              <p>封面工作台使用专用的图片生成接口，支持多套配置新建、复制与删除</p>
             </div>
             <div class="profile-tab-actions">
               <button class="profile-action-btn" title="新建配置" @click="handleAddImageProfile">
@@ -1836,7 +1836,7 @@ async function saveSettings(): Promise<void> {
                 </div>
               </n-form-item>
             </div>
-            <p class="settings-grid-hint">切换预设仅更新模型名和 Base URL，API Key 不会被覆盖。</p>
+            <p class="settings-grid-hint">切换预设仅更新模型名和 Base URL，API Key 不会被覆盖</p>
             <div class="settings-grid">
               <n-form-item label="图片 Base URL">
                 <n-input
@@ -1870,7 +1870,7 @@ async function saveSettings(): Promise<void> {
                 </button>
               </div>
               <div v-if="imageProfileModels().length === 0" class="saved-models-empty">
-                暂无已保存的图片模型，输入模型名称后点击「保存当前模型」即可维护多个模型 ID。
+                暂无已保存的图片模型，输入模型名称后点击「保存当前模型」即可维护多个模型 ID
               </div>
               <div v-else class="saved-models-list">
                 <button
@@ -1911,7 +1911,7 @@ async function saveSettings(): Promise<void> {
             <ScanEye :size="18" />
             <div class="section-title-copy">
               <strong>图片识别配置</strong>
-              <p>识别人物图片并反推为人物卡片，支持多套视觉模型配置新建、复制与删除。</p>
+              <p>识别人物图片并反推为人物卡片，支持多套视觉模型配置新建、复制与删除</p>
             </div>
             <div class="profile-tab-actions">
               <button class="profile-action-btn" title="新建配置" @click="handleAddVisionProfile">
@@ -1968,7 +1968,7 @@ async function saveSettings(): Promise<void> {
                 />
               </n-form-item>
             </div>
-            <p class="settings-grid-hint">切换预设仅更新模型名和 Base URL，API Key 不会被覆盖。</p>
+            <p class="settings-grid-hint">切换预设仅更新模型名和 Base URL，API Key 不会被覆盖</p>
             <div class="settings-grid">
               <n-form-item label="模型名称">
                 <div class="model-input-row">
@@ -2019,7 +2019,7 @@ async function saveSettings(): Promise<void> {
                 />
               </n-form-item>
             </div>
-            <p class="settings-grid-hint">识别接口使用 OpenAI 兼容的 /chat/completions 图片输入格式。</p>
+            <p class="settings-grid-hint">识别接口使用 OpenAI 兼容的 /chat/completions 图片输入格式</p>
             <div class="saved-models-block">
               <div class="saved-models-head">
                 <span class="saved-models-title">已保存的模型</span>
@@ -2035,7 +2035,7 @@ async function saveSettings(): Promise<void> {
                 </button>
               </div>
               <div v-if="visionProfileModels().length === 0" class="saved-models-empty">
-                暂无已保存的图片识别模型，输入模型名称后点击「保存当前模型」即可维护多个模型 ID。
+                暂无已保存的图片识别模型，输入模型名称后点击「保存当前模型」即可维护多个模型 ID
               </div>
               <div v-else class="saved-models-list">
                 <button
@@ -2085,7 +2085,7 @@ async function saveSettings(): Promise<void> {
             <AudioLines :size="18" />
             <div class="section-title-copy">
               <strong>语音识别配置</strong>
-              <p>语音输入自动转文字填入输入框，支持多套语音识别服务配置新建、复制与删除。</p>
+              <p>语音输入自动转文字填入输入框，支持多套语音识别服务配置新建、复制与删除</p>
             </div>
             <div class="profile-tab-actions">
               <button class="profile-action-btn" title="新建配置" @click="handleAddSpeechProfile">
@@ -2142,7 +2142,7 @@ async function saveSettings(): Promise<void> {
                 />
               </n-form-item>
             </div>
-            <p class="settings-grid-hint">切换预设仅更新模型名和 Base URL，API Key 不会被覆盖。</p>
+            <p class="settings-grid-hint">切换预设仅更新模型名和 Base URL，API Key 不会被覆盖</p>
             <div class="settings-grid">
               <n-form-item label="模型名称">
                 <div class="model-input-row">
@@ -2193,7 +2193,7 @@ async function saveSettings(): Promise<void> {
                 />
               </n-form-item>
             </div>
-            <p class="settings-grid-hint">海外 / 本地自托管 / 聚合中转多支持 OpenAI 兼容的 /audio/transcriptions 接口；国内厂商请按各自文档配置鉴权。</p>
+            <p class="settings-grid-hint">海外 / 本地自托管 / 聚合中转多支持 OpenAI 兼容的 /audio/transcriptions 接口；国内厂商请按各自文档配置鉴权</p>
             <div class="saved-models-block">
               <div class="saved-models-head">
                 <span class="saved-models-title">已保存的模型</span>
@@ -2209,7 +2209,7 @@ async function saveSettings(): Promise<void> {
                 </button>
               </div>
               <div v-if="speechProfileModels().length === 0" class="saved-models-empty">
-                暂无已保存的语音识别模型，输入模型名称后点击「保存当前模型」即可维护多个模型 ID。
+                暂无已保存的语音识别模型，输入模型名称后点击「保存当前模型」即可维护多个模型 ID
               </div>
               <div v-else class="saved-models-list">
                 <button
@@ -2250,7 +2250,7 @@ async function saveSettings(): Promise<void> {
             <Palette :size="18" />
             <div>
               <strong>界面主题</strong>
-              <p>多套完整风格主题，覆盖主色、背景与文字配色。点击色卡即刻生效，无需保存。</p>
+              <p>多套完整风格主题，覆盖主色、背景与文字配色。点击色卡即刻生效，无需保存</p>
             </div>
           </div>
           <div class="theme-swatches">
@@ -2270,7 +2270,7 @@ async function saveSettings(): Promise<void> {
             <div class="paper-texture-card__head">
               <div>
                 <strong>颜色深浅</strong>
-                <p>调节当前选中主题的主色深浅，向左更浅淡、向右更浓重，即刻生效。</p>
+                <p>调节当前选中主题的主色深浅，向左更浅淡、向右更浓重，即刻生效</p>
               </div>
             </div>
             <div class="paper-texture-card__control">
@@ -2342,7 +2342,7 @@ async function saveSettings(): Promise<void> {
             <MonitorCog :size="18" />
             <div>
               <strong>应用偏好</strong>
-              <p>保存节奏、显示比例与工作台布局。</p>
+              <p>保存节奏、显示比例与工作台布局</p>
             </div>
           </div>
           <div class="settings-grid">
@@ -2471,7 +2471,7 @@ async function saveSettings(): Promise<void> {
       </div>
     </template>
     <div class="cc-switch-intro">
-      <p>已读取 CC Switch 配置（{{ ccSwitchConfigPath || '~/.cc-switch/cc-switch.db' }}）。选择要导入的 AI 接口配置。</p>
+      <p>已读取 CC Switch 配置（{{ ccSwitchConfigPath || '~/.cc-switch/cc-switch.db' }}）。选择要导入的 AI 接口配置</p>
       <p v-if="ccSwitchConfigError" class="cc-switch-warn">
         配置读取提示：{{ ccSwitchConfigError }}
       </p>
@@ -2508,7 +2508,7 @@ async function saveSettings(): Promise<void> {
       </div>
     </div>
     <div v-else class="cc-switch-empty">
-      未在配置文件中识别到可导入的 AI 接口配置。
+      未在配置文件中识别到可导入的 AI 接口配置
     </div>
 
     <template #footer>

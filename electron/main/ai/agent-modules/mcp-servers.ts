@@ -9,7 +9,7 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
-import { app } from 'electron'
+import { getWorkspaceDirPath } from '../../workspace-store'
 import type { McpServerConfig, McpRemoteTool, McpClientLike } from './mcp-client'
 import { createMcpClient } from './mcp-client'
 
@@ -19,7 +19,7 @@ import { createMcpClient } from './mcp-client'
 
 /** MCP 服务器配置存储路径。 */
 function mcpServersStorePath(): string {
-  return join(app.getPath('userData'), 'data', 'mcp-servers.json')
+  return join(getWorkspaceDirPath(), 'mcp-servers.json')
 }
 
 /** 读取所有 MCP 服务器配置。 */

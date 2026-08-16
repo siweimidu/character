@@ -582,7 +582,7 @@ watch(
     <div class="section-head">
       <div>
         <h2>项目设置</h2>
-        <p>管理当前项目的备份、导入导出与创作偏好。</p>
+        <p>管理当前项目的备份、导入导出与创作偏好</p>
       </div>
     </div>
 
@@ -599,7 +599,7 @@ watch(
             <div class="storage-status-text">
               <strong>{{ appStore.persistenceError ? '本地数据状态异常' : '本地数据状态正常' }}</strong>
               <span>
-                {{ appStore.persistenceError || '当前工作区内容已接入本地 SQLite 持久化。' }}
+                {{ appStore.persistenceError || '当前工作区内容已接入本地 SQLite 持久化' }}
               </span>
             </div>
             <div class="storage-status-actions">
@@ -639,7 +639,7 @@ watch(
               <div>
                 <div class="setting-name">自动保存时间间隔</div>
                 <div class="setting-hint">
-                  {{ appStore.isLiveAutoSave ? '正文与工作区修改会尽快落盘。' : `正文修改会按 ${appStore.autoSaveIntervalLabel} 进入自动保存队列。` }}
+                  {{ appStore.isLiveAutoSave ? '正文与工作区修改会尽快落盘' : `正文修改会按 ${appStore.autoSaveIntervalLabel} 进入自动保存队列` }}
                 </div>
               </div>
             </div>
@@ -655,7 +655,7 @@ watch(
               <Lightbulb :size="16" class="setting-mini-icon" />
               <div>
                 <div class="setting-name">界面缩放比例</div>
-                <div class="setting-hint">调整整个应用的显示比例，适配高分屏和不同窗口尺寸。</div>
+                <div class="setting-hint">调整整个应用的显示比例，适配高分屏和不同窗口尺寸</div>
               </div>
             </div>
             <n-select
@@ -690,7 +690,7 @@ watch(
         <div class="module-export-block">
           <div class="module-export-copy">
             <div class="setting-name">导出项目为其他格式</div>
-            <div class="setting-hint">将章节内容导出为 JSON、Markdown 或 Excel 表格，便于分发和二次处理。</div>
+            <div class="setting-hint">将章节内容导出为 JSON、Markdown 或 Excel 表格，便于分发和二次处理</div>
           </div>
           <div class="module-export-grid">
             <button class="module-export-card" @click="handleExportJson">
@@ -713,7 +713,7 @@ watch(
         <div class="module-export-block">
           <div class="module-export-copy">
             <div class="setting-name">按模块导出</div>
-            <div class="setting-hint">把角色、大纲或章节单独导出，便于分发和复用。</div>
+            <div class="setting-hint">把角色、大纲或章节单独导出，便于分发和复用</div>
           </div>
           <div class="module-export-grid">
             <button class="module-export-card" @click="handleExportCharacters">
@@ -783,7 +783,7 @@ watch(
           </div>
         </div>
         <div class="style-count-hint">
-          共 {{ allWritingStyles.length }} 个风格（内置 + 自定义），自定义与导入上限 {{ WRITING_STYLE_LIMIT }} 条。
+          共 {{ allWritingStyles.length }} 个风格（内置 + 自定义），自定义与导入上限 {{ WRITING_STYLE_LIMIT }} 条
         </div>
         <div class="style-preset-grid">
           <button
@@ -852,7 +852,7 @@ watch(
               </label>
               <label class="custom-field">
                 <span class="custom-field-label">绑定 Skill（可选）</span>
-                <span class="custom-field-tip">内置与项目 Skill 均可绑定，选择后使用该风格时对应方法论会自动生效。</span>
+                <span class="custom-field-tip">内置与项目 Skill 均可绑定，选择后使用该风格时对应方法论会自动生效</span>
                 <n-select
                   v-model:value="styleForm.skillIds"
                   multiple
@@ -876,7 +876,7 @@ watch(
             </div>
           </div>
         </div>
-        <p v-if="!filteredWritingStyles.length" class="style-empty-tip">没有匹配的写作风格，试试更换搜索词或搜索模式。</p>
+        <p v-if="!filteredWritingStyles.length" class="style-empty-tip">没有匹配的写作风格，试试更换搜索词或搜索模式</p>
         <n-form-item label="补充风格要求">
           <n-input
             type="textarea"
@@ -888,7 +888,7 @@ watch(
         <div class="style-save-row">
           <div class="style-save-hint">
             <strong>保存前预览</strong>
-            <span>修改风格预设或补充规则后，需要点击保存才会写入当前项目。</span>
+            <span>修改风格预设或补充规则后，需要点击保存才会写入当前项目</span>
           </div>
           <n-button type="primary" round strong :disabled="!hasStyleDraftChanges" @click="saveWritingStyleSettings">
             <template #icon>
@@ -898,7 +898,7 @@ watch(
           </n-button>
         </div>
         <div class="style-footnote">
-          当前章节助理、灵感生成、大纲扩写和角色/设定生成都会优先参考这里的项目风格。
+          当前章节助理、灵感生成、大纲扩写和角色/设定生成都会优先参考这里的项目风格
         </div>
       </n-card>
     </div>

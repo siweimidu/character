@@ -16,7 +16,7 @@ import { createPluginTools } from './tools/plugin'
 import { createPluginMarketTools, setPluginCodeDir, preloadPluginCode } from './tools/plugin-runtime'
 import type { Tool } from '../agent/tools/types'
 import type { DatabaseSync } from 'node:sqlite'
-import { app } from 'electron'
+import { getWorkspaceDirPath } from '../../workspace-store'
 import { join } from 'node:path'
 
 /** 全局唯一模块注册表实例。 */
@@ -116,7 +116,7 @@ export function initAgentModuleRegistry(): AgentModuleRegistry {
 
   // 注入插件代码根目录并异步预加载已安装插件代码（best-effort）。
   try {
-    setPluginCodeDir(join(app.getPath('userData'), 'data', 'dsh-plugins'))
+    setPluginCodeDir(join(getWorkspaceDirPath(), 'dsh-plugins'))
     void pluginsRebuild.then(() =>
       preloadPluginCode(listInstalledPluginsSync())
     )
