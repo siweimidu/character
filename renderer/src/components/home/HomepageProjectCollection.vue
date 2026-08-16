@@ -217,7 +217,6 @@ function handleBatchDelete(): void {
                   <p class="sort-popover-title">选择排序方式</p>
                   <button
                     class="sort-direction-btn"
-                    :title="currentSortDirection === 'asc' ? '当前正序（最早在前），点击切换反序' : '当前反序（最晚在前），点击切换正序'"
                     @click="toggleSortDirection"
                   >
                     <ArrowUpDown v-if="sortMode === 'manual'" :size="13" />
