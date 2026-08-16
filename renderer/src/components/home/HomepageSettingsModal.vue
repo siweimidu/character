@@ -250,8 +250,14 @@ const navItems = [
 
 function scrollToSection(id: string): void {
   activeNav.value = id
+  const container = scrollContainer.value
+  if (!container) return
   const el = document.getElementById(id)
-  el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  if (!el) return
+  // 只滚动设置弹窗内部的内容区，避免把整页/弹窗一起带动
+  const top =
+    el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop
+  container.scrollTo({ top, behavior: 'smooth' })
 }
 
 function handleScroll(): void {
@@ -3581,7 +3587,8 @@ async function saveSettings(): Promise<void> {
 }
 
 .cc-switch-modal.n-card > .n-card__content {
-  overflow-y: auto;
+  /* 让内部列表成为唯一滚动区，避免外层内容区与内层列表双重滚动 */
+  overflow: hidden;
 }
 
 .cc-switch-modal .cc-switch-profile-list-wrap {
@@ -3589,12 +3596,14 @@ async function saveSettings(): Promise<void> {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .cc-switch-modal .cc-switch-profile-list {
   flex: 1;
   min-height: 0;
   max-height: none;
+  overflow-y: auto;
 }
 
 .cc-switch-header {
