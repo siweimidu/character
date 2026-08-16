@@ -240,7 +240,7 @@ input {
   align-items: center;
   justify-content: center;
   border: 1px solid var(--arc-border);
-  border-radius: var(--arc-radius-md);
+  border-radius: 999px;
   background: color-mix(in srgb, var(--arc-bg-surface) 72%, transparent);
   color: var(--arc-text-secondary);
   cursor: pointer;

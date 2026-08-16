@@ -2530,6 +2530,7 @@ async function saveSettings(): Promise<void> {
 .settings-layout {
   display: grid;
   grid-template-columns: 192px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 0;
   height: 100%;
   min-height: 0;
