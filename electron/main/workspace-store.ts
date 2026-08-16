@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { mkdir, readFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
 
 import {
@@ -56,6 +56,27 @@ async function ensureWorkspaceDir(): Promise<void> {
   await mkdir(getWorkspaceDirPath(), { recursive: true })
 }
 
+/**
+ * 数据库文件损坏（无法被 SQLite 打开）时，把损坏文件备份下来，
+ * 以便下次新建一个可用的空数据库，避免应用因本地数据读取失败而彻底空白。
+ */
+async function backupCorruptWorkspaceDb(error: unknown): Promise<void> {
+  const dbPath = getWorkspaceDbPath()
+  const backupPath = `${dbPath}.corrupt-${Date.now()}`
+  try {
+    await rename(dbPath, backupPath)
+    console.warn('[workspace] 检测到本地数据库文件损坏，已备份到:', backupPath, '| 原因:', error instanceof Error ? error.message : error)
+  } catch (backupErr) {
+    // 备份失败则尝试直接删除损坏文件，避免再次打开仍失败
+    try {
+      await rm(dbPath, { force: true })
+      console.warn('[workspace] 损坏的数据库文件备份失败，已删除并准备重建:', backupErr)
+    } catch {
+      // 忽略：后续 new DatabaseSync 仍会抛错，由上层处理
+    }
+  }
+}
+
 export async function ensureWorkspaceDb(): Promise<DatabaseSync> {
   if (workspaceDb) return workspaceDb
   if (dbInitPromise) return dbInitPromise
@@ -63,7 +84,16 @@ export async function ensureWorkspaceDb(): Promise<DatabaseSync> {
   dbInitPromise = (async () => {
     try {
     await ensureWorkspaceDir()
-    const db = new DatabaseSync(getWorkspaceDbPath())
+    let db: DatabaseSync
+    try {
+      db = new DatabaseSync(getWorkspaceDbPath())
+      // 健康探测：损坏的数据库文件在首次 SQL 时才会抛错，这里提前验证
+      db.prepare('SELECT 1').get()
+    } catch (openErr) {
+      // 数据库文件损坏：备份损坏文件并重建，避免应用彻底无法读取本地数据
+      await backupCorruptWorkspaceDb(openErr)
+      db = new DatabaseSync(getWorkspaceDbPath())
+    }
     db.exec(`
     PRAGMA foreign_keys = ON;
 
