@@ -294,6 +294,10 @@ export const useAppStore = defineStore('app', () => {
   const selectedProjectId = ref(stored.selectedProjectId)
   /** 所有项目摘要列表 */
   const projects = ref<ProjectSummary[]>(stored.projects)
+  /** 首页“我的作品”当前选中的排序方式 */
+  const projectSortMode = ref<string>(stored.projectSortMode ?? 'created')
+  /** 首页“我的作品”各排序维度的升/降方向 */
+  const projectSortDirections = ref<Record<string, 'asc' | 'desc'>>({ ...(stored.projectSortDirections ?? {}) })
   /** 项目 ID → 工作区数据 的映射表 */
   const projectWorkspaces = ref<Record<string, ProjectWorkspaceData>>(stored.workspaces)
   /** 应用级 AI 调用历史；projectId 仅作为可选关联信息。 */
@@ -876,6 +880,11 @@ export const useAppStore = defineStore('app', () => {
     globalRecycleBin.value = Array.isArray((payload as Partial<StoredState>).globalRecycleBin)
       ? (payload as Partial<StoredState>).globalRecycleBin!
       : []
+    projectSortMode.value = (payload as Partial<StoredState>).projectSortMode ?? 'created'
+    projectSortDirections.value = {
+      ...(projectSortDirections.value),
+      ...((payload as Partial<StoredState>).projectSortDirections ?? {})
+    }
     const workspaceAiRuns = Object.entries(projectWorkspaces.value).flatMap(([projectId, workspace]) =>
       (workspace.aiRuns ?? []).map((run) => ({ ...run, projectId: run.projectId || projectId }))
     )
@@ -906,7 +915,9 @@ export const useAppStore = defineStore('app', () => {
       aiRuns: toSerializable(globalAiRuns.value),
       appSettings: toSerializable(appSettings.value),
       coverWorkbenchHistory: toSerializable(coverWorkbenchHistory.value),
-      globalRecycleBin: toSerializable(globalRecycleBin.value)
+      globalRecycleBin: toSerializable(globalRecycleBin.value),
+      projectSortMode: projectSortMode.value,
+      projectSortDirections: projectSortDirections.value
     }
   }
 
@@ -2211,6 +2222,33 @@ export const useAppStore = defineStore('app', () => {
       syncSelectedChapter()
     }
 
+    schedulePersist('fast')
+  }
+
+  /** 手动排序：按传入的项目 ID 顺序重排项目列表并持久化（首页“我的作品”手动排序用） */
+  function reorderProjects(projectIds: string[]): void {
+    const orderIndex = new Map(projectIds.map((id, index) => [id, index]))
+    const nextProjects = [...projects.value].sort((a, b) => {
+      const aIndex = orderIndex.get(a.id)
+      const bIndex = orderIndex.get(b.id)
+      if (aIndex === undefined && bIndex === undefined) return 0
+      if (aIndex === undefined) return 1
+      if (bIndex === undefined) return -1
+      return aIndex - bIndex
+    })
+    projects.value = nextProjects
+    schedulePersist('fast')
+  }
+
+  /** 设置首页“我的作品”的排序方式并持久化 */
+  function setProjectSortMode(mode: string): void {
+    projectSortMode.value = mode || 'created'
+    schedulePersist('fast')
+  }
+
+  /** 设置首页“我的作品”某个排序维度的升/降方向并持久化 */
+  function setProjectSortDirection(dimension: string, direction: 'asc' | 'desc'): void {
+    projectSortDirections.value = { ...projectSortDirections.value, [dimension]: direction }
     schedulePersist('fast')
   }
 
@@ -5612,6 +5650,11 @@ export const useAppStore = defineStore('app', () => {
     pendingChapterInsertion,
     plotThreads,
     projects,
+    projectSortMode,
+    setProjectSortMode,
+    projectSortDirections,
+    setProjectSortDirection,
+    reorderProjects,
     clearAssistantMessages,
     createAssistantSession,
     deleteAssistantSession,

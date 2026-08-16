@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, Clock4, MoreHorizontal } from 'lucide-vue-next'
+import { ArrowDown, ArrowUp, Check, Clock4, MoreHorizontal } from 'lucide-vue-next'
 import type { DropdownOption } from 'naive-ui'
 import { NDropdown } from 'naive-ui'
 import { isImageCover, resolveCoverStyle } from '@/features/cover/display'
@@ -14,12 +14,20 @@ const props = defineProps<{
   animationDelay?: string
   selectMode?: boolean
   selected?: boolean
+  /** 是否处于手动排序模式（显示上下移动按钮） */
+  manualSort?: boolean
+  /** 是否为当前排序列表中的第一项（隐藏上移按钮） */
+  isFirst?: boolean
+  /** 是否为当前排序列表中的最后一项（隐藏下移按钮） */
+  isLast?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'open', projectId: string): void
   (e: 'menuSelect', action: string | number, projectId: string): void
   (e: 'toggleSelect', projectId: string): void
+  (e: 'moveUp', projectId: string): void
+  (e: 'moveDown', projectId: string): void
 }>()
 
 /** 卡片点击：批量管理模式下切换选中，否则打开项目 */
@@ -74,6 +82,27 @@ function handleCardClick(): void {
           <MoreHorizontal :size="18" />
         </button>
       </n-dropdown>
+
+      <div v-if="manualSort" class="manual-sort-actions">
+        <button
+          class="manual-sort-btn"
+          :class="{ 'is-disabled': isFirst }"
+          :disabled="isFirst"
+          title="上移"
+          @click.stop="emit('moveUp', project.id)"
+        >
+          <ArrowUp :size="14" />
+        </button>
+        <button
+          class="manual-sort-btn"
+          :class="{ 'is-disabled': isLast }"
+          :disabled="isLast"
+          title="下移"
+          @click.stop="emit('moveDown', project.id)"
+        >
+          <ArrowDown :size="14" />
+        </button>
+      </div>
     </div>
 
     <div class="card-footer">
@@ -149,6 +178,54 @@ function handleCardClick(): void {
   display: flex;
   align-items: flex-start;
   gap: 14px;
+  position: relative;
+}
+
+.manual-sort-actions {
+  display: none;
+  position: absolute;
+  top: 34px;
+  right: 0;
+  z-index: 5;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.homepage-project-card:hover .manual-sort-actions {
+  display: flex;
+}
+
+.manual-sort-btn {
+  display: inline-flex;
+  width: 26px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--arc-border-strong);
+  border-radius: 7px;
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.manual-sort-btn:hover {
+  background: var(--arc-bg-surface-hover);
+  color: var(--arc-primary);
+  border-color: var(--arc-primary);
+}
+
+.manual-sort-btn.is-disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.manual-sort-btn.is-disabled:hover {
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  border-color: var(--arc-border-strong);
 }
 
 .card-cover {
