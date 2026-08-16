@@ -69,6 +69,7 @@ const emit = defineEmits<{
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
+const chipsRef = ref<HTMLDivElement | null>(null)
 let lastEscapeAt = 0
 /**
  * 中文输入法（IME）组合输入进行中的标记。
@@ -706,6 +707,21 @@ function handleDrop(event: DragEvent): void {
   void addFilesAsAttachment(files)
 }
 
+/**
+ * 引用文件芯片区鼠标滚轮事件：将纵向滚动转换为横向滚动，
+ * 便于在单行内查看更多引用文件（滚动条隐藏不显示）。
+ */
+function handleChipsWheel(event: WheelEvent): void {
+  const el = chipsRef.value
+  if (!el) return
+  // 仅在存在横向溢出（即引用文件较多、需要横向滑动）时拦截滚轮，
+  // 否则放行让页面正常滚动，避免影响其他交互。
+  const canScroll = el.scrollWidth > el.clientWidth
+  if (!canScroll) return
+  event.preventDefault()
+  el.scrollLeft += event.deltaY + event.deltaX
+}
+
 function handleKeydown(event: KeyboardEvent) {
   // 中文输入法组合输入（IME）进行中：不做任何按键拦截，避免阻断候选字选择/上屏，
   // 仅放行，否则方向键/回车被 preventDefault 会导致输入法选字失败（输入文字“概率失败”）。
@@ -854,7 +870,12 @@ watch(
         </span>
       </div>
       <!-- 待发送的引用附件芯片（章节/分卷/Skill），可单独叉掉 -->
-      <div v-if="props.attachments && props.attachments.length > 0" class="attach-chips">
+      <div
+        v-if="props.attachments && props.attachments.length > 0"
+        ref="chipsRef"
+        class="attach-chips"
+        @wheel="handleChipsWheel"
+      >
         <span
           v-for="att in props.attachments"
           :key="`${att.kind}:${att.ref}`"
@@ -1146,23 +1167,36 @@ watch(
 }
 .attach-chips {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* 隐藏滚动条（透明不可见） */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding-bottom: 2px;
+}
+.attach-chips::-webkit-scrollbar {
+  display: none;
 }
 .attach-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  max-width: 100%;
-  padding: 3px 4px 3px 8px;
+  gap: 4px;
+  flex: 0 0 auto;
+  max-width: 170px;
+  padding: 2px 4px 2px 7px;
   border: 1px solid color-mix(in srgb, var(--arc-primary) 30%, var(--arc-border));
   border-radius: 999px;
   background: var(--arc-primary-soft);
   color: var(--arc-primary);
-  font-size: 12px;
+  font-size: 11.5px;
+  cursor: default;
 }
 .attach-chip-label {
   min-width: 0;
+  max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
