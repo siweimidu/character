@@ -127,6 +127,69 @@ export const imageProviderPresets: ImageProviderPreset[] = [
     hint: 'Flux 的 OpenAI 兼容中转接口（第三方）。请手动填写中转商提供的模型名和 Base URL。'
   },
   {
+    label: 'Pollinations',
+    value: 'pollinations',
+    model: '',
+    baseUrl: 'https://gen.pollinations.ai',
+    hint: 'Pollinations 开放的图片生成服务，Base URL 可使用 https://gen.pollinations.ai 或 https://image.pollinations.ai。'
+  },
+  {
+    label: 'ModelScope（魔搭社区）',
+    value: 'modelscope',
+    model: '',
+    baseUrl: 'https://api-inference.modelscope.cn',
+    hint: '阿里达摩院魔搭社区 ModelScope 的推理服务接口，需魔搭 API Key。'
+  },
+  {
+    label: 'Hugging Face',
+    value: 'huggingface',
+    model: '',
+    baseUrl: 'https://router.huggingface.co',
+    hint: 'Hugging Face 推理服务，Base URL 可使用 https://router.huggingface.co 或 https://api-inference.huggingface.co，需 HF Token。'
+  },
+  {
+    label: 'Pixazo',
+    value: 'pixazo',
+    model: '',
+    baseUrl: 'https://gateway.pixazo.ai',
+    hint: 'Pixazo 图片生成网关服务，需 Pixazo API Key。'
+  },
+  {
+    label: 'Replicate',
+    value: 'replicate',
+    model: '',
+    baseUrl: 'https://api.replicate.com/v1',
+    hint: 'Replicate 模型托管平台，Base URL 为 https://api.replicate.com/v1，需 Replicate API Token。'
+  },
+  {
+    label: 'fal.ai',
+    value: 'fal-ai',
+    model: '',
+    baseUrl: 'https://fal.run',
+    hint: 'fal.ai 模型推理服务，Base URL 可使用 https://fal.run 或 https://queue.fal.run，需 fal 平台 Key。'
+  },
+  {
+    label: 'Cloudflare Workers AI',
+    value: 'cloudflare-workers-ai',
+    model: '',
+    baseUrl: '',
+    hint: 'Cloudflare Workers AI。Base URL 为自建 Worker 后的 https://你的子域名.workers.dev（或官方 Workers AI 端点），需 Worker 部署后填写。'
+  },
+  {
+    label: 'Leonardo AI',
+    value: 'leonardo-ai',
+    model: '',
+    baseUrl: 'https://cloud.leonardo.ai/api/rest/v1',
+    hint: 'Leonardo AI 官方 API，Base URL 为 https://cloud.leonardo.ai/api/rest/v1，需 Leonardo API Key。'
+  },
+  {
+    label: 'Stability AI',
+    value: 'stability-ai',
+    model: '',
+    baseUrl: 'https://api.stability.ai',
+    hint: 'Stability AI 官方 API，Base URL 为 https://api.stability.ai，需 Stability AI API Key。'
+  },
+  {
     label: '通用 OpenAI 兼容接口',
     value: 'custom-openai-compatible',
     model: '',
@@ -168,6 +231,15 @@ const IMAGE_PROVIDER_WEBSITES: Record<string, string> = {
   'comfyui-api': 'https://www.comfy.org',
   'sd-webui-api': 'https://github.com/AUTOMATIC1111/stable-diffusion-webui',
   'flux-openai-compatible': 'https://docs.bfl.ai',
+  'pollinations': 'https://pollinations.ai',
+  'modelscope': 'https://www.modelscope.cn',
+  'huggingface': 'https://huggingface.co',
+  'pixazo': 'https://www.pixazo.ai',
+  'replicate': 'https://replicate.com',
+  'fal-ai': 'https://fal.ai',
+  'cloudflare-workers-ai': 'https://developers.cloudflare.com/workers-ai',
+  'leonardo-ai': 'https://leonardo.ai',
+  'stability-ai': 'https://stability.ai',
   'custom-openai-compatible': 'https://platform.openai.com/docs/api-reference'
 }
 
