@@ -216,7 +216,6 @@ const SPEECH_PROVIDER_WEBSITES: Record<string, string> = {
   'speech-whisper-cpp': 'https://github.com/ggerganov/whisper.cpp',
   'speech-sensevoice': 'https://github.com/FunAudioLLM/SenseVoice',
   'speech-tokendance': 'https://tokendance.com',
-  'speech-modelscope': 'https://www.modelscope.cn',
   'speech-custom': 'https://platform.openai.com/docs/api-reference/audio'
 }
 
