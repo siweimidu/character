@@ -1688,6 +1688,44 @@ watch(
 .mode-chip-x:hover {
   background: color-mix(in srgb, var(--arc-primary) 14%, transparent);
 }
+.composer.editing {
+  opacity: 0.56;
+}
+.restored-draft {
+  align-self: flex-start;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--arc-primary) 30%, var(--arc-border));
+  border-radius: 999px;
+  background: var(--arc-primary-soft);
+  color: var(--arc-primary);
+  font-family: var(--v2-mono);
+  font-size: 10.5px;
+}
+.restored-draft span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.restored-draft button {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.restored-draft button:hover {
+  background: color-mix(in srgb, var(--arc-primary) 12%, transparent);
+}
 textarea {
   width: 100%;
   resize: none;
@@ -1709,6 +1747,9 @@ textarea::-webkit-scrollbar {
   width: 0;
   height: 0;
   display: none;
+}
+textarea:disabled {
+  cursor: not-allowed;
 }
 textarea:disabled {
   cursor: not-allowed;

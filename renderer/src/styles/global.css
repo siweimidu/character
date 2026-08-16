@@ -1563,7 +1563,7 @@ input {
 
 .arc-settings-modal.n-card {
   display: flex;
-  max-height: calc(100dvh - 32px);
+  height: min(84vh, 760px, calc(100dvh - 32px));
   flex-direction: column;
   overflow: hidden;
   border-radius: var(--arc-radius-lg);
@@ -1573,11 +1573,30 @@ input {
   min-height: 0;
   flex: 1;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .arc-settings-modal.n-card > .n-card-header,
 .arc-settings-modal.n-card > .n-card__footer {
   flex-shrink: 0;
+}
+
+.arc-settings-modal.n-card > .n-card-header {
+  position: relative;
+  z-index: 1;
+  min-height: 52px;
+  align-items: center;
+}
+
+.arc-settings-modal.n-card > .n-card__footer {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+}
+
+.arc-settings-modal.n-card > .n-card__footer .settings-footer-actions {
+  width: 100%;
 }
 
 .arc-modal-actions {

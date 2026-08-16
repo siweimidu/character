@@ -90,6 +90,11 @@ function openProjectEditor(project?: ProjectSummary): void {
   editorVisible.value = true
 }
 
+function handleSettingsClosed(): void {
+  // 关闭设置悬浮窗后清除可能残留的按钮焦点/高亮状态
+  ;(document.activeElement as HTMLElement | null)?.blur?.()
+}
+
 function handleMenuSelect(action: string | number, projectId: string): void {
   if (action === 'open') {
     openProject(projectId)
@@ -237,7 +242,7 @@ function requestBatchDeleteProjects(projectIds: string[]): void {
 
     <BatchCreateProjectsModal v-model:show="batchCreateVisible" />
 
-    <HomepageSettingsModal v-model:show="settingsVisible" />
+    <HomepageSettingsModal v-model:show="settingsVisible" @closed="handleSettingsClosed" />
     <ProjectArchiveImportModal ref="archiveImportRef" />
     <HomepageAnnouncementModal v-model:show="announcementVisible" @loaded="markAnnouncementRead" />
     <HomepageTutorialModal v-model:show="tutorialVisible" />

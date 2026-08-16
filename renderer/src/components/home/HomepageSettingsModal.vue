@@ -17,7 +17,6 @@ import {
   type WorkbenchMenuDropPosition,
   type WorkbenchMenuId
 } from '@/features/workspace/workbenchMenu'
-
 import { useAppStore } from '@/stores/app'
 import { useThemeTransition } from '@/composables/useThemeTransition'
 import { darkModePresets, themePresets } from '@/theme/presets'
@@ -30,6 +29,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:show', value: boolean): void
+  (e: 'closed'): void
 }>()
 
 // 根据主题主色亮度自动选择对比度更高的文字颜色（深色主色用白字，浅色主色用深字）
@@ -210,7 +210,6 @@ const orderedWorkbenchMenuItems = computed(() =>
 const editingImageProfileId = ref<string>('')
 const editingVisionProfileId = ref<string>('')
 const editingSpeechProfileId = ref<string>('')
-
 
 const editingProfile = computed<AiProfile | undefined>(() =>
   draftSettings.aiProfiles.find((p) => p.id === editingProfileId.value)
@@ -479,6 +478,7 @@ watch(
 function closeModal(): void {
   syncDraftFromStore()
   emit('update:show', false)
+  emit('closed')
 }
 
 function selectProfile(profileId: string): void {
@@ -1350,7 +1350,9 @@ function confirmCcSwitchImport(): void {
 }
 
 async function saveSettings(): Promise<void> {
-  const activeProfile = draftSettings.aiProfiles.find(p => p.id === draftSettings.activeAiProfileId)
+  // 保存后应切换到用户正在编辑的接口配置，避免再次打开仍显示旧配置为“当前”
+  const activeProfileId = editingProfileId.value || draftSettings.activeAiProfileId
+  const activeProfile = draftSettings.aiProfiles.find(p => p.id === activeProfileId)
   const activeImageProfile = draftSettings.imageProfiles.find(p => p.id === draftSettings.activeImageProfileId)
   const activeVisionProfile = draftSettings.visionProfiles.find(p => p.id === draftSettings.activeVisionProfileId)
   const activeSpeechProfile = draftSettings.speechProfiles.find(p => p.id === draftSettings.activeSpeechProfileId)
@@ -1358,7 +1360,7 @@ async function saveSettings(): Promise<void> {
     ...draftSettings,
     aiProfiles: draftSettings.aiProfiles.map((profile) => ({ ...profile })),
     workspaceMenuOrder: normalizeWorkbenchMenuOrder(draftSettings.workspaceMenuOrder),
-    activeAiProfileId: draftSettings.activeAiProfileId,
+    activeAiProfileId: activeProfileId,
     provider: activeProfile?.provider ?? draftSettings.provider,
     model: activeProfile?.model ?? draftSettings.model,
     apiKey: activeProfile?.apiKey ?? draftSettings.apiKey,
@@ -1396,6 +1398,7 @@ async function saveSettings(): Promise<void> {
 
   message.success('设置已保存')
   emit('update:show', false)
+  emit('closed')
 }
 </script>
 
@@ -1406,6 +1409,9 @@ async function saveSettings(): Promise<void> {
     class="arc-settings-modal"
     title="设置"
     :bordered="false"
+    closable
+    :mask-closable="false"
+    :auto-focus="false"
     @close="closeModal"
   >
     <div class="settings-layout">
@@ -2525,9 +2531,10 @@ async function saveSettings(): Promise<void> {
   display: grid;
   grid-template-columns: 192px minmax(0, 1fr);
   gap: 0;
-  height: min(76vh, 720px, calc(100dvh - 160px));
+  height: 100%;
   min-height: 0;
   overflow: hidden;
+  flex: 1;
 }
 
 /* ── Left Nav ── */

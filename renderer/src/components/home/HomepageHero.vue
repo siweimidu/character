@@ -60,7 +60,7 @@ const emit = defineEmits<{
         <n-button quaternary circle size="large" title="回收站" @click="emit('openRecycleBin')">
           <template #icon><Trash2 :size="20" /></template>
         </n-button>
-        <n-button quaternary circle size="large" title="设置" @click="emit('openSettings')">
+        <n-button quaternary circle size="large" title="设置" @click="(e: MouseEvent) => { (e.currentTarget as HTMLElement)?.blur(); emit('openSettings') }">
           <template #icon><Settings2 :size="20" /></template>
         </n-button>
       </div>
