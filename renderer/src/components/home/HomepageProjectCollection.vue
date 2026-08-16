@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { NButton, NEmpty, NPopover } from 'naive-ui'
 import type { DropdownOption } from 'naive-ui'
-import { Check, CheckSquare, Square, Trash2, Wand2, X } from 'lucide-vue-next'
+import { ArrowDown, ArrowUp, ArrowUpDown, Check, CheckSquare, Square, Trash2, Wand2, X } from 'lucide-vue-next'
 import type { ProjectSummary } from '@/types/app'
 import { useAppStore } from '@/stores/app'
 import HomepageProjectCard from './HomepageProjectCard.vue'
@@ -44,20 +44,42 @@ function parseWordCount(value: string): number {
   return match ? Number(match[0].replace(/,/g, '')) || 0 : 0
 }
 
+/** 当前排序维度的升/降方向（默认 asc） */
+const currentSortDirection = computed<'asc' | 'desc'>(() =>
+  appStore.projectSortDirections[sortMode.value] ?? 'asc'
+)
+
+/** 切换当前排序维度的正/反方向 */
+function toggleSortDirection(): void {
+  const next = currentSortDirection.value === 'asc' ? 'desc' : 'asc'
+  appStore.setProjectSortDirection(sortMode.value, next)
+}
+
 /** 根据排序方式渲染的最终项目顺序 */
 const orderedProjects = computed<ProjectSummary[]>(() => {
   const list = [...props.projects]
+  const dir = currentSortDirection.value
+  const cmp = (a: string, b: string) => {
+    const r = a.localeCompare(b)
+    return dir === 'desc' ? -r : r
+  }
   if (sortMode.value === 'created') {
-    return list.sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''))
+    return list.sort((a, b) => cmp(a.createdAt ?? '', b.createdAt ?? ''))
   }
   if (sortMode.value === 'edited') {
-    return list.sort((a, b) => (b.lastEdited ?? '').localeCompare(a.lastEdited ?? ''))
+    return list.sort((a, b) => cmp(b.lastEdited ?? '', a.lastEdited ?? ''))
   }
   if (sortMode.value === 'wordCount') {
-    return list.sort((a, b) => parseWordCount(b.wordCount) - parseWordCount(a.wordCount))
+    return list.sort((a, b) => {
+      const r = parseWordCount(b.wordCount) - parseWordCount(a.wordCount)
+      return dir === 'desc' ? -r : r
+    })
   }
   if (sortMode.value === 'name') {
-    return list.sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'))
+    return list.sort((a, b) => {
+      const r = a.title.localeCompare(b.title, 'zh-CN')
+      return dir === 'desc' ? -r : r
+    })
   }
   // 手动排序：props.projects 已按 store 中的持久化顺序排列
   return props.projects
@@ -171,8 +193,8 @@ function handleBatchDelete(): void {
                 <button class="sort-mode-btn" title="选择排序方式">
                   <svg
                     class="sort-icon"
-                    width="16"
-                    height="16"
+                    width="14"
+                    height="14"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -187,10 +209,22 @@ function handleBatchDelete(): void {
                     <path d="m3 17 3 3 3-3" />
                     <path d="M6 18V4" />
                   </svg>
+                  <span>排序方式</span>
                 </button>
               </template>
               <div class="sort-popover">
-                <p class="sort-popover-title">选择排序方式</p>
+                <div class="sort-popover-header">
+                  <p class="sort-popover-title">选择排序方式</p>
+                  <button
+                    class="sort-direction-btn"
+                    :title="currentSortDirection === 'asc' ? '当前正序（最早在前），点击切换反序' : '当前反序（最晚在前），点击切换正序'"
+                    @click="toggleSortDirection"
+                  >
+                    <ArrowUpDown v-if="sortMode === 'manual'" :size="13" />
+                    <ArrowUp v-else-if="currentSortDirection === 'asc'" :size="13" />
+                    <ArrowDown v-else :size="13" />
+                  </button>
+                </div>
                 <button
                   v-for="option in sortOptions"
                   :key="option.key"
@@ -296,16 +330,16 @@ function handleBatchDelete(): void {
 
 .sort-mode-btn {
   display: inline-flex;
-  width: 32px;
-  height: 32px;
   align-items: center;
-  justify-content: center;
+  gap: 6px;
   border: 1px solid var(--arc-border);
   border-radius: 8px;
   background: var(--arc-bg-surface);
   color: var(--arc-text-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
   cursor: pointer;
-  padding: 0;
+  padding: 6px 12px;
   transition: border-color 0.2s, color 0.2s, background 0.2s;
 }
 
@@ -326,13 +360,40 @@ function handleBatchDelete(): void {
   padding: 4px;
 }
 
+.sort-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px 8px;
+}
+
 .sort-popover-title {
   margin: 0;
-  padding: 6px 10px 8px;
   color: var(--arc-text-hint);
   font-size: 11px;
   font-weight: 680;
   letter-spacing: 0.02em;
+}
+
+.sort-direction-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--arc-border);
+  border-radius: 5px;
+  background: var(--arc-bg-surface);
+  color: var(--arc-text-secondary);
+  cursor: pointer;
+  padding: 0;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+
+.sort-direction-btn:hover {
+  border-color: var(--arc-primary);
+  color: var(--arc-primary);
+  background: color-mix(in srgb, var(--arc-primary) 6%, var(--arc-bg-surface));
 }
 
 .sort-option {
