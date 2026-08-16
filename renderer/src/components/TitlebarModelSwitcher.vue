@@ -523,7 +523,7 @@ function handleBatchDelete(): void {
   height: 26px;
   align-items: center;
   border: 1px solid var(--arc-border);
-  border-radius: 7px;
+  border-radius: 999px;
   background: color-mix(in srgb, var(--arc-bg-surface) 90%, var(--arc-bg-weak));
   overflow: hidden;
 }
@@ -573,7 +573,7 @@ function handleBatchDelete(): void {
   width: 26px;
   height: 26px;
   border: 1px solid var(--arc-border);
-  border-radius: 6px;
+  border-radius: 999px;
   background: var(--arc-bg-surface);
   color: var(--arc-text-hint);
   cursor: pointer;
@@ -600,7 +600,7 @@ function handleBatchDelete(): void {
   height: 26px;
   padding: 0 10px;
   border: 1px solid var(--arc-border);
-  border-radius: 6px;
+  border-radius: 999px;
   background: var(--arc-bg-surface);
   color: var(--arc-text-hint);
   cursor: pointer;
