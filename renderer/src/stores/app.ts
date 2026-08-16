@@ -846,7 +846,7 @@ export const useAppStore = defineStore('app', () => {
       return
     }
 
-    theme.value = payload.theme ?? 'ocean'
+    theme.value = payload.theme ?? 'doubao'
     projects.value = Array.isArray(payload.projects)
       ? payload.projects.map(normalizeProjectSummary)
       : defaultProjects

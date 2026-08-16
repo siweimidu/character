@@ -282,7 +282,7 @@ export const defaultAppSettings: AppSettings = {
   darkMode: false,
   darkModeStyle: 'nord',
   aiTimeoutSeconds: 180,
-  themeColorIntensity: 0.5
+  themeColorIntensity: 1
 }
 
 // 合并用户设置与默认设置，uiScale 限制在 0.75-1.75 的合理范围内
@@ -559,7 +559,7 @@ function normalizeRecycleBinSettings(
 // 加载本地持久化的应用状态，当前实现为返回空初始状态
 export function loadStoredState(): StoredState {
   return {
-    theme: 'ocean',
+    theme: 'doubao',
     selectedProjectId: '',
     projects: defaultProjects,
     workspaces: {},

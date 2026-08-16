@@ -190,9 +190,9 @@ const draftSettings = reactive<AppSettings>({
   darkMode: false,
   darkModeStyle: 'nord',
   aiTimeoutSeconds: 180,
-  themeColorIntensity: 0.5
+  themeColorIntensity: 1
 })
-const draftTheme = ref<ThemeName>('ocean')
+const draftTheme = ref<ThemeName>('doubao')
 const editingProfileId = ref<string>('')
 const draggedMenuId = ref<WorkbenchMenuId | null>(null)
 const dragTargetMenuId = ref<WorkbenchMenuId | null>(null)
@@ -375,7 +375,7 @@ function syncDraftFromStore(): void {
   draftSettings.darkMode = appStore.appSettings.darkMode
   draftSettings.darkModeStyle = appStore.appSettings.darkModeStyle
   draftSettings.aiTimeoutSeconds = appStore.appSettings.aiTimeoutSeconds
-  draftSettings.themeColorIntensity = appStore.appSettings.themeColorIntensity ?? 0.5
+  draftSettings.themeColorIntensity = appStore.appSettings.themeColorIntensity ?? 1
   draftSettings.editorMinimap = appStore.appSettings.editorMinimap
   draftTheme.value = appStore.theme
 }
@@ -2283,14 +2283,14 @@ async function saveSettings(): Promise<void> {
               <span class="paper-texture-card__label">颜色深浅</span>
               <div class="paper-texture-card__slider">
                 <n-slider
-                  :value="appStore.appSettings.themeColorIntensity ?? 0.5"
+                  :value="appStore.appSettings.themeColorIntensity ?? 1"
                   :min="0"
                   :max="1"
                   :step="0.05"
                   @update:value="setThemeColorIntensity"
                 />
                 <span class="paper-texture-card__value">
-                  {{ Math.round((appStore.appSettings.themeColorIntensity ?? 0.5) * 100) }}%
+                  {{ Math.round((appStore.appSettings.themeColorIntensity ?? 1) * 100) }}%
                 </span>
               </div>
             </div>

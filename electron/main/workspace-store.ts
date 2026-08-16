@@ -371,7 +371,7 @@ export async function ensureWorkspaceDb(): Promise<DatabaseSync> {
       dark_mode INTEGER NOT NULL DEFAULT 0,
       dark_mode_style TEXT NOT NULL DEFAULT 'standard',
       ai_timeout_seconds INTEGER NOT NULL DEFAULT 180,
-      theme_color_intensity REAL NOT NULL DEFAULT 0.5,
+      theme_color_intensity REAL NOT NULL DEFAULT 1,
       recycle_bin_settings_json TEXT NOT NULL DEFAULT '{}',
       deleted_builtin_agent_ids_json TEXT NOT NULL DEFAULT '[]'
     ) STRICT;
@@ -621,7 +621,7 @@ function ensureAppSettingsColumns(db: DatabaseSync): void {
   }
 
   if (!columnNames.has('theme_color_intensity')) {
-    db.exec(`ALTER TABLE app_settings ADD COLUMN theme_color_intensity REAL NOT NULL DEFAULT 0.5;`)
+    db.exec(`ALTER TABLE app_settings ADD COLUMN theme_color_intensity REAL NOT NULL DEFAULT 1;`)
   }
 
   if (!columnNames.has('recycle_bin_settings_json')) {
@@ -1086,7 +1086,7 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
     })) as WorkspacePayload['aiRuns']
 
     return {
-      theme: settings?.theme ?? 'ocean',
+      theme: settings?.theme ?? 'doubao',
       selectedProjectId: '',
       projectSortMode: settings?.projectSortMode || 'created',
       knowledgeDocuments,
@@ -1137,7 +1137,7 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
               homeProjectOrder: parseJson(settings.homeProjectOrderJson, [] as string[]),
               darkMode: Boolean(settings.darkMode),
               aiTimeoutSeconds: settings.aiTimeoutSeconds,
-              themeColorIntensity: settings.themeColorIntensity ?? 0.5,
+              themeColorIntensity: settings.themeColorIntensity ?? 1,
               recycleBinSettings: parseJson(settings.recycleBinSettingsJson, undefined)
             })
           }
@@ -1677,7 +1677,7 @@ export function readWorkspaceSnapshot(db: DatabaseSync): WorkspacePayload | null
         homeProjectOrder: parseJson(settings.homeProjectOrderJson, [] as string[]),
         darkMode: Boolean(settings.darkMode),
         aiTimeoutSeconds: settings.aiTimeoutSeconds,
-        themeColorIntensity: settings.themeColorIntensity ?? 0.5,
+        themeColorIntensity: settings.themeColorIntensity ?? 1,
         recycleBinSettings: parseJson(settings.recycleBinSettingsJson, undefined)
       })
     },
