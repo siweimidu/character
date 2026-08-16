@@ -4,6 +4,12 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [1.23.0] - 2026-08-16
+
+### Changed
+
+- **重新本地打包 Windows 安装包**：在不依赖云原生构建 CPU 配额的情况下，于本地环境重新生成 `CharacterArc-1.23.0-x64-setup.exe` 完整安装包，确保三个修复（主页排序按钮、Gemini 封面生图、空会话自动清理）均已固化到最新产物中，避免旧产物混淆。
+
 ## [1.22.0] - 2026-08-16
 
 ### Fixed
