@@ -6,7 +6,8 @@ export default defineConfig({
   plugins: [vue()],
   resolve: {
     alias: {
-      '@': fileURLToPath(new URL('./renderer/src', import.meta.url))
+      '@': fileURLToPath(new URL('./renderer/src', import.meta.url)),
+      '@shared': fileURLToPath(new URL('./electron/shared', import.meta.url))
     }
   },
   test: {

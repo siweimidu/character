@@ -6,6 +6,14 @@
 
 ## [1.23.0] - 2026-08-16
 
+### Added
+
+- **新增 ModelScope（魔搭/魔塔社区）厂商**：AI 接口配置、图片生成配置、图片识别配置、语音识别配置均新增 ModelScope 厂商（baseUrl：`https://api-inference.modelscope.cn/v1`），默认分别填充 `Qwen/Qwen-Image`、`Qwen/Qwen2.5-VL-7B-Instruct`、`iic/SenseVoiceSmall` 等模型，并同步补充「打开官网」按钮地址。
+
+### Fixed
+
+- **修复 ModelScope（魔塔社区）获取模型 ID 列表不全的问题**：由于 ModelScope 的 `/models` 接口只返回部分模型，现补充常用文本 / 视觉 / 图片生成模型的保底列表（含 Qwen2.5 全系、DeepSeek-R1/V3、Qwen-Image、Qwen2.5-VL 等 25 个模型 ID），拉取接口返回不全时自动补齐，确保下拉列表不缺失。
+
 ### Changed
 
 - **重新本地打包 Windows 安装包**：在不依赖云原生构建 CPU 配额的情况下，于本地环境重新生成 `CharacterArc-1.23.0-x64-setup.exe` 完整安装包，确保三个修复（主页排序按钮、Gemini 封面生图、空会话自动清理）均已固化到最新产物中，避免旧产物混淆。

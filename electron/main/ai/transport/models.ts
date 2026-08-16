@@ -54,6 +54,47 @@ const GITCODE_KNOWN_MODELS: FetchedModel[] = [
   { id: 'Qwen/Qwen3-VL-8B-Instruct', ownedBy: 'atomgit' }
 ]
 
+/** ModelScope / models 接口域名判断：https://api-inference.modelscope.cn */
+export function isModelScopeBaseUrl(baseUrl: string): boolean {
+  return /(^|\.)(api-inference\.)?modelscope\.cn(\/|$)/i.test(baseUrl.trim())
+}
+
+/**
+ * ModelScope（魔搭/魔塔社区）已知可用的模型，作为拉取不到或结果不全时的保底项。
+ * ModelScope 的 /models 接口只返回部分模型，很多模型需手动指定模型 ID 才能调用，
+ * 这里把常用（文本/视觉/图片生成）模型全部登记进来，确保下拉列表不会缺失。
+ */
+const MODELSCOPE_KNOWN_MODELS: FetchedModel[] = [
+  // 文本（Instruct / Chat）
+  { id: 'Qwen/Qwen2.5-7B-Instruct', ownedBy: 'qwen' },
+  { id: 'Qwen/Qwen2.5-14B-Instruct', ownedBy: 'qwen' },
+  { id: 'Qwen/Qwen2.5-32B-Instruct', ownedBy: 'qwen' },
+  { id: 'Qwen/Qwen2.5-72B-Instruct', ownedBy: 'qwen' },
+  { id: 'Qwen/QwQ-32B-Preview', ownedBy: 'qwen' },
+  { id: 'Qwen/Qwen2.5-Coder-7B-Instruct', ownedBy: 'qwen' },
+  { id: 'Qwen/Qwen2.5-Coder-14B-Instruct', ownedBy: 'qwen' },
+  { id: 'Qwen/Qwen2.5-Coder-32B-Instruct', ownedBy: 'qwen' },
+  { id: 'deepseek-ai/DeepSeek-R1', ownedBy: 'deepseek-ai' },
+  { id: 'deepseek-ai/DeepSeek-R1-Distill-Qwen-7B', ownedBy: 'deepseek-ai' },
+  { id: 'deepseek-ai/DeepSeek-R1-Distill-Qwen-14B', ownedBy: 'deepseek-ai' },
+  { id: 'deepseek-ai/DeepSeek-R1-Distill-Qwen-32B', ownedBy: 'deepseek-ai' },
+  { id: 'deepseek-ai/DeepSeek-V3', ownedBy: 'deepseek-ai' },
+  { id: '01ai/Yi-9B-Chat', ownedBy: '01ai' },
+  { id: 'internlm/internlm3-8b-instruct', ownedBy: 'internlm' },
+  { id: 'baichuan-inc/Baichuan4-Aither-7B-Chat', ownedBy: 'baichuan-inc' },
+  { id: 'MiniMax/MiniMax-M1-80k', ownedBy: 'minimax' },
+  // 视觉（图片识别）
+  { id: 'Qwen/Qwen2.5-VL-7B-Instruct', ownedBy: 'qwen' },
+  { id: 'Qwen/Qwen2.5-VL-14B-Instruct', ownedBy: 'qwen' },
+  { id: 'Qwen/Qwen2.5-VL-72B-Instruct', ownedBy: 'qwen' },
+  // 图片生成
+  { id: 'Qwen/Qwen-Image', ownedBy: 'qwen' },
+  { id: 'Qwen/Qwen-Image-Edit', ownedBy: 'qwen' },
+  { id: 'black-forest-labs/FLUX.1-dev', ownedBy: 'black-forest-labs' },
+  { id: 'MAILAND/majicflus_v1', ownedBy: 'mailand' },
+  { id: 'ChaosMY/MYkawaii4MJ', ownedBy: 'chaosmy' }
+]
+
 function mergeKnownModels(models: FetchedModel[]): FetchedModel[] {
   const byId = new Map(models.map((m) => [m.id, m]))
   for (const known of GITCODE_KNOWN_MODELS) {
@@ -62,6 +103,22 @@ function mergeKnownModels(models: FetchedModel[]): FetchedModel[] {
   const merged = [...byId.values()]
   merged.sort((a, b) => a.id.localeCompare(b.id))
   return merged
+}
+
+/** 把 ModelScope 的保底模型合并进拉取结果，保证列表完整 */
+function mergeModelScopeModels(models: FetchedModel[]): FetchedModel[] {
+  const byId = new Map(models.map((m) => [m.id, m]))
+  for (const known of MODELSCOPE_KNOWN_MODELS) {
+    if (!byId.has(known.id)) byId.set(known.id, known)
+  }
+  const merged = [...byId.values()]
+  merged.sort((a, b) => a.id.localeCompare(b.id))
+  return merged
+}
+
+/** 导出 ModelScope 保底模型 ID 集合（供测试与校验使用） */
+export function getModelScopeFallbackModels(): FetchedModel[] {
+  return [...MODELSCOPE_KNOWN_MODELS]
 }
 
 /** 通过 OpenAI 兼容接口获取模型列表，自动尝试多个候选 URL */
@@ -253,7 +310,9 @@ export async function fetchModels(settings: AppSettings): Promise<FetchedModel[]
     : isGitCodeModelsBaseUrl(effectiveBaseUrl)
       ? await fetchModelsGitCode(effectiveBaseUrl, normalized.apiKey, requestFetch)
       : await fetchModelsOpenAiCompatible(effectiveBaseUrl, normalized.apiKey, requestFetch)
-  return models.filter((model) => isSupportedProviderModel(normalized.provider, model.id))
+  // ModelScope（魔搭/魔塔社区）的 /models 接口返回不全，补充已登记的可选模型，确保下拉列表完整。
+  const withFallback = isModelScopeBaseUrl(effectiveBaseUrl) ? mergeModelScopeModels(models) : models
+  return withFallback.filter((model) => isSupportedProviderModel(normalized.provider, model.id))
 }
 
 /**
@@ -269,6 +328,10 @@ export async function fetchImageModels(settings: AppSettings): Promise<FetchedMo
   if (!apiKey) throw new Error('请先填写图片生成 API Key。')
   const requestFetch = createProxyFetch(settings.proxyUrl)
   if (isGeminiNativeBaseUrl(baseUrl)) return fetchModelsGeminiNative(baseUrl, apiKey, requestFetch)
+  if (isModelScopeBaseUrl(baseUrl)) {
+    const models = await fetchModelsOpenAiCompatible(baseUrl, apiKey, requestFetch)
+    return mergeModelScopeModels(models)
+  }
   return isGitCodeModelsBaseUrl(baseUrl)
     ? fetchModelsGitCode(baseUrl, apiKey, requestFetch)
     : fetchModelsOpenAiCompatible(baseUrl, apiKey, requestFetch)

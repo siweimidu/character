@@ -133,6 +133,14 @@ export const speechProviderPresets: SpeechProviderPreset[] = [
     website: 'https://github.com/modelscope/FunASR'
   },
   {
+    label: 'ModelScope 魔搭（语音识别）',
+    value: 'speech-modelscope',
+    model: 'iic/SenseVoiceSmall',
+    baseUrl: 'https://api-inference.modelscope.cn/v1',
+    hint: 'ModelScope（魔搭/魔塔社区）语音识别，走 OpenAI 兼容的 /audio/transcriptions 接口，模型如 iic/SenseVoiceSmall。',
+    website: 'https://www.modelscope.cn'
+  },
+  {
     label: 'Faster-Whisper API (Speaches)',
     value: 'speech-faster-whisper',
     model: 'faster-whisper',
@@ -195,6 +203,7 @@ const SPEECH_PROVIDER_WEBSITES: Record<string, string> = {
   'speech-elevenlabs': 'https://elevenlabs.io',
   'speech-azure': 'https://azure.microsoft.com/zh-cn/products/ai-services/openai-service',
   'speech-funasr': 'https://github.com/modelscope/FunASR',
+  'speech-modelscope': 'https://www.modelscope.cn',
   'speech-faster-whisper': 'https://github.com/speaches-ai/speaches',
   'speech-whisper-cpp': 'https://github.com/ggerganov/whisper.cpp',
   'speech-sensevoice': 'https://github.com/FunAudioLLM/SenseVoice',

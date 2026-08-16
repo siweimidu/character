@@ -103,6 +103,13 @@ export const visionProviderPresets: VisionProviderPreset[] = [
     hint: 'GitCode / AtomGit 平台托管的视觉模型，如 Qwen/Qwen3-VL-8B-Instruct、doubao-seed-evolving-vl、deepseek-v4-flash 等。'
   },
   {
+    label: 'ModelScope 魔搭（视觉）',
+    value: 'vision-modelscope',
+    model: 'Qwen/Qwen2.5-VL-7B-Instruct',
+    baseUrl: 'https://api-inference.modelscope.cn/v1',
+    hint: 'ModelScope（魔搭/魔塔社区）视觉理解模型，如 Qwen/Qwen2.5-VL-7B/14B/72B-Instruct 等。'
+  },
+  {
     label: '通用 OpenAI 兼容识别接口',
     value: 'vision-custom',
     model: '',
@@ -127,6 +134,7 @@ const VISION_PROVIDER_WEBSITES: Record<string, string> = {
   'vision-minimax': 'https://platform.minimaxi.com/document/vision',
   'vision-hunyuan': 'https://cloud.tencent.com/document/product/1729',
   'vision-atomgit': 'https://atomgit.com/setting/token-classic',
+  'vision-modelscope': 'https://www.modelscope.cn',
   'vision-custom': 'https://platform.openai.com/docs/guides/vision'
 }
 

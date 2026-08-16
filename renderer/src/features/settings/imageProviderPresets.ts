@@ -29,6 +29,13 @@ export const imageProviderPresets: ImageProviderPreset[] = [
     hint: 'SiliconFlow 提供的 FLUX.1 系列模型。模型示例：FLUX.1-schnell / FLUX.1-dev。'
   },
   {
+    label: 'ModelScope 魔搭（图片生成）',
+    value: 'modelscope-image',
+    model: 'Qwen/Qwen-Image',
+    baseUrl: 'https://api-inference.modelscope.cn/v1',
+    hint: 'ModelScope（魔搭/魔塔社区）图片生成，支持 Qwen/Qwen-Image、Qwen/Qwen-Image-Edit、black-forest-labs/FLUX.1-dev、MAILAND/majicflus_v1、ChaosMY/MYkawaii4MJ 等模型。'
+  },
+  {
     label: 'Doubao Seedream 3.0 (火山引擎)',
     value: 'doubao-seedream',
     model: 'doubao-seedream-3.0',
@@ -217,6 +224,7 @@ const IMAGE_PROVIDER_WEBSITES: Record<string, string> = {
   'gpt-image-openai': 'https://platform.openai.com/docs/guides/images',
   'gpt-image-yunwu': 'https://yunwu.ai',
   'flux-siliconflow': 'https://cloud.siliconflow.cn',
+  'modelscope-image': 'https://www.modelscope.cn',
   'doubao-seedream': 'https://www.volcengine.com/product/ark',
   'kolors-siliconflow': 'https://cloud.siliconflow.cn',
   'sd-openai-compatible': 'https://stability.ai',
