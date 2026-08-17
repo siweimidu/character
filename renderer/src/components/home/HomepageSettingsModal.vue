@@ -1875,7 +1875,6 @@ async function saveSettings(): Promise<void> {
                   @click="handleBatchDeleteProfiles('ai')"
                 >
                   <Trash2 :size="14" />
-                  <span class="batch-btn-label">删除所选{{ selectedAiProfileIds.size ? ` (${selectedAiProfileIds.size})` : '' }}</span>
                 </button>
                 <button
                   class="profile-action-btn"
@@ -2246,7 +2245,6 @@ async function saveSettings(): Promise<void> {
                   @click="handleBatchDeleteProfiles('image')"
                 >
                   <Trash2 :size="14" />
-                  <span class="batch-btn-label">删除所选{{ selectedImageProfileIds.size ? ` (${selectedImageProfileIds.size})` : '' }}</span>
                 </button>
                 <button
                   class="profile-action-btn"
@@ -2471,7 +2469,6 @@ async function saveSettings(): Promise<void> {
                   @click="handleBatchDeleteProfiles('vision')"
                 >
                   <Trash2 :size="14" />
-                  <span class="batch-btn-label">删除所选{{ selectedVisionProfileIds.size ? ` (${selectedVisionProfileIds.size})` : '' }}</span>
                 </button>
                 <button
                   class="profile-action-btn"
@@ -2706,7 +2703,6 @@ async function saveSettings(): Promise<void> {
                   @click="handleBatchDeleteProfiles('speech')"
                 >
                   <Trash2 :size="14" />
-                  <span class="batch-btn-label">删除所选{{ selectedSpeechProfileIds.size ? ` (${selectedSpeechProfileIds.size})` : '' }}</span>
                 </button>
                 <button
                   class="profile-action-btn"
@@ -4275,6 +4271,10 @@ async function saveSettings(): Promise<void> {
   cursor: not-allowed;
 }
 
+.profile-action-btn--danger {
+  color: var(--arc-danger);
+  border-color: color-mix(in srgb, var(--arc-danger) 40%, var(--arc-border));
+}
 .profile-action-btn--danger:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--arc-danger) 48%, var(--arc-border));
   color: var(--arc-danger);
@@ -4282,12 +4282,6 @@ async function saveSettings(): Promise<void> {
 }
 
 /* ── 批量删除（多选）模式 ── */
-.profile-action-btn .batch-btn-label {
-  font-size: 12px;
-  font-weight: 550;
-  margin-left: 4px;
-}
-
 .profile-tab-list.in-batch-mode .profile-tab {
   cursor: pointer;
 }
