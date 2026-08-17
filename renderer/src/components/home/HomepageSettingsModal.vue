@@ -658,6 +658,8 @@ function handleDeleteProfile(): void {
 // ── 图片生成接口配置（新建 / 复制 / 删除，与 AI 接口配置一致） ──
 function selectImageProfile(profileId: string): void {
   editingImageProfileId.value = profileId
+  // 点击配置标签即把它标记为“当前”使用中的配置，保存后即可完成切换（与 AI 接口配置一致）
+  draftSettings.activeImageProfileId = profileId
   const profile = editingImageProfile.value
   if (profile) {
     draftSettings.imageProvider = profile.provider
@@ -774,6 +776,8 @@ function handleApplyImageProfileModel(model: string): void {
 // ── 图片识别接口配置（新建 / 复制 / 删除，与 AI 接口配置一致） ──
 function selectVisionProfile(profileId: string): void {
   editingVisionProfileId.value = profileId
+  // 点击配置标签即把它标记为“当前”使用中的配置，保存后即可完成切换（与 AI 接口配置一致）
+  draftSettings.activeVisionProfileId = profileId
   const profile = editingVisionProfile.value
   if (profile) {
     draftSettings.visionProfileName = profile.name
@@ -1058,6 +1062,8 @@ function openImageProviderWebsite(): void {
 // ── 语音识别接口配置（新建 / 复制 / 删除，与 AI 接口配置一致） ──
 function selectSpeechProfile(profileId: string): void {
   editingSpeechProfileId.value = profileId
+  // 点击配置标签即把它标记为“当前”使用中的配置，保存后即可完成切换（与 AI 接口配置一致）
+  draftSettings.activeSpeechProfileId = profileId
   const profile = editingSpeechProfile.value
   if (profile) {
     draftSettings.speechProfileName = profile.name
