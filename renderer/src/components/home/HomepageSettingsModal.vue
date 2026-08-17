@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch, type Ref } from 'vue'
-import { Activity, ArrowDown, ArrowUp, AudioLines, Copy, Cpu, Download, ExternalLink, FileCode2, FileInput, GripVertical, Image, KeyRound, MonitorCog, Moon, Network, Palette, PlugZap, Plus, RefreshCw, RotateCcw, ScanEye, Trash2 } from 'lucide-vue-next'
+import { Activity, ArrowDown, ArrowUp, AudioLines, Check, Copy, Cpu, Download, ExternalLink, FileCode2, FileInput, GripVertical, Image, KeyRound, ListChecks, MonitorCog, Moon, Network, Palette, PlugZap, Plus, RefreshCw, RotateCcw, ScanEye, Trash2, X } from 'lucide-vue-next'
 import { NButton, NFormItem, NInput, NInputNumber, NModal, NRadio, NRadioGroup, NSelect, NSlider, NSwitch, useMessage } from 'naive-ui'
 import { autoSaveOptions } from '@/features/settings/autoSave'
 import { getProviderPreset, providerOptions, resolveProviderDefaults } from '@/features/settings/providerPresets'
@@ -250,6 +250,54 @@ const orderedWorkbenchMenuItems = computed(() =>
 const editingImageProfileId = ref<string>('')
 const editingVisionProfileId = ref<string>('')
 const editingSpeechProfileId = ref<string>('')
+
+// ── 批量删除（多选）状态：分别记录 AI / 图片生成 / 图片识别 / 语音识别配置中被勾选的 id ──
+const selectedAiProfileIds = ref<Set<string>>(new Set())
+const selectedImageProfileIds = ref<Set<string>>(new Set())
+const selectedVisionProfileIds = ref<Set<string>>(new Set())
+const selectedSpeechProfileIds = ref<Set<string>>(new Set())
+const batchMode = ref<'ai' | 'image' | 'vision' | 'speech' | null>(null)
+function selectedIdsFor(kind: 'ai' | 'image' | 'vision' | 'speech'): Ref<Set<string>> {
+  if (kind === 'ai') return selectedAiProfileIds
+  if (kind === 'image') return selectedImageProfileIds
+  if (kind === 'vision') return selectedVisionProfileIds
+  return selectedSpeechProfileIds
+}
+function toggleBatchMode(kind: 'ai' | 'image' | 'vision' | 'speech' | null): void {
+  if (batchMode.value === kind) {
+    batchMode.value = null
+  } else {
+    batchMode.value = kind
+  }
+  // 退出批量模式时清空选择，避免残留勾选影响后续操作
+  if (batchMode.value === null) {
+    selectedAiProfileIds.value = new Set()
+    selectedImageProfileIds.value = new Set()
+    selectedVisionProfileIds.value = new Set()
+    selectedSpeechProfileIds.value = new Set()
+  }
+}
+function toggleProfileSelection(kind: 'ai' | 'image' | 'vision' | 'speech', profileId: string): void {
+  const set = selectedIdsFor(kind).value
+  const next = new Set(set)
+  if (next.has(profileId)) next.delete(profileId)
+  else next.add(profileId)
+  selectedIdsFor(kind).value = next
+}
+function isAllProfilesSelected(kind: 'ai' | 'image' | 'vision' | 'speech', profiles: Array<{ id: string }>): boolean {
+  const set = selectedIdsFor(kind).value
+  return profiles.length > 0 && profiles.every((p) => set.has(p.id))
+}
+function toggleSelectAllProfiles(kind: 'ai' | 'image' | 'vision' | 'speech', profiles: Array<{ id: string }>): void {
+  const set = selectedIdsFor(kind).value
+  const next = new Set(set)
+  if (isAllProfilesSelected(kind, profiles)) {
+    profiles.forEach((p) => next.delete(p.id))
+  } else {
+    profiles.forEach((p) => next.add(p.id))
+  }
+  selectedIdsFor(kind).value = next
+}
 
 const editingProfile = computed<AiProfile | undefined>(() =>
   draftSettings.aiProfiles.find((p) => p.id === editingProfileId.value)
@@ -1078,6 +1126,95 @@ function handleDeleteSpeechProfile(): void {
   selectSpeechProfile(editingSpeechProfileId.value)
 }
 
+// ── 批量删除：删除所选的非激活配置（激活配置必须保留），删除后进入回收站（保存时统一写入） ──
+function handleBatchDeleteProfiles(kind: 'ai' | 'image' | 'vision' | 'speech'): void {
+  const selected = selectedIdsFor(kind).value
+  if (selected.size === 0) {
+    message.warning('请先勾选要删除的配置')
+    return
+  }
+
+  let profiles: Array<{ id: string; name?: string }>
+  let activeId: string
+  let editingIdRef: { value: string }
+  let setActiveId: () => void
+
+  if (kind === 'ai') {
+    profiles = draftSettings.aiProfiles
+    activeId = draftSettings.activeAiProfileId
+    editingIdRef = editingProfileId
+    setActiveId = () => {
+      editingProfileId.value = draftSettings.activeAiProfileId || draftSettings.aiProfiles[0]?.id || ''
+      fetchedModels.value = []
+    }
+  } else if (kind === 'image') {
+    profiles = draftSettings.imageProfiles
+    activeId = draftSettings.activeImageProfileId
+    editingIdRef = editingImageProfileId
+    setActiveId = () => {
+      editingImageProfileId.value = draftSettings.activeImageProfileId || draftSettings.imageProfiles[0]?.id || ''
+      selectImageProfile(editingImageProfileId.value)
+    }
+  } else if (kind === 'vision') {
+    profiles = draftSettings.visionProfiles
+    activeId = draftSettings.activeVisionProfileId
+    editingIdRef = editingVisionProfileId
+    setActiveId = () => {
+      editingVisionProfileId.value = draftSettings.activeVisionProfileId || draftSettings.visionProfiles[0]?.id || ''
+      selectVisionProfile(editingVisionProfileId.value)
+    }
+  } else {
+    profiles = draftSettings.speechProfiles
+    activeId = draftSettings.activeSpeechProfileId
+    editingIdRef = editingSpeechProfileId
+    setActiveId = () => {
+      editingSpeechProfileId.value = draftSettings.activeSpeechProfileId || draftSettings.speechProfiles[0]?.id || ''
+      selectSpeechProfile(editingSpeechProfileId.value)
+    }
+  }
+
+  const kindLabel = kind === 'ai' ? 'AI 接口' : kind === 'image' ? '图片生成' : kind === 'vision' ? '图片识别' : '语音识别'
+  const activeProfile = profiles.find((p) => p.id === activeId)
+
+  // 不能删除当前激活配置（必须至少保留一个正在使用的配置）
+  const removable = profiles.filter((p) => selected.has(p.id) && p.id !== activeId)
+  if (removable.length === 0) {
+    message.warning(`所选配置中不包含可删除的非激活${kindLabel}配置`)
+    return
+  }
+  const removingIds = new Set(removable.map((p) => p.id))
+  if (profiles.length - removable.length <= 0) {
+    message.warning('至少保留一个接口配置')
+    return
+  }
+
+  const activeSelected = selected.has(activeId)
+  if (!window.confirm(
+    `确定删除选中的 ${removable.length} 个${kindLabel}配置吗？\n` +
+    (activeSelected ? `当前激活的配置「${activeProfile?.name ?? ''}」将保留。\n` : '') +
+    '删除后可到回收站中恢复。'
+  )) return
+
+  // 逐个从对应数组移除
+  if (kind === 'ai') {
+    draftSettings.aiProfiles = draftSettings.aiProfiles.filter((p) => !removingIds.has(p.id))
+  } else if (kind === 'image') {
+    draftSettings.imageProfiles = draftSettings.imageProfiles.filter((p) => !removingIds.has(p.id))
+  } else if (kind === 'vision') {
+    draftSettings.visionProfiles = draftSettings.visionProfiles.filter((p) => !removingIds.has(p.id))
+  } else {
+    draftSettings.speechProfiles = draftSettings.speechProfiles.filter((p) => !removingIds.has(p.id))
+  }
+
+  // 若当前正在编辑的配置被删除，则切换到剩余可用配置
+  if (editingIdRef.value && removingIds.has(editingIdRef.value)) {
+    setActiveId()
+  }
+
+  selectedIdsFor(kind).value = new Set()
+  message.success(`已删除 ${removable.length} 个${kindLabel}配置${activeSelected ? '（当前激活配置已保留）' : ''}，可在回收站中找回`)
+}
+
 function updateEditingSpeechProfile(updates: Partial<SpeechProfile>): void {
   const profile = editingSpeechProfile.value
   if (!profile) return
@@ -1730,24 +1867,69 @@ async function saveSettings(): Promise<void> {
               >
                 <Trash2 :size="14" />
               </button>
+              <template v-if="batchMode === 'ai'">
+                <button
+                  class="profile-action-btn profile-action-btn--danger"
+                  title="删除所选配置"
+                  :disabled="selectedAiProfileIds.size === 0"
+                  @click="handleBatchDeleteProfiles('ai')"
+                >
+                  <Trash2 :size="14" />
+                  <span class="batch-btn-label">删除所选{{ selectedAiProfileIds.size ? ` (${selectedAiProfileIds.size})` : '' }}</span>
+                </button>
+                <button
+                  class="profile-action-btn"
+                  title="退出批量删除"
+                  @click="toggleBatchMode('ai')"
+                >
+                  <X :size="14" />
+                </button>
+              </template>
+              <button
+                v-else
+                class="profile-action-btn"
+                title="批量删除：勾选多个配置后一并删除"
+                @click="toggleBatchMode('ai')"
+              >
+                <ListChecks :size="14" />
+              </button>
             </div>
           </div>
 
           <div class="profile-tabs">
-            <div class="profile-tab-list">
-              <button
+            <div class="profile-tab-list" :class="{ 'in-batch-mode': batchMode === 'ai' }">
+              <label
                 v-for="profile in draftSettings.aiProfiles"
                 :key="profile.id"
                 class="profile-tab"
                 :class="{
                   active: editingProfileId === profile.id,
-                  'is-active-profile': profile.id === draftSettings.activeAiProfileId
+                  'is-active-profile': profile.id === draftSettings.activeAiProfileId,
+                  'is-batch-selected': selectedAiProfileIds.has(profile.id)
                 }"
-                @click="selectProfile(profile.id)"
+                @click="batchMode === 'ai' ? toggleProfileSelection('ai', profile.id) : selectProfile(profile.id)"
               >
+                <span
+                  v-if="batchMode === 'ai'"
+                  class="profile-tab-check"
+                  @click.stop="toggleProfileSelection('ai', profile.id)"
+                >
+                  <Check :size="13" :stroke-width="3" />
+                </span>
                 <span class="profile-tab-name">{{ profile.name }}</span>
                 <span v-if="profile.id === draftSettings.activeAiProfileId" class="profile-tab-badge">当前</span>
-              </button>
+              </label>
+            </div>
+            <div v-if="batchMode === 'ai'" class="profile-batch-toolbar">
+              <label class="profile-batch-select-all">
+                <input
+                  type="checkbox"
+                  :checked="isAllProfilesSelected('ai', draftSettings.aiProfiles)"
+                  @change="toggleSelectAllProfiles('ai', draftSettings.aiProfiles)"
+                />
+                <span>全选</span>
+              </label>
+              <span class="profile-batch-hint">已选 {{ selectedAiProfileIds.size }} 项，当前激活配置不可删除</span>
             </div>
           </div>
 
@@ -2056,24 +2238,69 @@ async function saveSettings(): Promise<void> {
               >
                 <Trash2 :size="14" />
               </button>
+              <template v-if="batchMode === 'image'">
+                <button
+                  class="profile-action-btn profile-action-btn--danger"
+                  title="删除所选配置"
+                  :disabled="selectedImageProfileIds.size === 0"
+                  @click="handleBatchDeleteProfiles('image')"
+                >
+                  <Trash2 :size="14" />
+                  <span class="batch-btn-label">删除所选{{ selectedImageProfileIds.size ? ` (${selectedImageProfileIds.size})` : '' }}</span>
+                </button>
+                <button
+                  class="profile-action-btn"
+                  title="退出批量删除"
+                  @click="toggleBatchMode('image')"
+                >
+                  <X :size="14" />
+                </button>
+              </template>
+              <button
+                v-else
+                class="profile-action-btn"
+                title="批量删除：勾选多个配置后一并删除"
+                @click="toggleBatchMode('image')"
+              >
+                <ListChecks :size="14" />
+              </button>
             </div>
           </div>
 
           <div class="profile-tabs">
-            <div class="profile-tab-list">
-              <button
+            <div class="profile-tab-list" :class="{ 'in-batch-mode': batchMode === 'image' }">
+              <label
                 v-for="profile in draftSettings.imageProfiles"
                 :key="profile.id"
                 class="profile-tab"
                 :class="{
                   active: editingImageProfileId === profile.id,
-                  'is-active-profile': profile.id === draftSettings.activeImageProfileId
+                  'is-active-profile': profile.id === draftSettings.activeImageProfileId,
+                  'is-batch-selected': selectedImageProfileIds.has(profile.id)
                 }"
-                @click="selectImageProfile(profile.id)"
+                @click="batchMode === 'image' ? toggleProfileSelection('image', profile.id) : selectImageProfile(profile.id)"
               >
+                <span
+                  v-if="batchMode === 'image'"
+                  class="profile-tab-check"
+                  @click.stop="toggleProfileSelection('image', profile.id)"
+                >
+                  <Check :size="13" :stroke-width="3" />
+                </span>
                 <span class="profile-tab-name">{{ profile.name }}</span>
                 <span v-if="profile.id === draftSettings.activeImageProfileId" class="profile-tab-badge">当前</span>
-              </button>
+              </label>
+            </div>
+            <div v-if="batchMode === 'image'" class="profile-batch-toolbar">
+              <label class="profile-batch-select-all">
+                <input
+                  type="checkbox"
+                  :checked="isAllProfilesSelected('image', draftSettings.imageProfiles)"
+                  @change="toggleSelectAllProfiles('image', draftSettings.imageProfiles)"
+                />
+                <span>全选</span>
+              </label>
+              <span class="profile-batch-hint">已选 {{ selectedImageProfileIds.size }} 项，当前激活配置不可删除</span>
             </div>
           </div>
 
@@ -2236,24 +2463,69 @@ async function saveSettings(): Promise<void> {
               >
                 <Trash2 :size="14" />
               </button>
+              <template v-if="batchMode === 'vision'">
+                <button
+                  class="profile-action-btn profile-action-btn--danger"
+                  title="删除所选配置"
+                  :disabled="selectedVisionProfileIds.size === 0"
+                  @click="handleBatchDeleteProfiles('vision')"
+                >
+                  <Trash2 :size="14" />
+                  <span class="batch-btn-label">删除所选{{ selectedVisionProfileIds.size ? ` (${selectedVisionProfileIds.size})` : '' }}</span>
+                </button>
+                <button
+                  class="profile-action-btn"
+                  title="退出批量删除"
+                  @click="toggleBatchMode('vision')"
+                >
+                  <X :size="14" />
+                </button>
+              </template>
+              <button
+                v-else
+                class="profile-action-btn"
+                title="批量删除：勾选多个配置后一并删除"
+                @click="toggleBatchMode('vision')"
+              >
+                <ListChecks :size="14" />
+              </button>
             </div>
           </div>
 
           <div class="profile-tabs">
-            <div class="profile-tab-list">
-              <button
+            <div class="profile-tab-list" :class="{ 'in-batch-mode': batchMode === 'vision' }">
+              <label
                 v-for="profile in draftSettings.visionProfiles"
                 :key="profile.id"
                 class="profile-tab"
                 :class="{
                   active: editingVisionProfileId === profile.id,
-                  'is-active-profile': profile.id === draftSettings.activeVisionProfileId
+                  'is-active-profile': profile.id === draftSettings.activeVisionProfileId,
+                  'is-batch-selected': selectedVisionProfileIds.has(profile.id)
                 }"
-                @click="selectVisionProfile(profile.id)"
+                @click="batchMode === 'vision' ? toggleProfileSelection('vision', profile.id) : selectVisionProfile(profile.id)"
               >
+                <span
+                  v-if="batchMode === 'vision'"
+                  class="profile-tab-check"
+                  @click.stop="toggleProfileSelection('vision', profile.id)"
+                >
+                  <Check :size="13" :stroke-width="3" />
+                </span>
                 <span class="profile-tab-name">{{ profile.name }}</span>
                 <span v-if="profile.id === draftSettings.activeVisionProfileId" class="profile-tab-badge">当前</span>
-              </button>
+              </label>
+            </div>
+            <div v-if="batchMode === 'vision'" class="profile-batch-toolbar">
+              <label class="profile-batch-select-all">
+                <input
+                  type="checkbox"
+                  :checked="isAllProfilesSelected('vision', draftSettings.visionProfiles)"
+                  @change="toggleSelectAllProfiles('vision', draftSettings.visionProfiles)"
+                />
+                <span>全选</span>
+              </label>
+              <span class="profile-batch-hint">已选 {{ selectedVisionProfileIds.size }} 项，当前激活配置不可删除</span>
             </div>
           </div>
 
@@ -2426,24 +2698,69 @@ async function saveSettings(): Promise<void> {
               >
                 <Trash2 :size="14" />
               </button>
+              <template v-if="batchMode === 'speech'">
+                <button
+                  class="profile-action-btn profile-action-btn--danger"
+                  title="删除所选配置"
+                  :disabled="selectedSpeechProfileIds.size === 0"
+                  @click="handleBatchDeleteProfiles('speech')"
+                >
+                  <Trash2 :size="14" />
+                  <span class="batch-btn-label">删除所选{{ selectedSpeechProfileIds.size ? ` (${selectedSpeechProfileIds.size})` : '' }}</span>
+                </button>
+                <button
+                  class="profile-action-btn"
+                  title="退出批量删除"
+                  @click="toggleBatchMode('speech')"
+                >
+                  <X :size="14" />
+                </button>
+              </template>
+              <button
+                v-else
+                class="profile-action-btn"
+                title="批量删除：勾选多个配置后一并删除"
+                @click="toggleBatchMode('speech')"
+              >
+                <ListChecks :size="14" />
+              </button>
             </div>
           </div>
 
           <div class="profile-tabs">
-            <div class="profile-tab-list">
-              <button
+            <div class="profile-tab-list" :class="{ 'in-batch-mode': batchMode === 'speech' }">
+              <label
                 v-for="profile in draftSettings.speechProfiles"
                 :key="profile.id"
                 class="profile-tab"
                 :class="{
                   active: editingSpeechProfileId === profile.id,
-                  'is-active-profile': profile.id === draftSettings.activeSpeechProfileId
+                  'is-active-profile': profile.id === draftSettings.activeSpeechProfileId,
+                  'is-batch-selected': selectedSpeechProfileIds.has(profile.id)
                 }"
-                @click="selectSpeechProfile(profile.id)"
+                @click="batchMode === 'speech' ? toggleProfileSelection('speech', profile.id) : selectSpeechProfile(profile.id)"
               >
+                <span
+                  v-if="batchMode === 'speech'"
+                  class="profile-tab-check"
+                  @click.stop="toggleProfileSelection('speech', profile.id)"
+                >
+                  <Check :size="13" :stroke-width="3" />
+                </span>
                 <span class="profile-tab-name">{{ profile.name }}</span>
                 <span v-if="profile.id === draftSettings.activeSpeechProfileId" class="profile-tab-badge">当前</span>
-              </button>
+              </label>
+            </div>
+            <div v-if="batchMode === 'speech'" class="profile-batch-toolbar">
+              <label class="profile-batch-select-all">
+                <input
+                  type="checkbox"
+                  :checked="isAllProfilesSelected('speech', draftSettings.speechProfiles)"
+                  @change="toggleSelectAllProfiles('speech', draftSettings.speechProfiles)"
+                />
+                <span>全选</span>
+              </label>
+              <span class="profile-batch-hint">已选 {{ selectedSpeechProfileIds.size }} 项，当前激活配置不可删除</span>
             </div>
           </div>
 
@@ -3962,6 +4279,72 @@ async function saveSettings(): Promise<void> {
   border-color: color-mix(in srgb, var(--arc-danger) 48%, var(--arc-border));
   color: var(--arc-danger);
   background: color-mix(in srgb, var(--arc-danger) 9%, var(--arc-bg-surface));
+}
+
+/* ── 批量删除（多选）模式 ── */
+.profile-action-btn .batch-btn-label {
+  font-size: 12px;
+  font-weight: 550;
+  margin-left: 4px;
+}
+
+.profile-tab-list.in-batch-mode .profile-tab {
+  cursor: pointer;
+}
+
+.profile-tab.is-batch-selected {
+  border-color: color-mix(in srgb, var(--arc-primary) 55%, var(--arc-border));
+  background: color-mix(in srgb, var(--arc-primary) 10%, var(--arc-bg-surface));
+  color: var(--arc-primary);
+}
+
+.profile-tab-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--arc-border-strong);
+  border-radius: 4px;
+  background: var(--arc-bg-surface);
+  color: transparent;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.profile-tab.is-batch-selected .profile-tab-check {
+  background: var(--arc-primary);
+  border-color: var(--arc-primary);
+  color: #fff;
+}
+
+.profile-batch-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--arc-text-hint);
+}
+
+.profile-batch-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  color: var(--arc-text-secondary);
+  user-select: none;
+}
+
+.profile-batch-select-all input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--arc-primary);
+  cursor: pointer;
+}
+
+.profile-batch-hint {
+  white-space: nowrap;
 }
 
 .profile-name-row {

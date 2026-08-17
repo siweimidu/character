@@ -44,6 +44,9 @@ const CATEGORY_META: Record<RecycleBinCategory, { label: string; color: string }
   'character-version': { label: '角色版本快照', color: '#d946ef' },
   'project': { label: '项目', color: '#f43f5e' },
   'ai-profile': { label: 'AI 接口配置', color: '#8b5cf6' },
+  'image-profile': { label: '图片生成配置', color: '#f97316' },
+  'vision-profile': { label: '图片识别配置', color: '#10b981' },
+  'speech-profile': { label: '语音识别配置', color: '#0ea5e9' },
   'reference-work': { label: '参考作品', color: '#06b6d4' },
   'skill': { label: '项目 Skills', color: '#a855f7' },
   'ai-run': { label: 'AI 调用日志', color: '#3b82f6' },
@@ -54,7 +57,7 @@ const CATEGORY_META: Record<RecycleBinCategory, { label: string; color: string }
 const isGlobalScope = computed(() => appStore.recycleBinScope === 'global')
 
 /** 仅在全局回收站展示的类别（AI 接口配置、项目 Skills 等全局数据） */
-const GLOBAL_ONLY_CATEGORIES = new Set<RecycleBinCategory>(['ai-profile', 'reference-work', 'skill', 'ai-run'])
+const GLOBAL_ONLY_CATEGORIES = new Set<RecycleBinCategory>(['ai-profile', 'image-profile', 'vision-profile', 'speech-profile', 'reference-work', 'skill', 'ai-run'])
 
 /** 当前范围下可见的类别（全局类别仅在全局回收站展示，项目/汇总视图不显示） */
 const visibleCategories = computed(() =>
@@ -84,6 +87,9 @@ const CATEGORY_ICON: Record<RecycleBinCategory, unknown> = {
   'character-version': Users,
   'project': BookMarked,
   'ai-profile': Settings2,
+  'image-profile': Settings2,
+  'vision-profile': Settings2,
+  'speech-profile': Settings2,
   'reference-work': FileCheck2,
   'skill': Sparkles,
   'ai-run': FileCheck2,

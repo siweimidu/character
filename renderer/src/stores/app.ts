@@ -1587,6 +1587,9 @@ export const useAppStore = defineStore('app', () => {
   /** 全局类别集合：这些内容跨项目共享，删除后进入全局回收站 */
   const GLOBAL_RECYCLE_CATEGORIES = new Set<import('@/types/app').RecycleBinCategory>([
     'ai-profile',
+    'image-profile',
+    'vision-profile',
+    'speech-profile',
     'reference-work',
     'skill',
     'ai-run'
@@ -2037,6 +2040,30 @@ export const useAppStore = defineStore('app', () => {
         const profile = data as unknown as import('@/types/app').AiProfile
         if (!appSettings.value.aiProfiles.some((p) => p.id === profile.id)) {
           appSettings.value.aiProfiles.push(profile)
+        }
+        scheduleSettingsPersist()
+        break
+      }
+      case 'image-profile': {
+        const profile = data as unknown as import('@/types/app').ImageProfile
+        if (!appSettings.value.imageProfiles.some((p) => p.id === profile.id)) {
+          appSettings.value.imageProfiles.push(profile)
+        }
+        scheduleSettingsPersist()
+        break
+      }
+      case 'vision-profile': {
+        const profile = data as unknown as import('@/types/app').VisionProfile
+        if (!appSettings.value.visionProfiles.some((p) => p.id === profile.id)) {
+          appSettings.value.visionProfiles.push(profile)
+        }
+        scheduleSettingsPersist()
+        break
+      }
+      case 'speech-profile': {
+        const profile = data as unknown as import('@/types/app').SpeechProfile
+        if (!appSettings.value.speechProfiles.some((p) => p.id === profile.id)) {
+          appSettings.value.speechProfiles.push(profile)
         }
         scheduleSettingsPersist()
         break
@@ -4634,14 +4661,26 @@ export const useAppStore = defineStore('app', () => {
   async function saveAppSettingsDraft(nextSettings: AppSettings, nextTheme: ThemeName = theme.value): Promise<boolean> {
     theme.value = nextTheme
 
-    // 检测被删除的 AI 接口配置，写入全局回收站（AI 接口为跨项目共享的全局数据）
-    const previousProfiles = normalizeAppSettings(appSettings.value).aiProfiles
-    const nextProfiles = normalizeAppSettings(nextSettings).aiProfiles
-    for (const profile of previousProfiles) {
-      if (nextProfiles.some((p) => p.id === profile.id)) continue
-      // 避免重复写入（例如恢复后再次保存）
-      if (!globalRecycleBin.value.some((entry) => entry.category === 'ai-profile' && (entry.data as { id?: string })?.id === profile.id)) {
-        pushRecycleEntry('ai-profile', profile.name || profile.model || '未命名接口', { ...profile })
+    // 检测被删除的各类接口配置，写入全局回收站（接口配置为跨项目共享的全局数据）
+    const prev = normalizeAppSettings(appSettings.value)
+    const next = normalizeAppSettings(nextSettings)
+    const profileCollections: Array<{
+      category: import('@/types/app').RecycleBinCategory
+      prevList: Array<{ id: string; name?: string; model?: string }>
+      nextList: Array<{ id: string }>
+    }> = [
+      { category: 'ai-profile', prevList: prev.aiProfiles, nextList: next.aiProfiles },
+      { category: 'image-profile', prevList: prev.imageProfiles, nextList: next.imageProfiles },
+      { category: 'vision-profile', prevList: prev.visionProfiles, nextList: next.visionProfiles },
+      { category: 'speech-profile', prevList: prev.speechProfiles, nextList: next.speechProfiles }
+    ]
+    for (const { category, prevList, nextList } of profileCollections) {
+      for (const profile of prevList) {
+        if (nextList.some((p) => p.id === profile.id)) continue
+        // 避免重复写入（例如恢复后再次保存）
+        if (!globalRecycleBin.value.some((entry) => entry.category === category && (entry.data as { id?: string })?.id === profile.id)) {
+          pushRecycleEntry(category, profile.name || profile.model || '未命名接口', { ...profile })
+        }
       }
     }
 
