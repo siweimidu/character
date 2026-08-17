@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch, type Ref } from 'vue'
 import { Activity, ArrowDown, ArrowUp, AudioLines, Copy, Cpu, Download, ExternalLink, FileCode2, FileInput, GripVertical, Image, KeyRound, MonitorCog, Moon, Network, Palette, PlugZap, Plus, RefreshCw, RotateCcw, ScanEye, Trash2 } from 'lucide-vue-next'
-import { NButton, NFormItem, NInput, NInputNumber, NModal, NSelect, NSlider, NSwitch, useMessage } from 'naive-ui'
+import { NButton, NFormItem, NInput, NInputNumber, NModal, NRadio, NRadioGroup, NSelect, NSlider, NSwitch, useMessage } from 'naive-ui'
 import { autoSaveOptions } from '@/features/settings/autoSave'
 import { getProviderPreset, providerOptions, resolveProviderDefaults } from '@/features/settings/providerPresets'
 import { AI_PROVIDER_CATALOG } from '@shared/ai-provider-catalog'
@@ -116,6 +116,10 @@ const freeLlmApiImportOpen = ref(false)
 const freeLlmApiProfiles = ref<Array<CcSwitchAiProfile & { selected: boolean }>>([])
 const freeLlmApiConfigError = ref('')
 const freeLlmApiConfigPath = ref('')
+// 去重方式：apiKey | platform | baseUrl
+type DedupMode = 'apiKey' | 'platform' | 'baseUrl'
+const ccSwitchDedupMode = ref<DedupMode>('apiKey')
+const freeLlmApiDedupMode = ref<DedupMode>('apiKey')
 
 // ── 图片生成 / 图片识别 / 语音识别 配置区「从 CC Switch / FreeLLMAPI 导入」面板状态 ──
 type ImportPanelKind = 'image' | 'vision' | 'speech'
@@ -1363,16 +1367,41 @@ function toggleCcSwitchSelectAll(): void {
   })
 }
 
+// 根据去重方式生成去重键
+function buildDedupKey(
+  provider: string,
+  profile: { apiKey: string; baseUrl: string },
+  mode: DedupMode
+): string {
+  switch (mode) {
+    case 'apiKey':
+      return (profile.apiKey || '').trim().toLowerCase()
+    case 'platform':
+      return (provider || '').trim().toLowerCase()
+    case 'baseUrl':
+      return (profile.baseUrl || '').trim().toLowerCase()
+  }
+}
+
 // 确认将勾选的 CC Switch AI 接口加入 aiProfiles
 function confirmCcSwitchImport(): void {
   const selected = ccSwitchProfiles.value.filter((p) => p.selected)
+  const mode = ccSwitchDedupMode.value
   const existingKeys = new Set(
-    draftSettings.aiProfiles.map((p) => `${p.provider}|${p.baseUrl}|${p.model}`.toLowerCase())
+    draftSettings.aiProfiles.map((p) =>
+      mode === 'apiKey' ? (p.apiKey || '').trim().toLowerCase()
+        : mode === 'platform' ? p.provider.trim().toLowerCase()
+        : (p.baseUrl || '').trim().toLowerCase()
+    )
   )
+  const seenKeys = new Set<string>()
+  let importedCount = 0
   for (const profile of selected) {
     const provider = mapCcSwitchType(profile.type)
-    const key = `${provider}|${profile.baseUrl}|${profile.model}`.toLowerCase()
-    if (existingKeys.has(key)) continue
+    const key = buildDedupKey(provider, profile, mode)
+    if (existingKeys.has(key) || seenKeys.has(key)) continue
+    seenKeys.add(key)
+    importedCount++
     const defaults = resolveProviderDefaults(provider)
     draftSettings.aiProfiles.push({
       id: generateProfileId(),
@@ -1390,7 +1419,8 @@ function confirmCcSwitchImport(): void {
   ccSwitchImportOpen.value = false
   ccSwitchProfiles.value = []
   ccSwitchConfigError.value = ''
-  message.success(`已导入 ${selected.length} 个 AI 接口配置`)
+  ccSwitchDedupMode.value = 'apiKey'
+  message.success(`已导入 ${importedCount} 个 AI 接口配置`)
 }
 
 // 从 FreeLLMAPI 密钥文件（freellmapi-keys.json）导入 AI 接口配置
@@ -1436,13 +1466,22 @@ function toggleFreeLlmApiSelectAll(): void {
 // 确认将勾选的 FreeLLMAPI 密钥加入 aiProfiles
 function confirmFreeLlmApiImport(): void {
   const selected = freeLlmApiProfiles.value.filter((p) => p.selected)
+  const mode = freeLlmApiDedupMode.value
   const existingKeys = new Set(
-    draftSettings.aiProfiles.map((p) => `${p.provider}|${p.baseUrl}|${p.model}`.toLowerCase())
+    draftSettings.aiProfiles.map((p) =>
+      mode === 'apiKey' ? (p.apiKey || '').trim().toLowerCase()
+        : mode === 'platform' ? p.provider.trim().toLowerCase()
+        : (p.baseUrl || '').trim().toLowerCase()
+    )
   )
+  const seenKeys = new Set<string>()
+  let importedCount = 0
   for (const profile of selected) {
     const provider = profile.type.trim() || 'openai-compatible'
-    const key = `${provider}|${profile.baseUrl}|${profile.model}`.toLowerCase()
-    if (existingKeys.has(key)) continue
+    const key = buildDedupKey(provider, profile, mode)
+    if (existingKeys.has(key) || seenKeys.has(key)) continue
+    seenKeys.add(key)
+    importedCount++
     const defaults = resolveProviderDefaults(provider)
     draftSettings.aiProfiles.push({
       id: generateProfileId(),
@@ -1460,7 +1499,8 @@ function confirmFreeLlmApiImport(): void {
   freeLlmApiImportOpen.value = false
   freeLlmApiProfiles.value = []
   freeLlmApiConfigError.value = ''
-  message.success(`已导入 ${selected.length} 个 AI 接口配置`)
+  freeLlmApiDedupMode.value = 'apiKey'
+  message.success(`已导入 ${importedCount} 个 AI 接口配置`)
 }
 
 // ── 图片生成 / 图片识别 / 语音识别 配置区导入（CC Switch / FreeLLMAPI） ──
@@ -2759,6 +2799,15 @@ async function saveSettings(): Promise<void> {
       </p>
     </div>
 
+    <div class="cc-switch-dedup-row">
+      <span class="cc-switch-dedup-label">去重方式</span>
+      <n-radio-group v-model:value="ccSwitchDedupMode" size="small">
+        <n-radio value="apiKey">API Key</n-radio>
+        <n-radio value="platform">Platform</n-radio>
+        <n-radio value="baseUrl">Base URL</n-radio>
+      </n-radio-group>
+    </div>
+
     <div class="cc-switch-section-title-row">
       <span class="cc-switch-section-title">AI 接口配置</span>
       <n-button
@@ -2819,6 +2868,15 @@ async function saveSettings(): Promise<void> {
       <p v-if="freeLlmApiConfigError" class="cc-switch-warn">
         配置读取提示：{{ freeLlmApiConfigError }}
       </p>
+    </div>
+
+    <div class="cc-switch-dedup-row">
+      <span class="cc-switch-dedup-label">去重方式</span>
+      <n-radio-group v-model:value="freeLlmApiDedupMode" size="small">
+        <n-radio value="apiKey">API Key</n-radio>
+        <n-radio value="platform">Platform</n-radio>
+        <n-radio value="baseUrl">Base URL</n-radio>
+      </n-radio-group>
     </div>
 
     <div class="cc-switch-section-title-row">
@@ -4432,9 +4490,51 @@ async function saveSettings(): Promise<void> {
   padding: 5px 10px;
 }
 
+.cc-switch-dedup-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  border: 1px solid var(--arc-border);
+  border-radius: 8px;
+  background: var(--arc-bg-weak);
+}
+
+.cc-switch-dedup-label {
+  flex-shrink: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--arc-text-secondary);
+}
+
+.cc-switch-dedup-row :deep(.n-radio-group) {
+  gap: 0;
+}
+
+.cc-switch-dedup-row :deep(.n-radio) {
+  margin-right: 14px;
+}
+
+.cc-switch-dedup-row :deep(.n-radio__label) {
+  font-size: 12.5px;
+}
+
 .cc-switch-footer {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+
+/* 确保弹窗 footer 按钮右对齐（覆盖 Naive UI card footer 默认样式） */
+.cc-switch-modal :deep(.n-card__footer) {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 12px;
+}
+
+.cc-switch-modal :deep(.n-card__footer) .cc-switch-footer {
+  width: 100%;
+  justify-content: flex-end;
 }
 </style>
