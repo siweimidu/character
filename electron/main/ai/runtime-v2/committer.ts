@@ -1048,9 +1048,9 @@ async function commitPlotThread(
 
   const result = db.prepare(`
     UPDATE plot_threads
-    SET title = ?, description = ?, opened_in_chapter_id = ?, status = ?, closed_in_chapter_id = ?, tags_json = ?, updated_at = ?
+    SET title = ?, description = ?, opened_in_chapter_id = ?, status = ?, closed_in_chapter_id = ?, tags_json = ?, priority = ?, remark = ?, updated_at = ?
     WHERE id = ? AND project_id = ?
-  `).run(title, description, openedInChapterId, status, closedInChapterId, JSON.stringify(tags), now, change.entityId, projectId)
+  `).run(title, description, openedInChapterId, status, closedInChapterId, JSON.stringify(tags), priority, remark, now, change.entityId, projectId)
   if (result.changes === 0) {
     return { changeId: change.id, ok: false, error: `伏笔不存在：${change.entityId}` }
   }
