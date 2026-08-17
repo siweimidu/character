@@ -264,13 +264,13 @@ CharacterArc（弧光）不是"只会对话的 AI 壳子"，而是一套围绕�
     </td>
     <td width="50%" align="center">
       <a href="docs/assets/global_agent.png"><img src="docs/assets/global_agent.png" alt="全局智能体" /></a>
-      <br /><sub><b>全局智能体 v2</b> · 插件市场、能力模块、MCP/Plugin/Script 运行时</sub>
+      <br /><sub><b>全局智能体 </b> · 插件市场、能力模块、MCP/Plugin/Script 运行时</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
       <a href="docs/assets/ai_config.png"><img src="docs/assets/ai_config.png" alt="AI接口配置" /></a>
-      <br /><sub><b>AI 接口配置</b> · 30+ 厂商一键预设、多套配置管理、一键导出官网</sub>
+      <br /><sub><b>AI 接口配置</b> · 45家 厂商一键预设、多套配置管理、一键导出官网</sub>
     </td>
     <td width="50%" align="center">
       <a href="docs/assets/model_benchmark.png"><img src="docs/assets/model_benchmark.png" alt="模型性能测试" /></a>
@@ -348,7 +348,7 @@ pnpm run dist
 
 启动应用后，打开右上角「设置」→ **AI 接口配置**：
 
-1. 从 30+ 厂商预设中点选，或手动选择「自定义 OpenAI 兼容接口」/「自定义 Anthropic 接口」
+1. 从 45家 厂商预设中点选，或手动选择「自定义 OpenAI 兼容接口」/「自定义 Anthropic 接口」
 2. 填入 Base URL、API Key、模型名称（可一键从接口拉取模型列表）
 3. （可选）点击「测试模型连接」确认连通；再点击「测试模型性能」获取延迟/吞吐/Token 统计
 4. 点击「保存当前模型」→「保存设置」，即可在标题栏模型切换器中秒切
