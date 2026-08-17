@@ -395,16 +395,10 @@ export class HttpMcpClient extends EventEmitter {
       throw new Error(`MCP 远程连接失败: ${response.error.message}`)
     }
 
-    // 发送 initialized 通知
-    await this.httpRequest(
-      {
-        jsonrpc: '2.0',
-        id: this.nextId(),
-        method: 'notifications/initialized',
-        params: {}
-      },
-      HANDSHAKE_TIMEOUT_MS
-    ).catch(() => {})
+    // 发送 initialized 通知：MCP 规范中 notification 不带 id、无响应。
+    // 若按请求方式发送并等待匹配 id 的响应，规范服务器会不回应该 id，
+    // 导致这里白白等待 HANDSHAKE_TIMEOUT_MS 再超时，拖慢每次连接握手。
+    await this.sendNotification('notifications/initialized', {})
 
     // 验证工具列表
     await this.listTools().catch(() => {})
@@ -480,6 +474,27 @@ export class HttpMcpClient extends EventEmitter {
 
   private nextId(): number {
     return ++this.requestId
+  }
+
+  /** 发送无响应、无 id 的 JSON-RPC notification（fire-and-forget）。 */
+  private async sendNotification(method: string, params: Record<string, unknown>): Promise<void> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json, text/event-stream'
+    }
+    if (this.apiKey) {
+      headers['Authorization'] = `Bearer ${this.apiKey}`
+    }
+
+    try {
+      await fetch(this.baseUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ jsonrpc: '2.0', method, params })
+      })
+    } catch {
+      // notification 发送失败不影响后续握手，忽略。
+    }
   }
 
   private async httpRequest(req: JsonRpcRequest, timeoutMs: number): Promise<JsonRpcResponse> {

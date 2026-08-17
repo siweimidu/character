@@ -1108,6 +1108,12 @@ export async function importProjectArchiveInWorker(
       }
     })
 
+    // 结算后主动终止 worker，避免工作线程持有数据库连接/定时器等句柄而残留。
+    // 防止连续多次导入时积累未回收的 worker 线程。
+    const settleWorker = (): void => {
+      void worker.terminate().catch(() => {})
+    }
+
     worker.on('message', (message: ImportProjectArchiveWorkerResponse) => {
       if ('type' in message && message.type === 'progress') {
         onProgress?.(message.payload)
@@ -1120,18 +1126,25 @@ export async function importProjectArchiveInWorker(
       } else {
         reject(new Error('error' in message ? message.error : '导入项目归档失败'))
       }
+      settleWorker()
     })
 
     worker.once('error', (error) => {
       if (settled) return
       settled = true
       reject(error)
+      settleWorker()
     })
 
     worker.once('exit', (code) => {
-      if (!settled && code !== 0) {
+      if (!settled) {
         settled = true
-        reject(new Error(`导入项目归档 worker 退出，代码 ${code}`))
+        if (code !== 0) {
+          reject(new Error(`导入项目归档 worker 退出，代码 ${code}`))
+        } else {
+          // worker 正常退出但未回传结果：避免 Promise 悬置。
+          reject(new Error('导入项目归档失败：worker 未返回结果'))
+        }
       }
     })
   })
