@@ -1579,6 +1579,7 @@ function confirmPanelImport(kind: ImportPanelKind, source: 'ccswitch' | 'freellm
         : draftSettings.speechProfiles
   const existingKeys = new Set(targetList.map((p) => `${p.provider}|${p.baseUrl}|${p.model}`.toLowerCase()))
   const kindLabel = kind === 'image' ? '图片生成' : kind === 'vision' ? '图片识别' : '语音识别'
+  let importedCount = 0
   for (const profile of selected) {
     const provider = mapImportToProvider(kind, profile.type, profile.baseUrl)
     const key = `${provider}|${profile.baseUrl}|${profile.model}`.toLowerCase()
@@ -1602,11 +1603,12 @@ function confirmPanelImport(kind: ImportPanelKind, source: 'ccswitch' | 'freellm
       models: model ? [model] : []
     })
     existingKeys.add(key)
+    importedCount++
   }
   panel.open = false
   panel.profiles = []
   panel.configError = ''
-  message.success(`已导入 ${selected.length} 个${kindLabel}接口配置`)
+  message.success(`已导入 ${importedCount} 个${kindLabel}接口配置`)
 }
 
 async function saveSettings(): Promise<void> {
