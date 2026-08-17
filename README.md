@@ -12,7 +12,7 @@
 </p>
 
 <p>
-  <a href="#-原版项目声明">💠 声明</a> ·
+  <a href="#-项目声明">💠 声明</a> ·
   <a href="#-开发统计">📊 开发统计</a> ·
   <a href="#-功能概览">功能概览</a> ·
   <a href="#-截图">截图</a> ·
@@ -42,9 +42,9 @@
 >
 > 在原项目基础上：
 > - ✅ **完善底层逻辑**：修复原版多处已知问题，优化 SQLite 持久化、AI 管线调度、防抖写回、状态同步等核心机制
-> - ✨ **新增大量功能**：全局智能体 v2、插件系统、回收站、番茄风向标、模型性能基准测试、多主题切换、MCP 协议接入、语音输入、图片识别配置等
-> - 🔧 **底层架构升级**：Assistant Runtime v2、暂存变更审阅、Agent Memory、权限系统、证据账本、执行规划、对话管理等深度重构
-> - 🎨 **UI/UX 全面提升**：十二套界面主题、颜色深浅自定义、标题栏模型快切、批量选择/删除、全局命令面板等
+> - ✨ **新增大量功能**：全局智能体、插件系统、回收站、番茄风向标一键生成新书、模型性能基准测试、提示词库页面、工作台菜单顺序、多主题切换、MCP 协议接入、语音输入、图片识别配置、从CC Switch导入AI接口配置、从CC switch导入Skills、快速滑动按钮、回退悬浮按钮、智能体对话框/唤起快捷指令、AI后台任务等
+> - 🔧 **底层架构升级**：Assistant Runtime 、暂存变更审阅、Agent Memory、权限系统、证据账本、执行规划、对话管理等深度重构
+> - 🎨 **UI/UX 全面提升**：十二套界面主题、颜色深浅自定义、标题栏AI后台任务、批量选择/删除、全局命令面板等
 >
 > 累计投入：**共提交 944 次代码，处理 258 个 Issue**，在保持原版项目核心理念的同时，打造更完善、更专业的 AI 小说创作工作台。
 
@@ -63,7 +63,6 @@
         <li><strong>代码提交：944 次</strong> — 覆盖主进程、渲染层、AI 管线、Skill 系统、UI 组件等全链路</li>
         <li><strong>Issue 处理：258 个</strong> — 包含 Bug 修复、功能需求、性能优化、体验改进</li>
         <li><strong>合并请求：375 个</strong> — 以 PR 驱动的迭代流程，保证每一项改动可追溯、可回滚</li>
-        <li><strong>活跃贡献期：近一年</strong> — 高强度持续迭代，每个月均有密集提交</li>
       </ul>
       <p>
         <sub>提交中包含原创内容与基于原版框架的深度重构。感谢原作者 zhouyeshan 提供的优秀底座。</sub>
@@ -105,14 +104,14 @@ CharacterArc（弧光）不是"只会对话的 AI 壳子"，而是一套围绕�
       <p>支持 30+ 模型厂商一键配置（Gemini、OmniRoute、FreeAPI、Agnes、DeepSeek、通义、智谱、Kimi、硅基流动、Ollama、Cloudflare、Cohere 等），含接口连通性测试与<strong>模型性能基准</strong>。</p>
     </td>
     <td width="50%" valign="top">
-      <h4>🤖 全局智能体 v2（新增）</h4>
-      <p>跨项目资料检索、设定修改、审计沉淀、暂存变更审阅、技能模块插件化（MCP / Plugin / Script 运行时），能力与市场双栏管理。</p>
+      <h4>🤖 全局智能体 （新增）</h4>
+      <p>跨项目资料检索、设定修改、技能模块插件化（MCP / Plugin / Script 运行时），能力与市场双栏管理。</p>
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
       <h4>🎨 多主题系统（新增）</h4>
-      <p>十二套界面主题（海黛、玉髓、琥珀、殷红、苹果、谷歌、极境、Claude、豆包、Trace代码、番茄办公等），支持颜色深浅滑块与深/浅色模式即时切换。</p>
+      <p>十二套界面主题（海蓝/玉绿/琥珀/玫红/苹果/谷歌/极简/Claude/豆包/Trace代码/办公/纸质等），支持颜色深浅滑块与深/浅色模式即时切换。</p>
     </td>
     <td width="50%" valign="top">
       <h4>🗑️ 回收站机制（新增）</h4>
@@ -122,7 +121,7 @@ CharacterArc（弧光）不是"只会对话的 AI 壳子"，而是一套围绕�
   <tr>
     <td colspan="2" valign="top">
       <h4>🍅 番茄风向标（新增）</h4>
-      <p>番茄小说榜单实时趋势，按女频新书榜/男频新书榜/女频阅读榜/男频阅读榜、近 7/14/30 日分类查看热门综合赛道（都市、玄幻、历史、游戏、悬疑等），附带 AI 风向速评与一键生成新书选题。</p>
+      <p>番茄小说榜单实时趋势，按女频新书榜/男频新书榜/女频阅读榜/男频阅读榜、近 7/14/30 日分类查看热门综合赛道（都市、玄幻、历史、游戏、悬疑等），新增 AI 一键生成新书选题。</p>
     </td>
   </tr>
 </table>
@@ -179,7 +178,7 @@ CharacterArc（弧光）不是"只会对话的 AI 壳子"，而是一套围绕�
 - AI 对话流式输出，生成中支持中途停止
 - **推理内容隔离**：兼容 MiniMax、DeepSeek、通义、Kimi、GLM、Gemini 等模型的 reasoning 字段，并避免思考标记写入正文
 - **接口错误详情**：优先展示中转站返回的 `error` / `message` / `responseBody` 和 HTTP 状态码
-- **Agent Loop 模式**：模型按 Skill 索引与工具注册表循环思考，可直接调用工具编辑章节；v2 新增 Progressive Skill Disclosure 与上限 8 步的思考循环
+- **Agent Loop 模式**：模型按 Skill 索引与工具注册表循环思考，可直接调用工具编辑章节； 新增 Progressive Skill Disclosure 与上限 8 步的思考循环
 - **任务进度面板**：标题栏统一查看正在运行与历史 AI 任务，失败可一键重试
 - **Assistant Runtime v2**（新增）：证据账本、暂存变更审阅、Agent 记忆存储、权限控制、执行规划、对话管理、上下文路由
 - **Agent 模块系统**（新增）：MCP Server 接入（内置 SQLite 存储、文件系统、小说专用服务）、Plugin 运行时、自定义 JS 脚本执行
@@ -192,15 +191,15 @@ CharacterArc（弧光）不是"只会对话的 AI 壳子"，而是一套围绕�
 <details open>
 <summary><b>⚙️ 设置与连接（大幅增强）</b></summary>
 
-- **30+ 厂商一键预设**：Gemini、OmniRoute、FreeAI、Agnes、aion、cerebras、cloudflare、cohere、都跃星跃、AutoMinimax、元鸿蒙、HubWay、AgentRouter、向量引擎、AUQA公益AI、雨落、七亿、QwenAI、DoCode、梯子、Blue、CSDN、huggingface、mistral、nvidia、ollama、openrouter、pollinations、routeway、siliconflow 等
-- **模型性能基准测试**（新增）：一键测试延迟（ms）、吞吐（tokens/s）、本次 Token 消耗，最近 1 次/5 次/保留 7 日统计
-- **多配置管理**：支持多套接口配置命名保存，标题栏一键切换；导出/导入整套配置 JSON
-- **网络代理**（新增）：全局 HTTP/HTTPS/SOCKS 代理配置
+- **45家厂商一键预设**：Gemini、OmniRoute、FreeAI、Agnes、aion、cerebras、cloudflare、cohere、阶跃星辰、AutoMinimax、HubWay、AgentRouter、huggingface、mistral、nvidia、ollama、openrouter、pollinations、routeway、siliconflow 等
+- **模型性能基准测试**（新增）：一键测试延迟（ms）、吞吐（tokens/s）、本次 Token 消耗
+- **多配置管理**：支持多套接口配置命名保存，标题栏一键切换；导入整套FreeLLMAPI密钥配置 JSON，CC switch AI接口配置导入
+- **网络代理**：全局 HTTP/HTTPS/SOCKS 代理配置
 - **图片生成配置**：独立配置图像模型、Key、Base URL
-- **图片识别 / 多模态配置**（新增）：独立 Vision 模型配置，支持图文理解场景
+- **图片识别 / 多模态配置**：独立 Vision 模型配置，支持图文理解场景
 - **语音识别配置**（新增）：TTS/STT 模型厂商预设
 - **界面主题**（新增）：12 套预设主题 + 颜色深浅滑块 + 深/浅色模式切换
-- **应用偏好**（新增）：自动保存时间间隔（1~30 分钟）、界面缩放比例
+- **应用偏好**：自动保存时间间隔（1~30 分钟）、界面缩放比例
 
 </details>
 
@@ -373,7 +372,7 @@ character-arc/
 │   │   │   ├── audit/              # 轻量写后校验
 │   │   │   ├── prompts/            # 通用提示词片段
 │   │   │   ├── runtime/            # AI 任务调度 v1：上下文、执行计划、事件
-│   │   │   ├── runtime-v2/         # Assistant Runtime v2：证据账本、暂存变更、权限、规划、对话管理
+│   │   │   ├── runtime-v2/         # Assistant Runtime ：证据账本、暂存变更、权限、规划、对话管理
 │   │   │   ├── skills/             # Skill 发现、匹配、注册、清单
 │   │   │   ├── spiral/             # 螺旋式项目生成管线
 │   │   │   ├── tasks/              # 50+ AI 任务 handlers（章节/世界观/角色/大纲/线索/风格…）
@@ -395,7 +394,7 @@ character-arc/
 │   └── src/
 │       ├── components/
 │       │   ├── chapterWorkspace/   # 三栏章节创作工作区
-│       │   ├── assistantV2/        # 全局智能体 v2：会话、消息、插件市场、暂存变更、MCP 市场…
+│       │   ├── assistantV2/        # 全局智能体 ：会话、消息、插件市场、暂存变更、MCP 市场…
 │       │   └── home/               # 首页/项目中心：卡片、批量、设置、教程、更新
 │       ├── features/               # 功能模块（ai、chapters、cover、knowledge、relations、
 │       │                             settings、wizard、workspace、writingStyles、announcements…）
@@ -485,7 +484,7 @@ character-arc/
 
 - 🎯 **[uu201/character-arc](https://github.com/uu201/character-arc)**（原作者 zhouyeshan）— 提供了本增强版赖以构建的完整底座、核心写作工作流与 Skill 方法论。**请支持原版，点个 Star ⭐！**
 
-### 上游资源项目
+### 上游skills资源项目
 
 - [oh-story-claudecode](https://github.com/worldwonderer/oh-story-claudecode) — 核心写作 Skills 的方法论与 prompt 工程基础
 - [dama-cyber/Distilled-Novel-Toolbox](https://github.com/dama-cyber/Distilled-Novel-Toolbox) — 小说工作流与创作辅助方向的参考
