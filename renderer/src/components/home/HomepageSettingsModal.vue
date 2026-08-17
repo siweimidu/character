@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { Activity, ArrowDown, ArrowUp, AudioLines, Copy, Cpu, Download, ExternalLink, FileCode2, FileInput, GripVertical, Image, MonitorCog, Moon, Network, Palette, PlugZap, Plus, RefreshCw, RotateCcw, ScanEye, Trash2 } from 'lucide-vue-next'
+import { Activity, ArrowDown, ArrowUp, AudioLines, Copy, Cpu, Download, ExternalLink, FileCode2, FileInput, GripVertical, Image, KeyRound, MonitorCog, Moon, Network, Palette, PlugZap, Plus, RefreshCw, RotateCcw, ScanEye, Trash2 } from 'lucide-vue-next'
 import { NButton, NFormItem, NInput, NInputNumber, NModal, NSelect, NSlider, NSwitch, useMessage } from 'naive-ui'
 import { autoSaveOptions } from '@/features/settings/autoSave'
 import { getProviderPreset, providerOptions, resolveProviderDefaults } from '@/features/settings/providerPresets'
@@ -110,6 +110,12 @@ const ccSwitchImportOpen = ref(false)
 const ccSwitchProfiles = ref<Array<CcSwitchAiProfile & { selected: boolean }>>([])
 const ccSwitchConfigError = ref('')
 const ccSwitchConfigPath = ref('')
+// ── 从 FreeLLMAPI 密钥文件导入 ──
+const isFreeLlmApiImporting = ref(false)
+const freeLlmApiImportOpen = ref(false)
+const freeLlmApiProfiles = ref<Array<CcSwitchAiProfile & { selected: boolean }>>([])
+const freeLlmApiConfigError = ref('')
+const freeLlmApiConfigPath = ref('')
 const isTestingProxyConnection = ref(false)
 const proxyTestIp = ref('')
 const isFetchingModels = ref(false)
@@ -1357,6 +1363,76 @@ function confirmCcSwitchImport(): void {
   message.success(`已导入 ${selected.length} 个 AI 接口配置`)
 }
 
+// 从 FreeLLMAPI 密钥文件（freellmapi-keys.json）导入 AI 接口配置
+async function handleFreeLlmApiImport(): Promise<void> {
+  if (isFreeLlmApiImporting.value) return
+  isFreeLlmApiImporting.value = true
+  try {
+    const result = await window.characterArc.importFromFreeLlmApi()
+    if (!result.success) {
+      throw new Error(result.error ?? 'FreeLLMAPI 密钥导入失败')
+    }
+    freeLlmApiConfigPath.value = result.configPath ?? ''
+    freeLlmApiConfigError.value = result.configError ?? ''
+    freeLlmApiProfiles.value = (result.aiProfiles ?? []).map((profile) => ({
+      ...profile,
+      selected: true
+    }))
+    freeLlmApiImportOpen.value = true
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : 'FreeLLMAPI 密钥导入失败')
+  } finally {
+    isFreeLlmApiImporting.value = false
+  }
+}
+
+function toggleFreeLlmApiProfile(profile: CcSwitchAiProfile & { selected: boolean }): void {
+  profile.selected = !profile.selected
+}
+
+// 是否所有 FreeLLMAPI 密钥项均被选中（用于多选按钮状态）
+const freeLlmApiAllSelected = computed(
+  () => freeLlmApiProfiles.value.length > 0 && freeLlmApiProfiles.value.every((p) => p.selected)
+)
+
+// 多选按钮：一键全选 / 取消全选所有 FreeLLMAPI 密钥项
+function toggleFreeLlmApiSelectAll(): void {
+  const target = !freeLlmApiAllSelected.value
+  freeLlmApiProfiles.value.forEach((p) => {
+    p.selected = target
+  })
+}
+
+// 确认将勾选的 FreeLLMAPI 密钥加入 aiProfiles
+function confirmFreeLlmApiImport(): void {
+  const selected = freeLlmApiProfiles.value.filter((p) => p.selected)
+  const existingKeys = new Set(
+    draftSettings.aiProfiles.map((p) => `${p.provider}|${p.baseUrl}|${p.model}`.toLowerCase())
+  )
+  for (const profile of selected) {
+    const provider = profile.type.trim() || 'openai-compatible'
+    const key = `${provider}|${profile.baseUrl}|${profile.model}`.toLowerCase()
+    if (existingKeys.has(key)) continue
+    const defaults = resolveProviderDefaults(provider)
+    draftSettings.aiProfiles.push({
+      id: generateProfileId(),
+      name: generateUniqueName(profile.name.trim() || 'FreeLLMAPI'),
+      provider,
+      baseUrl: profile.baseUrl.trim() || defaults.baseUrl,
+      apiKey: profile.apiKey,
+      model: profile.model.trim() || defaults.model,
+      apiProtocol: 'auto',
+      temperature: undefined,
+      topP: undefined
+    })
+    existingKeys.add(key)
+  }
+  freeLlmApiImportOpen.value = false
+  freeLlmApiProfiles.value = []
+  freeLlmApiConfigError.value = ''
+  message.success(`已导入 ${selected.length} 个 AI 接口配置`)
+}
+
 async function saveSettings(): Promise<void> {
   // 保存后应切换到用户正在编辑的接口配置，避免再次打开仍显示旧配置为“当前”
   const activeProfileId = editingProfileId.value || draftSettings.activeAiProfileId
@@ -1446,6 +1522,14 @@ async function saveSettings(): Promise<void> {
               <p>管理多个接口配置，可在标题栏快速切换。修改后需点击右下角「保存设置」按钮才生效</p>
             </div>
             <div class="profile-tab-actions">
+              <button
+                class="profile-action-btn"
+                title="从 FreeLLMAPI 密钥文件导入 AI 接口配置"
+                :disabled="isFreeLlmApiImporting"
+                @click="handleFreeLlmApiImport"
+              >
+                <KeyRound :size="14" />
+              </button>
               <button
                 class="profile-action-btn"
                 title="从 CC Switch 导入 AI 接口配置"
@@ -2529,6 +2613,68 @@ async function saveSettings(): Promise<void> {
       <div class="cc-switch-footer">
         <n-button round strong @click="ccSwitchImportOpen = false">取消</n-button>
         <n-button type="primary" round strong @click="confirmCcSwitchImport">导入选中</n-button>
+      </div>
+    </template>
+  </n-modal>
+
+  <!-- 从 FreeLLMAPI 密钥文件导入 AI 接口配置的确认弹窗 -->
+  <n-modal
+    :show="freeLlmApiImportOpen"
+    preset="card"
+    class="arc-settings-modal cc-switch-modal"
+    :bordered="false"
+    @close="freeLlmApiImportOpen = false"
+  >
+    <template #header>
+      <div class="cc-switch-header">
+        <span class="cc-switch-header-title">从 FreeLLMAPI 密钥文件导入</span>
+      </div>
+    </template>
+    <div class="cc-switch-intro">
+      <p>已读取 FreeLLMAPI 密钥文件（{{ freeLlmApiConfigPath || 'freellmapi-keys.json' }}）。选择要导入的 AI 接口配置</p>
+      <p v-if="freeLlmApiConfigError" class="cc-switch-warn">
+        配置读取提示：{{ freeLlmApiConfigError }}
+      </p>
+    </div>
+
+    <div class="cc-switch-section-title-row">
+      <span class="cc-switch-section-title">AI 接口配置</span>
+      <n-button
+        v-if="freeLlmApiProfiles.length"
+        size="tiny"
+        secondary
+        round
+        class="cc-switch-select-all-btn"
+        @click="toggleFreeLlmApiSelectAll"
+      >
+        {{ freeLlmApiAllSelected ? '取消全选' : '多选' }}
+      </n-button>
+    </div>
+    <div v-if="freeLlmApiProfiles.length" class="cc-switch-profile-list-wrap">
+      <div class="cc-switch-profile-list">
+        <label
+          v-for="profile in freeLlmApiProfiles"
+          :key="profile.name + profile.baseUrl + profile.model"
+          class="cc-switch-profile-item"
+          :class="{ checked: profile.selected }"
+        >
+          <input type="checkbox" :checked="profile.selected" @change="toggleFreeLlmApiProfile(profile)" />
+          <span class="cc-switch-profile-main">
+            <strong>{{ profile.name }}</strong>
+            <span class="cc-switch-profile-sub">{{ profile.type }} · {{ profile.model || '默认模型' }}</span>
+          </span>
+          <code class="cc-switch-profile-url">{{ profile.baseUrl || '默认地址' }}</code>
+        </label>
+      </div>
+    </div>
+    <div v-else class="cc-switch-empty">
+      未在密钥文件中识别到可导入的 AI 接口配置
+    </div>
+
+    <template #footer>
+      <div class="cc-switch-footer">
+        <n-button round strong @click="freeLlmApiImportOpen = false">取消</n-button>
+        <n-button type="primary" round strong @click="confirmFreeLlmApiImport">导入选中</n-button>
       </div>
     </template>
   </n-modal>

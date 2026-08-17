@@ -4051,6 +4051,132 @@ export function registerMainIpcHandlers(deps: RegisterMainIpcHandlersDeps): void
     }
   })
 
+  // ── 从 FreeLLMAPI 密钥文件导入 AI 接口配置 ──
+  // FreeLLMAPI 支持把本地网关的 API 密钥导出为一个 JSON 文件（freellmapi-keys.json），
+  // 其结构为 { version, exportedAt, source: 'freellmapi', keys: [...] }，其中每条密钥为：
+  //   { platform: 'custom'|平台名, key: string, label?: string, baseUrl?: string }
+  // 这里弹窗选择该 JSON 文件并解析为统一的 AI 接口配置列表返回给前端确认导入。
+  ipcMain.handle('characterarc:freellmapi-import', async () => {
+    try {
+      const ownerWindow = deps.windowManager.getMainWindow() ?? BrowserWindow.getFocusedWindow()
+      const pick = ownerWindow
+        ? await dialog.showOpenDialog(ownerWindow, {
+            title: '请选择 FreeLLMAPI 的密钥文件（freellmapi-keys.json）',
+            properties: ['openFile'],
+            filters: [{ name: 'FreeLLMAPI 密钥文件', extensions: ['json'] }]
+          })
+        : await dialog.showOpenDialog({
+            title: '请选择 FreeLLMAPI 的密钥文件（freellmapi-keys.json）',
+            properties: ['openFile'],
+            filters: [{ name: 'FreeLLMAPI 密钥文件', extensions: ['json'] }]
+          })
+      if (pick.canceled || !pick.filePaths[0]) {
+        return { success: true, aiProfiles: [], configPath: '', configError: '已取消选择密钥文件' }
+      }
+      const filePath = pick.filePaths[0]
+
+      // FreeLLMAPI 平台名 -> 内置 provider 值映射；未知平台统一走自定义 OpenAI 兼容接口。
+      const PLATFORM_PROVIDER_MAP: Record<string, string> = {
+        siliconflow: 'siliconflow',
+        zhipu: 'zhipu',
+        cerebras: 'cerebras',
+        mistral: 'mistral',
+        groq: 'groq',
+        modelscope: 'modelscope',
+        google: 'gemini',
+        ollama: 'ollama',
+        openrouter: 'openrouter',
+        huggingface: 'huggingface',
+        cloudflare: 'cloudflare-ai',
+        nvidia: 'nvidia',
+        opencode: 'opencode-zen',
+        github: 'openai-compatible',
+        custom: 'openai-compatible'
+      }
+
+      // 各内置 provider 的默认 Base URL（未知平台且未提供 baseUrl 时，回落为 FreeLLMAPI 本地网关）。
+      const PROVIDER_BASE_URL: Record<string, string> = {
+        freellmapi: 'http://localhost:3001/v1',
+        siliconflow: 'https://api.siliconflow.cn/v1',
+        zhipu: 'https://open.bigmodel.cn/api/paas/v4',
+        cerebras: 'https://api.cerebras.ai/v1',
+        mistral: 'https://api.mistral.ai/v1',
+        groq: 'https://api.groq.com/openai/v1',
+        modelscope: 'https://api-inference.modelscope.cn/v1',
+        gemini: 'https://generativelanguage.googleapis.com/v1beta/openai',
+        ollama: 'http://localhost:11434/v1',
+        openrouter: 'https://openrouter.ai/api/v1',
+        huggingface: 'https://api-inference.huggingface.co/v1',
+        'cloudflare-ai': 'https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai/v1',
+        nvidia: 'https://integrate.api.nvidia.com/v1',
+        'opencode-zen': 'https://opencode.ai/zen/v1'
+      }
+
+      const raw = await readFile(filePath, 'utf-8')
+      const parsed = JSON.parse(raw) as Record<string, unknown>
+      const rawKeys = parsed['keys']
+      if (!Array.isArray(rawKeys)) {
+        return {
+          success: true,
+          aiProfiles: [],
+          configPath: filePath,
+          configError: '文件中未找到 keys 数组，请确认该文件为 FreeLLMAPI 导出的 freellmapi-keys.json。'
+        }
+      }
+
+      const profiles: Array<{
+        name: string
+        type: string
+        baseUrl: string
+        apiKey: string
+        model: string
+        isCurrent: boolean
+      }> = []
+      const seen = new Set<string>()
+      for (const item of rawKeys) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+        const entry = item as Record<string, unknown>
+        const platform = String(entry['platform'] ?? '').trim().toLowerCase()
+        const key = String(entry['key'] ?? '').trim()
+        const label = String(entry['label'] ?? '').trim()
+        const baseUrl = String(entry['baseUrl'] ?? entry['base_url'] ?? '').trim()
+        if (!key) continue
+
+        const provider = PLATFORM_PROVIDER_MAP[platform] ?? 'openai-compatible'
+        const resolvedBaseUrl = baseUrl || PROVIDER_BASE_URL[provider] || 'http://localhost:3001/v1'
+        const dedupeKey = [platform, key, resolvedBaseUrl].join('|').toLowerCase()
+        if (seen.has(dedupeKey)) continue
+        seen.add(dedupeKey)
+
+        profiles.push({
+          name: label || platform || 'FreeLLMAPI',
+          type: provider,
+          baseUrl: resolvedBaseUrl,
+          apiKey: key,
+          model: '',
+          isCurrent: false
+        })
+      }
+
+      return {
+        success: true,
+        aiProfiles: profiles,
+        configPath: filePath,
+        configError: profiles.length === 0
+          ? '密钥文件中没有可导入的 API 密钥（keys 数组为空或缺少 key 字段）。'
+          : ''
+      }
+    } catch (error) {
+      return {
+        success: false,
+        aiProfiles: [],
+        configPath: '',
+        configError: '',
+        error: error instanceof Error ? error.message : 'FreeLLMAPI 密钥文件解析失败'
+      }
+    }
+  })
+
   // ── 从 CC Switch 导入 Skills（内置 Skills 与项目扩展页面） ──
   // CC Switch 及其底层的 Claude Code / Codex 会把 skills 存放到以下常见目录，
   // 这里递归收集其中包含 SKILL.md 的目录并拷贝到当前项目的 skills 目录（可选归入指定分组）。

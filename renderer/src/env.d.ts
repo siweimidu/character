@@ -1028,6 +1028,20 @@ declare global {
         }>
         error?: string
       }>
+      importFromFreeLlmApi: () => Promise<{
+        success: boolean
+        configPath?: string
+        configError?: string
+        aiProfiles?: Array<{
+          name: string
+          type: string
+          baseUrl: string
+          apiKey: string
+          model: string
+          isCurrent: boolean
+        }>
+        error?: string
+      }>
       importCcSwitchSkills: (projectId: string, targetGroup?: string) => Promise<{
         success: boolean
         importedSkillIds?: string[]

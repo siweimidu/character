@@ -139,6 +139,8 @@ contextBridge.exposeInMainWorld('characterArc', {
   getProjectSkillsContext: (projectId: string) => ipcRenderer.invoke('characterarc:project-skills-context', projectId),
   /** 从 CC Switch 导入 AI 接口配置（skills 改由「内置 Skills 与项目扩展」页面导入） */
   importFromCcSwitch: () => ipcRenderer.invoke('characterarc:cc-switch-import'),
+  /** 从 FreeLLMAPI 密钥文件（freellmapi-keys.json）导入 AI 接口配置 */
+  importFromFreeLlmApi: () => ipcRenderer.invoke('characterarc:freellmapi-import'),
   /** 从 CC Switch 导入 skills 到当前项目（可选归入指定分组） */
   importCcSwitchSkills: (projectId: string, targetGroup?: string) => ipcRenderer.invoke('characterarc:cc-switch-import-skills', projectId, targetGroup),
 
