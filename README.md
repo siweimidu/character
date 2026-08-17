@@ -494,7 +494,7 @@ character-arc/
 
 ## 📄 License
 
-[MIT](./LICENSE) © 本增强版贡献者（基于 [uu201/character-arc](https://github.com/uu201/character-arc) 深度魔改扩展）
+[MIT](./LICENSE) © siweimidu（基于 [uu201/character-arc](https://github.com/uu201/character-arc) 深度魔改扩展）
 
 ---
 
