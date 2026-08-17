@@ -1569,7 +1569,7 @@ input {
   border-radius: var(--arc-radius-lg);
 }
 
-.arc-settings-modal.n-card > .n-card__content {
+.arc-settings-modal.n-card > .n-card-content {
   min-height: 0;
   flex: 1;
   overflow: hidden;

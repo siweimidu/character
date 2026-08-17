@@ -3587,10 +3587,10 @@ async function saveSettings(): Promise<void> {
   max-height: min(72vh, 560px);
 }
 
-.cc-switch-modal.n-card > .n-card__content {
+.cc-switch-modal.n-card :deep(.n-card-content) {
   /* 让内部列表成为唯一滚动区，避免外层内容区与内层列表双重滚动 */
   overflow: hidden;
-  /* 恢复内容区左右留白（settings 弹窗覆盖了 n-card__content 的 padding:0） */
+  /* 恢复内容区左右留白（settings 弹窗覆盖了 n-card-content 的 padding:0） */
   padding: 20px 24px 8px;
 }
 
