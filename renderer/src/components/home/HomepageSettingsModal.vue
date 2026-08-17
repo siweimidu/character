@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch, type Ref } from 'vue'
 import { Activity, ArrowDown, ArrowUp, AudioLines, Copy, Cpu, Download, ExternalLink, FileCode2, FileInput, GripVertical, Image, KeyRound, MonitorCog, Moon, Network, Palette, PlugZap, Plus, RefreshCw, RotateCcw, ScanEye, Trash2 } from 'lucide-vue-next'
 import { NButton, NFormItem, NInput, NInputNumber, NModal, NSelect, NSlider, NSwitch, useMessage } from 'naive-ui'
 import { autoSaveOptions } from '@/features/settings/autoSave'
 import { getProviderPreset, providerOptions, resolveProviderDefaults } from '@/features/settings/providerPresets'
 import { AI_PROVIDER_CATALOG } from '@shared/ai-provider-catalog'
-import { imageProviderOptions, resolveImageProviderDefaults, resolveImageProviderWebsite } from '@/features/settings/imageProviderPresets'
-import { visionProviderOptions, resolveVisionProviderDefaults, resolveVisionProviderWebsite } from '@/features/settings/visionProviderPresets'
-import { speechProviderOptions, resolveSpeechProviderDefaults, resolveSpeechProviderWebsite } from '@/features/settings/speechProviderPresets'
+import { imageProviderOptions, imageProviderPresets, resolveImageProviderDefaults, resolveImageProviderWebsite } from '@/features/settings/imageProviderPresets'
+import { visionProviderOptions, visionProviderPresets, resolveVisionProviderDefaults, resolveVisionProviderWebsite } from '@/features/settings/visionProviderPresets'
+import { speechProviderOptions, speechProviderPresets, resolveSpeechProviderDefaults, resolveSpeechProviderWebsite } from '@/features/settings/speechProviderPresets'
 import {
   DEFAULT_WORKBENCH_MENU_ORDER,
   moveWorkbenchMenuItem,
@@ -116,6 +116,36 @@ const freeLlmApiImportOpen = ref(false)
 const freeLlmApiProfiles = ref<Array<CcSwitchAiProfile & { selected: boolean }>>([])
 const freeLlmApiConfigError = ref('')
 const freeLlmApiConfigPath = ref('')
+
+// ── 图片生成 / 图片识别 / 语音识别 配置区「从 CC Switch / FreeLLMAPI 导入」面板状态 ──
+type ImportPanelKind = 'image' | 'vision' | 'speech'
+interface ImportPanelState {
+  profiles: Array<CcSwitchAiProfile & { selected: boolean }>
+  open: boolean
+  configError: string
+  configPath: string
+  importing: boolean
+}
+function makeImportPanelState(): ImportPanelState {
+  return reactive<ImportPanelState>({
+    profiles: [],
+    open: false,
+    configError: '',
+    configPath: '',
+    importing: false
+  })
+}
+const ccSwitchPanels: Record<ImportPanelKind, ImportPanelState> = {
+  image: makeImportPanelState(),
+  vision: makeImportPanelState(),
+  speech: makeImportPanelState()
+}
+const freeLlmApiPanels: Record<ImportPanelKind, ImportPanelState> = {
+  image: makeImportPanelState(),
+  vision: makeImportPanelState(),
+  speech: makeImportPanelState()
+}
+
 const isTestingProxyConnection = ref(false)
 const proxyTestIp = ref('')
 const isFetchingModels = ref(false)
@@ -1433,6 +1463,112 @@ function confirmFreeLlmApiImport(): void {
   message.success(`已导入 ${selected.length} 个 AI 接口配置`)
 }
 
+// ── 图片生成 / 图片识别 / 语音识别 配置区导入（CC Switch / FreeLLMAPI） ──
+
+// 将导入条目的 type / baseUrl 映射为各配置区的 provider 预设值（保留导入的 baseUrl）
+function mapImportToProvider(kind: ImportPanelKind, type: string, baseUrl: string): string {
+  const t = type.trim().toLowerCase()
+  const url = baseUrl.trim().toLowerCase()
+  const presets =
+    kind === 'image' ? imageProviderPresets
+      : kind === 'vision' ? visionProviderPresets
+        : speechProviderPresets
+  // 1. 优先按 Base URL 匹配预设
+  const byUrl = presets.find((p) => p.baseUrl && url.includes(p.baseUrl.toLowerCase()))
+  if (byUrl) return byUrl.value
+  // 2. 再按类型关键词匹配预设（label / value）
+  const byType = presets.find((p) => {
+    const label = p.label.toLowerCase()
+    return label.includes(t) || p.value.includes(t) || t.includes(p.value)
+  })
+  if (byType) return byType.value
+  // 3. 兜底到通用 OpenAI 兼容 / 自定义接口
+  if (kind === 'image') return 'custom-openai-compatible'
+  if (kind === 'vision') return 'vision-custom'
+  return 'speech-custom'
+}
+
+function panelAllSelected(panel: ImportPanelState): boolean {
+  return panel.profiles.length > 0 && panel.profiles.every((p) => p.selected)
+}
+
+function togglePanelSelectAll(panel: ImportPanelState): void {
+  const target = !panelAllSelected(panel)
+  panel.profiles.forEach((p) => {
+    p.selected = target
+  })
+}
+
+// 通用：弹窗选择并解析 CC Switch / FreeLLMAPI 配置到指定配置区
+async function runPanelImport(kind: ImportPanelKind, source: 'ccswitch' | 'freellmapi'): Promise<void> {
+  const panel = source === 'ccswitch' ? ccSwitchPanels[kind] : freeLlmApiPanels[kind]
+  if (panel.importing) return
+  panel.importing = true
+  try {
+    const result = source === 'ccswitch'
+      ? await window.characterArc.importFromCcSwitch()
+      : await window.characterArc.importFromFreeLlmApi()
+    if (!result.success) {
+      throw new Error(result.error ?? `${source === 'ccswitch' ? 'CC Switch' : 'FreeLLMAPI 密钥'}导入失败`)
+    }
+    panel.configPath = result.configPath ?? ''
+    panel.configError = result.configError ?? ''
+    panel.profiles = (result.aiProfiles ?? []).map((profile) => ({
+      ...profile,
+      selected: true
+    }))
+    panel.open = true
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '导入失败')
+  } finally {
+    panel.importing = false
+  }
+}
+
+function togglePanelImportProfile(panel: ImportPanelState, profile: CcSwitchAiProfile & { selected: boolean }): void {
+  profile.selected = !profile.selected
+}
+
+// 确认将勾选的配置加入 图片生成 / 图片识别 / 语音识别 配置列表
+function confirmPanelImport(kind: ImportPanelKind, source: 'ccswitch' | 'freellmapi'): void {
+  const panel = source === 'ccswitch' ? ccSwitchPanels[kind] : freeLlmApiPanels[kind]
+  const selected = panel.profiles.filter((p) => p.selected)
+  const targetList =
+    kind === 'image' ? draftSettings.imageProfiles
+      : kind === 'vision' ? draftSettings.visionProfiles
+        : draftSettings.speechProfiles
+  const existingKeys = new Set(targetList.map((p) => `${p.provider}|${p.baseUrl}|${p.model}`.toLowerCase()))
+  const kindLabel = kind === 'image' ? '图片生成' : kind === 'vision' ? '图片识别' : '语音识别'
+  for (const profile of selected) {
+    const provider = mapImportToProvider(kind, profile.type, profile.baseUrl)
+    const key = `${provider}|${profile.baseUrl}|${profile.model}`.toLowerCase()
+    if (existingKeys.has(key)) continue
+    const defaults =
+      kind === 'image' ? resolveImageProviderDefaults(provider)
+        : kind === 'vision' ? resolveVisionProviderDefaults(provider)
+          : resolveSpeechProviderDefaults(provider)
+    const name =
+      kind === 'image' ? generateUniqueImageName(profile.name.trim() || '图片生成配置')
+        : kind === 'vision' ? generateUniqueVisionName(profile.name.trim() || '图片识别配置')
+          : generateUniqueSpeechName(profile.name.trim() || '语音识别配置')
+    const model = profile.model.trim() || defaults.model
+    targetList.push({
+      id: generateProfileId(),
+      name,
+      provider,
+      baseUrl: profile.baseUrl.trim() || defaults.baseUrl,
+      apiKey: profile.apiKey,
+      model,
+      models: model ? [model] : []
+    })
+    existingKeys.add(key)
+  }
+  panel.open = false
+  panel.profiles = []
+  panel.configError = ''
+  message.success(`已导入 ${selected.length} 个${kindLabel}接口配置`)
+}
+
 async function saveSettings(): Promise<void> {
   // 保存后应切换到用户正在编辑的接口配置，避免再次打开仍显示旧配置为“当前”
   const activeProfileId = editingProfileId.value || draftSettings.activeAiProfileId
@@ -1848,6 +1984,22 @@ async function saveSettings(): Promise<void> {
               <p>封面工作台使用专用的图片生成接口，支持多套配置新建、复制与删除</p>
             </div>
             <div class="profile-tab-actions">
+              <button
+                class="profile-action-btn"
+                title="从 FreeLLMAPI 密钥文件导入图片生成接口配置"
+                :disabled="freeLlmApiPanels.image.importing"
+                @click="runPanelImport('image', 'freellmapi')"
+              >
+                <KeyRound :size="14" />
+              </button>
+              <button
+                class="profile-action-btn"
+                title="从 CC Switch 导入图片生成接口配置"
+                :disabled="ccSwitchPanels.image.importing"
+                @click="runPanelImport('image', 'ccswitch')"
+              >
+                <FileInput :size="14" />
+              </button>
               <button class="profile-action-btn" title="新建配置" @click="handleAddImageProfile">
                 <Plus :size="14" />
               </button>
@@ -2012,6 +2164,22 @@ async function saveSettings(): Promise<void> {
               <p>识别人物图片并反推为人物卡片，支持多套视觉模型配置新建、复制与删除</p>
             </div>
             <div class="profile-tab-actions">
+              <button
+                class="profile-action-btn"
+                title="从 FreeLLMAPI 密钥文件导入图片识别接口配置"
+                :disabled="freeLlmApiPanels.vision.importing"
+                @click="runPanelImport('vision', 'freellmapi')"
+              >
+                <KeyRound :size="14" />
+              </button>
+              <button
+                class="profile-action-btn"
+                title="从 CC Switch 导入图片识别接口配置"
+                :disabled="ccSwitchPanels.vision.importing"
+                @click="runPanelImport('vision', 'ccswitch')"
+              >
+                <FileInput :size="14" />
+              </button>
               <button class="profile-action-btn" title="新建配置" @click="handleAddVisionProfile">
                 <Plus :size="14" />
               </button>
@@ -2186,6 +2354,22 @@ async function saveSettings(): Promise<void> {
               <p>语音输入自动转文字填入输入框，支持多套语音识别服务配置新建、复制与删除</p>
             </div>
             <div class="profile-tab-actions">
+              <button
+                class="profile-action-btn"
+                title="从 FreeLLMAPI 密钥文件导入语音识别接口配置"
+                :disabled="freeLlmApiPanels.speech.importing"
+                @click="runPanelImport('speech', 'freellmapi')"
+              >
+                <KeyRound :size="14" />
+              </button>
+              <button
+                class="profile-action-btn"
+                title="从 CC Switch 导入语音识别接口配置"
+                :disabled="ccSwitchPanels.speech.importing"
+                @click="runPanelImport('speech', 'ccswitch')"
+              >
+                <FileInput :size="14" />
+              </button>
               <button class="profile-action-btn" title="新建配置" @click="handleAddSpeechProfile">
                 <Plus :size="14" />
               </button>
@@ -2678,6 +2862,372 @@ async function saveSettings(): Promise<void> {
       </div>
     </template>
   </n-modal>
+
+  <!-- 从 CC Switch 导入 图片生成接口配置 -->
+  <n-modal
+    :show="ccSwitchPanels.image.open"
+    preset="card"
+    class="arc-settings-modal cc-switch-modal"
+    :bordered="false"
+    @close="ccSwitchPanels.image.open = false"
+  >
+    <template #header>
+      <div class="cc-switch-header">
+        <span class="cc-switch-header-title">从 CC Switch 导入 图片生成接口配置</span>
+      </div>
+    </template>
+    <div class="cc-switch-intro">
+      <p>已读取 CC Switch 配置（{{ ccSwitchPanels.image.configPath || '~/.cc-switch/cc-switch.db' }}）。选择要导入的图片生成接口配置</p>
+      <p v-if="ccSwitchPanels.image.configError" class="cc-switch-warn">
+        配置读取提示：{{ ccSwitchPanels.image.configError }}
+      </p>
+    </div>
+    <div class="cc-switch-section-title-row">
+      <span class="cc-switch-section-title">图片生成接口配置</span>
+      <n-button
+        v-if="ccSwitchPanels.image.profiles.length"
+        size="tiny"
+        secondary
+        round
+        class="cc-switch-select-all-btn"
+        @click="togglePanelSelectAll(ccSwitchPanels.image)"
+      >
+        {{ panelAllSelected(ccSwitchPanels.image) ? '取消全选' : '多选' }}
+      </n-button>
+    </div>
+    <div v-if="ccSwitchPanels.image.profiles.length" class="cc-switch-profile-list-wrap">
+      <div class="cc-switch-profile-list">
+        <label
+          v-for="profile in ccSwitchPanels.image.profiles"
+          :key="profile.name + profile.baseUrl + profile.model"
+          class="cc-switch-profile-item"
+          :class="{ checked: profile.selected }"
+        >
+          <input type="checkbox" :checked="profile.selected" @change="togglePanelImportProfile(ccSwitchPanels.image, profile)" />
+          <span class="cc-switch-profile-main">
+            <strong>{{ profile.name }}</strong>
+            <span class="cc-switch-profile-sub">{{ profile.type }} · {{ profile.baseUrl || '默认地址' }}</span>
+          </span>
+          <code class="cc-switch-profile-url">{{ profile.baseUrl || '默认地址' }}</code>
+        </label>
+      </div>
+    </div>
+    <div v-else class="cc-switch-empty">
+      未在配置文件中识别到可导入的图片生成接口配置
+    </div>
+    <template #footer>
+      <div class="cc-switch-footer">
+        <n-button round strong @click="ccSwitchPanels.image.open = false">取消</n-button>
+        <n-button type="primary" round strong @click="confirmPanelImport('image', 'ccswitch')">导入选中</n-button>
+      </div>
+    </template>
+  </n-modal>
+
+
+  <!-- 从 FreeLLMAPI 密钥文件导入 图片生成接口配置 -->
+  <n-modal
+    :show="freeLlmApiPanels.image.open"
+    preset="card"
+    class="arc-settings-modal cc-switch-modal"
+    :bordered="false"
+    @close="freeLlmApiPanels.image.open = false"
+  >
+    <template #header>
+      <div class="cc-switch-header">
+        <span class="cc-switch-header-title">从 FreeLLMAPI 密钥文件导入 图片生成接口配置</span>
+      </div>
+    </template>
+    <div class="cc-switch-intro">
+      <p>已读取 FreeLLMAPI 密钥文件（{{ freeLlmApiPanels.image.configPath || 'freellmapi-keys.json' }}）。选择要导入的图片生成接口配置</p>
+      <p v-if="freeLlmApiPanels.image.configError" class="cc-switch-warn">
+        配置读取提示：{{ freeLlmApiPanels.image.configError }}
+      </p>
+    </div>
+    <div class="cc-switch-section-title-row">
+      <span class="cc-switch-section-title">图片生成接口配置</span>
+      <n-button
+        v-if="freeLlmApiPanels.image.profiles.length"
+        size="tiny"
+        secondary
+        round
+        class="cc-switch-select-all-btn"
+        @click="togglePanelSelectAll(freeLlmApiPanels.image)"
+      >
+        {{ panelAllSelected(freeLlmApiPanels.image) ? '取消全选' : '多选' }}
+      </n-button>
+    </div>
+    <div v-if="freeLlmApiPanels.image.profiles.length" class="cc-switch-profile-list-wrap">
+      <div class="cc-switch-profile-list">
+        <label
+          v-for="profile in freeLlmApiPanels.image.profiles"
+          :key="profile.name + profile.baseUrl + profile.model"
+          class="cc-switch-profile-item"
+          :class="{ checked: profile.selected }"
+        >
+          <input type="checkbox" :checked="profile.selected" @change="togglePanelImportProfile(freeLlmApiPanels.image, profile)" />
+          <span class="cc-switch-profile-main">
+            <strong>{{ profile.name }}</strong>
+            <span class="cc-switch-profile-sub">{{ profile.type }} · {{ profile.baseUrl || '默认地址' }}</span>
+          </span>
+          <code class="cc-switch-profile-url">{{ profile.baseUrl || '默认地址' }}</code>
+        </label>
+      </div>
+    </div>
+    <div v-else class="cc-switch-empty">
+      未在密钥文件中识别到可导入的图片生成接口配置
+    </div>
+    <template #footer>
+      <div class="cc-switch-footer">
+        <n-button round strong @click="freeLlmApiPanels.image.open = false">取消</n-button>
+        <n-button type="primary" round strong @click="confirmPanelImport('image', 'freellmapi')">导入选中</n-button>
+      </div>
+    </template>
+  </n-modal>
+
+
+  <!-- 从 CC Switch 导入 图片识别接口配置 -->
+  <n-modal
+    :show="ccSwitchPanels.vision.open"
+    preset="card"
+    class="arc-settings-modal cc-switch-modal"
+    :bordered="false"
+    @close="ccSwitchPanels.vision.open = false"
+  >
+    <template #header>
+      <div class="cc-switch-header">
+        <span class="cc-switch-header-title">从 CC Switch 导入 图片识别接口配置</span>
+      </div>
+    </template>
+    <div class="cc-switch-intro">
+      <p>已读取 CC Switch 配置（{{ ccSwitchPanels.vision.configPath || '~/.cc-switch/cc-switch.db' }}）。选择要导入的图片识别接口配置</p>
+      <p v-if="ccSwitchPanels.vision.configError" class="cc-switch-warn">
+        配置读取提示：{{ ccSwitchPanels.vision.configError }}
+      </p>
+    </div>
+    <div class="cc-switch-section-title-row">
+      <span class="cc-switch-section-title">图片识别接口配置</span>
+      <n-button
+        v-if="ccSwitchPanels.vision.profiles.length"
+        size="tiny"
+        secondary
+        round
+        class="cc-switch-select-all-btn"
+        @click="togglePanelSelectAll(ccSwitchPanels.vision)"
+      >
+        {{ panelAllSelected(ccSwitchPanels.vision) ? '取消全选' : '多选' }}
+      </n-button>
+    </div>
+    <div v-if="ccSwitchPanels.vision.profiles.length" class="cc-switch-profile-list-wrap">
+      <div class="cc-switch-profile-list">
+        <label
+          v-for="profile in ccSwitchPanels.vision.profiles"
+          :key="profile.name + profile.baseUrl + profile.model"
+          class="cc-switch-profile-item"
+          :class="{ checked: profile.selected }"
+        >
+          <input type="checkbox" :checked="profile.selected" @change="togglePanelImportProfile(ccSwitchPanels.vision, profile)" />
+          <span class="cc-switch-profile-main">
+            <strong>{{ profile.name }}</strong>
+            <span class="cc-switch-profile-sub">{{ profile.type }} · {{ profile.baseUrl || '默认地址' }}</span>
+          </span>
+          <code class="cc-switch-profile-url">{{ profile.baseUrl || '默认地址' }}</code>
+        </label>
+      </div>
+    </div>
+    <div v-else class="cc-switch-empty">
+      未在配置文件中识别到可导入的图片识别接口配置
+    </div>
+    <template #footer>
+      <div class="cc-switch-footer">
+        <n-button round strong @click="ccSwitchPanels.vision.open = false">取消</n-button>
+        <n-button type="primary" round strong @click="confirmPanelImport('vision', 'ccswitch')">导入选中</n-button>
+      </div>
+    </template>
+  </n-modal>
+
+
+  <!-- 从 FreeLLMAPI 密钥文件导入 图片识别接口配置 -->
+  <n-modal
+    :show="freeLlmApiPanels.vision.open"
+    preset="card"
+    class="arc-settings-modal cc-switch-modal"
+    :bordered="false"
+    @close="freeLlmApiPanels.vision.open = false"
+  >
+    <template #header>
+      <div class="cc-switch-header">
+        <span class="cc-switch-header-title">从 FreeLLMAPI 密钥文件导入 图片识别接口配置</span>
+      </div>
+    </template>
+    <div class="cc-switch-intro">
+      <p>已读取 FreeLLMAPI 密钥文件（{{ freeLlmApiPanels.vision.configPath || 'freellmapi-keys.json' }}）。选择要导入的图片识别接口配置</p>
+      <p v-if="freeLlmApiPanels.vision.configError" class="cc-switch-warn">
+        配置读取提示：{{ freeLlmApiPanels.vision.configError }}
+      </p>
+    </div>
+    <div class="cc-switch-section-title-row">
+      <span class="cc-switch-section-title">图片识别接口配置</span>
+      <n-button
+        v-if="freeLlmApiPanels.vision.profiles.length"
+        size="tiny"
+        secondary
+        round
+        class="cc-switch-select-all-btn"
+        @click="togglePanelSelectAll(freeLlmApiPanels.vision)"
+      >
+        {{ panelAllSelected(freeLlmApiPanels.vision) ? '取消全选' : '多选' }}
+      </n-button>
+    </div>
+    <div v-if="freeLlmApiPanels.vision.profiles.length" class="cc-switch-profile-list-wrap">
+      <div class="cc-switch-profile-list">
+        <label
+          v-for="profile in freeLlmApiPanels.vision.profiles"
+          :key="profile.name + profile.baseUrl + profile.model"
+          class="cc-switch-profile-item"
+          :class="{ checked: profile.selected }"
+        >
+          <input type="checkbox" :checked="profile.selected" @change="togglePanelImportProfile(freeLlmApiPanels.vision, profile)" />
+          <span class="cc-switch-profile-main">
+            <strong>{{ profile.name }}</strong>
+            <span class="cc-switch-profile-sub">{{ profile.type }} · {{ profile.baseUrl || '默认地址' }}</span>
+          </span>
+          <code class="cc-switch-profile-url">{{ profile.baseUrl || '默认地址' }}</code>
+        </label>
+      </div>
+    </div>
+    <div v-else class="cc-switch-empty">
+      未在密钥文件中识别到可导入的图片识别接口配置
+    </div>
+    <template #footer>
+      <div class="cc-switch-footer">
+        <n-button round strong @click="freeLlmApiPanels.vision.open = false">取消</n-button>
+        <n-button type="primary" round strong @click="confirmPanelImport('vision', 'freellmapi')">导入选中</n-button>
+      </div>
+    </template>
+  </n-modal>
+
+
+  <!-- 从 CC Switch 导入 语音识别接口配置 -->
+  <n-modal
+    :show="ccSwitchPanels.speech.open"
+    preset="card"
+    class="arc-settings-modal cc-switch-modal"
+    :bordered="false"
+    @close="ccSwitchPanels.speech.open = false"
+  >
+    <template #header>
+      <div class="cc-switch-header">
+        <span class="cc-switch-header-title">从 CC Switch 导入 语音识别接口配置</span>
+      </div>
+    </template>
+    <div class="cc-switch-intro">
+      <p>已读取 CC Switch 配置（{{ ccSwitchPanels.speech.configPath || '~/.cc-switch/cc-switch.db' }}）。选择要导入的语音识别接口配置</p>
+      <p v-if="ccSwitchPanels.speech.configError" class="cc-switch-warn">
+        配置读取提示：{{ ccSwitchPanels.speech.configError }}
+      </p>
+    </div>
+    <div class="cc-switch-section-title-row">
+      <span class="cc-switch-section-title">语音识别接口配置</span>
+      <n-button
+        v-if="ccSwitchPanels.speech.profiles.length"
+        size="tiny"
+        secondary
+        round
+        class="cc-switch-select-all-btn"
+        @click="togglePanelSelectAll(ccSwitchPanels.speech)"
+      >
+        {{ panelAllSelected(ccSwitchPanels.speech) ? '取消全选' : '多选' }}
+      </n-button>
+    </div>
+    <div v-if="ccSwitchPanels.speech.profiles.length" class="cc-switch-profile-list-wrap">
+      <div class="cc-switch-profile-list">
+        <label
+          v-for="profile in ccSwitchPanels.speech.profiles"
+          :key="profile.name + profile.baseUrl + profile.model"
+          class="cc-switch-profile-item"
+          :class="{ checked: profile.selected }"
+        >
+          <input type="checkbox" :checked="profile.selected" @change="togglePanelImportProfile(ccSwitchPanels.speech, profile)" />
+          <span class="cc-switch-profile-main">
+            <strong>{{ profile.name }}</strong>
+            <span class="cc-switch-profile-sub">{{ profile.type }} · {{ profile.baseUrl || '默认地址' }}</span>
+          </span>
+          <code class="cc-switch-profile-url">{{ profile.baseUrl || '默认地址' }}</code>
+        </label>
+      </div>
+    </div>
+    <div v-else class="cc-switch-empty">
+      未在配置文件中识别到可导入的语音识别接口配置
+    </div>
+    <template #footer>
+      <div class="cc-switch-footer">
+        <n-button round strong @click="ccSwitchPanels.speech.open = false">取消</n-button>
+        <n-button type="primary" round strong @click="confirmPanelImport('speech', 'ccswitch')">导入选中</n-button>
+      </div>
+    </template>
+  </n-modal>
+
+
+  <!-- 从 FreeLLMAPI 密钥文件导入 语音识别接口配置 -->
+  <n-modal
+    :show="freeLlmApiPanels.speech.open"
+    preset="card"
+    class="arc-settings-modal cc-switch-modal"
+    :bordered="false"
+    @close="freeLlmApiPanels.speech.open = false"
+  >
+    <template #header>
+      <div class="cc-switch-header">
+        <span class="cc-switch-header-title">从 FreeLLMAPI 密钥文件导入 语音识别接口配置</span>
+      </div>
+    </template>
+    <div class="cc-switch-intro">
+      <p>已读取 FreeLLMAPI 密钥文件（{{ freeLlmApiPanels.speech.configPath || 'freellmapi-keys.json' }}）。选择要导入的语音识别接口配置</p>
+      <p v-if="freeLlmApiPanels.speech.configError" class="cc-switch-warn">
+        配置读取提示：{{ freeLlmApiPanels.speech.configError }}
+      </p>
+    </div>
+    <div class="cc-switch-section-title-row">
+      <span class="cc-switch-section-title">语音识别接口配置</span>
+      <n-button
+        v-if="freeLlmApiPanels.speech.profiles.length"
+        size="tiny"
+        secondary
+        round
+        class="cc-switch-select-all-btn"
+        @click="togglePanelSelectAll(freeLlmApiPanels.speech)"
+      >
+        {{ panelAllSelected(freeLlmApiPanels.speech) ? '取消全选' : '多选' }}
+      </n-button>
+    </div>
+    <div v-if="freeLlmApiPanels.speech.profiles.length" class="cc-switch-profile-list-wrap">
+      <div class="cc-switch-profile-list">
+        <label
+          v-for="profile in freeLlmApiPanels.speech.profiles"
+          :key="profile.name + profile.baseUrl + profile.model"
+          class="cc-switch-profile-item"
+          :class="{ checked: profile.selected }"
+        >
+          <input type="checkbox" :checked="profile.selected" @change="togglePanelImportProfile(freeLlmApiPanels.speech, profile)" />
+          <span class="cc-switch-profile-main">
+            <strong>{{ profile.name }}</strong>
+            <span class="cc-switch-profile-sub">{{ profile.type }} · {{ profile.baseUrl || '默认地址' }}</span>
+          </span>
+          <code class="cc-switch-profile-url">{{ profile.baseUrl || '默认地址' }}</code>
+        </label>
+      </div>
+    </div>
+    <div v-else class="cc-switch-empty">
+      未在密钥文件中识别到可导入的语音识别接口配置
+    </div>
+    <template #footer>
+      <div class="cc-switch-footer">
+        <n-button round strong @click="freeLlmApiPanels.speech.open = false">取消</n-button>
+        <n-button type="primary" round strong @click="confirmPanelImport('speech', 'freellmapi')">导入选中</n-button>
+      </div>
+    </template>
+  </n-modal>
+
 </template>
 
 <style scoped>
