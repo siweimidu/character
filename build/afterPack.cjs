@@ -4,12 +4,14 @@ const path = require('node:path')
 const KEEP_LOCALES = new Set(['en-US.pak', 'zh-CN.pak'])
 
 // electron-builder Arch 枚举数值 -> 架构名（与 @node-rs/jieba 目录命名对齐）
+// 数值来自 electron-builder 的 builder-util Arch 枚举：
+//   ia32=0 / x64=1 / armv7l=2 / arm64=3 / universal=4
 const ARCH_NAMES = {
-  1: 'x64', // Arch.x64
-  2: 'ia32', // Arch.ia32
-  3: 'arm', // Arch.armv7l
-  4: 'arm64', // Arch.arm64
-  5: 'universal' // Arch.universal
+  0: 'ia32',
+  1: 'x64',
+  2: 'armv7l',
+  3: 'arm64',
+  4: 'universal'
 }
 
 // 删除非目标平台 / 架构的 native 模块，只保留当前构建平台对应的模块
