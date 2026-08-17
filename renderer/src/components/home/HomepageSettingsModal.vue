@@ -2540,10 +2540,9 @@ async function saveSettings(): Promise<void> {
   grid-template-columns: 192px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   gap: 0;
-  height: 100%;
   min-height: 0;
   overflow: hidden;
-  flex: 1;
+  flex: 1 1 0;
 }
 
 /* ── Left Nav ── */
@@ -3591,6 +3590,8 @@ async function saveSettings(): Promise<void> {
 .cc-switch-modal.n-card > .n-card__content {
   /* 让内部列表成为唯一滚动区，避免外层内容区与内层列表双重滚动 */
   overflow: hidden;
+  /* 恢复内容区左右留白（settings 弹窗覆盖了 n-card__content 的 padding:0） */
+  padding: 20px 24px 8px;
 }
 
 .cc-switch-modal .cc-switch-profile-list-wrap {

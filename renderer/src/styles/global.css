@@ -1575,6 +1575,7 @@ input {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  padding: 0;
 }
 
 .arc-settings-modal.n-card > .n-card-header,

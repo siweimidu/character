@@ -81,8 +81,8 @@ export async function ensureWorkspaceDb(): Promise<DatabaseSync> {
   if (workspaceDb) return workspaceDb
   if (dbInitPromise) return dbInitPromise
 
-  dbInitPromise = (async () => {
-    try {
+  /** 打开并初始化数据库：建表、列迁移与内置种子数据。若文件损坏会直接抛错。 */
+  const initOnce = async (): Promise<DatabaseSync> => {
     await ensureWorkspaceDir()
     let db: DatabaseSync
     try {
@@ -487,11 +487,30 @@ export async function ensureWorkspaceDb(): Promise<DatabaseSync> {
   attachAgentModuleStore(db)
 
   await migrateLegacyWorkspaceFile(db)
-  workspaceDb = db
   return db
+  }
+
+  dbInitPromise = (async () => {
+    let db: DatabaseSync | null = null
+    try {
+      db = await initOnce()
+      workspaceDb = db
+      return db
     } catch (err) {
-      dbInitPromise = null
-      throw err
+      // 首次初始化（含建表/列迁移/种子数据）失败，说明数据库文件损坏或不兼容：
+      // 先备份损坏文件并重建，避免应用因本地数据读取失败而彻底空白。
+      console.warn('[workspace] 数据库初始化失败，尝试备份并重建:', err instanceof Error ? err.message : err)
+      try {
+        // 确保损坏句柄已释放，Windows 下方可重命名备份文件
+        try { db?.close?.() } catch { /* ignore */ }
+        await backupCorruptWorkspaceDb(err)
+        db = await initOnce()
+        workspaceDb = db
+        return db
+      } catch (retryErr) {
+        dbInitPromise = null
+        throw retryErr
+      }
     }
   })()
 
