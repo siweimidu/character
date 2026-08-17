@@ -489,6 +489,8 @@ function closeModal(): void {
 
 function selectProfile(profileId: string): void {
   editingProfileId.value = profileId
+  // 点击接口配置标签即把它标记为“当前”使用中的配置，保存后即可完成切换
+  draftSettings.activeAiProfileId = profileId
   fetchedModels.value = []
 }
 
